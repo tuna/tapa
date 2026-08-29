@@ -184,14 +184,14 @@ pub mod tests {
     /// A two-leaf `A -> fifo -> B` design, mirroring the flatten test graph.
     pub fn vadd_graph() -> TaskGraph {
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [],
             "top": "VecAdd",
             "target": "xilinx-hls",
             "tasks": {
                 "VecAdd": {
                     "readable_name": "VecAdd",
-                    "code": "void VecAdd() {}",
+                    "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [],
                     "level": "upper",
                     "synth": "hls",
                     "ports": [],
@@ -204,12 +204,12 @@ pub mod tests {
                     }
                 },
                 "A": {
-                    "readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                    "readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                     "self_area": {"lut": 100, "ff": 200}
                 },
                 "B": {
-                    "readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                    "readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                     "self_area": {"lut": 50, "ff": 60}
                 }
@@ -221,17 +221,17 @@ pub mod tests {
     pub fn mmap_graph() -> TaskGraph {
         TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
-                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                         "ports": [{"cat":"mmap","name":"mem","type":"int*","width":32}],
                         "tasks": {"Reader": [{"args":{"data":{"arg":"mem","cat":"mmap"}},"step":0}]},
                         "fifos": {}
                     },
                     "Reader": {
-                        "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
+                        "readable_name": "Reader", "srcs": ["Reader.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
                         "self_area": {"lut":10,"ff":20}
                     }
@@ -297,11 +297,11 @@ pub mod tests {
     pub fn distributed_control_graph() -> TaskGraph {
         TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {
                     "Top": {
-                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                         "ports": [
                             {"cat":"scalar","name":"n","type":"unsigned","width":32},
                             {"cat":"scalar","name":"mode","type":"char","width":8},
@@ -319,14 +319,14 @@ pub mod tests {
                         "fifos": {}
                     },
                     "Worker": {
-                        "readable_name":"Worker","code":"","level":"lower","synth":"hls",
+                        "readable_name":"Worker","srcs": ["Worker.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                         "ports":[
                             {"cat":"scalar","name":"count","type":"unsigned","width":32},
                             {"cat":"mmap","name":"data","type":"int*","width":32}
                         ]
                     },
                     "Ticker": {
-                        "readable_name":"Ticker","code":"","level":"lower","synth":"hls",
+                        "readable_name":"Ticker","srcs": ["Ticker.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                         "ports":[{"cat":"scalar","name":"mode","type":"char","width":8}]
                     }
                 }
@@ -457,10 +457,10 @@ pub mod tests {
     fn enabled_control_is_a_noop_without_child_instances() {
         let design = TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Leaf", "target": "xilinx-hls",
                 "tasks": {"Leaf": {
-                    "readable_name":"Leaf","code":"","level":"lower","synth":"hls",
+                    "readable_name":"Leaf","srcs": ["Leaf.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                     "ports":[],"tasks":{},"fifos":{}
                 }}
             }"#,
@@ -547,11 +547,11 @@ pub mod tests {
     fn placement_aggregates_parallel_streams_without_losing_routing_records() {
         let design = TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
-                        "readable_name": "Top", "code": "void Top() {}",
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                         "level": "upper", "synth": "hls", "ports": [],
                         "tasks": {
                             "A": [{"args": {
@@ -572,7 +572,7 @@ pub mod tests {
                         }
                     },
                     "A": {
-                        "readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                        "readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [
                             {"cat": "ostream", "name": "out32", "type": "int", "width": 32},
                             {"cat": "ostream", "name": "out64", "type": "long", "width": 64},
@@ -580,7 +580,7 @@ pub mod tests {
                         ]
                     },
                     "B": {
-                        "readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                        "readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [
                             {"cat": "istream", "name": "in32", "type": "int", "width": 32},
                             {"cat": "istream", "name": "in64", "type": "long", "width": 64},

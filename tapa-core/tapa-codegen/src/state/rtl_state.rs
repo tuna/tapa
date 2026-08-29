@@ -126,7 +126,7 @@ mod tests {
                 "top_task": {
                     "readable_name": "top_task",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top_task.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [],
                     "tasks": {
@@ -137,7 +137,7 @@ mod tests {
                 "child_a": {
                     "readable_name": "child_a",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["child_a.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [{"cat": "istream", "name": "data", "type": "float", "width": 32}],
                     "tasks": {},

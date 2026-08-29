@@ -1,5 +1,12 @@
 #include "program_builder.h"
 
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#include <cstdlib>
+#include <fstream>
 #include <memory>
 #include <string>
 #include <vector>
@@ -111,6 +118,42 @@ TEST(BuildProgram, LeafPortsPopulated) {
   EXPECT_STREQ(TapaKindCat(add_ports[0].kind), "istream");
   EXPECT_STREQ(TapaKindCat(add_ports[2].kind), "ostream");
   EXPECT_STREQ(TapaKindCat(add_ports[3].kind), "scalar");
+}
+
+TEST(BuildProgram, WriteSourcesManifestAndFiles) {
+  auto b = Build();
+  // File names come from the JSON task keys, the same names EmitJson's
+  // `srcs` entries carry.
+  const nlohmann::json tasks = b.builder.EmitJson()[kFieldTasks];
+  const testing::TestInfo* info =
+      testing::UnitTest::GetInstance()->current_test_info();
+  const std::string dir = std::string("/tmp/tapacc-writesources-") +
+                          std::to_string(getpid()) + "-" + info->name();
+  ASSERT_EQ(::system(("rm -rf " + dir + " && mkdir -p " + dir).c_str()), 0);
+
+  std::string error;
+  ASSERT_TRUE(b.builder.WriteSources(dir, &error)) << error;
+  for (const auto& [name, task] : tasks.items()) {
+    const std::string src = task.at(kFieldSrcs)[0].get<std::string>();
+    ASSERT_EQ(src, name + ".cpp");
+    std::ifstream file(dir + "/" + src, std::ios::binary);
+    ASSERT_TRUE(file.is_open()) << dir + "/" + src;
+    std::string text((std::istreambuf_iterator<char>(file)),
+                     std::istreambuf_iterator<char>());
+    EXPECT_EQ(text, b.builder.TaskCode(name));
+  }
+
+  // Re-writing identical content must not fail nor change the file: the
+  // same-content skip keeps the mtime synth's HLS cache keys on.
+  const std::string path = dir + "/Add.cpp";
+  struct stat before{};
+  ASSERT_EQ(::stat(path.c_str(), &before), 0);
+  sleep(1);  // a coarse mtime resolution (e.g. ext4 1s) must still differ
+  ASSERT_TRUE(b.builder.WriteSources(dir, &error)) << error;
+  struct stat after{};
+  ASSERT_EQ(::stat(path.c_str(), &after), 0);
+  EXPECT_EQ(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
+  EXPECT_EQ(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
 }
 
 }  // namespace

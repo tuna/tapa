@@ -7,7 +7,8 @@
 //!   1. Resolve the device (part / clock / platform) via
 //!      `tapa_xilinx::parse_device_info` and persist into
 //!      `<work_dir>/tapa.json`.
-//!   2. Extract per-task C++ from the task graph to `<work_dir>/cpp/`.
+//!   2. Stage the per-task source manifests against
+//!      `<work_dir>/rewritten/` (written by `tapa analyze`).
 //!   3. Run Vitis HLS for each leaf task, harvesting Verilog into
 //!      `<work_dir>/hls/<task>/verilog/`.
 //!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
@@ -24,9 +25,9 @@ use clap::Parser;
 use crate::context::CliContext;
 use crate::error::Result;
 
-mod cpp_extract;
 mod device_resolve;
 mod hls_run;
+mod hls_sources;
 mod metrics;
 mod post_synth_util;
 mod report;

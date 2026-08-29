@@ -647,11 +647,11 @@ mod tests {
     fn two_task_stream_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
-                        "readable_name": "Top", "code": "void Top() {}",
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                         "level": "upper", "synth": "hls", "ports": [],
                         "tasks": {
                             "Producer": [{"args": {
@@ -669,7 +669,7 @@ mod tests {
                         }
                     },
                     "Producer": {
-                        "readable_name": "Producer", "code": "void Producer() {}",
+                        "readable_name": "Producer", "srcs": ["Producer.cpp"], "include_dirs": [], "defines": [],
                         "level": "lower", "synth": "hls",
                         "ports": [
                             {"cat": "ostream", "name": "out32", "type": "int", "width": 32},
@@ -677,7 +677,7 @@ mod tests {
                         ]
                     },
                     "Consumer": {
-                        "readable_name": "Consumer", "code": "void Consumer() {}",
+                        "readable_name": "Consumer", "srcs": ["Consumer.cpp"], "include_dirs": [], "defines": [],
                         "level": "lower", "synth": "hls",
                         "ports": [
                             {"cat": "istream", "name": "in32", "type": "int", "width": 32},
@@ -694,11 +694,11 @@ mod tests {
 
     fn one_stream_graph(depth: u32, producer_area: Area, consumer_area: Area) -> FloorGraph {
         let design = serde_json::json!({
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {
-                    "readable_name": "Top", "code": "void Top() {}",
+                    "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                     "level": "upper", "synth": "hls", "ports": [],
                     "tasks": {
                         "Producer": [{"args": {"out": {"arg": "q", "cat": "ostream"}}, "step": 0}],
@@ -709,13 +709,13 @@ mod tests {
                     }
                 },
                 "Producer": {
-                    "readable_name": "Producer", "code": "void Producer() {}",
+                    "readable_name": "Producer", "srcs": ["Producer.cpp"], "include_dirs": [], "defines": [],
                     "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "int", "width": 32}],
                     "self_area": {"lut": producer_area.lut, "ff": producer_area.ff}
                 },
                 "Consumer": {
-                    "readable_name": "Consumer", "code": "void Consumer() {}",
+                    "readable_name": "Consumer", "srcs": ["Consumer.cpp"], "include_dirs": [], "defines": [],
                     "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "int", "width": 32}],
                     "self_area": {"lut": consumer_area.lut, "ff": consumer_area.ff}
@@ -730,14 +730,14 @@ mod tests {
     fn one_mmap_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
-                    "Top": {"readable_name":"Top","code":"","level":"upper","synth":"hls",
+                    "Top": {"readable_name":"Top","srcs": ["Top.cpp"], "include_dirs": [], "defines": [],"level":"upper","synth":"hls",
                         "ports":[{"cat":"mmap","name":"mem","type":"int*","width":32}],
                         "tasks":{"Reader":[{"args":{"data":{"arg":"mem","cat":"mmap"}},"step":0}]},
                         "fifos":{}},
-                    "Reader": {"readable_name":"Reader","code":"","level":"lower","synth":"hls",
+                    "Reader": {"readable_name":"Reader","srcs": ["Reader.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                         "ports":[{"cat":"mmap","name":"data","type":"int*","width":32}],
                         "self_area":{"lut":10,"ff":20}}
                 }
@@ -773,15 +773,15 @@ mod tests {
     fn one_controlled_task_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
-                    "Top": {"readable_name":"Top","code":"","level":"upper","synth":"hls",
+                    "Top": {"readable_name":"Top","srcs": ["Top.cpp"], "include_dirs": [], "defines": [],"level":"upper","synth":"hls",
                         "ports":[{"cat":"scalar","name":"n","type":"unsigned","width":32}],
                         "tasks":{"Worker":[{"name":"worker#0","args":{
                             "count":{"arg":"n","cat":"scalar"}
                         },"step":0}]},"fifos":{}},
-                    "Worker": {"readable_name":"Worker","code":"","level":"lower","synth":"hls",
+                    "Worker": {"readable_name":"Worker","srcs": ["Worker.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                         "ports":[{"cat":"scalar","name":"count","type":"unsigned","width":32}]}
                 }
             }"#,

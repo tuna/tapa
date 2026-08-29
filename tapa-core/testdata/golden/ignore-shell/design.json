@@ -1,12 +1,14 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "target": "xilinx-hls",
     "top": "ShellTop",
     "cflags": [],
     "tasks": {
         "CustomShell": {
             "clock_period": 3125,
-            "code": "void CustomShell() {}",
+            "srcs": ["CustomShell.cpp"],
+            "include_dirs": [],
+            "defines": [],
             "fifos": {},
             "level": "lower",
             "readable_name": "CustomShell",
@@ -31,7 +33,9 @@
         },
         "ShellTop": {
             "clock_period": 3125,
-            "code": "void ShellTop() {}",
+            "srcs": ["ShellTop.cpp"],
+            "include_dirs": [],
+            "defines": [],
             "level": "upper",
             "readable_name": "ShellTop",
             "synth": "hls",
@@ -54,7 +58,7 @@
             "tasks": {
                 "CustomShell": [
                     {
-                        "args": {
+            "args": {
                             "n": {
                                 "arg": "n",
                                 "cat": "scalar"
@@ -64,14 +68,14 @@
                                 "cat": "ostream"
                             }
                         },
-                        "step": 0
+            "step": 0
                     }
                 ]
             },
             "fifos": {
                 "out": {
                     "produced_by": [
-                        "CustomShell",
+            "CustomShell",
                         0
                     ]
                 }

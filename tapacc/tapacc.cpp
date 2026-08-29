@@ -1,9 +1,14 @@
 // tapacc: the TAPA C-to-HLS rewriter. Parses every input translation unit
 // (flattened by `tapa analyze`) into one merged task graph and emits that
 // single graph on stdout for the tapa-ir crate to consume:
-// {top, target, tasks:{name:{code, level, synth, readable_name, ports,
-// tasks, fifos}}}. `tapa analyze` nests that payload under the "graph" key
-// of the work dir's tapa.json.
+// {top, target, tasks:{name:{srcs, include_dirs, defines, level, synth,
+// readable_name, ports, tasks, fifos}}}. `tapa analyze` nests that payload
+// under the "graph" key of the work dir's tapa.json.
+//
+// The per-task rewritten C++ text is NOT inline in that JSON: each task's
+// `srcs` names a file under the required `-emit-dir` that tapacc writes
+// the text to (`<emit-dir>/<task>.cpp`), so the work dir's rewritten/
+// tree plus tapa.json together are the analyze artifact.
 //
 // Each ClangTool action owns its ASTContext and AST nodes never outlive
 // their TU, so the pipeline runs as TWO passes over the same file list
@@ -47,6 +52,7 @@
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include "frontend/program_builder.h"
@@ -66,6 +72,14 @@ llvm::cl::opt<bool> g_no_vendor_scan(
     "no-vendor-scan", llvm::cl::init(false),
     llvm::cl::desc("Disable the vendor-usage soft warnings"),
     llvm::cl::cat(g_category));
+
+// Where each task's rewritten source is written (`<dir>/<task>.cpp`), the
+// file the task's `srcs` manifest entry names. The caller creates the
+// directory; tapacc refuses to run if it is missing or not writable.
+llvm::cl::opt<std::string> g_emit_dir(
+    "emit-dir", llvm::cl::Required,
+    llvm::cl::desc("Directory to write each task's rewritten source to"),
+    llvm::cl::value_desc("dir"), llvm::cl::cat(g_category));
 
 enum class CliTarget { kHls, kVitis };
 llvm::cl::opt<CliTarget> g_target(
@@ -139,6 +153,12 @@ int main(int argc, const char** argv) {
     llvm::errs() << llvm::toString(parser.takeError()) << "\n";
     return 1;
   }
+  if (!llvm::sys::fs::is_directory(g_emit_dir.getValue())) {
+    llvm::errs() << "error: -emit-dir " << g_emit_dir.getValue()
+                 << " is not a directory; create it first (tapa analyze "
+                    "creates <work_dir>/rewritten)\n";
+    return 1;
+  }
   const bool is_vitis = g_target == CliTarget::kVitis;
   ProgramBuilder builder(g_top.getValue(), is_vitis ? SynthTarget::kXilinxVitis
                                                     : SynthTarget::kXilinxHls);
@@ -160,6 +180,13 @@ int main(int argc, const char** argv) {
   BuilderActionFactory rewrite_factory(builder, /*index_pass=*/false);
   rc = rewrite_tool.run(&rewrite_factory);
   if (rc != 0) return rc;
+
+  std::string error;
+  if (!builder.WriteSources(g_emit_dir.getValue(), &error)) {
+    llvm::errs() << "error: cannot write rewritten sources to -emit-dir "
+                 << g_emit_dir.getValue() << ": " << error << "\n";
+    return 1;
+  }
 
   std::cout << builder.EmitJson();
   return 0;

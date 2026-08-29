@@ -171,8 +171,15 @@ fn fixtures() -> Option<Fixtures> {
     })
 }
 
-/// Run `tapa analyze` for `flow` and return `tapacc`'s verbatim stdout.
-fn tapacc_stdout(fx: &Fixtures, kernel: &Path, top: &str, flow: &str) -> String {
+/// Run `tapa analyze` for `flow` and return `tapacc`'s verbatim stdout
+/// plus the work dir it ran in (kept alive: the rewritten sources the
+/// manifest points at live there).
+fn tapacc_stdout(
+    fx: &Fixtures,
+    kernel: &Path,
+    top: &str,
+    flow: &str,
+) -> (tempfile::TempDir, String) {
     let work = tempfile::Builder::new()
         .prefix(&format!("tapacc-conformance-{flow}-"))
         .tempdir()
@@ -206,13 +213,22 @@ fn tapacc_stdout(fx: &Fixtures, kernel: &Path, top: &str, flow: &str) -> String 
     // `analyze` writes this before it interprets anything, so these are
     // tapacc's own bytes: no injected `cflags`, no injected `target`.
     let raw_path = work.path().join("tapacc.json");
-    std::fs::read_to_string(&raw_path)
-        .unwrap_or_else(|e| panic!("read {}: {e}", raw_path.display()))
+    let raw = std::fs::read_to_string(&raw_path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", raw_path.display()));
+    (work, raw)
 }
 
 /// Strict-parse `raw` with the consumer's real types and assert the
-/// load-bearing facts of the contract.
-fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) {
+/// load-bearing facts of the contract. `work` is the analyze work dir:
+/// the per-task `srcs` manifest is checked against its `rewritten/`
+/// tree, because that tree plus the JSON is the whole analyze artifact.
+fn check_conformance(
+    raw: &str,
+    work: &std::path::Path,
+    flow: &str,
+    top: &str,
+    expected_tasks: &[&str],
+) {
     // ── The guard ──────────────────────────────────────────────────────
     // `TaskGraph` and every type under it are `deny_unknown_fields`, so this
     // fails if tapacc grew a field tapa-ir does not model, and fails if it
@@ -253,24 +269,7 @@ fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) 
         TaskLevel::Upper,
         "the top task of {top} is an upper task",
     );
-    for (name, task) in &graph.tasks {
-        assert!(
-            !task.code.is_empty(),
-            "task `{name}`: tapacc emitted empty `code` (--target {flow})",
-        );
-        assert!(
-            task.code.contains("#include <tapa.h>"),
-            "task `{name}`: generated code lost `#include <tapa.h>` \
-             (--target {flow}); the production TAPA include must be discovered \
-             as a system include so flattening preserves it",
-        );
-        assert!(
-            !task.code.contains("class istream {"),
-            "task `{name}`: generated code embeds the stub `istream` \
-             declaration (--target {flow}); synthesis must consume the target \
-             implementation selected by `#include <tapa.h>`",
-        );
-    }
+    check_task_sources(&graph, work, flow);
 
     // ── Wire-level checks ──────────────────────────────────────────────
     // Deliberately re-read the values as raw JSON rather than through the
@@ -288,6 +287,25 @@ fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) 
         .as_object()
         .expect("tapacc emits an object for `tasks`");
     for (name, task) in tasks {
+        let srcs = task["srcs"]
+            .as_array()
+            .unwrap_or_else(|| panic!("task `{name}`: `srcs` must be an array (--target {flow})"));
+        assert!(
+            !srcs.is_empty(),
+            "task `{name}`: `srcs` on the wire must name at least one file              (--target {flow})",
+        );
+        for src in srcs {
+            assert!(
+                src.as_str().is_some_and(|s| !s.is_empty()),
+                "task `{name}`: every `srcs` entry must be a non-empty string                  (--target {flow})",
+            );
+        }
+        for manifest_list in ["include_dirs", "defines"] {
+            assert!(
+                task[manifest_list].is_array(),
+                "task `{name}`: `{manifest_list}` must be an array                  (--target {flow}); the manifest is required on the wire",
+            );
+        }
         let synth = task["synth"]
             .as_str()
             .unwrap_or_else(|| panic!("task `{name}`: `synth` must be a string (--target {flow})"));
@@ -311,6 +329,48 @@ fn check_conformance(raw: &str, flow: &str, top: &str, expected_tasks: &[&str]) 
     }
 }
 
+/// The per-task half of the conformance guard: every task's `srcs`
+/// manifest names files that exist under the work dir's `rewritten/`
+/// tree and carry the facts the old inline `code` assertions pinned.
+fn check_task_sources(graph: &TaskGraph, work: &std::path::Path, flow: &str) {
+    for (name, task) in &graph.tasks {
+        assert!(
+            !task.srcs.is_empty(),
+            "task `{name}`: tapacc emitted an empty `srcs` manifest \
+             (--target {flow})",
+        );
+        for src in &task.srcs {
+            let path = work.join("rewritten").join(src);
+            let text = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "task `{name}`: src `{src}` missing from the rewritten \
+                     tree at {} (--target {flow}): {e}",
+                    path.display(),
+                )
+            });
+            assert!(
+                !text.is_empty(),
+                "task `{name}`: rewritten source `{src}` is empty \
+                 (--target {flow})",
+            );
+            assert!(
+                text.contains("#include <tapa.h>"),
+                "task `{name}`: rewritten source `{src}` lost \
+                 `#include <tapa.h>` (--target {flow}); the production TAPA \
+                 include must be discovered as a system include so flattening \
+                 preserves it",
+            );
+            assert!(
+                !text.contains("class istream {"),
+                "task `{name}`: rewritten source `{src}` embeds the stub \
+                 `istream` declaration (--target {flow}); synthesis must \
+                 consume the target implementation selected by \
+                 `#include <tapa.h>`",
+            );
+        }
+    }
+}
+
 #[test]
 fn tapacc_stdout_conforms_to_tapa_ir_schema() {
     let Some(fx) = fixtures() else {
@@ -319,8 +379,8 @@ fn tapacc_stdout_conforms_to_tapa_ir_schema() {
     for kernel in KERNELS {
         let cpp = &fx.kernels[kernel.env];
         for flow in kernel.flows {
-            let raw = tapacc_stdout(&fx, cpp, kernel.top, flow);
-            check_conformance(&raw, flow, kernel.top, kernel.expected_tasks);
+            let (work, raw) = tapacc_stdout(&fx, cpp, kernel.top, flow);
+            check_conformance(&raw, work.path(), flow, kernel.top, kernel.expected_tasks);
         }
     }
 }

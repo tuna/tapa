@@ -76,13 +76,13 @@ fn to_compact_json(design: &Design) -> String {
 /// renaming, or dropping any field breaks the byte comparison.
 fn canonical_design_json() -> &'static str {
     concat!(
-        r#"{"schema_version": 2, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
-        r#"{"Add": {"level": "lower", "code": "void Add() {}", "readable_name": "Add", "#,
+        r#"{"schema_version": 3, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
+        r#"{"Add": {"level": "lower", "srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
         r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": 2342, "#,
         r#""self_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}, "#,
         r#""total_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}}, "#,
-        r#""VecAdd": {"level": "upper", "code": "void VecAdd() {}", "#,
+        r#""VecAdd": {"level": "upper", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "#,
         r#""readable_name": "VecAdd", "synth": "hls", "ports": [], "#,
         r#""tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0}]}, "#,
         r#""fifos": {"a_q": {"depth": 2, "consumed_by": ["Add", 0], "#,
@@ -209,10 +209,10 @@ fn round_trip_byte_equal() {
 #[test]
 fn task_order_is_sorted_not_as_written() {
     let json = concat!(
-        r#"{"schema_version": 2, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
-        r#""VecAdd": {"level": "upper", "code": "", "readable_name": "VecAdd", "#,
+        r#"{"schema_version": 3, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#""VecAdd": {"level": "upper", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "readable_name": "VecAdd", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}, "#,
-        r#""Add": {"level": "lower", "code": "", "readable_name": "Add", "#,
+        r#""Add": {"level": "lower", "srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
     );
     let design = Design::from_json(json).expect("parse");
@@ -246,8 +246,8 @@ fn from_reader_works() {
 #[test]
 fn unknown_task_field_rejected() {
     let json = concat!(
-        r#"{"schema_version": 2, "top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
-        r#""T": {"level": "lower", "code": "", "readable_name": "T", "synth": "hls", "#,
+        r#"{"schema_version": 3, "top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#""T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls", "#,
         r#""ports": [], "tasks": {}, "fifos": {}, "bogus_field": 1}}}"#,
     );
     let err = Design::from_json(json).expect_err("unknown task field must fail");
@@ -267,7 +267,7 @@ fn unknown_task_field_rejected() {
 #[test]
 fn unknown_top_level_field_rejected() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
         "tasks": {},
         "extra_top_field": "rejected"
@@ -301,7 +301,7 @@ fn annotation_round_trip() {
 
 #[test]
 fn missing_top_field() {
-    let json = r#"{"schema_version": 2, "target": "xilinx-hls", "tasks": {}}"#;
+    let json = r#"{"schema_version": 3, "target": "xilinx-hls", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -312,7 +312,7 @@ fn missing_top_field() {
 
 #[test]
 fn missing_root_target_field() {
-    let json = r#"{"schema_version": 2, "top": "T", "tasks": {}}"#;
+    let json = r#"{"schema_version": 3, "top": "T", "tasks": {}}"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -324,9 +324,9 @@ fn missing_root_target_field() {
 #[test]
 fn invalid_level() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "invalid", "code": "", "synth": "hls"}}
+        "tasks": {"T": {"level": "invalid", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls"}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
@@ -345,9 +345,9 @@ fn empty_input() {
 #[test]
 fn invalid_port_category_rejected() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
+        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "ports": [{"cat": "not_a_real_cat", "name": "x", "type": "int", "width": 32}]}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
@@ -361,9 +361,9 @@ fn invalid_port_category_rejected() {
 #[test]
 fn invalid_instance_arg_category_rejected() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "upper", "code": "", "synth": "hls",
+        "tasks": {"T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
             "fifos": {}}}
     }"#;
@@ -380,9 +380,9 @@ fn unknown_task_synth_policy_rejected() {
     // The closed `SynthTarget` enum rejects the old flow-derived task
     // targets: only `"hls"` / `"ignore"` are valid per-task values now.
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "code": "", "synth": "xilinx_vitis"}}
+        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "xilinx_vitis"}}
     }"#;
     let err = Design::from_json(json).unwrap_err();
     let msg = err.to_string();
@@ -395,9 +395,9 @@ fn unknown_task_synth_policy_rejected() {
 #[test]
 fn mmap_port_category_round_trips() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "code": "", "synth": "hls",
+        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "readable_name": "T",
             "ports": [{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]}}
     }"#;

@@ -4,11 +4,13 @@
     },
     "graph": {
         "cflags": [],
+        "schema_version": 3,
         "target": "xilinx-hls",
         "tasks": {
             "manual_hls_top": {
-                "code": "void manual_hls_top(tapa::mmap<uint32_t> a, tapa::istream<uint32_t>& s) {}",
+                "defines": [],
                 "fifos": {},
+                "include_dirs": [],
                 "level": "lower",
                 "ports": [
                     {
@@ -25,6 +27,9 @@
                     }
                 ],
                 "readable_name": "manual_hls_top",
+                "srcs": [
+                    "manual_hls_top.cpp"
+                ],
                 "synth": "hls",
                 "tasks": {}
             }

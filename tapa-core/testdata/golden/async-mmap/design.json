@@ -1,12 +1,14 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "target": "xilinx-hls",
     "top": "AsyncTop",
     "cflags": [],
     "tasks": {
         "AsyncReader": {
             "clock_period": 3125,
-            "code": "void AsyncReader() {}",
+            "srcs": ["AsyncReader.cpp"],
+            "include_dirs": [],
+            "defines": [],
             "fifos": {},
             "level": "lower",
             "readable_name": "AsyncReader",
@@ -37,7 +39,9 @@
         },
         "AsyncTop": {
             "clock_period": 3125,
-            "code": "void AsyncTop() {}",
+            "srcs": ["AsyncTop.cpp"],
+            "include_dirs": [],
+            "defines": [],
             "level": "upper",
             "readable_name": "AsyncTop",
             "synth": "hls",
@@ -66,7 +70,7 @@
             "tasks": {
                 "AsyncReader": [
                     {
-                        "args": {
+            "args": {
                             "mem": {
                                 "arg": "mem",
                                 "cat": "async_mmap"
@@ -80,14 +84,14 @@
                                 "cat": "ostream"
                             }
                         },
-                        "step": 0
+            "step": 0
                     }
                 ]
             },
             "fifos": {
                 "data_q": {
                     "produced_by": [
-                        "AsyncReader",
+            "AsyncReader",
                         0
                     ]
                 }

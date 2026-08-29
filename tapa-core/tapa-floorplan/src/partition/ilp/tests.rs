@@ -265,11 +265,11 @@ impl Solver for StatusSolver {
 
 fn vadd_floor_graph() -> FloorGraph {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "VecAdd", "target": "xilinx-hls",
         "tasks": {
             "VecAdd": {
-                "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                "readable_name": "VecAdd", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                 "ports": [],
                 "tasks": {
                     "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
@@ -277,10 +277,10 @@ fn vadd_floor_graph() -> FloorGraph {
                 },
                 "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
             },
-            "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+            "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                 "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                 "self_area": {"lut": 100, "ff": 200}},
-            "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+            "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                 "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                 "self_area": {"lut": 50, "ff": 60}}
         }
@@ -321,13 +321,13 @@ fn parallel_floor_graph(stream_count: usize) -> FloorGraph {
         );
     }
     let design = serde_json::json!({
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [],
         "top": "Top",
         "target": "xilinx-hls",
         "tasks": {
             "Top": {
-                "readable_name": "Top", "code": "void Top() {}",
+                "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                 "level": "upper", "synth": "hls", "ports": [],
                 "tasks": {
                     "Producer": [{"args": producer_args, "step": 0}],
@@ -336,11 +336,11 @@ fn parallel_floor_graph(stream_count: usize) -> FloorGraph {
                 "fifos": fifos
             },
             "Producer": {
-                "readable_name": "Producer", "code": "void Producer() {}",
+                "readable_name": "Producer", "srcs": ["Producer.cpp"], "include_dirs": [], "defines": [],
                 "level": "lower", "synth": "hls", "ports": producer_ports
             },
             "Consumer": {
-                "readable_name": "Consumer", "code": "void Consumer() {}",
+                "readable_name": "Consumer", "srcs": ["Consumer.cpp"], "include_dirs": [], "defines": [],
                 "level": "lower", "synth": "hls", "ports": consumer_ports
             }
         }
@@ -359,14 +359,14 @@ fn single_task_floor_graph(lut: u64) -> FloorGraph {
 
 fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
     let json = serde_json::json!({
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [],
         "top": "Top",
         "target": "xilinx-hls",
         "tasks": {
             "Top": {
                 "readable_name": "Top",
-                "code": "void Top() {}",
+                "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                 "level": "upper",
                 "synth": "hls",
                 "ports": [],
@@ -375,7 +375,7 @@ fn single_task_floor_graph_with_area(area: Area) -> FloorGraph {
             },
             "A": {
                 "readable_name": "A",
-                "code": "void A() {}",
+                "srcs": ["A.cpp"], "include_dirs": [], "defines": [],
                 "level": "lower",
                 "synth": "hls",
                 "ports": [],
@@ -488,17 +488,17 @@ fn two_slot_golden_model(graph: &FloorGraph) -> FloorplanModel {
 
 fn mmap_floor_graph() -> FloorGraph {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "Top", "target": "xilinx-hls",
         "tasks": {
-            "Top": {"readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
+            "Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                 "ports": [{"cat": "mmap", "name": "mem", "type": "ap_uint<512>*", "width": 512}], "tasks": {
                     "R": [{"args": {"m": {"arg": "mem", "cat": "mmap"}}, "step": 0}],
                     "C": [{"args": {}, "step": 0}]}, "fifos": {}},
-            "R": {"readable_name": "R", "code": "void R() {}", "level": "lower", "synth": "hls",
+            "R": {"readable_name": "R", "srcs": ["R.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                 "ports": [{"cat": "mmap", "name": "m", "type": "ap_uint<512>*", "width": 512}],
                 "self_area": {"lut": 400}},
-            "C": {"readable_name": "C", "code": "void C() {}", "level": "lower", "synth": "hls",
+            "C": {"readable_name": "C", "srcs": ["C.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                 "ports": [], "self_area": {"lut": 400}}
         }
     }"#;

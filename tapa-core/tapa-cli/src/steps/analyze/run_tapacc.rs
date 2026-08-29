@@ -30,11 +30,18 @@ pub(super) fn run_tapacc(
     let shim = work_dir.join(TAPACC_HLS_SHIM_FILE);
     fs::write(&shim, TAPACC_HLS_SHIM)?;
 
+    // The rewritten-source tree: tapacc writes each task's rewritten text
+    // here and references the files by name in each task's `srcs` manifest.
+    let emit_dir = work_dir.join(crate::tapacc::REWRITTEN_DIR);
+    fs::create_dir_all(&emit_dir)?;
+
     let mut cmd = Command::new(tapacc);
     for f in files {
         cmd.arg(f);
     }
-    cmd.args(["-top", top, "--target", target, "--"]);
+    cmd.args(["-top", top, "--target", target]);
+    cmd.arg("-emit-dir").arg(&emit_dir);
+    cmd.arg("--");
     for f in cflags {
         cmd.arg(f);
     }

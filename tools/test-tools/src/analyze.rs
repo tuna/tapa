@@ -165,20 +165,22 @@ fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()>
     }
 
     // `tapa analyze` persists exactly one state file plus the verbatim
-    // `tapacc` output kept as a debug artifact.
+    // `tapacc` output kept as a debug artifact, and the rewritten source
+    // tree the task manifests point into.
     let state_path = work_dir.path().join("tapa.json");
     require_file(&state_path)?;
     require_file(&work_dir.path().join("tapacc.json"))?;
     require_dir(&work_dir.path().join("flatten"))?;
+    require_dir(&work_dir.path().join("rewritten"))?;
 
     let state = read_json(&state_path)?;
     let graph = state
         .get("graph")
         .ok_or_else(|| format!("{}: tapa.json missing 'graph'", app.name))?;
-    validate_graph(graph, app)
+    validate_graph(graph, work_dir.path(), app)
 }
 
-fn validate_graph(graph: &JsonValue, app: &AnalyzeApp) -> Result<()> {
+fn validate_graph(graph: &JsonValue, work_dir: &Path, app: &AnalyzeApp) -> Result<()> {
     let tasks = graph
         .get("tasks")
         .and_then(JsonValue::as_object)
@@ -196,7 +198,7 @@ fn validate_graph(graph: &JsonValue, app: &AnalyzeApp) -> Result<()> {
         }
     }
     for (task_name, task) in tasks {
-        validate_task(task, task_name, app.name)?;
+        validate_task(task, task_name, work_dir, app.name)?;
     }
     let top_level = tasks
         .get(app.top)
@@ -211,7 +213,7 @@ fn validate_graph(graph: &JsonValue, app: &AnalyzeApp) -> Result<()> {
     Ok(())
 }
 
-fn validate_task(task: &JsonValue, task_name: &str, app_name: &str) -> Result<()> {
+fn validate_task(task: &JsonValue, task_name: &str, work_dir: &Path, app_name: &str) -> Result<()> {
     let ctx = format!("{app_name}/{task_name}");
     let level = task
         .get("level")
@@ -223,13 +225,24 @@ fn validate_task(task: &JsonValue, task_name: &str, app_name: &str) -> Result<()
     // Per-task synthesis policy. Named `synth` since the flow target moved
     // to the graph root: one fact, one field.
     require_key(task, "synth", &ctx)?;
-    let code = task
-        .get("code")
-        .and_then(JsonValue::as_str)
-        .ok_or_else(|| format!("{ctx}: missing string 'code'"))?;
-    if code.is_empty() {
-        return Err(format!("{ctx}: empty code"));
+    // Per-task source manifest (schema v3): every src names a file the
+    // analyze step actually wrote under the rewritten tree.
+    let srcs = task
+        .get("srcs")
+        .and_then(JsonValue::as_array)
+        .ok_or_else(|| format!("{ctx}: missing array 'srcs'"))?;
+    if srcs.is_empty() {
+        return Err(format!("{ctx}: empty srcs"));
     }
+    for src in srcs {
+        let src = src
+            .as_str()
+            .ok_or_else(|| format!("{ctx}: srcs entries must be strings, got {src}"))?;
+        require_file(&work_dir.join("rewritten").join(src))
+            .map_err(|e| format!("{ctx}: manifest src does not exist: {e}"))?;
+    }
+    require_key(task, "include_dirs", &ctx)?;
+    require_key(task, "defines", &ctx)?;
     let ports = task
         .get("ports")
         .and_then(JsonValue::as_array)

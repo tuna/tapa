@@ -254,7 +254,9 @@ mod tests {
     fn leaf(name: &str, clock: Option<ClockPeriod>, area: Option<tapa_ir::Area>) -> Task {
         Task {
             level: TaskLevel::Lower,
-            code: format!("void {name}() {{}}\n"),
+            srcs: vec![format!("{name}.cpp")],
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
@@ -290,7 +292,9 @@ mod tests {
             } else {
                 TaskLevel::Upper
             },
-            code: format!("void {name}() {{}}\n"),
+            srcs: vec![format!("{name}.cpp")],
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
             ports: Vec::new(),
             tasks,
             fifos: BTreeMap::new(),
@@ -323,7 +327,9 @@ mod tests {
                 "Top".to_string(),
                 Task {
                     level: TaskLevel::Upper,
-                    code: "void Top() {}\n".to_string(),
+                    srcs: vec!["Top.cpp".to_string()],
+                    include_dirs: Vec::new(),
+                    defines: Vec::new(),
                     ports: Vec::new(),
                     tasks: BTreeMap::from([("Custom".to_string(), instances(1))]),
                     fifos: BTreeMap::new(),
@@ -453,7 +459,9 @@ mod tests {
             "VecAdd".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                code: "void VecAdd() {}\n".to_string(),
+                srcs: vec!["VecAdd.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::from([("Add".to_string(), instances(2))]),
                 fifos: BTreeMap::new(),

@@ -108,10 +108,10 @@ TEST(Merge, CrossTuInvokeTakesBodyFromOwningTu) {
   // The rewritten text comes from the owning TU: Worker's blob carries TU
   // B's body and never sees the top, and the top's blob carries TU A's file
   // (shell body plus Worker's rewritten declaration).
-  const std::string worker_code = m.builder.TakeTaskCode("Worker");
+  const std::string worker_code = m.builder.TaskCode("Worker");
   EXPECT_TRUE(Contains(worker_code, "out.write(in.read())"));
   EXPECT_FALSE(Contains(worker_code, "void Top("));
-  const std::string top_code = m.builder.TakeTaskCode("Top");
+  const std::string top_code = m.builder.TaskCode("Top");
   EXPECT_TRUE(Contains(top_code, "void Top("));
   EXPECT_TRUE(Contains(top_code, "void Worker("));
 }
@@ -155,7 +155,7 @@ TEST(Merge, IdenticalSightingsDedupe) {
   auto m = Build(kHeaderTask + top_body, kHeaderTask + top_body, "Top");
   EXPECT_EQ(m.builder.errors().size(), 0u);
   EXPECT_EQ(m.builder.EmitJson()["tasks"].size(), 2u);
-  EXPECT_TRUE(Contains(m.builder.TakeTaskCode("H"), "out.write(in.read())"));
+  EXPECT_TRUE(Contains(m.builder.TaskCode("H"), "out.write(in.read())"));
 }
 
 TEST(Merge, ConflictingSightingsAreAnError) {
@@ -213,7 +213,7 @@ TEST(Merge, TemplateSpecializationSightedInBothTusMerges) {
   EXPECT_EQ(tasks.at(spec_name)["readable_name"], "Pass<float>");
   // The wrapper for the mangled entry point sits after the invoking top.
   EXPECT_TRUE(
-      Contains(m.builder.TakeTaskCode(spec_name), "void " + spec_name + "("));
+      Contains(m.builder.TaskCode(spec_name), "void " + spec_name + "("));
 }
 
 // ── Rule 4: internal-linkage tasks are a hard error ────────────────────

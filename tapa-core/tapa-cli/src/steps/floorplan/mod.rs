@@ -509,11 +509,11 @@ mod tests {
     pub fn synthed_vadd_state() -> WorkState {
         let mut state = state_from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
                 "tasks": {
                     "VecAdd": {
-                        "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                        "readable_name": "VecAdd", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                         "ports": [],
                         "tasks": {
                             "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
@@ -521,10 +521,10 @@ mod tests {
                         },
                         "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
                     },
-                    "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                    "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                         "self_area": {"lut": 100, "ff": 200}},
-                    "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                    "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                         "self_area": {"lut": 50, "ff": 60}}
                 }
@@ -539,17 +539,17 @@ mod tests {
     pub fn synthed_direct_mmap_state() -> WorkState {
         let mut state = state_from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {
                     "Top": {
-                        "readable_name": "Top", "code": "", "level": "upper", "synth": "hls",
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                         "ports": [{"cat":"mmap","name":"mem","type":"int*","width":32}],
                         "tasks": {"Reader": [{"args":{"data":{"arg":"mem","cat":"mmap"}}}]},
                         "fifos": {}
                     },
                     "Reader": {
-                        "readable_name": "Reader", "code": "", "level": "lower", "synth": "hls",
+                        "readable_name": "Reader", "srcs": ["Reader.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                         "ports": [{"cat":"mmap","name":"data","type":"int*","width":32}],
                         "self_area": {"lut":10,"ff":20}
                     }
@@ -999,11 +999,11 @@ mod tests {
         // them crosses a boundary and must use the floorplanned handshake
         // pipeline in the regenerated top RTL.
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
             "tasks": {
                 "VecAdd": {
-                    "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                    "readable_name": "VecAdd", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
@@ -1011,10 +1011,10 @@ mod tests {
                     },
                     "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
                 },
-                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                     "self_area": {"lut": 120000}},
-                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                     "self_area": {"lut": 120000}}
             }

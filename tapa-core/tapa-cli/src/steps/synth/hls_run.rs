@@ -10,7 +10,7 @@ use tapa_ir::{ClockPeriod, Design, SynthTarget};
 use tapa_xilinx::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput, ToolRunner};
 
 use crate::error::{CliError, Result};
-use crate::steps::synth::cpp_extract::cpp_path_for;
+use crate::steps::synth::hls_sources::TaskSources;
 
 use super::resolve_worker_count;
 
@@ -60,6 +60,7 @@ pub fn run_hls_for_leaves(
     runner: &dyn ToolRunner,
     work_dir: &Path,
     design: &Design,
+    sources: &TaskSources,
     options: &HlsRunOptions,
 ) -> Result<Vec<(String, TaskHlsLayout, HlsOutput)>> {
     // Plan pass: enumerate every task that needs HLS, resolve its
@@ -74,14 +75,7 @@ pub fn run_hls_for_leaves(
         }
         let layout = TaskHlsLayout::new(work_dir, task_name);
 
-        let cpp_source = cpp_path_for(work_dir, task_name);
-        let cpp_source = crate::util::utf8(cpp_source);
-        if !cpp_source.is_file() {
-            return Err(CliError::Codegen(format!(
-                "missing extracted C++ source `{}` for task `{task_name}`",
-                cpp_source.as_str(),
-            )));
-        }
+        let cpp_source = sources.sole_source(task_name)?;
 
         // Check freshness before creating `layout.hdl_dir`, and require
         // at least one `.v` file so a directory containing only generator
@@ -89,7 +83,7 @@ pub fn run_hls_for_leaves(
         if options.skip_based_on_mtime && layout.hdl_dir.is_dir() {
             let hdl_files = list_hdl_files(&layout.hdl_dir)?;
             if hdl_files.iter().any(|path| is_verilog(path))
-                && hdl_files_are_newer_than(&hdl_files, &cpp_source)
+                && hdl_files_are_newer_than(&hdl_files, cpp_source)
             {
                 log::info!(
                     "skipping HLS for `{task_name}` (mtime cache hit at {})",
@@ -133,7 +127,7 @@ pub fn run_hls_for_leaves(
 
         let job = HlsJob::builder()
             .task_name(task_name.clone())
-            .cpp_source(cpp_source)
+            .cpp_source(cpp_source.clone())
             .cflags(options.cflags.clone())
             .target_part(options.part_num.clone())
             .top_name(task_name.clone())
@@ -321,13 +315,27 @@ mod tests {
     use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
+    /// Stage `design`'s manifest against `work`, mirroring what
+    /// `run_native` does before the HLS plan pass.
+    fn staged(work: &Path, design: &Design) -> TaskSources {
+        crate::steps::synth::hls_sources::stage_hls_sources(work, design).expect("stage sources")
+    }
+
+    fn seed_rewritten(work: &Path) {
+        let tree = work.join(crate::tapacc::REWRITTEN_DIR);
+        fs::create_dir_all(&tree).unwrap();
+        fs::write(tree.join("Add.cpp"), b"int main(){}\n").unwrap();
+    }
+
     fn leaf_design() -> Design {
         let mut tasks = BTreeMap::new();
         tasks.insert(
             "Add".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: String::new(),
+                srcs: vec!["Add.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
@@ -373,9 +381,8 @@ mod tests {
         let tmp = tempfile::tempdir().expect("tempdir");
         let work = tmp.path();
 
-        // Seed only `cpp/Add.cpp`; no `hls/Add/verilog/` at all.
-        fs::create_dir_all(work.join("cpp")).unwrap();
-        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        // Seed only the rewritten source; no `hls/Add/verilog/` at all.
+        seed_rewritten(work);
 
         let design = leaf_design();
         // Mock runner that records a call → proves the skip branch was
@@ -396,7 +403,7 @@ mod tests {
         // Ignore the run result (no csynth.xml staged, so harvest
         // fails) — what we care about is that the runner was called
         // at all, which proves the stale-skip bug is gone.
-        let _ = run_hls_for_leaves(&runner, work, &design, &opts);
+        let _ = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts);
         let calls = runner.calls();
         assert_eq!(
             calls.len(),
@@ -417,11 +424,10 @@ mod tests {
     fn populated_hdl_dir_honors_skip_based_on_mtime() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let work = tmp.path();
-        fs::create_dir_all(work.join("cpp")).unwrap();
-        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        seed_rewritten(work);
 
         // Pre-populate the HDL dir with a `.v` file; ensure its mtime
-        // is strictly newer than the `.cpp`.
+        // is strictly newer than the source.
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -440,8 +446,8 @@ mod tests {
             jobs: Some(1),
             keep_work_dir: false,
         };
-        let out =
-            run_hls_for_leaves(&runner, work, &design, &opts).expect("cache hit path must succeed");
+        let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
+            .expect("cache hit path must succeed");
         assert_eq!(out.len(), 1);
         let (_, _, hls_out) = &out[0];
         assert!(
@@ -461,8 +467,7 @@ mod tests {
         let dir_mtime_before = fs::metadata(&hdl).unwrap().modified().unwrap();
 
         std::thread::sleep(std::time::Duration::from_millis(10));
-        fs::create_dir_all(work.join("cpp")).unwrap();
-        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        seed_rewritten(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
@@ -482,7 +487,8 @@ mod tests {
             keep_work_dir: false,
         };
         let runner = MockToolRunner::new();
-        let out = run_hls_for_leaves(&runner, work, &leaf_design(), &opts)
+        let design = leaf_design();
+        let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
             .expect("fresh emitted file must produce a cache hit");
         assert_eq!(out.len(), 1);
         assert!(
@@ -552,13 +558,12 @@ mod tests {
         )
         .unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
-        fs::create_dir_all(work.join("cpp")).unwrap();
-        fs::write(work.join("cpp").join("Add.cpp"), b"int main(){}\n").unwrap();
+        seed_rewritten(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); wire fresh; endmodule\n").unwrap();
 
         let files = list_hdl_files(&crate::util::utf8(hdl)).unwrap();
-        let cpp = crate::util::utf8(work.join("cpp").join("Add.cpp"));
+        let cpp = crate::util::utf8(work.join(crate::tapacc::REWRITTEN_DIR).join("Add.cpp"));
         assert!(
             !hdl_files_are_newer_than(&files, &cpp),
             "one stale emitted file must invalidate the HLS cache"

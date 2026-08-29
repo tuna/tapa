@@ -63,7 +63,9 @@ fn task_graph(ports: Vec<Port>) -> TaskGraph {
         "vadd".to_owned(),
         Task {
             level: TaskLevel::Lower,
-            code: "void vadd() {}".to_owned(),
+            srcs: vec!["vadd.cpp".to_owned()],
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
             readable_name: "vadd".to_owned(),
             synth: SynthTarget::Hls,
             ports,
@@ -228,7 +230,7 @@ fn stamped_and_unstamped_ports_mix_across_fanout() {
 fn stamped_metadata_survives_the_archive_json_round_trip() {
     let json = r#"{
         "top": "K", "target": "xilinx-hls",
-        "tasks": {"K": {"level": "lower", "code": "", "synth": "hls",
+        "tasks": {"K": {"level": "lower", "srcs": ["K.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "readable_name": "K",
             "ports": [
                 {"cat": "mmap", "name": "a", "type": "int*", "width": 512,
@@ -330,7 +332,7 @@ fn single_channel_hmap_still_binds_an_indexed_arg() {
 fn hmap_fans_out_when_read_from_archive_json() {
     let json = r#"{
         "top": "Gemv", "target": "xilinx-hls",
-        "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
+        "tasks": {"Gemv": {"level": "lower", "srcs": ["Gemv.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "readable_name": "Gemv",
             "ports": [
                 {"cat": "mmap", "name": "mat_a", "type": "int*", "width": 512,
@@ -351,7 +353,7 @@ fn hmap_fans_out_when_read_from_archive_json() {
 fn hmap_category_is_rejected_by_the_schema() {
     let json = r#"{
         "top": "Gemv", "target": "xilinx-hls",
-        "tasks": {"Gemv": {"level": "lower", "code": "", "synth": "hls",
+        "tasks": {"Gemv": {"level": "lower", "srcs": ["Gemv.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "readable_name": "Gemv",
             "ports": [
                 {"cat": "hmap", "name": "mat_a", "type": "int*", "width": 512,

@@ -14,7 +14,7 @@
 //! HLS outputs only.
 //!
 //! Hashed per app (sha256 over normalized bytes, keys sorted):
-//! - `cpp/<task>.cpp` for every task, keyed by task name;
+//! - `rewritten/<task>.cpp` for every task, keyed by task name;
 //! - `hls/<task>/verilog/**` for every task, keyed `<task>/<file>`
 //!   relative to `<work>/hls/<task>/verilog`. The sibling `report/`
 //!   dir is excluded on purpose: Vitis report files embed run dates.
@@ -359,21 +359,23 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
 /// Hash one app's synthesis outputs under `work_dir`.
 fn hash_app(work_dir: &Path, app_name: &str) -> Result<AppHashes> {
     let mut cpp = BTreeMap::new();
-    let cpp_dir = work_dir.join("cpp");
+    let cpp_dir = work_dir.join("rewritten");
     for entry in sorted_entries(&cpp_dir, app_name)? {
         let file_name = entry
             .file_name()
             .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("{app_name}: non-UTF-8 name in cpp/"))?;
+            .ok_or_else(|| format!("{app_name}: non-UTF-8 name in rewritten/"))?;
         let Some(task) = file_name.strip_suffix(".cpp") else {
             return Err(format!(
-                "{app_name}: unexpected non-.cpp file in cpp/: {file_name}"
+                "{app_name}: unexpected non-.cpp file in rewritten/: {file_name}"
             ));
         };
         cpp.insert(task.to_string(), hash_file(&entry, app_name)?);
     }
     if cpp.is_empty() {
-        return Err(format!("{app_name}: synth produced no cpp/<task>.cpp"));
+        return Err(format!(
+            "{app_name}: analyze produced no rewritten/<task>.cpp"
+        ));
     }
 
     let mut verilog = BTreeMap::new();

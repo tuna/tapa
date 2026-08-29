@@ -30,9 +30,9 @@ mod tests {
 
     #[test]
     fn is_top_leaf_detects_lower_level() {
-        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "lower", "code": "", "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
         assert!(is_top_leaf(&g, "T"));
-        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "upper", "code": "", "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
         assert!(!is_top_leaf(&g, "T"));
         // Missing top is treated as upper for safety.
         assert!(!is_top_leaf(&g, "DoesNotExist"));
@@ -55,7 +55,7 @@ mod tests {
             "tasks": {
                 "VecAdd": {
                     "readable_name": "VecAdd",
-                    "code": "void VecAdd() {}",
+                    "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [],
                     "level": "upper",
                     "synth": "hls",
                     "ports": [
@@ -79,7 +79,7 @@ mod tests {
                 },
                 "A": {
                     "readable_name": "A",
-                    "code": "void A() {}", "level": "lower",
+                    "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower",
                     "synth": "hls",
                     "ports": [
                         {"cat": "scalar", "name": "n",
@@ -90,7 +90,7 @@ mod tests {
                 },
                 "B": {
                     "readable_name": "B",
-                    "code": "void B() {}", "level": "lower",
+                    "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower",
                     "synth": "hls",
                     "ports": [
                         {"cat": "scalar", "name": "n",
@@ -126,14 +126,14 @@ mod tests {
             "tasks": {
                 "Outer": {
                     "readable_name": "Outer",
-                    "code": "", "level": "upper", "synth": "hls",
+                    "srcs": ["Outer.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {"Inner": [{"args": {}, "step": 0}]},
                     "fifos": {}
                 },
                 "Inner": {
                     "readable_name": "Inner",
-                    "code": "", "level": "upper", "synth": "hls",
+                    "srcs": ["Inner.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {}, "fifos": {}
                 }

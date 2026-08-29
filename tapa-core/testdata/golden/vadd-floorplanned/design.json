@@ -1,11 +1,12 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "target": "xilinx-hls",
     "tasks": {
         "Add": {
             "clock_period": 3125,
-            "code": "void Add() {}",
+            "defines": [],
             "fifos": {},
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -39,6 +40,9 @@
                 "ff": 100,
                 "lut": 200
             },
+            "srcs": [
+                "Add.cpp"
+            ],
             "synth": "hls",
             "tasks": {},
             "total_area": {
@@ -49,8 +53,9 @@
         },
         "Mmap2Stream": {
             "clock_period": 2342,
-            "code": "void Mmap2Stream() {}",
+            "defines": [],
             "fifos": {},
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -71,6 +76,9 @@
                 "ff": 502,
                 "lut": 414
             },
+            "srcs": [
+                "Mmap2Stream.cpp"
+            ],
             "synth": "hls",
             "tasks": {},
             "total_area": {
@@ -79,8 +87,9 @@
             }
         },
         "Stream2Mmap": {
-            "code": "void Stream2Mmap() {}",
+            "defines": [],
             "fifos": {},
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -98,12 +107,15 @@
             ],
             "readable_name": "Stream2Mmap",
             "self_area": {},
+            "srcs": [
+                "Stream2Mmap.cpp"
+            ],
             "synth": "hls",
             "tasks": {},
             "total_area": {}
         },
         "VecAdd": {
-            "code": "void VecAdd() {}",
+            "defines": [],
             "fifos": {
                 "a_q": {
                     "consumed_by": [
@@ -139,6 +151,7 @@
                     ]
                 }
             },
+            "include_dirs": [],
             "level": "upper",
             "ports": [
                 {
@@ -168,6 +181,9 @@
             ],
             "readable_name": "VecAdd",
             "self_area": {},
+            "srcs": [
+                "VecAdd.cpp"
+            ],
             "synth": "hls",
             "tasks": {
                 "Add": [

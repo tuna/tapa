@@ -283,9 +283,9 @@ fn sanitize_hls_report_text(text: &str, work_dir: &Path) -> String {
     for base in [abs_work_dir.as_path(), work_dir] {
         let base = base.to_string_lossy();
         if let Some(stripped) = base.strip_prefix('/') {
-            replace_report_cpp_prefixes(&mut out, stripped);
+            replace_report_rewritten_prefixes(&mut out, stripped);
         }
-        replace_report_cpp_prefixes(&mut out, &base);
+        replace_report_rewritten_prefixes(&mut out, &base);
     }
     out = TAPA_LIB_RUNFILES_RE
         .replace_all(&out, "tapa-lib/")
@@ -296,18 +296,21 @@ fn sanitize_hls_report_text(text: &str, work_dir: &Path) -> String {
     canonicalize_report_tables(&out)
 }
 
-fn replace_report_cpp_prefixes(text: &mut String, base: &str) {
+/// Collapse `<work_dir>/rewritten/` source paths (absolute or
+/// `../`-relative) to tree-relative `rewritten/…` so archives built in
+/// different work dirs stay byte-identical.
+fn replace_report_rewritten_prefixes(text: &mut String, base: &str) {
     if base.is_empty() {
         return;
     }
     let normalized = base.replace('\\', "/");
-    let prefix = format!("{normalized}/cpp/");
+    let prefix = format!("{normalized}/rewritten/");
     if normalized.starts_with('/') {
-        *text = text.replace(&prefix, "cpp/");
+        *text = text.replace(&prefix, "rewritten/");
     } else {
         for ups in (1..=8).rev() {
             let relative_prefix = format!("{}{}", "../".repeat(ups), prefix);
-            *text = text.replace(&relative_prefix, "cpp/");
+            *text = text.replace(&relative_prefix, "rewritten/");
         }
     }
 }
@@ -458,9 +461,9 @@ mod tests {
         };
         let mut state = crate::testutil::state_from_json(&format!(
             r#"{{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
-                "tasks": {{"Top": {{"readable_name": "Top", "code": "", "level": "upper",
+                "tasks": {{"Top": {{"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": {ports}, "tasks": {{}}, "fifos": {{}}}}}}
             }}"#,
         ));
@@ -489,9 +492,9 @@ mod tests {
     fn packaging_state() -> WorkState {
         let mut state = crate::testutil::state_from_json(
             r#"{
-                "schema_version": 2,
+                "schema_version": 3,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
-                "tasks": {"Top": {"readable_name": "Top", "code": "", "level": "lower",
+                "tasks": {"Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "lower",
                     "synth": "hls",
                     "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
                     "tasks": {}, "fifos": {}}}
@@ -799,13 +802,13 @@ mod tests {
         let work_dir =
             Path::new("/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa");
         let text = "\
-SOURCE=\"/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/cpp/Add.cpp:39\"\n\
-| ../../home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/cpp/Add.cpp:17 in add |\n";
+SOURCE=\"/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/rewritten/Add.cpp:39\"\n\
+| ../../home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/rewritten/Add.cpp:17 in add |\n";
 
         let sanitized = sanitize_hls_report_text(text, work_dir);
         assert!(!sanitized.contains("vadd-xo.tapa"));
-        assert!(sanitized.contains("SOURCE=\"cpp/Add.cpp:39\""));
-        assert!(sanitized.contains("| cpp/Add.cpp:17 in add |"));
+        assert!(sanitized.contains("SOURCE=\"rewritten/Add.cpp:39\""));
+        assert!(sanitized.contains("| rewritten/Add.cpp:17 in add |"));
     }
 
     #[test]
@@ -815,7 +818,7 @@ SOURCE=\"/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/cp
 +--------------+------------------------------------------------------------------------------------------------------------------------------------+\n\
 | Location     | Access Location                                                                                                                    |\n\
 +--------------+------------------------------------------------------------------------------------------------------------------------------------+\n\
-| cpp/Add.cpp  | /home/tapa/.cache/bazel/x/sandbox/processwrapper-sandbox/8697/execroot/_main/bazel-out/k8-opt-exec/bin/tapa/tapa.runfiles/_main/tapa-lib/tapa/xilinx/hls/stream.h:150:11     |\n\
+| rewritten/Add.cpp  | /home/tapa/.cache/bazel/x/sandbox/processwrapper-sandbox/8697/execroot/_main/bazel-out/k8-opt-exec/bin/tapa/tapa.runfiles/_main/tapa-lib/tapa/xilinx/hls/stream.h:150:11     |\n\
 +--------------+------------------------------------------------------------------------------------------------------------------------------------+\n";
 
         let sanitized = sanitize_hls_report_text(text, work_dir);

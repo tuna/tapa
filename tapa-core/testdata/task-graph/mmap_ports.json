@@ -1,10 +1,11 @@
 {
     "cflags": [],
-    "schema_version": 2,
+    "schema_version": 3,
     "target": "xilinx-hls",
     "tasks": {
         "Top": {
-            "code": "",
+            "defines": [],
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -47,6 +48,9 @@
                 }
             ],
             "readable_name": "Top",
+            "srcs": [
+                "Top.cpp"
+            ],
             "synth": "hls"
         }
     },

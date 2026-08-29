@@ -41,7 +41,7 @@ pub struct TaskGraph {
 }
 
 /// The task-graph schema version this crate reads and writes.
-pub const SCHEMA_VERSION: u32 = 2;
+pub const SCHEMA_VERSION: u32 = 3;
 
 /// A pre-versioning producer's graph is version 1 by definition.
 const fn default_schema_version() -> u32 {
@@ -142,14 +142,14 @@ mod tests {
     #[test]
     fn invalid_invoke_constant_is_rejected_at_the_boundary() {
         let payload = r#"{
-            "schema_version": 2, "top": "T", "target": "xilinx-hls", "cflags": [],
+            "schema_version": 3, "top": "T", "target": "xilinx-hls", "cflags": [],
             "tasks": {
-                "T": {"level": "upper", "code": "", "readable_name": "T", "synth": "hls",
+                "T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls",
                     "ports": [], "fifos": {},
                     "tasks": {"A": [{"args": {
                         "n": {"arg": {"width": 8, "value": 300}, "cat": "scalar"}
                     }, "step": 0}]}},
-                "A": {"level": "lower", "code": "", "readable_name": "A", "synth": "hls",
+                "A": {"level": "lower", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "readable_name": "A", "synth": "hls",
                     "ports": []}
             }
         }"#;
@@ -160,7 +160,7 @@ mod tests {
     #[test]
     fn current_schema_version_is_accepted() {
         let g = TaskGraph::from_json(
-            r#"{"schema_version": 2, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
+            r#"{"schema_version": 3, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
         )
         .unwrap();
         assert_eq!(g.schema_version, SCHEMA_VERSION);
@@ -180,14 +180,14 @@ mod tests {
     fn parses_named_child_instances() {
         TaskGraph::from_json(
             r#"{
-              "schema_version": 2,
+              "schema_version": 3,
         "cflags": [],
               "top": "Top",
               "target": "xilinx-hls",
               "tasks": {
                 "Leaf": {
                     "readable_name": "Leaf",
-                  "code": "void Leaf() {}",
+                  "srcs": ["Leaf.cpp"], "include_dirs": [], "defines": [],
                   "level": "lower",
                   "synth": "hls",
                   "ports": [],
@@ -196,7 +196,7 @@ mod tests {
                 },
                 "Top": {
                     "readable_name": "Top",
-                  "code": "void Top() {}",
+                  "srcs": ["Top.cpp"], "include_dirs": [], "defines": [],
                   "level": "upper",
                   "synth": "hls",
                   "ports": [],
@@ -218,7 +218,7 @@ mod tests {
         // The flow target is required at the root now that it is the single
         // home for the vendor flow (analyze injects it before parsing).
         let err = TaskGraph::from_json(
-            r#"{"schema_version":2,"cflags":[],"top":"T","tasks":{"T":{"code":"","level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
+            r#"{"schema_version":3,"cflags":[],"top":"T","tasks":{"T":{"srcs":["T.cpp"],"include_dirs":[],"defines":[],"level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
         )
         .expect_err("missing root `target` must fail");
         assert!(

@@ -1,5 +1,6 @@
 #include "program_builder.h"
 
+#include <fstream>
 #include <queue>
 #include <set>
 
@@ -516,9 +517,56 @@ const TaskModel* ProgramBuilder::FindTask(const std::string& name) const {
   return nullptr;
 }
 
-std::string ProgramBuilder::TakeTaskCode(const std::string& name) const {
+const std::string& ProgramBuilder::TaskCode(const std::string& name) const {
+  static const std::string kEmpty;
   auto it = code_.find(name);
-  return it == code_.end() ? std::string() : it->second;
+  return it == code_.end() ? kEmpty : it->second;
+}
+
+namespace {
+
+// Writes `content` to `path` unless the file already holds exactly those
+// bytes, so re-analyzing unchanged sources keeps the old mtime (synth's
+// HLS skip is keyed on it). Returns false and sets `*error` on failure.
+bool WriteIfChanged(const std::string& path, const std::string& content,
+                    std::string* error) {
+  {
+    std::ifstream existing(path, std::ios::binary);
+    if (existing) {
+      std::string current((std::istreambuf_iterator<char>(existing)),
+                          std::istreambuf_iterator<char>());
+      if (current == content) return true;
+    }
+  }
+  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+  if (!out) {
+    *error = "cannot open " + path + " for writing";
+    return false;
+  }
+  out.write(content.data(), static_cast<std::streamsize>(content.size()));
+  out.flush();
+  if (!out) {
+    *error = "failed writing " + path;
+    return false;
+  }
+  return true;
+}
+
+}  // namespace
+
+bool ProgramBuilder::WriteSources(const std::string& emit_dir,
+                                  std::string* error) {
+  // Same name order EmitJson emits: the JSON task key is the file name.
+  std::map<std::string, const MergedTask*> by_name;
+  for (const auto& [key, task] : tasks_) {
+    by_name.emplace(task.model.name, &task);
+  }
+  for (const auto& name_and_task : by_name) {
+    const std::string& name = name_and_task.first;
+    const std::string path = emit_dir + "/" + name + ".cpp";
+    if (!WriteIfChanged(path, TaskCode(name), error)) return false;
+  }
+  return true;
 }
 
 nlohmann::json ProgramBuilder::EmitJson() const {
@@ -536,7 +584,12 @@ nlohmann::json ProgramBuilder::EmitJson() const {
   for (const auto& [name, task] : by_name) {
     const TaskModel& model = task->model;
     nlohmann::json& t = out[kFieldTasks][name];
-    t[kFieldCode] = TakeTaskCode(name);
+    // The manifest names the file this task's rewritten text was written
+    // to under `-emit-dir` (WriteSources); the text itself is not inline
+    // in the JSON.
+    t[kFieldSrcs] = nlohmann::json::array({name + ".cpp"});
+    t[kFieldIncludeDirs] = nlohmann::json::array();
+    t[kFieldDefines] = nlohmann::json::array();
     t[kFieldLevel] = LevelStr(model.level);
     t[kFieldSynth] = SynthStr(model.target);
     t[kFieldReadableName] = model.readable_name;

@@ -435,10 +435,9 @@ fn one_line_reason(output: &Output) -> String {
     first.unwrap_or_else(|| format!("exit status {}", output.status))
 }
 
-/// Per-task HLS source text: `(task name, source)`. Today that is the
-/// `code` field of each task in `<work_dir>/tapa.json` (schema v2);
-/// when the schema replaces it, this is the ONE function to flip (read
-/// the tree files the manifest names instead).
+/// Per-task HLS source text: `(task name, source)`. Schema v3 moved the
+/// text out of `tapa.json` into the rewritten tree; each task's `srcs`
+/// manifest names the files under `<work_dir>/rewritten/`.
 fn per_task_hls_texts(work_dir: &Path) -> Result<Vec<(String, String)>> {
     let state = read_json(&work_dir.join("tapa.json"))?;
     let tasks = state
@@ -448,14 +447,24 @@ fn per_task_hls_texts(work_dir: &Path) -> Result<Vec<(String, String)>> {
         .ok_or_else(|| "tapa.json missing graph.tasks".to_string())?;
     let mut texts = Vec::new();
     for (name, task) in tasks {
-        let code = task
-            .get("code")
-            .and_then(JsonValue::as_str)
-            .ok_or_else(|| format!("task '{name}' missing string 'code'"))?;
-        if code.is_empty() {
-            return Err(format!("task '{name}' has empty code"));
+        let srcs = task
+            .get("srcs")
+            .and_then(JsonValue::as_array)
+            .ok_or_else(|| format!("task '{name}' missing array 'srcs'"))?;
+        if srcs.is_empty() {
+            return Err(format!("task '{name}' has empty srcs"));
         }
-        texts.push((name.clone(), code.to_string()));
+        for src in srcs {
+            let src = src
+                .as_str()
+                .ok_or_else(|| format!("task '{name}': srcs entries must be strings, got {src}"))?;
+            let text = std::fs::read_to_string(work_dir.join("rewritten").join(src))
+                .map_err(|e| format!("task '{name}': cannot read rewritten src '{src}': {e}"))?;
+            if text.is_empty() {
+                return Err(format!("task '{name}': rewritten src '{src}' is empty"));
+            }
+            texts.push((name.clone(), text));
+        }
     }
     Ok(texts)
 }

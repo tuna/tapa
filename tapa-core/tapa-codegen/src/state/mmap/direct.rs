@@ -524,7 +524,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [parent_port],
                     "tasks": {"leaf": instances},
@@ -533,7 +533,7 @@ mod tests {
                 "leaf": {
                     "readable_name": "leaf",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["leaf.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [child_port],
                     "tasks": {},

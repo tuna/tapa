@@ -692,11 +692,11 @@ mod tests {
     #[test]
     fn producer_consumer_width_mismatch_fails_closed() {
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {
-                    "readable_name": "Top", "code": "void Top() {}", "level": "upper", "synth": "hls",
+                    "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "A": [{"args": {"out": {"arg": "q", "cat": "ostream"}}, "step": 0}],
@@ -704,9 +704,9 @@ mod tests {
                     },
                     "fifos": {"q": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
                 },
-                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "uint32", "width": 32}]},
-                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "uint64", "width": 64}]}
             }
         }"#;

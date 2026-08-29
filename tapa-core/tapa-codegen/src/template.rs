@@ -192,7 +192,7 @@ mod tests {
     fn task(ports: &serde_json::Value) -> Task {
         serde_json::from_value(serde_json::json!({
             "level": "lower",
-            "code": "",
+            "srcs": ["Task.cpp"], "include_dirs": [], "defines": [],
             "synth": "ignore",
             "readable_name": "Task",
             "ports": ports,

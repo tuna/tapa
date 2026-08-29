@@ -720,7 +720,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [],
                     "tasks": {
@@ -749,7 +749,7 @@ mod tests {
                 "consumer": {
                     "readable_name": "consumer",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["consumer.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "istream", "name": "narrow_in", "type": "uint8_t", "width": 8},
@@ -761,7 +761,7 @@ mod tests {
                 "producer": {
                     "readable_name": "producer",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["producer.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "ostream", "name": "narrow", "type": "uint8_t", "width": 8},
@@ -824,7 +824,7 @@ mod tests {
             "tasks": {
                 "top": {
                     "readable_name": "top",
-                    "level": "upper", "code": "", "synth": "hls",
+                    "level": "upper", "srcs": ["top.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "producer": [{"args": {"mem": {"arg": "orphan_fifo", "cat": "mmap"}}}]
@@ -839,7 +839,7 @@ mod tests {
                 },
                 "producer": {
                     "readable_name": "producer",
-                    "level": "lower", "code": "", "synth": "hls",
+                    "level": "lower", "srcs": ["producer.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
                     "ports": [{"cat": "mmap", "name": "mem", "type": "float*", "width": 32}],
                     "tasks": {}, "fifos": {}
                 }

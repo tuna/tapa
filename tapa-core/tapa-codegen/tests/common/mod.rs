@@ -31,7 +31,7 @@ pub fn parse_module(src: &str) -> VerilogModule {
 //
 // Every test needs a `Design` built from the tapa-ir wire schema. The
 // raw `json!` literals repeat the same defaults (`readable_name`, `level`,
-// `code: ""`, `synth: "hls"`, `ports: []`, `tasks: {}`, `fifos: {}`) for
+// one src, `synth: "hls"`, `ports: []`, `tasks: {}`, `fifos: {}`) for
 // every task. These helpers fill the defaults so tests only state what
 // varies. `design` assembles the root envelope; `plain`/`task` build one
 // task; `attach_basic_modules` attaches the standard ap_clk/ap_rst_n
@@ -64,7 +64,9 @@ pub fn task(name: &str, level: &str, f: impl FnOnce(&mut serde_json::Value)) -> 
     let mut t = serde_json::json!({
         "readable_name": name,
         "level": level,
-        "code": "",
+        "srcs": [format!("{name}.cpp")],
+        "include_dirs": [],
+        "defines": [],
         "synth": "hls",
         "ports": [],
         "tasks": {},

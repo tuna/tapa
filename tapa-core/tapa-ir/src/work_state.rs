@@ -130,7 +130,9 @@ mod tests {
             "Top".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: "void Top() {}".to_string(),
+                srcs: vec!["Top.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),

@@ -2,11 +2,12 @@
     "cflags": [
         "-std=c++17"
     ],
-    "schema_version": 2,
+    "schema_version": 3,
     "target": "xilinx-hls",
     "tasks": {
         "Add": {
-            "code": "void Add(tapa::istream<float>& a, tapa::istream<float>& b, tapa::ostream<float>& c, uint64_t n) {}",
+            "defines": [],
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -35,10 +36,14 @@
                 }
             ],
             "readable_name": "Add",
+            "srcs": [
+                "Add.cpp"
+            ],
             "synth": "hls"
         },
         "Mmap2Stream": {
-            "code": "void Mmap2Stream(tapa::mmap<const float> mmap, tapa::ostream<float>& stream, uint64_t n) {}",
+            "defines": [],
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -61,10 +66,14 @@
                 }
             ],
             "readable_name": "Mmap2Stream",
+            "srcs": [
+                "Mmap2Stream.cpp"
+            ],
             "synth": "hls"
         },
         "Stream2Mmap": {
-            "code": "void Stream2Mmap(tapa::istream<float>& stream, tapa::mmap<float> mmap, uint64_t n) {}",
+            "defines": [],
+            "include_dirs": [],
             "level": "lower",
             "ports": [
                 {
@@ -87,10 +96,13 @@
                 }
             ],
             "readable_name": "Stream2Mmap",
+            "srcs": [
+                "Stream2Mmap.cpp"
+            ],
             "synth": "hls"
         },
         "VecAdd": {
-            "code": "void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b, tapa::mmap<float> c, uint64_t n) {}",
+            "defines": [],
             "fifos": {
                 "a_q": {
                     "consumed_by": [
@@ -126,6 +138,7 @@
                     ]
                 }
             },
+            "include_dirs": [],
             "level": "upper",
             "ports": [
                 {
@@ -154,6 +167,9 @@
                 }
             ],
             "readable_name": "VecAdd",
+            "srcs": [
+                "VecAdd.cpp"
+            ],
             "synth": "hls",
             "tasks": {
                 "Add": [

@@ -38,8 +38,8 @@ When `--work-dir` is specified (recommended), TAPA writes intermediate files to 
 
 ```text
 work.out/
-├── cpp/
 ├── flatten/
+├── rewritten/
 ├── hls/
 │   └── TASK/
 │       ├── report/
@@ -61,13 +61,13 @@ work.out/
 
 ### File and directory descriptions
 
-**`cpp/`**
-
-Contains per-task C++ source files extracted by `tapa analyze`. Each file is independently compiled to RTL by `vitis_hls`.
-
 **`flatten/`**
 
 Created during `tapa analyze`. Contains preprocessed (flattened) copies of the input source files, one per input file, with a short hash prefix in the filename to avoid collisions. All `#include` directives are expanded and comments are preserved, giving `tapacc` self-contained translation units to operate on.
+
+**`rewritten/`**
+
+The rewritten C++ source tree written by `tapacc` during `tapa analyze`. Each task in `tapa.json` carries a source manifest (`srcs`, `include_dirs`, `defines`) whose `srcs` paths are relative to this tree; `tapa synth` stages them (verifying they exist and resolving them to absolute paths) and hands each task's file to `vitis_hls`. Because the manifest references this tree, `tapa.json` alone is not self-contained: the work directory — the JSON plus `rewritten/` — is the analyze artifact.
 
 **`hls/`**
 
@@ -90,7 +90,7 @@ For tasks annotated with `[[tapa::target("ignore")]]`, `template/` contains gene
 The single state file: everything the pipeline persists between steps, and the only file `tapa` reads back. It is pretty-printed so work directories stay readable and diffable. It has three top-level keys:
 
 - **`version`** — schema version of this file. `tapa` refuses a work directory stamped with a version it does not recognise, telling you to re-run `tapa analyze` rather than failing with an obscure parse error.
-- **`graph`** — all contents and metadata of the input design, including the task graph structure. Written by `tapa analyze` from the `tapacc` output, with the flow `target` and the kernel `cflags` added. `tapa synth` then annotates each task in place with its post-synthesis `clock_period`, `self_area`, and `total_area`; those fields are absent until synthesis populates them.
+- **`graph`** — all contents and metadata of the input design, including the task graph structure. Written by `tapa analyze` from the `tapacc` output, with the flow `target` and the kernel `cflags` added. Each task's C++ lives outside the JSON, in the `rewritten/` tree named by its `srcs` manifest. `tapa synth` then annotates each task in place with its post-synthesis `clock_period`, `self_area`, and `total_area`; those fields are absent until synthesis populates them.
 - **`flow`** — compilation settings shared across pipeline steps (part number, clock period, platform, and whether synthesis has run), resolved by `tapa synth` and read back by `tapa pack` so options need not be repeated on the command line. The flow `target` is deliberately not duplicated here: it lives in `graph.target` alone.
 
 ```admonish note

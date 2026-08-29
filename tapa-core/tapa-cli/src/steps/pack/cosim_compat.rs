@@ -142,7 +142,9 @@ mod tests {
             "Top".to_owned(),
             Task {
                 level: TaskLevel::Upper,
-                code: "void Top() {}".to_owned(),
+                srcs: vec!["Top.cpp".to_owned()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports,
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),

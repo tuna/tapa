@@ -214,7 +214,9 @@ mod tests {
             "Add".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: String::new(),
+                srcs: Vec::new(),
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
@@ -238,7 +240,9 @@ mod tests {
             "VecAdd".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                code: String::new(),
+                srcs: Vec::new(),
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
@@ -327,7 +331,9 @@ mod tests {
             "Add_Upper".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: String::new(),
+                srcs: Vec::new(),
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: vec![Port {
                     cat: ArgCategory::Scalar,
                     name: "n".to_string(),
@@ -476,7 +482,9 @@ mod tests {
             "Stub".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: String::new(),
+                srcs: Vec::new(),
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: vec![Port {
                     cat: ArgCategory::Scalar,
                     name: "n".to_string(),

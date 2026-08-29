@@ -2,13 +2,13 @@
 //! parsing.
 //!
 //! Given the work directory layout produced by `generate_rtl_tree`
-//! (`<work_dir>/rtl/*.v`) and the per-task C++ sources written by
-//! `extract_hls_sources` (`<work_dir>/cpp/<task>.cpp`), for each unique
-//! child task of the top task this module:
+//! (`<work_dir>/rtl/*.v`) and the per-task sources staged by
+//! `stage_hls_sources` (resolved from each task's `srcs` manifest), for
+//! each unique child task of the top task this module:
 //!
 //!   1. Consults the mtime of `<work_dir>/report/<task>.hier.util.rpt`
-//!      and skips the re-synth when the report is newer than the
-//!      matching `<work_dir>/cpp/<task>.cpp`.
+//!      and skips the re-synth when the report is newer than every one
+//!      of the task's staged source files.
 //!   2. Otherwise builds an out-of-context `synth_design` TCL, drives
 //!      it through [`run_vivado`], and requires that the `.rpt` now
 //!      exists and is strictly newer than it was before.
@@ -31,9 +31,8 @@ use tapa_xilinx::{parse_utilization_rpt, run_vivado, ToolRunner, UtilizationRepo
 
 use crate::error::{CliError, Result};
 
+use super::hls_sources::TaskSources;
 use super::resolve_worker_count;
-
-use super::cpp_extract::cpp_path_for;
 
 /// Render the report-utilization TCL. The template substitutes
 /// `{part_num}`, `{synth_args}`, and `{report_util_args}` before
@@ -59,6 +58,7 @@ pub(super) fn emit_post_synth_util(
     part_num: &str,
     jobs: Option<u32>,
     runner: &dyn ToolRunner,
+    sources: &TaskSources,
 ) -> Result<()> {
     let rtl_dir = work_dir.join("rtl");
     let report_dir = work_dir.join("report");
@@ -77,7 +77,7 @@ pub(super) fn emit_post_synth_util(
             module_names
                 .par_iter()
                 .map(|module_name| {
-                    run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num)
+                    run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num, sources)
                 })
                 .collect()
         },
@@ -98,12 +98,12 @@ fn run_and_parse_one(
     rtl_dir: &Path,
     module_name: &str,
     part_num: &str,
+    sources: &TaskSources,
 ) -> Result<UtilizationReport> {
     let rpt_path = post_syn_rpt_path(work_dir, module_name);
-    let cpp_path = cpp_path_for(work_dir, module_name);
     let prev_mtime = optional_mtime(&rpt_path);
 
-    if should_run_vivado(&cpp_path, prev_mtime) {
+    if should_run_vivado(sources.srcs(module_name), prev_mtime) {
         run_one(runner, rtl_dir, &rpt_path, module_name, part_num)?;
         if !report_is_fresh(&rpt_path, prev_mtime) {
             return Err(CliError::Codegen(format!(
@@ -142,20 +142,19 @@ fn optional_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
 }
 
-/// Re-run Vivado if the C++ source is strictly newer than the cached
-/// report. When either mtime is unreadable we err on the side of
-/// running (a missing report counts as infinitely old).
-fn should_run_vivado(cpp_path: &Path, rpt_mtime: Option<SystemTime>) -> bool {
-    let Ok(cpp_meta) = fs::metadata(cpp_path) else {
+/// Re-run Vivado if any staged source is strictly newer than the cached
+/// report. When either mtime is unreadable, or the task stages no
+/// sources, we err on the side of running (a missing report counts as
+/// infinitely old).
+fn should_run_vivado(srcs: &[camino::Utf8PathBuf], rpt_mtime: Option<SystemTime>) -> bool {
+    let Some(prev) = rpt_mtime else {
         return true;
     };
-    let Ok(cpp_mtime) = cpp_meta.modified() else {
-        return true;
-    };
-    match rpt_mtime {
-        None => true,
-        Some(prev) => cpp_mtime > prev,
-    }
+    srcs.iter().any(|src| {
+        fs::metadata(src)
+            .and_then(|meta| meta.modified())
+            .is_ok_and(|src_mtime| src_mtime > prev)
+    })
 }
 
 /// After Vivado returns success, require the report to exist and be
@@ -294,7 +293,9 @@ mod tests {
             "Add".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: "void Add() {}\n".to_string(),
+                srcs: vec!["Add.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
@@ -311,7 +312,9 @@ mod tests {
             "VecAdd".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                code: "void VecAdd() {}\n".to_string(),
+                srcs: vec!["VecAdd.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
@@ -334,7 +337,7 @@ mod tests {
     fn two_child_design() -> Design {
         let mut design = vadd_design();
         let mut mul = design.tasks["Add"].clone();
-        mul.code = "void Mul() {}\n".to_string();
+        mul.srcs = vec!["Mul.cpp".to_string()];
         design.tasks.insert("Mul".to_string(), mul);
         design
             .tasks
@@ -405,12 +408,22 @@ mod tests {
         }
     }
 
-    fn setup_work_dir(dir: &Path, cpp_contents: &[(&str, &str)]) {
-        fs::create_dir_all(dir.join("cpp")).expect("mkdir cpp");
+    fn setup_work_dir(dir: &Path, tasks: &[(&str, &str)]) {
+        fs::create_dir_all(dir.join(crate::tapacc::REWRITTEN_DIR)).expect("mkdir rewritten");
         fs::create_dir_all(dir.join("rtl")).expect("mkdir rtl");
-        for (name, body) in cpp_contents {
-            fs::write(dir.join("cpp").join(format!("{name}.cpp")), body).expect("write cpp");
+        for (name, body) in tasks {
+            fs::write(
+                dir.join(crate::tapacc::REWRITTEN_DIR)
+                    .join(format!("{name}.cpp")),
+                body,
+            )
+            .expect("write src");
         }
+    }
+
+    /// Stage `design`'s manifest against `work`, as `run_native` does.
+    fn staged(work: &Path, design: &Design) -> crate::steps::synth::hls_sources::TaskSources {
+        crate::steps::synth::hls_sources::stage_hls_sources(work, design).expect("stage sources")
     }
 
     /// Canned Vivado run: writes `sample_rpt(instance)` to the
@@ -419,19 +432,30 @@ mod tests {
     fn post_synth_util_updates_total_area() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let work = tmp.path();
-        setup_work_dir(work, &[("Add", "void Add() {}\n")]);
+        setup_work_dir(
+            work,
+            &[("Add", "void Add() {}\n"), ("VecAdd", "void VecAdd() {}\n")],
+        );
         let mut design = vadd_design();
 
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
+        let sources = staged(work, &design);
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
         runner.attach_download(
             crate::util::utf8(rpt_path.clone()),
             sample_rpt("Add").into_bytes(),
         );
 
-        emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", None, &runner)
-            .expect("emit_post_synth_util");
+        emit_post_synth_util(
+            work,
+            &mut design,
+            "xcu250-figd2104-2L-e",
+            None,
+            &runner,
+            &sources,
+        )
+        .expect("emit_post_synth_util");
 
         let add = design.tasks.get("Add").expect("Add task present");
         assert_eq!(add.total_area.expect("total area").lut, 100);
@@ -457,7 +481,10 @@ mod tests {
     fn post_synth_util_skips_stale_report() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let work = tmp.path();
-        setup_work_dir(work, &[("Add", "void Add() {}\n")]);
+        setup_work_dir(
+            work,
+            &[("Add", "void Add() {}\n"), ("VecAdd", "void VecAdd() {}\n")],
+        );
         let mut design = vadd_design();
 
         // Seed the rpt first, then bump the cpp mtime into the past so
@@ -465,23 +492,31 @@ mod tests {
         // is coarse, we also sleep a tick.
         fs::create_dir_all(work.join("report")).expect("mkdir report");
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
-        let cpp_path = work.join("cpp").join("Add.cpp");
-        // Re-stamp cpp to an old time, then touch the rpt to now.
+        let src_path = work.join(crate::tapacc::REWRITTEN_DIR).join("Add.cpp");
+        // Re-stamp the source to an old time, then touch the rpt to now.
         std::thread::sleep(Duration::from_millis(10));
         fs::write(&rpt_path, sample_rpt("Add")).expect("seed rpt");
-        // Verify ordering: rpt must be strictly newer than cpp.
-        let cpp_mtime = fs::metadata(&cpp_path).and_then(|m| m.modified()).unwrap();
+        // Verify ordering: rpt must be strictly newer than the source.
+        let src_mtime = fs::metadata(&src_path).and_then(|m| m.modified()).unwrap();
         let rpt_mtime = fs::metadata(&rpt_path).and_then(|m| m.modified()).unwrap();
         assert!(
-            rpt_mtime > cpp_mtime,
-            "seed invariant: rpt must be newer than cpp for skip test",
+            rpt_mtime > src_mtime,
+            "seed invariant: rpt must be newer than the source for skip test",
         );
 
         // MockToolRunner with no queued responses: any `.run(...)` call
         // surfaces a `ToolFailure`, so a pass here proves the skip.
         let runner = MockToolRunner::new();
-        emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", None, &runner)
-            .expect("stale-report skip path must succeed");
+        let sources = staged(work, &design);
+        emit_post_synth_util(
+            work,
+            &mut design,
+            "xcu250-figd2104-2L-e",
+            None,
+            &runner,
+            &sources,
+        )
+        .expect("stale-report skip path must succeed");
 
         assert!(runner.calls().is_empty(), "Vivado must not be invoked");
         // But the rpt is still parsed and applied.
@@ -495,13 +530,25 @@ mod tests {
         let work = tmp.path();
         setup_work_dir(
             work,
-            &[("Add", "void Add() {}\n"), ("Mul", "void Mul() {}\n")],
+            &[
+                ("Add", "void Add() {}\n"),
+                ("Mul", "void Mul() {}\n"),
+                ("VecAdd", "void VecAdd() {}\n"),
+            ],
         );
         let mut design = two_child_design();
         let runner = ConcurrentVivadoRunner::new(2);
+        let sources = staged(work, &design);
 
-        emit_post_synth_util(work, &mut design, "xcu250-figd2104-2L-e", Some(2), &runner)
-            .expect("parallel post-synth utilization");
+        emit_post_synth_util(
+            work,
+            &mut design,
+            "xcu250-figd2104-2L-e",
+            Some(2),
+            &runner,
+            &sources,
+        )
+        .expect("parallel post-synth utilization");
 
         assert_eq!(
             runner.max_active.load(Ordering::SeqCst),

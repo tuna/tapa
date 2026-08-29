@@ -82,7 +82,15 @@ class ProgramBuilder {
   const TaskModel* FindTask(const std::string& name) const;
 
   // The rewritten text stored for one task by its owning RewriteTu call.
-  std::string TakeTaskCode(const std::string& name) const;
+  // Empty for a task no RewriteTu emitted (every merged task has an
+  // owning TU, so this is a defensive empty, not a normal state).
+  const std::string& TaskCode(const std::string& name) const;
+
+  // Writes every merged task's rewritten text to `<emit_dir>/<name>.cpp`,
+  // the file its `srcs` manifest entry in EmitJson names. A file already
+  // holding the same bytes is left alone so its mtime survives a re-run.
+  // Returns false and sets `*error` on a write failure.
+  bool WriteSources(const std::string& emit_dir, std::string* error);
 
   // The single merged task graph, in today's field order and spelling.
   nlohmann::json EmitJson() const;

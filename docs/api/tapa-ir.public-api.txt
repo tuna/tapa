@@ -1821,12 +1821,14 @@ pub fn tapa_ir::task::TaskLevel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::TaskLevel where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::task::Task
 pub tapa_ir::task::Task::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
-pub tapa_ir::task::Task::code: alloc::string::String
+pub tapa_ir::task::Task::defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
+pub tapa_ir::task::Task::include_dirs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::level: tapa_ir::task::TaskLevel
 pub tapa_ir::task::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::task::Task::readable_name: alloc::string::String
 pub tapa_ir::task::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
+pub tapa_ir::task::Task::srcs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::task::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
 pub tapa_ir::task::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>
@@ -3856,12 +3858,14 @@ pub fn tapa_ir::port::Port::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::Port where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Task
 pub tapa_ir::Task::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
-pub tapa_ir::Task::code: alloc::string::String
+pub tapa_ir::Task::defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
+pub tapa_ir::Task::include_dirs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::level: tapa_ir::task::TaskLevel
 pub tapa_ir::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::Task::readable_name: alloc::string::String
 pub tapa_ir::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
+pub tapa_ir::Task::srcs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
 pub tapa_ir::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>

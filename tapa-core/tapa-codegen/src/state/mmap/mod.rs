@@ -416,7 +416,7 @@ mod tests {
             "top": {
                 "readable_name": "top",
                 "level": "upper",
-                "code": "",
+                "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                 "synth": "hls",
                 "ports": parent_ports,
                 "tasks": bindings,
@@ -427,7 +427,7 @@ mod tests {
             tasks[*name] = serde_json::json!({
                 "readable_name": name,
                 "level": "lower",
-                "code": "",
+                "srcs": [format!("{name}.cpp")], "include_dirs": [], "defines": [],
                 "synth": "hls",
                 "ports": [port],
                 "tasks": {},
@@ -461,7 +461,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
@@ -474,7 +474,7 @@ mod tests {
                 "mid": {
                     "readable_name": "mid",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["mid.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
@@ -521,7 +521,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
@@ -535,7 +535,7 @@ mod tests {
                 "mid": {
                     "readable_name": "mid",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["mid.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
@@ -551,7 +551,7 @@ mod tests {
                 "leaf": {
                     "readable_name": "leaf",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["leaf.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
@@ -587,7 +587,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32,
@@ -601,7 +601,7 @@ mod tests {
                 "mid": {
                     "readable_name": "mid",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["mid.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
@@ -617,7 +617,7 @@ mod tests {
                 "leaf": {
                     "readable_name": "leaf",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["leaf.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "d", "type": "float*", "width": 32}
@@ -714,7 +714,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
@@ -727,7 +727,7 @@ mod tests {
                 "mid": {
                     "readable_name": "mid",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["mid.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
@@ -743,7 +743,7 @@ mod tests {
                 "leaf": {
                     "readable_name": "leaf",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["leaf.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}
@@ -772,7 +772,7 @@ mod tests {
                 "top": {
                     "readable_name": "top",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["top.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "elems", "type": "float*", "width": 32}
@@ -786,7 +786,7 @@ mod tests {
                 "mid": {
                     "readable_name": "mid",
                     "level": "upper",
-                    "code": "",
+                    "srcs": ["mid.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "data", "type": "float*", "width": 32}
@@ -802,7 +802,7 @@ mod tests {
                 "leaf": {
                     "readable_name": "leaf",
                     "level": "lower",
-                    "code": "",
+                    "srcs": ["leaf.cpp"], "include_dirs": [], "defines": [],
                     "synth": "hls",
                     "ports": [
                         {"cat": "mmap", "name": "mmap", "type": "float*", "width": 32}

@@ -404,11 +404,11 @@ mod tests {
     #[test]
     fn plan_end_to_end_on_vadd() {
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "VecAdd", "target": "xilinx-hls",
             "tasks": {
                 "VecAdd": {
-                    "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                    "readable_name": "VecAdd", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
@@ -416,10 +416,10 @@ mod tests {
                     },
                     "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
                 },
-                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                     "self_area": {"lut": 100, "ff": 200}},
-                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                     "self_area": {"lut": 50, "ff": 60}}
             }
@@ -456,11 +456,11 @@ mod tests {
         // capacity (2 * 120000 > 220800 * 0.7) must split into adjacent slots,
         // so their connecting stream crosses one boundary.
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
             "tasks": {
                 "VecAdd": {
-                    "readable_name": "VecAdd", "code": "void VecAdd() {}", "level": "upper", "synth": "hls",
+                    "readable_name": "VecAdd", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                     "ports": [],
                     "tasks": {
                         "A": [{"args": {"out": {"arg": "fifo", "cat": "ostream"}}, "step": 0}],
@@ -468,10 +468,10 @@ mod tests {
                     },
                     "fifos": {"fifo": {"depth": 2, "consumed_by": ["B", 0], "produced_by": ["A", 0]}}
                 },
-                "A": {"readable_name": "A", "code": "void A() {}", "level": "lower", "synth": "hls",
+                "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "ostream", "name": "out", "type": "float", "width": 32}],
                     "self_area": {"lut": 120000}},
-                "B": {"readable_name": "B", "code": "void B() {}", "level": "lower", "synth": "hls",
+                "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                     "ports": [{"cat": "istream", "name": "in", "type": "float", "width": 32}],
                     "self_area": {"lut": 120000}}
             }
@@ -528,19 +528,19 @@ mod tests {
     )]
     fn distributed_control_plan_materializes_and_routes_exact_inventory() {
         let json = r#"{
-            "schema_version": 2,
+            "schema_version": 3,
             "cflags": [], "top": "Top", "target": "xilinx-vitis",
             "tasks": {
                 "Top": {
-                    "readable_name":"Top","code":"","level":"upper","synth":"hls",
+                    "readable_name":"Top","srcs": ["Top.cpp"], "include_dirs": [], "defines": [],"level":"upper","synth":"hls",
                     "ports":[],"tasks":{
                         "Normal":[{"name":"normal#0","args":{},"step":0}],
                         "Ticker":[{"name":"ticker[1]","args":{},"step":-1}]
                     },"fifos":{}
                 },
-                "Normal": {"readable_name":"Normal","code":"","level":"lower","synth":"hls",
+                "Normal": {"readable_name":"Normal","srcs": ["Normal.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                     "ports":[],"self_area":{"lut":120000}},
-                "Ticker": {"readable_name":"Ticker","code":"","level":"lower","synth":"hls",
+                "Ticker": {"readable_name":"Ticker","srcs": ["Ticker.cpp"], "include_dirs": [], "defines": [],"level":"lower","synth":"hls",
                     "ports":[],"self_area":{"lut":120000}}
             }
         }"#;
@@ -684,8 +684,8 @@ mod tests {
     #[test]
     fn plan_without_part_number_errors() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-hls",
-                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls",
+                "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
         .expect("parse");
@@ -699,8 +699,8 @@ mod tests {
     #[test]
     fn exact_memory_map_requires_its_recorded_platform() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-vitis",
-                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-vitis",
+                "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
         .expect("parse");
@@ -729,8 +729,8 @@ mod tests {
     #[test]
     fn devices_without_exact_bank_tags_reject_memory_inputs_before_solving() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-vitis",
-                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-vitis",
+                "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
         .expect("parse");
@@ -806,8 +806,8 @@ mod tests {
     #[test]
     fn plan_options_fail_before_solver_or_device_lookup() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-hls",
-                "tasks": {"T": {"readable_name": "T", "code": "void T(){}", "level": "upper",
+            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls",
+                "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
         .expect("parse");

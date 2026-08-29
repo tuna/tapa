@@ -1,6 +1,6 @@
 //! `run_native` orchestrator for `tapa synth`.
 //!
-//! Threads device resolution → state persistence → cpp-extract →
+//! Threads device resolution → state persistence → manifest staging →
 //! HLS runs → RTL codegen → final state persistence. Also
 //! owns the unsupported-flag gating, the HLS cflag construction, and
 //! the recursive Verilog-file walker that feeds the codegen step.
@@ -14,16 +14,16 @@ use crate::state::work as work_io;
 use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
 
-use super::cpp_extract::extract_hls_sources;
 use super::device_resolve::resolve_device_info;
 use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
+use super::hls_sources::stage_hls_sources;
 use super::post_synth_util::emit_post_synth_util;
 use super::report::write_top_report;
 use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs};
 use super::SynthArgs;
 
 /// Validate the flag surface, resolve the device, persist settings,
-/// then drive cpp-extract → HLS → codegen for the leaf tasks.
+/// then drive manifest staging → HLS → codegen for the leaf tasks.
 #[allow(
     clippy::too_many_lines,
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
@@ -50,7 +50,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     state.floorplan = None;
     work_io::store(&ctx.work_dir, &state)?;
 
-    extract_hls_sources(&ctx.work_dir, &state.graph)?;
+    let sources = stage_hls_sources(&ctx.work_dir, &state.graph)?;
 
     let opts = HlsRunOptions {
         part_num: device.part_num.clone(),
@@ -61,7 +61,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         jobs: args.jobs,
         keep_work_dir: args.keep_hls_work_dir,
     };
-    let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &state.graph, &opts)?;
+    let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &state.graph, &sources, &opts)?;
 
     let mut hdl_inputs: TaskHdlInputs = TaskHdlInputs::new();
     for (task_name, layout, out) in &hls_results {
@@ -87,6 +87,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
             &device.part_num,
             args.jobs,
             runner,
+            &sources,
         )?;
     }
 
@@ -329,7 +330,9 @@ mod tests {
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
         let mut task = Task {
             level: TaskLevel::Lower,
-            code: "void Add() {}\n".to_string(),
+            srcs: vec!["Add.cpp".to_string()],
+            include_dirs: Vec::new(),
+            defines: Vec::new(),
             ports: Vec::new(),
             tasks: BTreeMap::new(),
             fifos: BTreeMap::new(),
@@ -382,7 +385,9 @@ mod tests {
             "Add".to_string(),
             Task {
                 level: TaskLevel::Lower,
-                code: "void Add() {}\n".to_string(),
+                srcs: vec!["Add.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),
@@ -406,7 +411,9 @@ mod tests {
             "VecAdd".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                code: "void VecAdd() {}\n".to_string(),
+                srcs: vec!["VecAdd.cpp".to_string()],
+                include_dirs: Vec::new(),
+                defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: child_tasks,
                 fifos: BTreeMap::new(),
@@ -433,6 +440,14 @@ mod tests {
             slot_usage: BTreeMap::from([("SLOT_X0Y0_TO_SLOT_X0Y0".to_string(), Area::default())]),
         });
         work_io::store(work, &state).expect("store state");
+
+        // The rewritten sources `tapa analyze` would have written; the
+        // manifest in the stored state points at them.
+        let rewritten = work.join(crate::tapacc::REWRITTEN_DIR);
+        fs_err::create_dir_all(&rewritten).expect("mkdir rewritten");
+        fs_err::write(rewritten.join("Add.cpp"), "void Add() {}\n").expect("write Add.cpp");
+        fs_err::write(rewritten.join("VecAdd.cpp"), "void VecAdd() {}\n")
+            .expect("write VecAdd.cpp");
 
         // Two HLS invocations: the leaf `Add` and the upper-task shell
         // `VecAdd`. Iteration order is `BTreeMap` alphabetical order,

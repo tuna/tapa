@@ -85,9 +85,9 @@ fn all_category_variants_in_fixture() {
 #[test]
 fn negative_step_accepted() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
             "readable_name": "T",
             "tasks": {"C": [{"args": {}, "step": -1}]}, "fifos": {}, "ports": []}}
     }"#;
@@ -102,13 +102,13 @@ fn negative_step_accepted() {
 #[test]
 fn readable_name_is_typed_and_round_trips() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
-            "T": {"code": "", "level": "upper", "synth": "hls",
+            "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
                   "readable_name": "Compute<float, 4>",
                   "tasks": {}, "fifos": {}, "ports": []},
-            "U": {"code": "", "level": "lower", "synth": "hls",
+            "U": {"srcs": ["U.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
                   "readable_name": "U", "ports": []}
         }
     }"#;
@@ -128,10 +128,10 @@ fn readable_name_is_typed_and_round_trips() {
 #[test]
 fn readable_name_is_required() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
-            "T": {"code": "", "level": "lower", "synth": "hls", "ports": []}
+            "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls", "ports": []}
         }
     }"#;
     let err = Graph::from_json(json).expect_err("omitted readable_name must fail");
@@ -146,12 +146,46 @@ fn readable_name_is_required() {
     );
 }
 
+/// Schema v3's per-task file manifest (`srcs`, `include_dirs`, `defines`)
+/// is required on the wire: producers must emit it. A `#[serde(default)]`
+/// would let a producer drop the fields and have every task read as
+/// source-less, surfacing far away at synth time.
+#[test]
+fn source_manifest_fields_are_required() {
+    for missing in ["srcs", "include_dirs", "defines"] {
+        let json = r#"{
+            "schema_version": 3,
+            "cflags": [], "top": "T", "target": "xilinx-hls",
+            "tasks": {
+                "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [],
+                    "level": "lower", "synth": "hls", "readable_name": "T",
+                    "ports": []}
+            }
+        }"#
+        .replace(missing_member(missing), "");
+        let err = Graph::from_json(&json).expect_err(&format!("removing `{missing}` must fail"));
+        assert!(
+            err.to_string().contains(missing),
+            "error must name the missing field `{missing}`; got {err}",
+        );
+    }
+}
+
+/// The full wire member one iteration of the test above removes.
+fn missing_member(field: &str) -> &'static str {
+    match field {
+        "srcs" => r#""srcs": ["T.cpp"], "#,
+        "include_dirs" => r#""include_dirs": [], "#,
+        _ => r#""defines": [],"#,
+    }
+}
+
 #[test]
 fn consumer_only_fifo() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"code": "", "level": "upper", "synth": "hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
             "readable_name": "T",
             "tasks": {}, "fifos": {"ext": {"consumed_by": ["X", 0]}}, "ports": []}}
     }"#;
@@ -186,7 +220,7 @@ fn mmap_ports_round_trip() {
 
 #[test]
 fn unknown_top_level_field_rejected() {
-    let json = r#"{"schema_version": 2, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
+    let json = r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -198,9 +232,9 @@ fn unknown_top_level_field_rejected() {
 #[test]
 fn invalid_level_rejected() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"code": "", "level": "invalid", "synth": "hls"}}
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "invalid", "synth": "hls"}}
     }"#;
     let err = Graph::from_json(json).unwrap_err();
     let msg = err.to_string();
@@ -213,9 +247,9 @@ fn invalid_level_rejected() {
 #[test]
 fn invalid_category_rejected_with_path() {
     let json = r#"{
-        "schema_version": 2,
+        "schema_version": 3,
         "cflags": [], "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"code": "", "level": "lower", "synth": "hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
             "ports": [{"cat": "nonexistent", "name": "x", "type": "int", "width": 32}]}}
     }"#;
     let err = Graph::from_json(json).unwrap_err();
