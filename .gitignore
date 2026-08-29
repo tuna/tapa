@@ -12,6 +12,7 @@
 /.cmake-format
 /.pi-subagents/
 /.vscode
+/MODULE.bazel.lock
 /VARS.local.bzl
 /bazel-*
 /build/
