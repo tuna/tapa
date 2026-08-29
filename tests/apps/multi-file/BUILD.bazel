@@ -1,0 +1,57 @@
+"""The multi-file test app: the spec for the multi-file frontend campaign.
+
+Kernel tier (tapa_xo / xclbin / xosim) is deliberately not wired yet; the
+pipeline cannot build multi-TU kernels until the merge milestone lands.
+"""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+exports_files(
+    [
+        ".",
+        "a.cpp",
+        "b.cpp",
+        "multi-file-host.cpp",
+        "multi-file.h",
+    ],
+    visibility = [
+        # Mirrors tests/apps/vadd: later milestones' frontend rules and the
+        # tapa-core conformance test analyze these kernel sources.
+        "//tapa-core:__pkg__",
+        "//tests/apps:__pkg__",
+        "//tests/functional:__subpackages__",
+    ],
+)
+
+cc_binary(
+    name = "multi-file-host",
+    srcs = [
+        "a.cpp",
+        "b.cpp",
+        "multi-file.h",
+        "multi-file-host.cpp",
+    ],
+    visibility = ["//tests/functional:__subpackages__"],
+    deps = [
+        "//tapa-lib:tapa-host",
+        "//tests/apps/multi-file-ext:helper",
+        "@gflags",
+    ],
+)
+
+sh_test(
+    name = "multi-file",
+    size = "medium",
+    srcs = select({
+        "//bazel:is_macos": ["//bazel:sim_env.sh"],
+        "//conditions:default": ["//bazel:v++_env.sh"],
+    }),
+    args = ["$(location multi-file-host)"] + select({
+        "//bazel:is_macos": ["1000"],
+        "//conditions:default": [],
+    }),
+    data = [":multi-file-host"],
+    env = {"TAPA_CONCURRENCY": "2"},
+    tags = ["cpu:2"],
+)
