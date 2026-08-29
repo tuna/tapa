@@ -1,15 +1,12 @@
 #ifndef TAPA_FRONTEND_DISCOVER_H_
 #define TAPA_FRONTEND_DISCOVER_H_
 
-#include <map>
-#include <string>
 #include <vector>
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
 #include "program.h"
@@ -30,8 +27,7 @@ std::vector<const clang::CXXMemberCallExpr*> GetInvokes(
 // The task function an invoke references, or nullptr if its first argument is
 // not a plain function reference. A cross-TU invoke yields the declaration
 // visible in the invoking TU, not the definition.
-const clang::FunctionDecl* InvokeCallee(
-    const clang::CXXMemberCallExpr* invoke);
+const clang::FunctionDecl* InvokeCallee(const clang::CXXMemberCallExpr* invoke);
 
 // Whether a function is marked `[[tapa::target("ignore")]]`.
 bool IsIgnored(const clang::FunctionDecl* func);
@@ -44,17 +40,6 @@ TaskLevel LevelOf(const clang::FunctionDecl* func);
 // the tool-wide default.
 SynthTarget ResolveTarget(const clang::FunctionDecl* func,
                           SynthTarget default_target);
-
-// Discover every TAPA task reachable from `top` (breadth-first over `invoke`
-// edges), keyed by task name, with the graph fields populated: def, invoker,
-// is_template_spec, name (mangled for specializations), readable_name, level,
-// target. Ports and instances/streams are filled by later passes. Reports
-// top-not-found / top-ignored / task-redefinition through `ctx` diagnostics and
-// returns an empty map on a fatal error.
-std::map<std::string, TaskModel> DiscoverTasks(
-    clang::ASTContext& ctx, llvm::StringRef top_name,
-    SynthTarget default_target,
-    llvm::ArrayRef<const clang::FunctionDecl*> file_funcs);
 
 }  // namespace tapa::cc
 

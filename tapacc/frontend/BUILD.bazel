@@ -23,7 +23,6 @@ cc_library(
     srcs = ["vendor_scan.cpp"],
     hdrs = ["vendor_scan.h"],
     copts = TAPACC_COPTS,
-    includes = [".."],
     deps = [CLANG_TOOLING],
 )
 
@@ -133,8 +132,6 @@ cc_library(
     copts = TAPACC_COPTS,
     deps = [
         ":classify",
-        ":diag",
-        ":names",
         ":program",
         CLANG_TOOLING,
     ],
@@ -163,10 +160,11 @@ cc_test(
     srcs = ["invoke_parser_test.cpp"],
     copts = TAPACC_COPTS,
     deps = [
-        ":discover",
+        ":classify",
         ":invoke_parser",
         ":ports",
         ":program",
+        ":program_builder",
         ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -179,42 +177,7 @@ cc_library(
     srcs = ["build_program.cpp"],
     hdrs = ["build_program.h"],
     copts = TAPACC_COPTS,
-    deps = [
-        ":discover",
-        ":invoke_parser",
-        ":ports",
-        ":program",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_test(
-    name = "build_program_test",
-    srcs = ["build_program_test.cpp"],
-    copts = TAPACC_COPTS,
-    deps = [
-        ":build_program",
-        ":classify",
-        ":program",
-        ":tapa_stub_decls",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_test(
-    name = "discover_test",
-    srcs = ["discover_test.cpp"],
-    copts = TAPACC_COPTS,
-    deps = [
-        ":discover",
-        ":program",
-        ":tapa_stub_decls",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
-    ],
+    deps = [CLANG_TOOLING],
 )
 
 # The multi-TU merge: index every TU, merge + discover on pure data, rewrite
@@ -238,6 +201,22 @@ cc_library(
         "//tapacc/codegen:schema_fields",
         "//tapacc/codegen:xilinx",
         "@nlohmann_json//:json",
+        CLANG_TOOLING,
+    ],
+)
+
+cc_test(
+    name = "build_program_test",
+    srcs = ["build_program_test.cpp"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        ":classify",
+        ":program",
+        ":program_builder",
+        ":tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
         CLANG_TOOLING,
     ],
 )

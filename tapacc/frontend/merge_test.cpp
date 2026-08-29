@@ -44,8 +44,7 @@ struct Merged {
 
   Merged(std::unique_ptr<clang::ASTUnit> ast_a,
          std::unique_ptr<clang::ASTUnit> ast_b, ProgramBuilder built)
-      : a(std::move(ast_a)), b(std::move(ast_b)),
-        builder(std::move(built)) {}
+      : a(std::move(ast_a)), b(std::move(ast_b)), builder(std::move(built)) {}
 };
 
 // Build both TUs, index each, merge. `expect_ok` also runs the rewrite pass
@@ -213,8 +212,8 @@ TEST(Merge, TemplateSpecializationSightedInBothTusMerges) {
   EXPECT_EQ(spec_name.rfind("tapa_mangled", 0), 0u);
   EXPECT_EQ(tasks.at(spec_name)["readable_name"], "Pass<float>");
   // The wrapper for the mangled entry point sits after the invoking top.
-  EXPECT_TRUE(Contains(m.builder.TakeTaskCode(spec_name),
-                       "void " + spec_name + "("));
+  EXPECT_TRUE(
+      Contains(m.builder.TakeTaskCode(spec_name), "void " + spec_name + "("));
 }
 
 // ── Rule 4: internal-linkage tasks are a hard error ────────────────────

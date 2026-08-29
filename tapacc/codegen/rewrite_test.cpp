@@ -10,8 +10,8 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
-#include "frontend/build_program.h"
 #include "frontend/program.h"
+#include "frontend/program_builder.h"
 #include "frontend/tapa_stub_decls.h"
 #include "xilinx.h"
 
@@ -60,13 +60,22 @@ struct Emitted {
   Program program;
 };
 
+// Index, merge, and return the per-TU view of a single-TU program: the
+// same Program shape EmitTaskCode consumed before the merge, with TU-local
+// decl pointers.
+Program ViewOf(clang::ASTContext& ctx, llvm::StringRef top) {
+  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
+  builder.IndexTu(ctx);
+  EXPECT_TRUE(builder.MergeAndDiscover());
+  return builder.TuView(ctx);
+}
+
 Emitted Build() {
   const std::string code = std::string(kTapaStubDecls) + "\n" + kVadd;
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
       code, std::vector<std::string>{"-std=c++17"});
   EXPECT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "VecAdd", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "VecAdd");
   return Emitted{std::move(ast), std::move(program)};
 }
 
@@ -170,8 +179,7 @@ AttrEmitted BuildAttrs() {
       clang::tooling::getClangStripDependencyFileAdjuster(),
       clang::tooling::FileContentMappings(), &diag);
   EXPECT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "Top", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "Top");
   return AttrEmitted{std::move(ast), std::move(program)};
 }
 
@@ -414,8 +422,7 @@ TEST(Rewrite, AttrThatCannotLowerIsAnError) {
       clang::tooling::getClangStripDependencyFileAdjuster(),
       clang::tooling::FileContentMappings(), diag.get());
   ASSERT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "LeakTop", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "LeakTop");
   const XilinxBackend backend(/*is_vitis=*/false);
 
   diag->errors.clear();
@@ -453,8 +460,7 @@ TEST(Rewrite, AttrSpellingInCommentIsNotALeak) {
       clang::tooling::getClangStripDependencyFileAdjuster(),
       clang::tooling::FileContentMappings(), diag.get());
   ASSERT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "QuotedTop", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "QuotedTop");
   const XilinxBackend backend(/*is_vitis=*/false);
 
   diag->errors.clear();
@@ -495,8 +501,7 @@ TEST(Rewrite, ForwardDeclaredHelperGetsOneStreamPragma) {
       clang::tooling::getClangStripDependencyFileAdjuster(),
       clang::tooling::FileContentMappings(), &diag);
   ASSERT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "FwdTop", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "FwdTop");
   const XilinxBackend backend(/*is_vitis=*/false);
   const std::string emitted = EmitTaskCode(program, program.tasks.at("FwdTask"),
                                            backend, ast->getASTContext());
@@ -535,8 +540,7 @@ TEST(Rewrite, TargetAttrIsNotReportedAsALeak) {
       clang::tooling::getClangStripDependencyFileAdjuster(),
       clang::tooling::FileContentMappings(), diag.get());
   ASSERT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "TargetTop", SynthTarget::kXilinxHls);
+  Program program = ViewOf(ast->getASTContext(), "TargetTop");
   const XilinxBackend backend(/*is_vitis=*/false);
 
   diag->errors.clear();

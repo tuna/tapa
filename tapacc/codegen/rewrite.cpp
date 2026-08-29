@@ -445,23 +445,12 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
   // other helper: without it they carry no inlining control and the vendor
   // decides the hierarchy, which is what the keyword rule exists to prevent.
   //
-  // No name-based exclusion here. Tasks are discovered from `file_funcs`,
-  // which holds only global definitions, so nothing in `local_funcs` can be
-  // a task — a name test could only strike a helper that happens to share a
-  // name with one, denying it the policy for no reason.
+  // No name-based exclusion here, and no task-shaped special case either:
+  // nothing in `local_funcs` can be a task. A function that both has
+  // internal linkage and builds a tapa::task() is rejected by the merge
+  // (frontend/program_builder.cpp) before any rewriting runs, so by the
+  // time this loop executes every entry is a plain helper.
   for (const clang::FunctionDecl* func : program.local_funcs) {
-    if (GetTapaTaskObject(func->getBody()) != nullptr) {
-      // Task-shaped, but internal linkage puts it beyond discovery's reach,
-      // so it can never be invoked as a task. Say so rather than silently
-      // leaving it alone: its body still invokes sub-tasks whose signatures
-      // this pass rewrites, so the result will not compile, and the cause is
-      // a long way from the error.
-      llvm::errs() << "Warning: " << func->getNameAsString()
-                   << " builds a tapa::task() but has internal linkage, so it"
-                      " cannot be discovered as a task; give it external"
-                      " linkage\n";
-      continue;
-    }
     backend.RewriteHelperFunc(func, rewriter);
     LowerParamAttrs(func, backend, rewriter);
     LowerFuncAttrs(func, backend, rewriter);

@@ -9,34 +9,16 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
-#include "discover.h"
 #include "ports.h"
 #include "program.h"
+#include "program_builder.h"
 #include "tapa_stub_decls.h"
 
 namespace tapa::cc {
 namespace {
-
-class FuncCollector : public clang::RecursiveASTVisitor<FuncCollector> {
- public:
-  explicit FuncCollector(const clang::ASTContext& ctx) : ctx_(ctx) {}
-  std::vector<const clang::FunctionDecl*> funcs;
-  bool VisitFunctionDecl(clang::FunctionDecl* f) {
-    if (f->isGlobal() &&
-        ctx_.getSourceManager().isWrittenInMainFile(f->getLocation()) &&
-        f->hasBody()) {
-      funcs.push_back(f);
-    }
-    return true;
-  }
-
- private:
-  const clang::ASTContext& ctx_;
-};
 
 constexpr char kProgram[] = R"cpp(
   void Producer(tapa::ostream<float>& out) {}
@@ -57,32 +39,34 @@ constexpr char kProgram[] = R"cpp(
 
 struct Parsed {
   std::unique_ptr<clang::ASTUnit> ast;
-  std::map<std::string, TaskModel> tasks;
+  ProgramBuilder builder;
+
+  const TaskModel& Task(llvm::StringRef name) const {
+    const TaskModel* model = builder.FindTask(name.str());
+    EXPECT_NE(model, nullptr);
+    return *model;
+  }
 };
 
-Parsed ParseCode(llvm::StringRef code, llvm::StringRef top, bool is_top) {
+// Full pipeline over one TU: index, merge, rewrite (which fills ports,
+// instances, and streams, with is_top true exactly for the requested top).
+Parsed ParseCode(llvm::StringRef code, llvm::StringRef top) {
   const std::string full = std::string(kTapaStubDecls) + "\n" + code.str();
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
       full, std::vector<std::string>{"-std=c++17"});
   EXPECT_NE(ast, nullptr);
-  FuncCollector collector(ast->getASTContext());
-  collector.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  auto tasks = DiscoverTasks(ast->getASTContext(), top, SynthTarget::kXilinxHls,
-                             collector.funcs);
-  for (auto& [name, model] : tasks) {
-    if (model.level == TaskLevel::kUpper) {
-      model.ports = BuildPorts(ast->getASTContext(), model.def);
-      ParseUpperTask(ast->getASTContext(), model, is_top && name == top);
-    }
-  }
-  return Parsed{std::move(ast), std::move(tasks)};
+  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
+  builder.IndexTu(ast->getASTContext());
+  EXPECT_TRUE(builder.MergeAndDiscover());
+  builder.RewriteTu(ast->getASTContext());
+  return Parsed{std::move(ast), std::move(builder)};
 }
 
-Parsed ParseTop() { return ParseCode(kProgram, "Top", /*is_top=*/false); }
+Parsed ParseTop() { return ParseCode(kProgram, "Top"); }
 
 TEST(InvokeParser, StreamsWithDepth) {
   auto p = ParseTop();
-  const TaskModel& top = p.tasks.at("Top");
+  const TaskModel& top = p.Task("Top");
   ASSERT_EQ(top.streams.size(), 3u);
   EXPECT_EQ(top.streams.at("q1").depth, 8u);
   EXPECT_EQ(top.streams.at("q2").depth, 8u);
@@ -99,8 +83,8 @@ constexpr char kTopStreamProgram[] = R"cpp(
 )cpp";
 
 TEST(InvokeParser, TopLevelStreamPortsBecomeExternalFifos) {
-  auto p = ParseCode(kTopStreamProgram, "Top", /*is_top=*/true);
-  const TaskModel& top = p.tasks.at("Top");
+  auto p = ParseCode(kTopStreamProgram, "Top");
+  const TaskModel& top = p.Task("Top");
   ASSERT_EQ(top.streams.size(), 3u);
 
   const StreamDecl& a = top.streams.at("a");
@@ -123,16 +107,27 @@ TEST(InvokeParser, TopLevelStreamPortsBecomeExternalFifos) {
 }
 
 TEST(InvokeParser, NonTopStreamPortsDoNotBecomeFifos) {
-  // The same program parsed without the top flag: passthrough stream ports
-  // stay out of `streams` (middle tasks bind them by port name instead).
-  auto p = ParseCode(kTopStreamProgram, "Top", /*is_top=*/false);
-  const TaskModel& top = p.tasks.at("Top");
-  EXPECT_TRUE(top.streams.empty());
+  // The same program with the top flag OFF: passthrough stream ports stay
+  // out of `streams` (middle tasks bind them by port name instead). Drives
+  // ParseUpperTask directly because the builder always marks the requested
+  // top as the top — the is_top distinction belongs to this unit.
+  const std::string full =
+      std::string(kTapaStubDecls) + "\n" + kTopStreamProgram;
+  auto ast = clang::tooling::buildASTFromCodeWithArgs(
+      full, std::vector<std::string>{"-std=c++17"});
+  ASSERT_NE(ast, nullptr);
+  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
+  builder.IndexTu(ast->getASTContext());
+  ASSERT_TRUE(builder.MergeAndDiscover());
+  TaskModel model = builder.TuView(ast->getASTContext()).tasks.at("Top");
+  model.ports = BuildPorts(ast->getASTContext(), model.def);
+  ParseUpperTask(ast->getASTContext(), model, /*is_top=*/false);
+  EXPECT_TRUE(model.streams.empty());
 }
 
 TEST(InvokeParser, ProducerConsumerEndpoints) {
   auto p = ParseTop();
-  const TaskModel& top = p.tasks.at("Top");
+  const TaskModel& top = p.Task("Top");
 
   const StreamDecl& q1 = top.streams.at("q1");
   ASSERT_TRUE(q1.produced_by.has_value());
@@ -156,8 +151,8 @@ TEST(InvokeParser, ReplicatedExplicitNameIsUniquePerLane) {
     void Worker(int value) {}
     void Top() { tapa::task().invoke<-1, 3>(Worker, "worker", 42); }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  auto p = ParseCode(kCode, "Top");
+  const auto& instances = p.Task("Top").instances.at("Worker");
   ASSERT_EQ(instances.size(), 3u);
   EXPECT_EQ(instances[0].name, "worker_0");
   EXPECT_EQ(instances[1].name, "worker_1");
@@ -172,8 +167,8 @@ TEST(InvokeParser, NameOnlyInvokeNamesOneInstance) {
     void Worker() {}
     void Top() { tapa::task().invoke(Worker, "worker"); }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  auto p = ParseCode(kCode, "Top");
+  const auto& instances = p.Task("Top").instances.at("Worker");
   ASSERT_EQ(instances.size(), 1u);
   EXPECT_EQ(instances[0].name, "worker");
 }
@@ -183,8 +178,8 @@ TEST(InvokeParser, ModeWithNameKeepsBoth) {
     void Worker(int value) {}
     void Top() { tapa::task().invoke<-1>(Worker, "worker", 42); }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const auto& instances = p.tasks.at("Top").instances.at("Worker");
+  auto p = ParseCode(kCode, "Top");
+  const auto& instances = p.Task("Top").instances.at("Worker");
   ASSERT_EQ(instances.size(), 1u);
   EXPECT_EQ(instances[0].name, "worker");
 }
@@ -194,9 +189,8 @@ TEST(InvokeParser, ConstantUsesChildPortWidth) {
     void Worker(short value) {}
     void Top() { tapa::task().invoke(Worker, -1); }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const auto& arg =
-      p.tasks.at("Top").instances.at("Worker")[0].args.at("value");
+  auto p = ParseCode(kCode, "Top");
+  const auto& arg = p.Task("Top").instances.at("Worker")[0].args.at("value");
   EXPECT_EQ(arg.width, 16u);
   EXPECT_EQ(arg.value, std::optional<uint64_t>(0xffff));
 }
@@ -218,8 +212,8 @@ TEST(InvokeParser, ConstantTakesTheLanguageConversionToThePort) {
           .invoke(Wide, -1);
     }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const auto& insts = p.tasks.at("Top").instances;
+  auto p = ParseCode(kCode, "Top");
+  const auto& insts = p.Task("Top").instances;
   auto value_of = [&](const char* task) {
     return insts.at(task)[0].args.at("value").value;
   };
@@ -235,7 +229,7 @@ TEST(InvokeParser, ConstantTakesTheLanguageConversionToThePort) {
 
 TEST(InvokeParser, InstancesAndArgs) {
   auto p = ParseTop();
-  const TaskModel& top = p.tasks.at("Top");
+  const TaskModel& top = p.Task("Top");
 
   ASSERT_EQ(top.instances.at("Producer").size(), 2u);
   EXPECT_EQ(top.instances.at("Producer")[0].args.at("out").arg, "q1");
@@ -278,16 +272,10 @@ unsigned CountUpperTaskErrors(llvm::StringRef code, llvm::StringRef top) {
   EXPECT_NE(ast, nullptr);
   CountingDiags diags;
   ast->getDiagnostics().setClient(&diags, /*ShouldOwn=*/false);
-  FuncCollector collector(ast->getASTContext());
-  collector.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  auto tasks = DiscoverTasks(ast->getASTContext(), top, SynthTarget::kXilinxHls,
-                             collector.funcs);
-  for (auto& [name, model] : tasks) {
-    if (model.level == TaskLevel::kUpper) {
-      model.ports = BuildPorts(ast->getASTContext(), model.def);
-      ParseUpperTask(ast->getASTContext(), model, /*is_top=*/false);
-    }
-  }
+  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
+  builder.IndexTu(ast->getASTContext());
+  if (!builder.MergeAndDiscover()) return 1;
+  builder.RewriteTu(ast->getASTContext());
   return diags.errors;
 }
 
@@ -324,8 +312,8 @@ TEST(InvokeParser, MultiDeclaratorStreamDeclCollectsEveryDeclarator) {
           .invoke(Consumer, q2);
     }
   )cpp";
-  auto p = ParseCode(kCode, "Top", /*is_top=*/false);
-  const TaskModel& top = p.tasks.at("Top");
+  auto p = ParseCode(kCode, "Top");
+  const TaskModel& top = p.Task("Top");
   ASSERT_EQ(top.streams.size(), 2u);
   EXPECT_EQ(top.streams.at("q1").depth, 8u);
   EXPECT_EQ(top.streams.at("q2").depth, 8u);

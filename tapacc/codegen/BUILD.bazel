@@ -136,6 +136,7 @@ cc_library(
         ":backend",
         ":emit",
         ":wrapper",
+        "//tapacc/frontend:diag",
         "//tapacc/frontend:discover",
         "//tapacc/frontend:program",
         CLANG_TOOLING,
@@ -150,8 +151,8 @@ cc_test(
     deps = [
         ":rewrite",
         ":xilinx",
-        "//tapacc/frontend:build_program",
         "//tapacc/frontend:program",
+        "//tapacc/frontend:program_builder",
         "//tapacc/frontend:tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

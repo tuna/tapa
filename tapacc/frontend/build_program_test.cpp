@@ -1,4 +1,4 @@
-#include "build_program.h"
+#include "program_builder.h"
 
 #include <memory>
 #include <string>
@@ -11,6 +11,7 @@
 #include "clang/Tooling/Tooling.h"
 
 #include "classify.h"
+#include "codegen/schema_fields.h"
 #include "program.h"
 #include "tapa_stub_decls.h"
 
@@ -39,7 +40,7 @@ constexpr char kVadd[] = R"cpp(
 
 struct Built {
   std::unique_ptr<clang::ASTUnit> ast;
-  Program program;
+  ProgramBuilder builder;
 };
 
 Built Build() {
@@ -47,23 +48,27 @@ Built Build() {
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
       code, std::vector<std::string>{"-std=c++17"});
   EXPECT_NE(ast, nullptr);
-  Program program =
-      BuildProgram(ast->getASTContext(), "VecAdd", SynthTarget::kXilinxHls);
-  return Built{std::move(ast), std::move(program)};
+  ProgramBuilder builder("VecAdd", SynthTarget::kXilinxHls);
+  builder.IndexTu(ast->getASTContext());
+  EXPECT_TRUE(builder.MergeAndDiscover());
+  EXPECT_TRUE(builder.errors().empty());
+  builder.RewriteTu(ast->getASTContext());
+  return Built{std::move(ast), std::move(builder)};
 }
 
 TEST(BuildProgram, TopAndTaskSet) {
   auto b = Build();
-  EXPECT_EQ(b.program.top, "VecAdd");
-  EXPECT_EQ(b.program.tasks.size(), 4u);
-  EXPECT_EQ(b.program.tasks.at("VecAdd").level, TaskLevel::kUpper);
-  EXPECT_EQ(b.program.tasks.at("Add").level, TaskLevel::kLower);
-  EXPECT_EQ(b.program.tasks.at("Mmap2Stream").level, TaskLevel::kLower);
+  EXPECT_EQ(b.builder.top(), "VecAdd");
+  EXPECT_EQ(b.builder.EmitJson()[kFieldTasks].size(), 4u);
+  EXPECT_EQ(b.builder.FindTask("VecAdd")->level, TaskLevel::kUpper);
+  EXPECT_EQ(b.builder.FindTask("Add")->level, TaskLevel::kLower);
+  EXPECT_EQ(b.builder.FindTask("Mmap2Stream")->level, TaskLevel::kLower);
+  EXPECT_EQ(b.builder.FindTask("Nope"), nullptr);
 }
 
 TEST(BuildProgram, TopPorts) {
   auto b = Build();
-  const std::vector<Port>& ports = b.program.tasks.at("VecAdd").ports;
+  const std::vector<Port>& ports = b.builder.FindTask("VecAdd")->ports;
   ASSERT_EQ(ports.size(), 4u);
   EXPECT_EQ(ports[0].name, "a");
   EXPECT_STREQ(TapaKindCat(ports[0].kind), "mmap");
@@ -76,7 +81,7 @@ TEST(BuildProgram, TopPorts) {
 
 TEST(BuildProgram, UpperStreamsAndInstances) {
   auto b = Build();
-  const TaskModel& top = b.program.tasks.at("VecAdd");
+  const TaskModel& top = *b.builder.FindTask("VecAdd");
 
   ASSERT_EQ(top.streams.size(), 3u);
   EXPECT_EQ(top.streams.at("a_q").depth, 8u);
@@ -101,7 +106,7 @@ TEST(BuildProgram, UpperStreamsAndInstances) {
 
 TEST(BuildProgram, LeafPortsPopulated) {
   auto b = Build();
-  const std::vector<Port>& add_ports = b.program.tasks.at("Add").ports;
+  const std::vector<Port>& add_ports = b.builder.FindTask("Add")->ports;
   ASSERT_EQ(add_ports.size(), 4u);
   EXPECT_STREQ(TapaKindCat(add_ports[0].kind), "istream");
   EXPECT_STREQ(TapaKindCat(add_ports[2].kind), "ostream");

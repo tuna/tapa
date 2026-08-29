@@ -5,9 +5,6 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "llvm/ADT/StringRef.h"
-
-#include "program.h"
 
 namespace tapa::cc {
 
@@ -21,13 +18,6 @@ std::vector<const clang::FunctionDecl*> CollectFileFuncs(
 // for codegen's purposes, but kept out of task discovery.
 std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
     const clang::ASTContext& ctx);
-
-// Build the whole typed Program from a parsed translation unit: discover the
-// tasks reachable from `top`, extract each task's ports, and parse every upper
-// task's instances and streams. The single frontend entry point (AST -> model,
-// no source rewriting).
-Program BuildProgram(clang::ASTContext& ctx, llvm::StringRef top,
-                     SynthTarget default_target);
 
 }  // namespace tapa::cc
 

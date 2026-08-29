@@ -3,10 +3,6 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/SourceManager.h"
 
-#include "discover.h"
-#include "invoke_parser.h"
-#include "ports.h"
-
 namespace tapa::cc {
 
 namespace {
@@ -71,22 +67,6 @@ std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
   collector.TraverseDecl(
       const_cast<clang::ASTContext&>(ctx).getTranslationUnitDecl());
   return collector.funcs;
-}
-
-Program BuildProgram(clang::ASTContext& ctx, llvm::StringRef top,
-                     SynthTarget default_target) {
-  Program program;
-  program.top = top.str();
-  program.file_funcs = CollectFileFuncs(ctx);
-  program.local_funcs = CollectLocalFuncs(ctx);
-  program.tasks = DiscoverTasks(ctx, top, default_target, program.file_funcs);
-  for (auto& [name, task] : program.tasks) {
-    task.ports = BuildPorts(ctx, task.def);
-    if (task.level == TaskLevel::kUpper) {
-      ParseUpperTask(ctx, task, /*is_top=*/name == program.top);
-    }
-  }
-  return program;
 }
 
 }  // namespace tapa::cc

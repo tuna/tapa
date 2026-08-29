@@ -102,19 +102,19 @@ class ProgramBuilder {
     // functions, the mangled name for template specializations (Itanium
     // mangling is identical across TUs for the same specialization).
     std::string key;
-    std::string name;           // graph key: plain name, mangled for specs
-    std::string plain_name;     // unqualified name, the old lookup key
+    std::string name;        // graph key: plain name, mangled for specs
+    std::string plain_name;  // unqualified name, the old lookup key
     std::string readable_name;
     std::string fqn;
-    std::string signature;      // canonical parameter types, joined with ","
-    std::string loc;            // rendered file:line:col of the definition
+    std::string signature;  // canonical parameter types, joined with ","
+    std::string loc;        // rendered file:line:col of the definition
     int tu = 0;
     bool is_spec = false;
-    bool implicit_spec = false; // an implicit instantiation, only sighted
-                                // through the invoke that triggered it
-    bool task_shaped = false;   // the body builds a tapa::task
-    bool ignored = false;       // [[tapa::target("ignore")]]
-    bool internal = false;      // static / anonymous namespace / a method
+    bool implicit_spec = false;  // an implicit instantiation, only sighted
+                                 // through the invoke that triggered it
+    bool task_shaped = false;    // the body builds a tapa::task
+    bool ignored = false;        // [[tapa::target("ignore")]]
+    bool internal = false;       // static / anonymous namespace / a method
     TaskLevel level = TaskLevel::kLower;
     SynthTarget target = SynthTarget::kXilinxHls;
   };
@@ -136,7 +136,7 @@ class ProgramBuilder {
     // Identity key -> a decl visible in this TU; a definition outranks a
     // declaration when both exist.
     std::map<std::string, const clang::FunctionDecl*> visible;
-    std::vector<DefSighting> defs;   // in source order
+    std::vector<DefSighting> defs;  // in source order
     std::vector<InvokeEdge> invokes;
   };
 

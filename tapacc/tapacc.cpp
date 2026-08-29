@@ -1,12 +1,29 @@
-// tapacc: the TAPA C-to-HLS rewriter. Parses a (flattened) TAPA C++ translation
-// unit into a typed program model (frontend/), generates per-task vendor HLS
-// via a backend (codegen/), and emits on stdout the task graph the tapa-ir
-// crate consumes: {top, target, tasks:{name:{code, level, synth,
-// readable_name, ports, tasks, fifos}}}. `tapa analyze` nests that payload
-// under the "graph" key of the work dir's tapa.json.
+// tapacc: the TAPA C-to-HLS rewriter. Parses every input translation unit
+// (flattened by `tapa analyze`) into one merged task graph and emits that
+// single graph on stdout for the tapa-ir crate to consume:
+// {top, target, tasks:{name:{code, level, synth, readable_name, ports,
+// tasks, fifos}}}. `tapa analyze` nests that payload under the "graph" key
+// of the work dir's tapa.json.
 //
-// Two distinct notions of "target" live in that schema, and the tapa-ir crate
-// parses both as closed enums with deny_unknown_fields:
+// Each ClangTool action owns its ASTContext and AST nodes never outlive
+// their TU, so the pipeline runs as TWO passes over the same file list
+// around a pure-data merge (frontend/program_builder.{h,cpp}):
+//
+//   1. an index action per TU: collect every function definition sighted
+//      in the main file plus every `tapa::task::invoke` edge, the callee
+//      resolved through the declaration visible in that TU;
+//   2. the merge: one definition index keyed by FQN + canonical parameter
+//      signature (mangled name for template specializations), BFS from
+//      `--top` over the merged edges, and the merge-rule diagnostics;
+//   3. a rewrite action per TU: a per-TU view of the merged task set, with
+//      per-task emission for every merged task defined in that TU.
+//
+// The single JSON prints only when both passes ran clean for every TU, so a
+// program that fails a merge rule or a per-task diagnostic exits non-zero
+// with no graph on stdout.
+//
+// Two distinct notions of "target" live in that schema, and the tapa-ir
+// crate parses both as closed enums with deny_unknown_fields:
 //   - root "target": the vendor FLOW, kebab-case "xilinx-vitis"/"xilinx-hls".
 //   - per-task "synth": the synthesis POLICY, "hls"/"ignore" only -- it answers
 //     just "synthesize or skip". The internal three-valued SynthTarget still
@@ -32,88 +49,12 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "nlohmann/json.hpp"
-
-#include "codegen/ignore.h"
-#include "codegen/rewrite.h"
-#include "codegen/schema_fields.h"
-#include "codegen/xilinx.h"
-#include "frontend/build_program.h"
-#include "frontend/classify.h"
-#include "frontend/program.h"
+#include "frontend/program_builder.h"
 #include "frontend/vendor_scan.h"
 
 namespace {
 
 using namespace tapa::cc;
-
-const char* LevelStr(TaskLevel level) {
-  return level == TaskLevel::kUpper ? "upper" : "lower";
-}
-
-// Maps the per-task synthesis policy to its wire string. tapa-ir's SynthTarget
-// is closed over {"hls", "ignore"}, so both HLS and Vitis tasks collapse to
-// "hls": the per-task field only says whether to synthesize. The flow itself is
-// emitted once at the graph root (see FlowStr).
-const char* SynthStr(SynthTarget target) {
-  switch (target) {
-    case SynthTarget::kIgnore:
-      return "ignore";
-    case SynthTarget::kXilinxHls:
-    case SynthTarget::kXilinxVitis:
-      return "hls";
-  }
-  // Unreachable for a valid enumerator; keeps -Wswitch (not -Wswitch-default)
-  // free to flag a future enumerator that needs a policy decision here.
-  return "hls";
-}
-
-// Wire string for the root-level vendor flow. Kebab-case, unlike the per-task
-// policy above.
-const char* FlowStr(bool is_vitis) {
-  return is_vitis ? "xilinx-vitis" : "xilinx-hls";
-}
-
-nlohmann::json PortJson(const Port& port) {
-  nlohmann::json j{{kFieldCat, TapaKindCat(port.kind)},
-                   {kFieldName, port.name},
-                   {kFieldType, port.ctype},
-                   {kFieldWidth, port.width}};
-  if (port.chan_count) j[kFieldChanCount] = *port.chan_count;
-  if (port.chan_size) j[kFieldChanSize] = *port.chan_size;
-  return j;
-}
-
-nlohmann::json InstanceJson(const Instance& inst) {
-  nlohmann::json j;
-  j[kFieldStep] = inst.step;
-  if (inst.name) j[kFieldName] = *inst.name;
-  j[kFieldArgs] = nlohmann::json::object();
-  for (const auto& [port, arg] : inst.args) {
-    // A name serializes as a string; a constant as {width, value}, leaving
-    // the Verilog spelling to the RTL backend.
-    nlohmann::json bound = arg.value ? nlohmann::json{{kFieldWidth, arg.width},
-                                                      {kFieldValue, *arg.value}}
-                                     : nlohmann::json(arg.arg);
-    j[kFieldArgs][port] = {{kFieldArg, std::move(bound)},
-                           {kFieldCat, TapaKindCat(arg.cat)}};
-  }
-  return j;
-}
-
-nlohmann::json StreamJson(const StreamDecl& stream) {
-  nlohmann::json j;
-  // External top-level stream ports have no depth; the key is omitted so
-  // tapa-ir parses the entry as an external (kernel-boundary) FIFO.
-  if (stream.depth) j[kFieldDepth] = *stream.depth;
-  if (stream.produced_by) {
-    j[kFieldProducedBy] = {stream.produced_by->task, stream.produced_by->index};
-  }
-  if (stream.consumed_by) {
-    j[kFieldConsumedBy] = {stream.consumed_by->task, stream.consumed_by->index};
-  }
-  return j;
-}
 
 llvm::cl::OptionCategory g_category("tapacc-ng options");
 
@@ -134,66 +75,59 @@ llvm::cl::opt<CliTarget> g_target(
         clEnumValN(CliTarget::kHls, "xilinx-hls", "Xilinx HLS (default)"),
         clEnumValN(CliTarget::kVitis, "xilinx-vitis", "Xilinx Vitis")));
 
-class NgConsumer : public clang::ASTConsumer {
+// One frontend action over one TU, feeding the shared builder. The index
+// pass also carries the vendor scan (attached once per TU, preprocessor
+// phase included, so its warnings are not duplicated by the rewrite pass).
+class BuilderAction : public clang::ASTFrontendAction {
  public:
-  void HandleTranslationUnit(clang::ASTContext& ctx) override {
-    using namespace tapa::cc;
-    if (!g_no_vendor_scan) ScanVendorAsts(ctx);
-    const bool is_vitis = g_target == CliTarget::kVitis;
-    const SynthTarget default_target =
-        is_vitis ? SynthTarget::kXilinxVitis : SynthTarget::kXilinxHls;
+  BuilderAction(ProgramBuilder& builder, bool index_pass)
+      : builder_(builder), index_pass_(index_pass) {}
 
-    Program program = BuildProgram(ctx, g_top, default_target);
-    const XilinxBackend hls(/*is_vitis=*/false);
-    const XilinxBackend vitis(/*is_vitis=*/true);
-    const IgnoreBackend ignore;
-
-    nlohmann::json out;
-    out[kFieldSchemaVersion] = kSchemaVersion;
-    out[kFieldTop] = program.top;
-    out[kFieldTarget] = FlowStr(is_vitis);
-    out[kFieldTasks] = nlohmann::json::object();
-    for (const auto& [name, task] : program.tasks) {
-      const Backend* backend = &hls;
-      if (task.target == SynthTarget::kXilinxVitis) backend = &vitis;
-      if (task.target == SynthTarget::kIgnore) backend = &ignore;
-
-      nlohmann::json& t = out[kFieldTasks][name];
-      t[kFieldCode] = EmitTaskCode(program, task, *backend, ctx);
-      t[kFieldLevel] = LevelStr(task.level);
-      t[kFieldSynth] = SynthStr(task.target);
-      t[kFieldReadableName] = task.readable_name;
-      t[kFieldPorts] = nlohmann::json::array();
-      for (const Port& port : task.ports)
-        t[kFieldPorts].push_back(PortJson(port));
-      if (task.level == TaskLevel::kUpper) {
-        t[kFieldTasks] = nlohmann::json::object();
-        for (const auto& [child, insts] : task.instances) {
-          nlohmann::json arr = nlohmann::json::array();
-          for (const Instance& inst : insts) arr.push_back(InstanceJson(inst));
-          t[kFieldTasks][child] = std::move(arr);
-        }
-        t[kFieldFifos] = nlohmann::json::object();
-        for (const auto& [fifo, stream] : task.streams) {
-          t[kFieldFifos][fifo] = StreamJson(stream);
-        }
-      }
-    }
-    std::cout << out;
-  }
-};
-
-class NgAction : public clang::ASTFrontendAction {
- public:
   bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
-    if (!g_no_vendor_scan) AttachVendorScan(ci.getPreprocessor());
+    if (index_pass_ && !g_no_vendor_scan)
+      AttachVendorScan(ci.getPreprocessor());
     return true;
   }
 
   std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
       clang::CompilerInstance&, llvm::StringRef) override {
-    return std::make_unique<NgConsumer>();
+    class Consumer : public clang::ASTConsumer {
+     public:
+      Consumer(ProgramBuilder& builder, bool index_pass)
+          : builder_(builder), index_pass_(index_pass) {}
+      void HandleTranslationUnit(clang::ASTContext& ctx) override {
+        if (index_pass_) {
+          if (!g_no_vendor_scan) ScanVendorAsts(ctx);
+          builder_.IndexTu(ctx);
+        } else {
+          builder_.RewriteTu(ctx);
+        }
+      }
+
+     private:
+      ProgramBuilder& builder_;
+      bool index_pass_;
+    };
+    return std::make_unique<Consumer>(builder_, index_pass_);
   }
+
+ private:
+  ProgramBuilder& builder_;
+  bool index_pass_;
+};
+
+class BuilderActionFactory : public clang::tooling::FrontendActionFactory {
+ public:
+  BuilderActionFactory(ProgramBuilder& builder, bool index_pass)
+      : builder_(builder), index_pass_(index_pass) {}
+
+  std::unique_ptr<clang::FrontendAction> create() override {
+    return std::make_unique<BuilderAction>(builder_, index_pass_);
+  }
+
+ private:
+  ProgramBuilder& builder_;
+  bool index_pass_;
 };
 
 }  // namespace
@@ -205,7 +139,28 @@ int main(int argc, const char** argv) {
     llvm::errs() << llvm::toString(parser.takeError()) << "\n";
     return 1;
   }
-  clang::tooling::ClangTool tool(parser->getCompilations(),
-                                 parser->getSourcePathList());
-  return tool.run(clang::tooling::newFrontendActionFactory<NgAction>().get());
+  const bool is_vitis = g_target == CliTarget::kVitis;
+  ProgramBuilder builder(g_top.getValue(), is_vitis ? SynthTarget::kXilinxVitis
+                                                    : SynthTarget::kXilinxHls);
+
+  clang::tooling::ClangTool index_tool(parser->getCompilations(),
+                                       parser->getSourcePathList());
+  BuilderActionFactory index_factory(builder, /*index_pass=*/true);
+  int rc = index_tool.run(&index_factory);
+  if (rc == 0 && !builder.MergeAndDiscover()) {
+    for (const std::string& error : builder.errors()) {
+      llvm::errs() << "error: " << error << "\n";
+    }
+    return 1;
+  }
+  if (rc != 0) return rc;
+
+  clang::tooling::ClangTool rewrite_tool(parser->getCompilations(),
+                                         parser->getSourcePathList());
+  BuilderActionFactory rewrite_factory(builder, /*index_pass=*/false);
+  rc = rewrite_tool.run(&rewrite_factory);
+  if (rc != 0) return rc;
+
+  std::cout << builder.EmitJson();
+  return 0;
 }

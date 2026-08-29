@@ -50,9 +50,8 @@ std::string CanonicalSignature(const clang::FunctionDecl* func) {
   std::string signature;
   for (unsigned i = 0; i < func->getNumParams(); ++i) {
     if (i > 0) signature += ",";
-    signature += func->getParamDecl(i)->getType()
-                     .getCanonicalType()
-                     .getAsString(policy);
+    signature +=
+        func->getParamDecl(i)->getType().getCanonicalType().getAsString(policy);
   }
   return signature;
 }
@@ -131,10 +130,9 @@ nlohmann::json InstanceJson(const Instance& inst) {
   for (const auto& [port, arg] : inst.args) {
     // A name serializes as a string; a constant as {width, value}, leaving
     // the Verilog spelling to the RTL backend.
-    nlohmann::json bound =
-        arg.value ? nlohmann::json{{kFieldWidth, arg.width},
-                                   {kFieldValue, *arg.value}}
-                  : nlohmann::json(arg.arg);
+    nlohmann::json bound = arg.value ? nlohmann::json{{kFieldWidth, arg.width},
+                                                      {kFieldValue, *arg.value}}
+                                     : nlohmann::json(arg.arg);
     j[kFieldArgs][port] = {{kFieldArg, std::move(bound)},
                            {kFieldCat, TapaKindCat(arg.cat)}};
   }
@@ -180,8 +178,8 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.signature = CanonicalSignature(def);
   sighting.is_spec = def->isFunctionTemplateSpecialization();
   sighting.implicit_spec =
-      sighting.is_spec && def->getTemplateSpecializationKind() ==
-                              clang::TSK_ImplicitInstantiation;
+      sighting.is_spec &&
+      def->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation;
   sighting.key = KeyOf(mangler, def);
   sighting.name = sighting.is_spec ? sighting.key : sighting.plain_name;
   sighting.readable_name = ReadableTaskName(ctx, def);
@@ -317,10 +315,12 @@ bool ProgramBuilder::MergeAndDiscover() {
           first.signature == other.signature) {
         continue;
       }
-      Fail("task '" + first.name + "' is defined differently in two "
-           "translation units: " + other.loc + " (" +
-           tu_files_[other.tu] + ") and " + first.loc + " (" +
-           tu_files_[first.tu] + "); a task sighted in several translation "
+      Fail("task '" + first.name +
+           "' is defined differently in two "
+           "translation units: " +
+           other.loc + " (" + tu_files_[other.tu] + ") and " + first.loc +
+           " (" + tu_files_[first.tu] +
+           "); a task sighted in several translation "
            "units must be identical in each");
       return false;
     }
@@ -350,16 +350,17 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
   }
   if (top_candidates.empty()) {
-    Fail("top-level task '" + top_ + "' not found (scanned translation "
-         "units: " + ScannedTus() + ")");
+    Fail("top-level task '" + top_ +
+         "' not found (scanned translation "
+         "units: " +
+         ScannedTus() + ")");
     return false;
   }
   if (top_candidates.size() > 1) {
-    Fail("top-level task '" + top_ + "' has multiple definitions: " +
-         top_candidates[0]->loc + " (" +
-         tu_files_[top_candidates[0]->tu] + ") and " +
-         top_candidates[1]->loc + " (" +
-         tu_files_[top_candidates[1]->tu] + ")");
+    Fail("top-level task '" + top_ +
+         "' has multiple definitions: " + top_candidates[0]->loc + " (" +
+         tu_files_[top_candidates[0]->tu] + ") and " + top_candidates[1]->loc +
+         " (" + tu_files_[top_candidates[1]->tu] + ")");
     return false;
   }
   const std::string top_key = top_candidates[0]->key;
@@ -406,10 +407,11 @@ bool ProgramBuilder::MergeAndDiscover() {
             ScannedTus() + ")";
         for (const auto& [key2, sightings] : defs_) {
           if (sightings.front().fqn == edge.callee_fqn) {
-            message += "; a function with the same name but a different "
-                       "signature is defined at " +
-                       sightings.front().loc + " (" +
-                       tu_files_[sightings.front().tu] + ")";
+            message +=
+                "; a function with the same name but a different "
+                "signature is defined at " +
+                sightings.front().loc + " (" + tu_files_[sightings.front().tu] +
+                ")";
             break;
           }
         }
@@ -420,12 +422,13 @@ bool ProgramBuilder::MergeAndDiscover() {
       const DefSighting& callee = found->second.front();
       if (callee.internal) {
         Fail("task '" + callee.name + "' invoked by '" + edge.caller_name +
-             "' at " + edge.loc + " has internal linkage (static or "
+             "' at " + edge.loc +
+             " has internal linkage (static or "
              "anonymous namespace); tasks must have external linkage");
         return false;
       }
-      discover(callee, callee.is_spec ? std::optional<std::string>(key)
-                                      : std::nullopt);
+      discover(callee,
+               callee.is_spec ? std::optional<std::string>(key) : std::nullopt);
     }
   }
 
@@ -440,16 +443,15 @@ bool ProgramBuilder::MergeAndDiscover() {
     by_plain_name[sighting.plain_name].push_back(&sighting);
   }
   for (const auto& [key, task] : tasks_) {
-    const std::string plain_name =
-        FirstSighting(key).plain_name;
+    const std::string plain_name = FirstSighting(key).plain_name;
     const auto it = by_plain_name.find(plain_name);
     if (it == by_plain_name.end()) continue;
     if (it->second.size() > 1) {
       const DefSighting* a = it->second[0];
       const DefSighting* b = it->second[1];
       Fail("task '" + plain_name + "' re-defined: " + b->loc + " (" +
-           tu_files_[b->tu] + ") and " + a->loc + " (" +
-           tu_files_[a->tu] + "); task names must be unique across the "
+           tu_files_[b->tu] + ") and " + a->loc + " (" + tu_files_[a->tu] +
+           "); task names must be unique across the "
            "program");
       return false;
     }
