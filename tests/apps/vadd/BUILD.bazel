@@ -16,9 +16,11 @@ exports_files(
     ],
     visibility = [
         # `//tapa-core:tapacc_conformance_test` analyzes this kernel with the
-        # real tapacc to check its output against the tapa-ir schema.
+        # real tapacc to check its output against the tapa-ir schema; the
+        # multi-file capability runner uses it as its positive control.
         "//tapa-core:__pkg__",
         "//tests/apps:__pkg__",
+        "//tests/apps:__subpackages__",
         "//tests/functional:__subpackages__",
     ],
 )

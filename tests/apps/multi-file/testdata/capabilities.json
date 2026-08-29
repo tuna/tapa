@@ -1,0 +1,40 @@
+{
+    "capabilities": [
+        {
+            "expect": "pass",
+            "mode": "flatten",
+            "name": "sanity_vadd_analyze",
+            "note": "positive control, never flips; MF6 drops the mode when the flatten path dies"
+        },
+        {
+            "expect": "pass",
+            "mode": "flatten",
+            "name": "multi_tu_analyze",
+            "note": "flipped with the MF1 multi-TU merge (tapacc ProgramBuilder)"
+        },
+        {
+            "expect": "pass",
+            "mode": "flatten",
+            "name": "macro_invoke_seen",
+            "note": "flipped with the MF1 multi-TU merge (tapacc ProgramBuilder)"
+        },
+        {
+            "expect": "xfail",
+            "mode": "flatten",
+            "name": "synthesis_branch_preserved",
+            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+        },
+        {
+            "expect": "xfail",
+            "mode": "flatten",
+            "name": "header_not_inlined",
+            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+        },
+        {
+            "expect": "xfail",
+            "mode": "flatten",
+            "name": "line_directive_present",
+            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+        }
+    ]
+}

@@ -1,4 +1,5 @@
 mod analyze;
+mod capabilities;
 mod common;
 mod package_layout;
 mod parity;
@@ -25,6 +26,7 @@ fn run(args: &[OsString]) -> Result<()> {
     };
     match command {
         "analyze-smoke" => analyze::analyze_smoke(),
+        "mf-capabilities" => capabilities::mf_capabilities(),
         "check-xo-reports" => {
             let path = arg_str(args, 1, "check-xo-reports <workspace-path>")?;
             reports::check_xo_reports(&common::workspace_path(path))
@@ -51,6 +53,6 @@ fn run(args: &[OsString]) -> Result<()> {
 }
 
 fn usage() -> String {
-    "usage: tapa-test-tools <analyze-smoke|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout|parity> ..."
+    "usage: tapa-test-tools <analyze-smoke|mf-capabilities|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout|parity> ..."
         .to_string()
 }
