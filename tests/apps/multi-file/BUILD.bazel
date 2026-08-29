@@ -1,11 +1,12 @@
 """The multi-file test app: the spec for the multi-file frontend campaign.
 
-Kernel tier (tapa_xo / xclbin / xosim) is deliberately not wired yet; the
-pipeline cannot build multi-TU kernels until the merge milestone lands.
+The kernel tier spans two translation units; a.cpp owns the top, Produce,
+and the ScaleValue helper, b.cpp owns Consume, and the shared header
+defines the Combine<float> template task. helper.h is reached via -I from
+tests/apps/multi-file-ext, one directory outside this package.
 """
 
-load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "tapa_app_test")
 load("//bazel:test_tool_rules.bzl", "test_tool_test")
 
 exports_files(
@@ -26,36 +27,31 @@ exports_files(
     ],
 )
 
-cc_binary(
-    name = "multi-file-host",
-    srcs = [
+tapa_app_test(
+    name = "multi-file",
+    host_deps = ["//tests/apps/multi-file-ext:helper"],
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    hw_test_args = ["1000"],
+    # helper.h rides in hdrs (not just includes) so the sandbox stages the
+    # multi-file-ext dir the -I flag points into; the include label only
+    # names the path, it does not stage files.
+    kernel_hdrs = [
+        "multi-file.h",
+        "//tests/apps/multi-file-ext:helper.h",
+    ],
+    kernel_includes = [
+        ".",
+        "//tests/apps/multi-file-ext:.",
+    ],
+    kernel_srcs = [
         "a.cpp",
         "b.cpp",
-        "multi-file.h",
-        "multi-file-host.cpp",
     ],
-    visibility = ["//tests/functional:__subpackages__"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "//tests/apps/multi-file-ext:helper",
-        "@gflags",
-    ],
-)
-
-sh_test(
-    name = "multi-file",
-    size = "medium",
-    srcs = select({
-        "//bazel:is_macos": ["//bazel:sim_env.sh"],
-        "//conditions:default": ["//bazel:v++_env.sh"],
-    }),
-    args = ["$(location multi-file-host)"] + select({
-        "//bazel:is_macos": ["1000"],
-        "//conditions:default": [],
-    }),
-    data = [":multi-file-host"],
-    env = {"TAPA_CONCURRENCY": "2"},
-    tags = ["cpu:2"],
+    macos_sim_args = ["1000"],
+    top_name = "MultiFileTop",
 )
 
 # The MF0 capability tripwire: runs `mf-capabilities` (tools/test-tools),

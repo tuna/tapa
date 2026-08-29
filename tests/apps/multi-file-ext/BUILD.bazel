@@ -3,7 +3,12 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
 exports_files(
-    ["helper.h"],
+    [
+        # "." is the include dir the multi-file kernel's tapa_xo passes as
+        # --cflags -I; exporting it also stages the dir for the sandbox.
+        ".",
+        "helper.h",
+    ],
     visibility = [
         "//tapa-core:__pkg__",
         "//tests/apps:__pkg__",
