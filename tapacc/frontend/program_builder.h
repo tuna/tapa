@@ -61,8 +61,10 @@ class ProgramBuilder {
   bool MergeAndDiscover();
 
   // Pass 2. Builds the per-TU view and emits the rewritten text of every
-  // merged task whose definition this TU owns. Diagnostics (stream wiring,
-  // leaked attributes) go through `ctx` as today.
+  // merged task whose definition this TU owns, plus — in a multi-TU program —
+  // this TU's shared file (every task reduced to its rewritten signature,
+  // helper definitions intact). Diagnostics (stream wiring, leaked
+  // attributes) go through `ctx` as today.
   void RewriteTu(clang::ASTContext& ctx);
 
   // The per-TU Program view of the merged task set: `file_funcs` /
@@ -86,10 +88,15 @@ class ProgramBuilder {
   // owning TU, so this is a defensive empty, not a normal state).
   const std::string& TaskCode(const std::string& name) const;
 
+  // The rewritten text of TU `tu`'s shared file, empty in a single-TU
+  // program (no task references one there).
+  const std::string& SharedCode(int tu) const;
+
   // Writes every merged task's rewritten text to `<emit_dir>/<name>.cpp`,
-  // the file its `srcs` manifest entry in EmitJson names. A file already
-  // holding the same bytes is left alone so its mtime survives a re-run.
-  // Returns false and sets `*error` on a write failure.
+  // plus `<emit_dir>/<tu basename>-shared.cpp` for every TU in a multi-TU
+  // program, the files the `srcs` manifest entries in EmitJson name. A file
+  // already holding the same bytes is left alone so its mtime survives a
+  // re-run. Returns false and sets `*error` on a write failure.
   bool WriteSources(const std::string& emit_dir, std::string* error);
 
   // The single merged task graph, in today's field order and spelling.
@@ -168,6 +175,10 @@ class ProgramBuilder {
   TuIndex IndexTuImpl(clang::ASTContext& ctx) const;
   int RegisterTu(const std::string& file);
   int TuOf(const std::string& file) const;
+  // The shared file name of one TU, and the merge-time check that TU
+  // basenames stay distinct so those names cannot collide.
+  std::string SharedSourceName(int tu) const;
+  bool CheckSharedFileNames();
   void Fail(std::string message);
   std::string ScannedTus() const;
   const DefSighting& FirstSighting(const std::string& key) const;
@@ -184,6 +195,9 @@ class ProgramBuilder {
   std::map<std::string, MergedTask> tasks_;
   // graph name -> rewritten text, stored by the owning RewriteTu call.
   std::map<std::string, std::string> code_;
+  // TU id -> that TU's shared-file text, stored by its RewriteTu call.
+  // Empty (never resized) in a single-TU program.
+  std::vector<std::string> shared_code_;
   std::vector<std::string> errors_;
 };
 

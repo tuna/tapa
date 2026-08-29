@@ -351,8 +351,15 @@ const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
   return pattern != nullptr ? pattern->getCanonicalDecl() : nullptr;
 }
 
-std::string EmitTaskCode(const Program& program, const TaskModel& task,
-                         const Backend& backend, clang::ASTContext& ctx) {
+// One rewritten main-file text. `current` is the task this file is the HLS
+// entry point for -- its body is fully rewritten, and the mangled wrapper of
+// a template specialization is inserted after its invoker -- or null, the
+// shared variant, where EVERY task takes the non-current path (rewritten
+// signature, body stripped) and helpers are rewritten exactly as in any
+// task's file. `label` names the emitted file in diagnostics.
+std::string EmitFile(const Program& program, const TaskModel* current,
+                     const Backend& backend, clang::ASTContext& ctx,
+                     const std::string& label) {
   clang::Rewriter rewriter(ctx.getSourceManager(), ctx.getLangOpts());
 
   // The source decls that are template patterns for some task specialization,
@@ -365,7 +372,8 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
       spec_primaries.insert(primary);
     }
   }
-  const clang::FunctionDecl* current_primary = SpecPrimary(task);
+  const clang::FunctionDecl* current_primary =
+      current == nullptr ? nullptr : SpecPrimary(*current);
 
   // Non-template task functions: signature rewritten per level; current task
   // keeps a rewritten body, the rest become signatures.
@@ -373,7 +381,7 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
     if (model.is_template_spec) continue;  // reached via its primary below
     const bool is_top = name == program.top;
     backend.RewriteSignature(model, is_top, rewriter);
-    if (name == task.name) {
+    if (current != nullptr && name == current->name) {
       backend.RewriteTaskFunc(model, is_top, rewriter);
       LowerParamAttrs(model.def, backend, rewriter);
       LowerFuncAttrs(model.def, backend, rewriter);
@@ -404,7 +412,7 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
         // template-parameter type (e.g. `tapa_mmap_type mmap`) is classified as
         // a scalar here (no interface pragma) -- only the concrete wrapper
         // does.
-        TaskModel primary = task;
+        TaskModel primary = *current;
         primary.def = func;
         backend.RewriteTaskFunc(primary, /*is_top=*/false, rewriter);
         LowerParamAttrs(func, backend, rewriter);
@@ -459,8 +467,10 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
   }
 
   // Emit the mangled wrapper for the current specialization after its invoker.
-  if (task.is_template_spec) {
-    InsertWrapper(task, backend, ctx, rewriter);
+  // The shared variant has no current task and no wrapper: the wrapper is the
+  // specialization's entry point and belongs in its own file alone.
+  if (current != nullptr && current->is_template_spec) {
+    InsertWrapper(*current, backend, ctx, rewriter);
   }
 
   const clang::SourceManager& sm = ctx.getSourceManager();
@@ -469,8 +479,19 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
   const std::string code = buffer == nullptr
                                ? sm.getBufferData(main_file).str()  // no edits
                                : std::string(buffer->begin(), buffer->end());
-  ReportLeakedAttrs(code, task.name, ctx);
+  ReportLeakedAttrs(code, label, ctx);
   return code;
+}
+
+std::string EmitTaskCode(const Program& program, const TaskModel& task,
+                         const Backend& backend, clang::ASTContext& ctx) {
+  return EmitFile(program, &task, backend, ctx, task.name);
+}
+
+std::string EmitSharedCode(const Program& program, const Backend& backend,
+                           clang::ASTContext& ctx,
+                           const std::string& file_name) {
+  return EmitFile(program, nullptr, backend, ctx, file_name);
 }
 
 }  // namespace tapa::cc

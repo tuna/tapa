@@ -18,6 +18,16 @@ namespace tapa::cc {
 std::string EmitTaskCode(const Program& program, const TaskModel& task,
                          const Backend& backend, clang::ASTContext& ctx);
 
+// The shared variant of the same text: no current task, so EVERY task is
+// reduced to its rewritten signature while helpers keep their rewritten
+// definitions. A task blob built from another translation unit carries that
+// TU's helper definitions only as declarations, so each TU also emits this
+// file to hand them to every other TU's HLS job. `file_name` labels the
+// emitted text in diagnostics.
+std::string EmitSharedCode(const Program& program, const Backend& backend,
+                           clang::ASTContext& ctx,
+                           const std::string& file_name);
+
 }  // namespace tapa::cc
 
 #endif  // TAPA_CODEGEN_REWRITE_H_

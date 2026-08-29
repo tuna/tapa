@@ -178,6 +178,73 @@ TEST(Merge, ConflictingSightingsAreAnError) {
   EXPECT_TRUE(Contains(error, kTuB));
 }
 
+// ── Shared files: cross-TU helper definitions ──────────────────────────
+
+// TU A owns the top and the helper that TU B's task calls; TU B owns the
+// leaf task the top invokes. Both directions of the cross-TU boundary.
+constexpr char kHelperOwnerTuA[] = R"cpp(
+  float Half(float v) { return v / 2.f; }
+  void Worker(tapa::istream<float>& in, tapa::ostream<float>& out);
+  void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {
+    tapa::stream<float> q;
+    tapa::task().invoke(Worker, x, q).invoke(Worker, q, y);
+  }
+)cpp";
+
+constexpr char kHelperUserTuB[] = R"cpp(
+  float Half(float v);
+  void Worker(tapa::istream<float>& in, tapa::ostream<float>& out) {
+    for (int i = 0; i < 3; ++i) out.write(Half(in.read()));
+  }
+)cpp";
+
+TEST(Merge, TaskSrcsListEveryOtherTusSharedFile) {
+  // A task's manifest is its own blob plus every OTHER TU's shared file,
+  // in input-file order; the owning TU's shared file is not its own src.
+  auto m = Build(kHelperOwnerTuA, kHelperUserTuB, "Top");
+  const nlohmann::json tasks = m.builder.EmitJson()["tasks"];
+  ASSERT_EQ(tasks.size(), 2u);
+  EXPECT_EQ(tasks.at("Top")["srcs"],
+            nlohmann::json::array({"Top.cpp", "tu_b-shared.cpp"}));
+  EXPECT_EQ(tasks.at("Worker")["srcs"],
+            nlohmann::json::array({"Worker.cpp", "tu_a-shared.cpp"}));
+}
+
+TEST(Merge, SharedFileCarriesForeignHelperAndStubsEveryTask) {
+  // TU A's shared file is TU A's text with no current task: Half keeps its
+  // rewritten definition (what TU B's Worker blob only declares), while
+  // every task — Top's own definition included — is a rewritten signature.
+  auto m = Build(kHelperOwnerTuA, kHelperUserTuB, "Top");
+  const std::string shared = m.builder.SharedCode(0);
+  EXPECT_TRUE(Contains(shared, "return v / 2.f;"));
+  EXPECT_TRUE(Contains(shared, "#pragma HLS inline off"));
+  EXPECT_TRUE(Contains(shared, "void Top("));
+  EXPECT_FALSE(Contains(shared, ".invoke("));
+  EXPECT_FALSE(Contains(shared, "tapa::stream<float> q"));
+  EXPECT_FALSE(Contains(shared, "out.write(Half(in.read())"));
+
+  // TU B's shared file mirrors that shape: Worker stubbed, no helper
+  // definition of its own to carry.
+  const std::string shared_b = m.builder.SharedCode(1);
+  EXPECT_TRUE(Contains(shared_b, "void Worker("));
+  EXPECT_FALSE(Contains(shared_b, "out.write(Half(in.read())"));
+}
+
+TEST(Merge, DuplicateTuBasenamesAreAnError) {
+  // Two TUs, distinct paths, one basename: no distinct shared file name
+  // exists for them, so the merge refuses to run.
+  auto a = ParseTu("d1/dup.cpp", kHelperOwnerTuA);
+  auto b = ParseTu("d2/dup.cpp", kHelperUserTuB);
+  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
+  builder.IndexTu(a->getASTContext());
+  builder.IndexTu(b->getASTContext());
+  EXPECT_FALSE(builder.MergeAndDiscover());
+  const std::string error = OneError(builder);
+  EXPECT_TRUE(Contains(error, "share the basename 'dup'"));
+  EXPECT_TRUE(Contains(error, "d1/dup.cpp"));
+  EXPECT_TRUE(Contains(error, "d2/dup.cpp"));
+}
+
 // ── Rule 3: template specializations merge by mangled key ──────────────
 
 constexpr char kTemplate[] = R"cpp(
@@ -331,6 +398,21 @@ TEST(Merge, SingleTuReachableSetAndLevels) {
   EXPECT_EQ(builder.FindTask("LeafIgn")->level, TaskLevel::kLower);
   EXPECT_EQ(builder.FindTask("LeafIgn")->target, SynthTarget::kIgnore);
   EXPECT_EQ(builder.FindTask("Leaf")->target, SynthTarget::kXilinxHls);
+}
+
+TEST(Merge, SingleTuSrcsStayOneFilePerTask) {
+  // No second TU means no shared file exists to reference: the manifest is
+  // byte-identical to the pre-shared-file single-TU output.
+  auto ast = ParseTu("single.cpp", kProgram);
+  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
+  builder.IndexTu(ast->getASTContext());
+  ASSERT_TRUE(builder.MergeAndDiscover());
+  builder.RewriteTu(ast->getASTContext());
+
+  const nlohmann::json tasks = builder.EmitJson()["tasks"];
+  for (const auto& [name, task] : tasks.items()) {
+    ASSERT_EQ(task["srcs"], nlohmann::json::array({name + ".cpp"}));
+  }
 }
 
 TEST(Merge, SingleTuTemplateSpecialization) {

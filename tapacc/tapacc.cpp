@@ -6,9 +6,13 @@
 // under the "graph" key of the work dir's tapa.json.
 //
 // The per-task rewritten C++ text is NOT inline in that JSON: each task's
-// `srcs` names a file under the required `-emit-dir` that tapacc writes
-// the text to (`<emit-dir>/<task>.cpp`), so the work dir's rewritten/
-// tree plus tapa.json together are the analyze artifact.
+// `srcs` names files under the required `-emit-dir` that tapacc writes the
+// text to -- the task's own blob `<emit-dir>/<task>.cpp`, plus, in a
+// multi-TU program, every OTHER TU's shared file `<emit-dir>/<tu
+// basename>-shared.cpp` (that TU's text with every task reduced to a
+// rewritten signature, carrying the helper definitions the task's blob only
+// declares). The work dir's rewritten/ tree plus tapa.json together are the
+// analyze artifact.
 //
 // Each ClangTool action owns its ASTContext and AST nodes never outlive
 // their TU, so the pipeline runs as TWO passes over the same file list

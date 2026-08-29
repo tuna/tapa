@@ -8,6 +8,7 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/ErrorHandling.h"
+#include "llvm/Support/Path.h"
 
 #include "build_program.h"
 #include "classify.h"
@@ -281,6 +282,34 @@ std::string ProgramBuilder::ScannedTus() const {
   return scanned;
 }
 
+// `<tu basename>-shared.cpp`, the file WriteSources writes this TU's shared
+// text to and every other TU's task manifests name.
+std::string ProgramBuilder::SharedSourceName(int tu) const {
+  return llvm::sys::path::stem(tu_files_[tu]).str() + "-shared.cpp";
+}
+
+// A shared file is named after its TU's basename, so two TUs with one
+// basename have no distinguishable shared file. Flattened input cannot hit
+// this (every flatten path carries a content digest in its name); it exists
+// for the rare genuinely-equal basenames, and the tree path replaces the
+// whole scheme with source-path-mirrored names.
+bool ProgramBuilder::CheckSharedFileNames() {
+  if (tu_files_.size() < 2) return true;
+  std::map<std::string, size_t> stem_tu;
+  for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
+    const std::string stem = llvm::sys::path::stem(tu_files_[tu]).str();
+    auto [it, inserted] = stem_tu.emplace(stem, tu);
+    if (inserted) continue;
+    Fail("translation units " + tu_files_[it->second] + " and " +
+         tu_files_[tu] + " share the basename '" + stem +
+         "'; each translation unit's shared file is named after its "
+         "basename, so the two cannot be told apart. Rename one of the "
+         "inputs");
+    return false;
+  }
+  return true;
+}
+
 void ProgramBuilder::Fail(std::string message) {
   errors_.push_back(std::move(message));
 }
@@ -304,6 +333,8 @@ const ProgramBuilder::DefSighting& ProgramBuilder::FirstSighting(
 }
 
 bool ProgramBuilder::MergeAndDiscover() {
+  if (!CheckSharedFileNames()) return false;
+
   // Rule 2: one key, one task. Sighted definitions must agree on
   // level/target/readable_name/signature; anything else is two different
   // functions wearing one identity.
@@ -508,6 +539,22 @@ void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
     if (model.target == SynthTarget::kIgnore) backend = &ignore;
     code_[model.name] = EmitTaskCode(view, model, *backend, ctx);
   }
+
+  // The TU's shared file: every task of this TU reduced to its rewritten
+  // signature, helpers rewritten, no current task. A task blob built from
+  // ANOTHER TU holds this TU's helper definitions only as declarations --
+  // flattened input inlines headers, not other TUs -- so the definitions
+  // have to travel in a file of their own (EmitJson lists it in every other
+  // TU's task manifests). Single-TU programs never reference one, so they
+  // emit nothing extra and stay byte-identical to the single-file path.
+  // The default target's backend rewrites it: the file has no task of its
+  // own whose per-task target could pick a different one.
+  if (tu_files_.size() > 1) {
+    shared_code_.resize(tu_files_.size());
+    const Backend& backend =
+        default_target_ == SynthTarget::kXilinxVitis ? vitis : hls;
+    shared_code_[tu] = EmitSharedCode(view, backend, ctx, SharedSourceName(tu));
+  }
 }
 
 const TaskModel* ProgramBuilder::FindTask(const std::string& name) const {
@@ -521,6 +568,13 @@ const std::string& ProgramBuilder::TaskCode(const std::string& name) const {
   static const std::string kEmpty;
   auto it = code_.find(name);
   return it == code_.end() ? kEmpty : it->second;
+}
+
+const std::string& ProgramBuilder::SharedCode(int tu) const {
+  static const std::string kEmpty;
+  return tu < 0 || static_cast<size_t>(tu) >= shared_code_.size()
+             ? kEmpty
+             : shared_code_[tu];
 }
 
 namespace {
@@ -566,6 +620,13 @@ bool ProgramBuilder::WriteSources(const std::string& emit_dir,
     const std::string path = emit_dir + "/" + name + ".cpp";
     if (!WriteIfChanged(path, TaskCode(name), error)) return false;
   }
+  // The shared files follow, in TU order -- the order EmitJson lists them
+  // in every other TU's task manifests.
+  for (size_t tu = 0; tu < shared_code_.size(); ++tu) {
+    const std::string path =
+        emit_dir + "/" + SharedSourceName(static_cast<int>(tu));
+    if (!WriteIfChanged(path, shared_code_[tu], error)) return false;
+  }
   return true;
 }
 
@@ -584,10 +645,17 @@ nlohmann::json ProgramBuilder::EmitJson() const {
   for (const auto& [name, task] : by_name) {
     const TaskModel& model = task->model;
     nlohmann::json& t = out[kFieldTasks][name];
-    // The manifest names the file this task's rewritten text was written
-    // to under `-emit-dir` (WriteSources); the text itself is not inline
-    // in the JSON.
-    t[kFieldSrcs] = nlohmann::json::array({name + ".cpp"});
+    // The manifest names the files this task's HLS job compiles, under
+    // `-emit-dir` (WriteSources): its own rewritten blob first, then every
+    // OTHER TU's shared file in input-file order, carrying the helper
+    // definitions this task's blob only declares. A single-TU program lists
+    // the blob alone, exactly as it did before shared files existed.
+    nlohmann::json srcs = nlohmann::json::array({name + ".cpp"});
+    for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
+      if (static_cast<int>(tu) == task->owner_tu) continue;
+      srcs.push_back(SharedSourceName(static_cast<int>(tu)));
+    }
+    t[kFieldSrcs] = std::move(srcs);
     t[kFieldIncludeDirs] = nlohmann::json::array();
     t[kFieldDefines] = nlohmann::json::array();
     t[kFieldLevel] = LevelStr(model.level);

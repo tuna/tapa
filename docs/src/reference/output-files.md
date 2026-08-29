@@ -67,7 +67,7 @@ Created during `tapa analyze`. Contains preprocessed (flattened) copies of the i
 
 **`rewritten/`**
 
-The rewritten C++ source tree written by `tapacc` during `tapa analyze`. Each task in `tapa.json` carries a source manifest (`srcs`, `include_dirs`, `defines`) whose `srcs` paths are relative to this tree; `tapa synth` stages them (verifying they exist and resolving them to absolute paths) and hands each task's file to `vitis_hls`. Because the manifest references this tree, `tapa.json` alone is not self-contained: the work directory — the JSON plus `rewritten/` — is the analyze artifact.
+The rewritten C++ source tree written by `tapacc` during `tapa analyze`. Each task in `tapa.json` carries a source manifest (`srcs`, `include_dirs`, `defines`) whose `srcs` paths are relative to this tree; `tapa synth` stages them (verifying they exist and resolving them to absolute paths) and hands the task's files to `vitis_hls`. A task's first `srcs` entry is its own file (`<task>.cpp`); when the program has several input files, the remaining entries are the other files' shared sources (`<input-basename>-shared.cpp`), which carry the helper definitions that input defines but the task's own file only declares. Because the manifest references this tree, `tapa.json` alone is not self-contained: the work directory — the JSON plus `rewritten/` — is the analyze artifact.
 
 **`hls/`**
 
