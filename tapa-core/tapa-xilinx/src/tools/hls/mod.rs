@@ -26,7 +26,11 @@ pub(crate) fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
 #[derive(Clone, TypedBuilder)]
 pub struct HlsJob {
     pub task_name: String,
-    pub cpp_source: Utf8PathBuf,
+    /// The task's translation units, added to the HLS project in
+    /// order. Values carry absolute local paths: the remote runner's
+    /// path rewriter remaps them into its rootfs mirror.
+    #[builder(default)]
+    pub srcs: Vec<Utf8PathBuf>,
     pub target_part: String,
     pub top_name: String,
     pub clock_period: String,
@@ -60,7 +64,7 @@ impl std::fmt::Debug for HlsJob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HlsJob")
             .field("task_name", &self.task_name)
-            .field("cpp_source", &self.cpp_source)
+            .field("srcs", &self.srcs)
             .field("cflags", &self.cflags)
             .field("target_part", &self.target_part)
             .field("top_name", &self.top_name)
@@ -153,20 +157,30 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
 /// local path.
 fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
     let mut env: Vec<(String, String)> = Vec::new();
-    env.push(("TAPA_KERNEL_COUNT".into(), "1".into()));
-    env.push((
-        "TAPA_KERNEL_PATH_0".into(),
-        job.cpp_source.as_str().to_string(),
-    ));
+    env.push(("TAPA_KERNEL_COUNT".into(), job.srcs.len().to_string()));
+    // One path/cflags pair per source file, sharing the job's cflags
+    // string — the flags are identical across the task's files.
     // Vitis `add_files -cflags` receives the value as a Tcl string,
     // not a shell command — shell quoting is treated literally and
     // breaks flags like `-D__builtin_FILE()=__FILE__`.
     let cflags = job.cflags.join(" ");
-    env.push(("TAPA_KERNEL_CFLAGS_0".into(), cflags));
+    for (index, src) in job.srcs.iter().enumerate() {
+        env.push((
+            format!("TAPA_KERNEL_PATH_{index}"),
+            src.as_str().to_string(),
+        ));
+        env.push((format!("TAPA_KERNEL_CFLAGS_{index}"), cflags.clone()));
+    }
     env
 }
 
 pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
+    if job.srcs.is_empty() {
+        return Err(XilinxError::HlsReportParse(format!(
+            "HLS job for task `{}` lists no source files",
+            job.task_name
+        )));
+    }
     let solution = if job.solution_name.is_empty() {
         job.top_name.as_str()
     } else {
@@ -222,17 +236,17 @@ fn run_hls_attempt(
     // the value to its rootfs counterpart.
     inv.env
         .insert("HOME".into(), stage_dir.as_str().to_string());
-    // Uploads: TCL, the kernel source, every `-I` / `-isystem`
-    // include directory referenced by the cflags, plus any caller extras.
+    // Uploads: TCL, every source file's parent directory (the remote
+    // runner dedupes), every `-I` / `-isystem` include directory
+    // referenced by the cflags, plus any caller extras.
     inv.uploads.push(tcl_path);
-    if let Some(src_dir) = job.cpp_source.parent() {
-        if src_dir.is_absolute() && src_dir.is_dir() {
-            inv.uploads.push(src_dir.to_path_buf());
-        } else {
-            inv.uploads.push(job.cpp_source.clone());
+    for src in &job.srcs {
+        match src.parent() {
+            Some(src_dir) if src_dir.is_absolute() && src_dir.is_dir() => {
+                inv.uploads.push(src_dir.to_path_buf());
+            }
+            _ => inv.uploads.push(src.clone()),
         }
-    } else {
-        inv.uploads.push(job.cpp_source.clone());
     }
     inv.uploads.extend(kernel_include_dirs(&job.cflags));
     inv.uploads.extend(job.uploads.iter().cloned());
@@ -469,7 +483,7 @@ mod tests {
     fn fixture_job(tmp: &camino::Utf8Path) -> HlsJob {
         HlsJob::builder()
             .task_name("k".into())
-            .cpp_source(tmp.join("k.cpp"))
+            .srcs(vec![tmp.join("k.cpp")])
             .cflags(vec!["-I/tmp/inc".into()])
             .target_part("xcu250-figd2104-2L-e".into())
             .top_name("k".into())
@@ -504,7 +518,7 @@ mod tests {
         // `cpp_source` / cflags into the body. Baking absolute paths
         // makes the TCL non-portable to a remote rootfs.
         let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
-        job.cpp_source = Utf8PathBuf::from("/abs/local/kernel/k.cpp");
+        job.srcs = vec![Utf8PathBuf::from("/abs/local/kernel/k.cpp")];
         job.cflags = vec!["-I/abs/local/kernel/include".into(), "-DSOMETHING=1".into()];
         let tcl = build_hls_tcl(&job).unwrap();
         assert!(
@@ -530,9 +544,12 @@ mod tests {
     }
 
     #[test]
-    fn kernel_env_entries_mirror_current_contract() {
+    fn kernel_env_entries_emit_one_pair_per_src() {
         let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
-        job.cpp_source = Utf8PathBuf::from("/abs/src/k.cpp");
+        job.srcs = vec![
+            Utf8PathBuf::from("/abs/src/a.cpp"),
+            Utf8PathBuf::from("/abs/src/sub/b.cpp"),
+        ];
         job.cflags = vec!["-I/abs/inc".into(), "-DFOO".into()];
         let env = kernel_env_entries(&job);
         let lookup = |key: &str| {
@@ -541,9 +558,23 @@ mod tests {
                 .map(|(_, v)| v.clone())
                 .unwrap_or_default()
         };
-        assert_eq!(lookup("TAPA_KERNEL_COUNT"), "1");
-        assert_eq!(lookup("TAPA_KERNEL_PATH_0"), "/abs/src/k.cpp");
+        // One count, one PATH/CFLAGS pair per src, shared cflags value.
+        assert_eq!(lookup("TAPA_KERNEL_COUNT"), "2");
+        assert_eq!(lookup("TAPA_KERNEL_PATH_0"), "/abs/src/a.cpp");
+        assert_eq!(lookup("TAPA_KERNEL_PATH_1"), "/abs/src/sub/b.cpp");
         assert_eq!(lookup("TAPA_KERNEL_CFLAGS_0"), "-I/abs/inc -DFOO");
+        assert_eq!(lookup("TAPA_KERNEL_CFLAGS_1"), "-I/abs/inc -DFOO");
+    }
+
+    #[test]
+    fn empty_srcs_job_is_rejected_up_front() {
+        let mut job = fixture_job(camino::Utf8Path::new("/tmp"));
+        job.srcs = Vec::new();
+        let err = build_hls_tcl(&job).unwrap_err();
+        assert!(
+            err.to_string().contains("lists no source files"),
+            "got: {err}"
+        );
     }
 
     #[test]
@@ -584,11 +615,15 @@ mod tests {
         let inc_dir = Utf8PathBuf::from_path_buf(td.path().join("inc")).unwrap();
         std::fs::create_dir_all(&src_dir).unwrap();
         std::fs::create_dir_all(&inc_dir).unwrap();
-        let src = src_dir.join("k.cpp");
-        fs_err::write(&src, b"void k(){}").unwrap();
+        // Two sources sharing one parent dir: both must be announced
+        // via `TAPA_KERNEL_PATH_*`, and the shared parent must land in
+        // the upload batch exactly once-worth (the remote runner
+        // dedupes, but the dir must at least be present).
+        fs_err::write(src_dir.join("k1.cpp"), b"void k1(){}").unwrap();
+        fs_err::write(src_dir.join("k2.cpp"), b"void k2(){}").unwrap();
 
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(td.path().to_path_buf()).unwrap());
-        job.cpp_source = src.clone();
+        job.srcs = vec![src_dir.join("k1.cpp"), src_dir.join("k2.cpp")];
         job.cflags = vec![format!("-I{}", inc_dir.as_str())];
 
         let runner = MockToolRunner::new();
@@ -610,17 +645,21 @@ mod tests {
         assert_eq!(inv.cwd.as_deref(), Some(stage_path.as_path()));
         assert_eq!(
             inv.env.get("TAPA_KERNEL_COUNT").map(String::as_str),
-            Some("1")
+            Some("2")
         );
         assert_eq!(
             inv.env.get("TAPA_KERNEL_PATH_0").map(Utf8PathBuf::from),
-            Some(src)
+            Some(src_dir.join("k1.cpp"))
+        );
+        assert_eq!(
+            inv.env.get("TAPA_KERNEL_PATH_1").map(Utf8PathBuf::from),
+            Some(src_dir.join("k2.cpp"))
         );
         assert!(
             inv.env
-                .get("TAPA_KERNEL_CFLAGS_0")
+                .get("TAPA_KERNEL_CFLAGS_1")
                 .is_some_and(|c| c.contains(&format!("-I{}", inc_dir.as_str()))),
-            "TAPA_KERNEL_CFLAGS_0 must carry the `-I<inc>` flag"
+            "TAPA_KERNEL_CFLAGS_1 must carry the `-I<inc>` flag"
         );
         assert!(inv.uploads.contains(&src_dir), "src dir not uploaded");
         assert!(inv.uploads.contains(&inc_dir), "include dir not uploaded");

@@ -49,7 +49,7 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let job = HlsJob::builder()
         .task_name("vadd".into())
-        .cpp_source(src)
+        .srcs(vec![src])
         .cflags(vec!["-std=c++17".into()])
         .target_part("xcu250-figd2104-2L-e".into())
         .top_name("vadd".into())
@@ -168,7 +168,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
     let job = HlsJob::builder()
         .task_name("vadd".into())
-        .cpp_source(vadd_cpp)
+        .srcs(vec![vadd_cpp])
         .cflags(vec![
             "-std=c++17".into(),
             format!("-I{}", tapa_lib.as_str()),

@@ -127,7 +127,7 @@ pub fn run_hls_for_leaves(
 
         let job = HlsJob::builder()
             .task_name(task_name.clone())
-            .cpp_source(cpp_source.clone())
+            .srcs(vec![cpp_source.clone()])
             .cflags(options.cflags.clone())
             .target_part(options.part_num.clone())
             .top_name(task_name.clone())
