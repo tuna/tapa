@@ -14,61 +14,87 @@ const VALID_LEVELS: &[&str] = &["upper", "lower"];
 #[derive(Clone, Copy)]
 struct AnalyzeApp {
     name: &'static str,
-    source: &'static str,
+    /// The kernel translation units, one `analyze --input` each.
+    sources: &'static [&'static str],
     top: &'static str,
     expected_tasks: &'static [&'static str],
     requires_vendor: bool,
+    /// Extra `--cflags` values appended after the standard include flags.
+    /// An `-I` flag carries a workspace-relative dir, resolved at runtime.
+    extra_cflags: &'static [&'static str],
 }
 
 const ANALYZE_APPS: &[AnalyzeApp] = &[
     AnalyzeApp {
         name: "vadd",
-        source: "tests/apps/vadd/vadd.cpp",
+        sources: &["tests/apps/vadd/vadd.cpp"],
         top: "VecAdd",
         expected_tasks: &["VecAdd", "Mmap2Stream", "Add", "Stream2Mmap"],
         requires_vendor: false,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "bandwidth",
-        source: "tests/apps/bandwidth/bandwidth.cpp",
+        sources: &["tests/apps/bandwidth/bandwidth.cpp"],
         top: "Bandwidth",
         expected_tasks: &["Bandwidth"],
         requires_vendor: true,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "cannon",
-        source: "tests/apps/cannon/cannon.cpp",
+        sources: &["tests/apps/cannon/cannon.cpp"],
         top: "Cannon",
         expected_tasks: &["Cannon", "Gather", "ProcElem", "Scatter"],
         requires_vendor: false,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "gemv",
-        source: "tests/apps/gemv/gemv.cpp",
+        sources: &["tests/apps/gemv/gemv.cpp"],
         top: "Gemv",
         expected_tasks: &["Gemv"],
         requires_vendor: true,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "graph",
-        source: "tests/apps/graph/graph.cpp",
+        sources: &["tests/apps/graph/graph.cpp"],
         top: "Graph",
         expected_tasks: &["Graph", "Control", "ProcElem", "UpdateHandler"],
         requires_vendor: false,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "jacobi",
-        source: "tests/apps/jacobi/jacobi.cpp",
+        sources: &["tests/apps/jacobi/jacobi.cpp"],
         top: "Jacobi",
         expected_tasks: &["Jacobi", "Mmap2Stream", "Stream2Mmap"],
         requires_vendor: false,
+        extra_cflags: &[],
     },
     AnalyzeApp {
         name: "network",
-        source: "tests/apps/network/network.cpp",
+        sources: &["tests/apps/network/network.cpp"],
         top: "Network",
         expected_tasks: &["Network", "Consume", "Produce", "Switch2x2"],
         requires_vendor: false,
+        extra_cflags: &[],
+    },
+    AnalyzeApp {
+        name: "multi-file",
+        sources: &["tests/apps/multi-file/a.cpp", "tests/apps/multi-file/b.cpp"],
+        top: "MultiFileTop",
+        // The last key is the Combine<float> instantiation; tapacc keys
+        // template tasks by their mangled name.
+        expected_tasks: &[
+            "MultiFileTop",
+            "Produce",
+            "Consume",
+            "tapa_mangled_Z7CombineIfEvRN4tapa7istreamIT_EES4_RNS0_7ostreamIS2_EEm",
+        ],
+        requires_vendor: false,
+        extra_cflags: &["-Itests/apps/multi-file-ext"],
     },
 ];
 
@@ -88,25 +114,44 @@ pub fn analyze_smoke() -> Result<()> {
 }
 
 fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()> {
-    let source = workspace_path(app.source);
+    let sources: Vec<_> = app
+        .sources
+        .iter()
+        .map(|source| workspace_path(source))
+        .collect();
+    for source in &sources {
+        require_file(source)?;
+    }
     let work_dir = TempDir::with_prefix(format!("tapa-analyze-{}-", app.name))
         .map_err(|error| format!("failed to create temp dir: {error}"))?;
-    let source_dir = source
-        .parent()
-        .ok_or_else(|| format!("source has no parent: {}", source.display()))?;
+    let source_dir = sources
+        .first()
+        .and_then(|source| source.parent())
+        .ok_or_else(|| format!("{}: source has no parent", app.name))?;
 
-    let output = Command::new(tapa)
+    let mut command = Command::new(tapa);
+    command
         .arg("--work-dir")
         .arg(work_dir.path())
-        .arg("analyze")
-        .arg("--input")
-        .arg(&source)
+        .arg("analyze");
+    for source in &sources {
+        command.arg("--input").arg(source);
+    }
+    command
         .arg("--top")
         .arg(app.top)
         .arg("--cflags")
         .arg(format!("-I{}", source_dir.display()))
         .arg("--cflags")
-        .arg(format!("-I{}", tapa_lib.display()))
+        .arg(format!("-I{}", tapa_lib.display()));
+    for flag in app.extra_cflags {
+        let value = match flag.strip_prefix("-I") {
+            Some(dir) => format!("-I{}", workspace_path(dir).display()),
+            None => (*flag).to_string(),
+        };
+        command.arg("--cflags").arg(value);
+    }
+    let output = command
         .output()
         .map_err(|error| format!("failed to run {}: {error}", tapa.display()))?;
 

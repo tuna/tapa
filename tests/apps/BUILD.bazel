@@ -32,5 +32,11 @@ test_tool_test(
         # network
         "//tests/apps/network:network.cpp",
         "//tests/apps/network:network.h",
+        # multi-file
+        "//tests/apps/multi-file:a.cpp",
+        "//tests/apps/multi-file:b.cpp",
+        "//tests/apps/multi-file:multi-file.h",
+        # out-of-root helper header reached via -I
+        "//tests/apps/multi-file-ext:helper.h",
     ],
 )
