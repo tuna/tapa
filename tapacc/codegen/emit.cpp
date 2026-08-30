@@ -5,6 +5,7 @@
 
 #include "clang/AST/Stmt.h"
 #include "clang/Lex/Lexer.h"
+#include "edit_sink.h"
 
 #include "conventions.h"
 #include "frontend/type_args.h"
@@ -79,42 +80,39 @@ void EmitDummyMmapOrScalarRW(const clang::ParmVarDecl* param, TapaKind kind,
   }
 }
 
-void AddPragmaToBody(clang::Rewriter& rewriter, const clang::Stmt* body,
+void AddPragmaToBody(EditSink& edits, const clang::Stmt* body,
                      const std::string& pragma) {
   if (const auto* compound = llvm::dyn_cast<clang::CompoundStmt>(body)) {
-    rewriter.InsertTextAfterToken(compound->getLBracLoc(),
-                                  "\n#pragma " + pragma + "\n");
+    edits.InsertTextAfterToken(compound->getLBracLoc(),
+                               "\n#pragma " + pragma + "\n");
   } else {
-    rewriter.InsertTextBefore(body->getBeginLoc(),
-                              "_Pragma(\"" + pragma + "\")");
+    edits.InsertTextBefore(body->getBeginLoc(), "_Pragma(\"" + pragma + "\")");
   }
 }
 
-void AddPragmaAfterStmt(clang::Rewriter& rewriter, const clang::Stmt* stmt,
+void AddPragmaAfterStmt(EditSink& edits, const clang::Stmt* stmt,
                         const std::string& pragma) {
-  rewriter.InsertTextAfterToken(stmt->getEndLoc(),
-                                "\n#pragma " + pragma + "\n");
+  edits.InsertTextAfterToken(stmt->getEndLoc(), "\n#pragma " + pragma + "\n");
 }
 
-void RemoveInline(const clang::FunctionDecl* func, clang::Rewriter& rewriter) {
+void RemoveInline(const clang::FunctionDecl* func, EditSink& edits) {
   if (!func->isInlineSpecified()) return;
   clang::Token token;
-  clang::Lexer::getRawToken(func->getBeginLoc(), token, rewriter.getSourceMgr(),
-                            rewriter.getLangOpts());
+  clang::Lexer::getRawToken(func->getBeginLoc(), token, edits.getSourceMgr(),
+                            edits.getLangOpts());
   if (token.getRawIdentifier().str() == "inline") {
-    rewriter.RemoveText(token.getLocation(), token.getLength());
+    edits.RemoveText(token.getLocation(), token.getLength());
   } else {
     llvm::errs() << "Warning: expected 'inline' at the start of a task; not "
                     "removed. Vitis HLS does not support inline tasks.\n";
   }
 }
 
-void RemoveLoweredAttr(clang::Rewriter& rewriter,
-                       clang::SourceRange attr_range) {
+void RemoveLoweredAttr(EditSink& edits, clang::SourceRange attr_range) {
   auto begin = attr_range.getBegin();
   auto end = attr_range.getEnd();
   auto at = [&](clang::SourceLocation a, clang::SourceLocation b) {
-    return rewriter.getRewrittenText(clang::SourceRange(a, b));
+    return edits.getRewrittenText(clang::SourceRange(a, b));
   };
   auto is_space = [&](const std::string& s) {
     return s.empty() || std::isspace(static_cast<unsigned char>(s[0]));
@@ -145,7 +143,7 @@ void RemoveLoweredAttr(clang::Rewriter& rewriter,
     begin = begin.getLocWithOffset(-2);
     end = end.getLocWithOffset(2);
   }
-  rewriter.RemoveText(clang::SourceRange(begin, end));
+  edits.RemoveText(clang::SourceRange(begin, end));
 }
 
 }  // namespace tapa::cc

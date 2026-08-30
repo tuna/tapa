@@ -10,6 +10,7 @@
 #include "clang/AST/TypeLoc.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
+#include "edit_sink.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -112,8 +113,7 @@ std::string GeneratePreamble(const Backend& backend, const TaskModel& task,
 // Walks the whole body: multi-declarator statements contribute one pragma
 // per declarator, and streams declared in nested scopes get their depth
 // too (both previously skipped silently, leaving HLS's default depth).
-void RewriteStreamDefinitions(const clang::Stmt* stmt,
-                              clang::Rewriter& rewriter) {
+void RewriteStreamDefinitions(const clang::Stmt* stmt, EditSink& edits) {
   if (stmt == nullptr) return;
   if (const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
     for (const clang::Decl* d : decl_stmt->decls()) {
@@ -121,7 +121,7 @@ void RewriteStreamDefinitions(const clang::Stmt* stmt,
       if (var == nullptr) continue;
       if (ClassifyTapaType(var->getType()) == TapaKind::kStream) {
         const int64_t depth = IntTemplateArg(var->getType(), 1).value_or(0);
-        AddPragmaAfterStmt(rewriter, decl_stmt,
+        AddPragmaAfterStmt(edits, decl_stmt,
                            "HLS stream variable = " + var->getNameAsString() +
                                "._ depth = " + std::to_string(depth));
       }
@@ -129,14 +129,14 @@ void RewriteStreamDefinitions(const clang::Stmt* stmt,
     return;
   }
   for (const clang::Stmt* child : stmt->children()) {
-    RewriteStreamDefinitions(child, rewriter);
+    RewriteStreamDefinitions(child, edits);
   }
 }
 
 void RewriteStreamDefinitions(const clang::FunctionDecl* func,
-                              clang::Rewriter& rewriter) {
+                              EditSink& edits) {
   if (!func->hasBody()) return;
-  RewriteStreamDefinitions(func->getBody(), rewriter);
+  RewriteStreamDefinitions(func->getBody(), edits);
 }
 
 }  // namespace
@@ -231,7 +231,7 @@ void XilinxBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
 }
 
 void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
-                                     clang::Rewriter& rewriter) const {
+                                     EditSink& edits) const {
   const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
   if (lvl == Lvl::kLower) return;  // lower-level signatures are unchanged
 
@@ -244,17 +244,17 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
       const std::string name = param->getNameAsString();
       const TapaKind kind = ClassifyTapaType(param);
       if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
-        rewriter.ReplaceText(
+        edits.ReplaceText(
             param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
             "uint64_t");
-        rewriter.ReplaceText(param->getLocation(), OffsetName(name));
+        edits.ReplaceText(param->getLocation(), OffsetName(name));
       } else if (IsMmapArray(kind)) {
         std::string text;
         for (int64_t i = 0; i < ArraySize(param); ++i) {
           if (!text.empty()) text += ", ";
           text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
         }
-        rewriter.ReplaceText(param->getSourceRange(), text);
+        edits.ReplaceText(param->getSourceRange(), text);
       } else if (lvl == Lvl::kTop &&
                  (kind == TapaKind::kIStream || kind == TapaKind::kOStream)) {
         // Vitis top-level streams become axis interfaces. Rewrite the type to
@@ -265,7 +265,7 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
           if (arg->getKind() == clang::TemplateArgument::Type) {
             const uint32_t w =
                 param->getASTContext().getTypeInfo(arg->getAsType()).Width;
-            rewriter.ReplaceText(
+            edits.ReplaceText(
                 param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
                 "hls::stream<qdma_axis<" + std::to_string(w) + ", 0, 0, 0> >&");
             rewrote_axis_stream = true;
@@ -280,15 +280,14 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   // per emitted cpp (RewriteSignature is called for the top task in every
   // file), so every file that carries the rewritten decl gets the header.
   if (rewrote_axis_stream) {
-    rewriter.InsertText(task.def->getBeginLoc(),
-                        "#include \"ap_axi_sdata.h\"\n"
-                        "#include \"hls_stream.h\"\n\n",
-                        /*InsertAfter=*/true);
+    edits.InsertTextAfter(task.def->getBeginLoc(),
+                          "#include \"ap_axi_sdata.h\"\n"
+                          "#include \"hls_stream.h\"\n\n");
   }
 }
 
 void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
-                                    clang::Rewriter& rewriter) const {
+                                    EditSink& edits) const {
   const clang::FunctionDecl* func = task.def;
   if (!func->hasBody()) return;
   const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
@@ -296,18 +295,17 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
 
   if (lvl == Lvl::kLower) {
     // Leading newline so the first pragma starts its own line after the brace.
-    rewriter.InsertTextAfterToken(func->getBody()->getBeginLoc(), "\n" + lines);
-    RewriteStreamDefinitions(func, rewriter);
-    RemoveInline(func, rewriter);
+    edits.InsertTextAfterToken(func->getBody()->getBeginLoc(), "\n" + lines);
+    RewriteStreamDefinitions(func, edits);
+    RemoveInline(func, edits);
     return;
   }
 
   // Middle level (and top level in non-Vitis mode): replace the body with a
   // shell carrying just the interface pragmas.
   if (lvl == Lvl::kMiddle || (lvl == Lvl::kTop && !is_vitis_)) {
-    rewriter.ReplaceText(func->getBody()->getSourceRange(),
-                         "{\n" + lines + "}\n");
-    RemoveInline(func, rewriter);
+    edits.ReplaceText(func->getBody()->getSourceRange(), "{\n" + lines + "}\n");
+    RemoveInline(func, edits);
     return;
   }
 
@@ -320,29 +318,29 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
   for (const clang::FunctionDecl* decl : func->redecls()) {
     clang::SourceLocation end = decl->getEndLoc();
     if (decl->isThisDeclarationADefinition()) {
-      rewriter.ReplaceText(decl->getBody()->getSourceRange(), shell);
+      edits.ReplaceText(decl->getBody()->getSourceRange(), shell);
     } else {
       // Insert after the declaration's trailing semicolon.
       const clang::SourceLocation after = clang::Lexer::findLocationAfterToken(
-          end, clang::tok::semi, rewriter.getSourceMgr(),
-          rewriter.getLangOpts(), /*SkipTrailingWhitespaceAndNewLine=*/true);
+          end, clang::tok::semi, edits.getSourceMgr(), edits.getLangOpts(),
+          /*SkipTrailingWhitespaceAndNewLine=*/true);
       if (after.isValid()) end = after;
     }
-    rewriter.InsertText(decl->getBeginLoc(), "extern \"C\" {\n\n");
-    rewriter.InsertTextAfterToken(end, "\n\n}  // extern \"C\"\n");
-    RemoveInline(decl, rewriter);
+    edits.InsertTextAfter(decl->getBeginLoc(), "extern \"C\" {\n\n");
+    edits.InsertTextAfterToken(end, "\n\n}  // extern \"C\"\n");
+    RemoveInline(decl, edits);
   }
 }
 
 void XilinxBackend::StripOtherTask(const clang::FunctionDecl* func,
-                                   clang::Rewriter& rewriter) const {
+                                   EditSink& edits) const {
   if (func->hasBody()) {
-    rewriter.ReplaceText(func->getBody()->getSourceRange(), ";");
+    edits.ReplaceText(func->getBody()->getSourceRange(), ";");
   }
 }
 
 void XilinxBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
-                                      clang::Rewriter& rewriter) const {
+                                      EditSink& edits) const {
   // Only definitions are rewritten: a redeclaration shares the
   // definition's body (`hasBody()` looks through the chain), so rewriting
   // one too would insert every stream pragma a second time at the same
@@ -352,7 +350,7 @@ void XilinxBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
   // Non-task helpers keep their body; only stream declarations get depth
   // pragmas (the old RewriteOtherFunc emitted no per-parameter interface code
   // for Xilinx).
-  RewriteStreamDefinitions(func, rewriter);
+  RewriteStreamDefinitions(func, edits);
   // The C++ inline keyword is the portable inlining control: `inline` means
   // always inline, no keyword means never inline. Emit the vendor pragma AND
   // the standard clang attribute as a consistent pair — the pragma is what
@@ -375,32 +373,31 @@ void XilinxBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
   if (is_inline && !func->isInlineSpecified()) {
     // always_inline requires the keyword on this declaration; the chain may
     // carry it on an earlier one.
-    rewriter.InsertTextBefore(insert, "inline ");
+    edits.InsertTextBefore(insert, "inline ");
   }
-  rewriter.InsertTextBefore(insert, is_inline
-                                        ? " __attribute__((always_inline)) "
-                                        : " __attribute__((noinline)) ");
+  edits.InsertTextBefore(insert, is_inline ? " __attribute__((always_inline)) "
+                                           : " __attribute__((noinline)) ");
   // A body written in a macro cannot be rewritten (the pragma would land in
   // the expansion); the attribute pair still applies.
-  const clang::SourceManager& sm = rewriter.getSourceMgr();
+  const clang::SourceManager& sm = edits.getSourceMgr();
   const clang::Stmt* body = func->getBody();
   if (sm.isMacroBodyExpansion(body->getBeginLoc())) {
     llvm::errs() << "Warning: helper " << func->getNameAsString()
                  << " has a macro body; inline pragma not emitted\n";
     return;
   }
-  AddPragmaToBody(rewriter, body, is_inline ? "HLS inline" : "HLS inline off");
+  AddPragmaToBody(edits, body, is_inline ? "HLS inline" : "HLS inline off");
 }
 
 void XilinxBackend::LowerPipeline(int ii, const std::string& style,
                                   const clang::Stmt* body,
-                                  clang::Rewriter& rewriter) const {
+                                  EditSink& edits) const {
   if (body == nullptr) return;
   std::string pragma = "HLS pipeline";
   // An explicit 0 disables pipelining, mirroring `flatten(false)`; the
   // omitted sentinel leaves the vendor its default initiation interval.
   if (ii == 0) {
-    AddPragmaToBody(rewriter, body, "HLS pipeline off");
+    AddPragmaToBody(edits, body, "HLS pipeline off");
     return;
   }
   // stp = stable (flushable) pipeline, flp = free-running: a real
@@ -409,15 +406,15 @@ void XilinxBackend::LowerPipeline(int ii, const std::string& style,
   // The omitted sentinel (0xFFFFFFFF) arrives here as -1, leaving the
   // vendor its default initiation interval.
   if (ii > 0) pragma += " II = " + std::to_string(ii);
-  AddPragmaToBody(rewriter, body, pragma);
+  AddPragmaToBody(edits, body, pragma);
 }
 
 void XilinxBackend::LowerUnroll(int factor, const clang::Stmt* body,
-                                clang::Rewriter& rewriter) const {
+                                EditSink& edits) const {
   if (body == nullptr) return;
   std::string pragma = "HLS unroll";
   if (factor != 0) pragma += " factor = " + std::to_string(factor);
-  AddPragmaToBody(rewriter, body, pragma);
+  AddPragmaToBody(edits, body, pragma);
 }
 
 namespace {
@@ -436,8 +433,7 @@ std::string FormatBounds(std::string pragma, int min, int max) {
 
 // The single formatting home for region attributes, shared by the
 // statement and declaration lowering paths.
-std::string FormatRegionPragma(const clang::Attr& attr,
-                               clang::Rewriter& rewriter) {
+std::string FormatRegionPragma(const clang::Attr& attr, EditSink& edits) {
   return llvm::TypeSwitch<const clang::Attr*, std::string>(&attr)
       .Case([](const clang::TapaTripcountAttr* attr) {
         return FormatBounds("HLS loop_tripcount", attr->getMin(),
@@ -450,7 +446,7 @@ std::string FormatRegionPragma(const clang::Attr& attr,
       .Case([](const clang::TapaLatencyAttr* attr) {
         return FormatBounds("HLS latency", attr->getMin(), attr->getMax());
       })
-      .Case([&rewriter](const clang::TapaDependenceAttr* attr) {
+      .Case([&edits](const clang::TapaDependenceAttr* attr) {
         // The vendor's keyword form (accepted since classic vitis_hls, and
         // what current Vitis documents). Dependent = a real dependence
         // assertion at `distance`; the default asserts independence.
@@ -476,7 +472,7 @@ std::string FormatRegionPragma(const clang::Attr& attr,
                         clang::Lexer::getSourceText(
                             clang::CharSourceRange::getTokenRange(
                                 d->getSourceRange()),
-                            rewriter.getSourceMgr(), rewriter.getLangOpts())
+                            edits.getSourceMgr(), edits.getLangOpts())
                             .str();
             }
           }
@@ -540,26 +536,26 @@ std::string FormatDeclPragma(const clang::Attr& attr, const std::string& name) {
 
 void XilinxBackend::LowerStmtAttr(const clang::Attr& attr,
                                   const clang::Stmt* body,
-                                  clang::Rewriter& rewriter) const {
+                                  EditSink& edits) const {
   if (body == nullptr) return;
-  const std::string pragma = FormatRegionPragma(attr, rewriter);
-  if (!pragma.empty()) AddPragmaToBody(rewriter, body, pragma);
+  const std::string pragma = FormatRegionPragma(attr, edits);
+  if (!pragma.empty()) AddPragmaToBody(edits, body, pragma);
 }
 
 void XilinxBackend::LowerDeclAttr(const clang::Attr& attr,
                                   const clang::VarDecl& var,
                                   const clang::DeclStmt& decl,
-                                  clang::Rewriter& rewriter) const {
+                                  EditSink& edits) const {
   const std::string name = var.getNameAsString();
   // Region attributes that landed on a declaration (they sat before a
   // declaration statement): same pragma text, placed after the declaration.
-  if (const std::string region = FormatRegionPragma(attr, rewriter);
+  if (const std::string region = FormatRegionPragma(attr, edits);
       !region.empty()) {
-    AddPragmaAfterStmt(rewriter, &decl, region);
+    AddPragmaAfterStmt(edits, &decl, region);
     return;
   }
   const std::string pragma = FormatDeclPragma(attr, name);
-  if (!pragma.empty()) AddPragmaAfterStmt(rewriter, &decl, pragma);
+  if (!pragma.empty()) AddPragmaAfterStmt(edits, &decl, pragma);
 }
 
 // Function-parameter arrays have no declaration statement: the pragma goes
@@ -567,9 +563,9 @@ void XilinxBackend::LowerDeclAttr(const clang::Attr& attr,
 void XilinxBackend::LowerParamAttr(const clang::Attr& attr,
                                    const clang::ParmVarDecl& param,
                                    const clang::Stmt* body,
-                                   clang::Rewriter& rewriter) const {
+                                   EditSink& edits) const {
   if (body == nullptr) return;
   const std::string pragma = FormatDeclPragma(attr, param.getNameAsString());
-  if (!pragma.empty()) AddPragmaToBody(rewriter, body, pragma);
+  if (!pragma.empty()) AddPragmaToBody(edits, body, pragma);
 }
 }  // namespace tapa::cc

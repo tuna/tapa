@@ -12,25 +12,24 @@ class XilinxBackend final : public Backend {
   explicit XilinxBackend(bool is_vitis) : is_vitis_(is_vitis) {}
 
   void RewriteSignature(const TaskModel& task, bool is_top,
-                        clang::Rewriter& rewriter) const override;
+                        EditSink& edits) const override;
   void RewriteTaskFunc(const TaskModel& task, bool is_top,
-                       clang::Rewriter& rewriter) const override;
+                       EditSink& edits) const override;
   void StripOtherTask(const clang::FunctionDecl* func,
-                      clang::Rewriter& rewriter) const override;
+                      EditSink& edits) const override;
   void RewriteHelperFunc(const clang::FunctionDecl* func,
-                         clang::Rewriter& rewriter) const override;
+                         EditSink& edits) const override;
   void LowerPipeline(int ii, const std::string& style, const clang::Stmt* body,
-                     clang::Rewriter& rewriter) const override;
+                     EditSink& edits) const override;
   void LowerUnroll(int factor, const clang::Stmt* body,
-                   clang::Rewriter& rewriter) const override;
+                   EditSink& edits) const override;
   void LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
-                     clang::Rewriter& rewriter) const override;
+                     EditSink& edits) const override;
   void LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl& var,
                      const clang::DeclStmt& decl,
-                     clang::Rewriter& rewriter) const override;
+                     EditSink& edits) const override;
   void LowerParamAttr(const clang::Attr& attr, const clang::ParmVarDecl& param,
-                      const clang::Stmt* body,
-                      clang::Rewriter& rewriter) const override;
+                      const clang::Stmt* body, EditSink& edits) const override;
 
  protected:
   void EmitStreamPort(const PortContext&, CodeSink&) const override;

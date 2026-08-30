@@ -3,6 +3,7 @@
 #include <string>
 
 #include "clang/AST/Decl.h"
+#include "edit_sink.h"
 
 #include "code_sink.h"
 #include "emit.h"
@@ -28,7 +29,7 @@ void IgnoreBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
 }
 
 void IgnoreBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
-                                    clang::Rewriter& rewriter) const {
+                                    EditSink& edits) const {
   const clang::FunctionDecl* func = task.def;
   if (!func->hasBody()) return;
   // Replace the body with a shell of dummy port reads/writes only.
@@ -39,21 +40,21 @@ void IgnoreBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
         sink);
     sink.Line("");  // blank line between parameters (and a trailing newline)
   }
-  rewriter.ReplaceText(func->getBody()->getSourceRange(),
-                       "{\n" + sink.Str() + "}\n");
+  edits.ReplaceText(func->getBody()->getSourceRange(),
+                    "{\n" + sink.Str() + "}\n");
 }
 
 void IgnoreBackend::StripOtherTask(const clang::FunctionDecl* /*func*/,
-                                   clang::Rewriter& /*rewriter*/) const {
+                                   EditSink& /*edits*/) const {
   // The ignore shell leaves other task functions untouched (unlike the Xilinx
   // backend); only the ignored task becomes a shell and helpers are cleared.
 }
 
 void IgnoreBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
-                                      clang::Rewriter& rewriter) const {
+                                      EditSink& edits) const {
   // Clear non-task helper bodies in the ignore shell.
   if (func->hasBody()) {
-    rewriter.ReplaceText(func->getBody()->getSourceRange(), "{}\n");
+    edits.ReplaceText(func->getBody()->getSourceRange(), "{}\n");
   }
 }
 

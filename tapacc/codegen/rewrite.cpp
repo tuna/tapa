@@ -9,6 +9,7 @@
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "edit_sink.h"
 #include "llvm/ADT/StringRef.h"
 
 #include "emit.h"
@@ -100,26 +101,25 @@ constexpr bool IsTapaDeclAttr(clang::attr::Kind kind) {
 // but nothing lowered it: the pragma was never emitted and the raw
 // `[[tapa::pipeline(...)]]` text reached the vendor compiler verbatim.
 void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
-                    clang::Rewriter& rewriter) {
+                    EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) return;
   const clang::Stmt* body = func->getBody();
   if (body == nullptr) return;
   for (const clang::Attr* attr : func->attrs()) {
     if (attr->getKind() != clang::attr::TapaPipeline) continue;
     const auto* pa = llvm::cast<clang::TapaPipelineAttr>(attr);
-    backend.LowerPipeline(pa->getII(), pa->getStyle().str(), body, rewriter);
-    RemoveLoweredAttr(rewriter, attr->getRange());
+    backend.LowerPipeline(pa->getII(), pa->getStyle().str(), body, edits);
+    RemoveLoweredAttr(edits, attr->getRange());
   }
 }
 
 // Drop a function-level [[tapa::pipeline]] without lowering it. A task that
 // is not the current one keeps only its signature, so there is no body to
 // carry the pragma — but the attribute text would still reach the vendor.
-void RemoveFuncAttrs(const clang::FunctionDecl* func,
-                     clang::Rewriter& rewriter) {
+void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
   for (const clang::Attr* attr : func->attrs()) {
     if (attr->getKind() == clang::attr::TapaPipeline) {
-      RemoveLoweredAttr(rewriter, attr->getRange());
+      RemoveLoweredAttr(edits, attr->getRange());
     }
   }
 }
@@ -127,14 +127,13 @@ void RemoveFuncAttrs(const clang::FunctionDecl* func,
 // Lower every [[tapa::*]] loop and variable attribute in a function body to
 // backend pragmas and remove the attribute text. Walks only this body.
 void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
-                const Backend& backend, clang::Rewriter& rewriter,
-                bool in_block) {
+                const Backend& backend, EditSink& edits, bool in_block) {
   if (stmt == nullptr) return;
   // A DeclStmt is "in a block" exactly when its parent statement is one;
   // the recursion knows the parent, so no parent-map query is needed.
   const bool children_in_block = llvm::isa<clang::CompoundStmt>(stmt);
   for (const clang::Stmt* child : stmt->children()) {
-    LowerAttrs(child, ctx, backend, rewriter, children_in_block);
+    LowerAttrs(child, ctx, backend, edits, children_in_block);
   }
 
   if (const auto* decls = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
@@ -146,7 +145,7 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
     // attaches to both VarDecls): emit one pragma per variable, but remove
     // each source range exactly once.
     std::set<std::pair<unsigned, unsigned>> lowered;
-    const clang::SourceManager& sm = rewriter.getSourceMgr();
+    const clang::SourceManager& sm = edits.getSourceMgr();
     for (const clang::Decl* decl : decls->decls()) {
       const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
       if (var == nullptr) continue;
@@ -162,13 +161,13 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
               .AddString(attr->getSpelling());
           continue;
         }
-        backend.LowerDeclAttr(*attr, *var, *decls, rewriter);
+        backend.LowerDeclAttr(*attr, *var, *decls, edits);
         const clang::SourceRange r = attr->getRange();
         if (lowered
                 .insert({sm.getFileOffset(r.getBegin()),
                          sm.getFileOffset(r.getEnd())})
                 .second) {
-          RemoveLoweredAttr(rewriter, r);
+          RemoveLoweredAttr(edits, r);
         }
       }
     }
@@ -214,27 +213,25 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
     switch (attr->getKind()) {
       case clang::attr::TapaPipeline: {
         const auto* pa = llvm::cast<clang::TapaPipelineAttr>(attr);
-        backend.LowerPipeline(pa->getII(), pa->getStyle().str(), body,
-                              rewriter);
+        backend.LowerPipeline(pa->getII(), pa->getStyle().str(), body, edits);
         break;
       }
       case clang::attr::TapaUnroll:
         backend.LowerUnroll(
-            llvm::cast<clang::TapaUnrollAttr>(attr)->getFactor(), body,
-            rewriter);
+            llvm::cast<clang::TapaUnrollAttr>(attr)->getFactor(), body, edits);
         break;
       default:
-        backend.LowerStmtAttr(*attr, body, rewriter);
+        backend.LowerStmtAttr(*attr, body, edits);
         break;
     }
-    RemoveLoweredAttr(rewriter, attr->getRange());
+    RemoveLoweredAttr(edits, attr->getRange());
   }
 }
 // Lower [[tapa::*]] variable attributes on function parameters (array
 // ports): the pragma goes at the top of the body, exactly where the old
 // vendor pragma sat.
 void LowerParamAttrs(const clang::FunctionDecl* func, const Backend& backend,
-                     clang::Rewriter& rewriter) {
+                     EditSink& edits) {
   // Only the DEFINITION carries lowerable parameter attributes. A forward
   // declaration's source range would be removed while its rewriting target
   // (the body) does not exist — the rewriter asserts on the inverted range.
@@ -244,8 +241,8 @@ void LowerParamAttrs(const clang::FunctionDecl* func, const Backend& backend,
   for (const clang::ParmVarDecl* param : func->parameters()) {
     for (const clang::Attr* attr : param->attrs()) {
       if (!IsTapaDeclAttr(attr->getKind())) continue;
-      backend.LowerParamAttr(*attr, *param, body, rewriter);
-      RemoveLoweredAttr(rewriter, attr->getRange());
+      backend.LowerParamAttr(*attr, *param, body, edits);
+      RemoveLoweredAttr(edits, attr->getRange());
     }
   }
 }
@@ -361,6 +358,7 @@ std::string EmitFile(const Program& program, const TaskModel* current,
                      const Backend& backend, clang::ASTContext& ctx,
                      const std::string& label) {
   clang::Rewriter rewriter(ctx.getSourceManager(), ctx.getLangOpts());
+  EditSink edits(rewriter);
 
   // The source decls that are template patterns for some task specialization,
   // and the pattern for the current task (if it is a specialization). These
@@ -380,16 +378,16 @@ std::string EmitFile(const Program& program, const TaskModel* current,
   for (const auto& [name, model] : program.tasks) {
     if (model.is_template_spec) continue;  // reached via its primary below
     const bool is_top = name == program.top;
-    backend.RewriteSignature(model, is_top, rewriter);
+    backend.RewriteSignature(model, is_top, edits);
     if (current != nullptr && name == current->name) {
-      backend.RewriteTaskFunc(model, is_top, rewriter);
-      LowerParamAttrs(model.def, backend, rewriter);
-      LowerFuncAttrs(model.def, backend, rewriter);
-      LowerAttrs(model.def->getBody(), ctx, backend, rewriter,
+      backend.RewriteTaskFunc(model, is_top, edits);
+      LowerParamAttrs(model.def, backend, edits);
+      LowerFuncAttrs(model.def, backend, edits);
+      LowerAttrs(model.def->getBody(), ctx, backend, edits,
                  /*in_block=*/false);
     } else {
-      RemoveFuncAttrs(model.def, rewriter);
-      backend.StripOtherTask(model.def, rewriter);
+      RemoveFuncAttrs(model.def, edits);
+      backend.StripOtherTask(model.def, edits);
     }
   }
 
@@ -400,7 +398,7 @@ std::string EmitFile(const Program& program, const TaskModel* current,
       // A redeclaration of an already-handled task: Vitis rejects `inline`
       // on tasks, so strip it here too (the definition was handled above).
       if (!func->isThisDeclarationADefinition()) {
-        RemoveInline(func, rewriter);
+        RemoveInline(func, edits);
       }
       continue;
     }
@@ -414,14 +412,14 @@ std::string EmitFile(const Program& program, const TaskModel* current,
         // does.
         TaskModel primary = *current;
         primary.def = func;
-        backend.RewriteTaskFunc(primary, /*is_top=*/false, rewriter);
-        LowerParamAttrs(func, backend, rewriter);
-        LowerFuncAttrs(func, backend, rewriter);
-        LowerAttrs(func->getBody(), ctx, backend, rewriter,
+        backend.RewriteTaskFunc(primary, /*is_top=*/false, edits);
+        LowerParamAttrs(func, backend, edits);
+        LowerFuncAttrs(func, backend, edits);
+        LowerAttrs(func->getBody(), ctx, backend, edits,
                    /*in_block=*/false);
       } else {
-        RemoveFuncAttrs(func, rewriter);
-        backend.StripOtherTask(func, rewriter);
+        RemoveFuncAttrs(func, edits);
+        backend.StripOtherTask(func, edits);
       }
     } else if (GetTapaTaskObject(func->getBody()) != nullptr) {
       // Unreachable upper-level task: discovery is reachability-based, so it
@@ -431,19 +429,19 @@ std::string EmitFile(const Program& program, const TaskModel* current,
       TaskModel model;
       model.def = func;
       model.level = TaskLevel::kUpper;
-      backend.RewriteSignature(model, /*is_top=*/false, rewriter);
-      RemoveFuncAttrs(func, rewriter);
-      backend.StripOtherTask(func, rewriter);
+      backend.RewriteSignature(model, /*is_top=*/false, edits);
+      RemoveFuncAttrs(func, edits);
+      backend.StripOtherTask(func, edits);
     } else {
-      backend.RewriteHelperFunc(func, rewriter);
+      backend.RewriteHelperFunc(func, edits);
       // A redeclaration's getBody() recovers the DEFINITION's body across
       // the chain: lowering here would lower the same attributes a second
       // time and the second RemoveLoweredAttr would probe an already-removed
       // range. Only definitions carry lowerable attributes.
       if (func->isThisDeclarationADefinition()) {
-        LowerParamAttrs(func, backend, rewriter);
-        LowerFuncAttrs(func, backend, rewriter);
-        LowerAttrs(func->getBody(), ctx, backend, rewriter,
+        LowerParamAttrs(func, backend, edits);
+        LowerFuncAttrs(func, backend, edits);
+        LowerAttrs(func->getBody(), ctx, backend, edits,
                    /*in_block=*/false);
       }
     }
@@ -459,10 +457,10 @@ std::string EmitFile(const Program& program, const TaskModel* current,
   // (frontend/program_builder.cpp) before any rewriting runs, so by the
   // time this loop executes every entry is a plain helper.
   for (const clang::FunctionDecl* func : program.local_funcs) {
-    backend.RewriteHelperFunc(func, rewriter);
-    LowerParamAttrs(func, backend, rewriter);
-    LowerFuncAttrs(func, backend, rewriter);
-    LowerAttrs(func->getBody(), ctx, backend, rewriter,
+    backend.RewriteHelperFunc(func, edits);
+    LowerParamAttrs(func, backend, edits);
+    LowerFuncAttrs(func, backend, edits);
+    LowerAttrs(func->getBody(), ctx, backend, edits,
                /*in_block=*/false);
   }
 
@@ -470,10 +468,10 @@ std::string EmitFile(const Program& program, const TaskModel* current,
   // The shared variant has no current task and no wrapper: the wrapper is the
   // specialization's entry point and belongs in its own file alone.
   if (current != nullptr && current->is_template_spec) {
-    InsertWrapper(*current, backend, ctx, rewriter);
+    InsertWrapper(*current, backend, ctx, edits);
   }
 
-  const clang::SourceManager& sm = ctx.getSourceManager();
+  const clang::SourceManager& sm = edits.getSourceMgr();
   const clang::FileID main_file = sm.getMainFileID();
   const llvm::RewriteBuffer* buffer = rewriter.getRewriteBufferFor(main_file);
   const std::string code = buffer == nullptr

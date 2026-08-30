@@ -28,6 +28,7 @@ cc_library(
     includes = [".."],
     deps = [
         ":code_sink",
+        ":edit_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
         CLANG_TOOLING,
@@ -50,6 +51,14 @@ cc_test(
 )
 
 cc_library(
+    name = "edit_sink",
+    hdrs = ["edit_sink.h"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [CLANG_TOOLING],
+)
+
+cc_library(
     name = "emit",
     srcs = ["emit.cpp"],
     hdrs = ["emit.h"],
@@ -58,6 +67,7 @@ cc_library(
     deps = [
         ":code_sink",
         ":conventions",
+        ":edit_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:type_args",
         CLANG_TOOLING,
@@ -89,6 +99,7 @@ cc_library(
     deps = [
         ":backend",
         ":conventions",
+        ":edit_sink",
         ":emit",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:type_args",
@@ -105,6 +116,7 @@ cc_library(
     deps = [
         ":backend",
         ":code_sink",
+        ":edit_sink",
         ":emit",
         "//tapacc/frontend:classify",
         CLANG_TOOLING,
@@ -120,6 +132,7 @@ cc_library(
     deps = [
         ":backend",
         ":code_sink",
+        ":edit_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
         CLANG_TOOLING,
@@ -134,6 +147,7 @@ cc_library(
     includes = [".."],
     deps = [
         ":backend",
+        ":edit_sink",
         ":emit",
         ":wrapper",
         "//tapacc/frontend:diag",

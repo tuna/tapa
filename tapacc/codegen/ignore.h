@@ -11,18 +11,17 @@ namespace tapa::cc {
 class IgnoreBackend final : public Backend {
  public:
   // Ignore never rewrites signatures (no mmap -> offset).
-  void RewriteSignature(const TaskModel&, bool,
-                        clang::Rewriter&) const override {}
+  void RewriteSignature(const TaskModel&, bool, EditSink&) const override {}
   void RewriteTaskFunc(const TaskModel& task, bool is_top,
-                       clang::Rewriter& rewriter) const override;
+                       EditSink& edits) const override;
   void StripOtherTask(const clang::FunctionDecl* func,
-                      clang::Rewriter& rewriter) const override;
+                      EditSink& edits) const override;
   void RewriteHelperFunc(const clang::FunctionDecl* func,
-                         clang::Rewriter& rewriter) const override;
+                         EditSink& edits) const override;
   // Loop attributes vanish with the replaced body; nothing to lower.
   void LowerPipeline(int, const std::string&, const clang::Stmt*,
-                     clang::Rewriter&) const override {}
-  void LowerUnroll(int, const clang::Stmt*, clang::Rewriter&) const override {}
+                     EditSink&) const override {}
+  void LowerUnroll(int, const clang::Stmt*, EditSink&) const override {}
 
  protected:
   void EmitStreamPort(const PortContext&, CodeSink&) const override;

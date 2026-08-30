@@ -3,7 +3,7 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
-#include "clang/Rewrite/Core/Rewriter.h"
+#include "edit_sink.h"
 
 #include "code_sink.h"
 #include "frontend/classify.h"
@@ -54,34 +54,33 @@ class Backend {
   //    file).
   //  - LowerPipeline/LowerUnroll: lower a loop attribute to backend pragmas.
   virtual void RewriteSignature(const TaskModel& task, bool is_top,
-                                clang::Rewriter& rewriter) const = 0;
+                                EditSink& edits) const = 0;
   virtual void RewriteTaskFunc(const TaskModel& task, bool is_top,
-                               clang::Rewriter& rewriter) const = 0;
+                               EditSink& edits) const = 0;
   virtual void StripOtherTask(const clang::FunctionDecl* func,
-                              clang::Rewriter& rewriter) const = 0;
+                              EditSink& edits) const = 0;
   virtual void RewriteHelperFunc(const clang::FunctionDecl* func,
-                                 clang::Rewriter& rewriter) const = 0;
+                                 EditSink& edits) const = 0;
   virtual void LowerPipeline(int ii, const std::string& style,
                              const clang::Stmt* body,
-                             clang::Rewriter& rewriter) const = 0;
+                             EditSink& edits) const = 0;
   virtual void LowerUnroll(int factor, const clang::Stmt* body,
-                           clang::Rewriter& rewriter) const = 0;
+                           EditSink& edits) const = 0;
   //  - LowerStmtAttr: lower a non-pipeline/unroll statement attribute
   //    (tripcount, flatten, latency, dependence, balance) attached to a
   //    loop. Backends that ignore attributes need not override.
   //  - LowerDeclAttr: lower a variable attribute (partition, storage,
   //    aggregate, bind_op) attached to a declaration.
   virtual void LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
-                             clang::Rewriter& rewriter) const {}
+                             EditSink& edits) const {}
   //  - LowerParamAttr: lower a variable attribute on a function PARAMETER
   //    (array ports); the pragma lands at the top of the body.
   virtual void LowerParamAttr(const clang::Attr& attr,
                               const clang::ParmVarDecl& param,
-                              const clang::Stmt* body,
-                              clang::Rewriter& rewriter) const {}
+                              const clang::Stmt* body, EditSink& edits) const {}
   virtual void LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl& var,
                              const clang::DeclStmt& decl,
-                             clang::Rewriter& rewriter) const {}
+                             EditSink& edits) const {}
 
  protected:
   // Per-category port hooks: a vendor overrides only what it needs; the
