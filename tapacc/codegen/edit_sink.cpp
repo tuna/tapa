@@ -18,6 +18,14 @@ void EditSink::TrackFile(clang::FileID file, Resnap resnap) {
   resnaps_[file] = std::move(resnap);
 }
 
+bool EditSink::CanRewrite(clang::SourceRange range) {
+  return CanEdit(range.getBegin(), range.getEnd());
+}
+
+bool EditSink::CanRewrite(clang::CharSourceRange range) {
+  return CanEdit(range.getBegin(), range.getEnd());
+}
+
 bool EditSink::CanEdit(clang::SourceLocation begin, clang::SourceLocation end) {
   if (ctx_ == nullptr) return true;
   clang::SourceLocation macro;

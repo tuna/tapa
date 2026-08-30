@@ -4,11 +4,14 @@
 #include <string>
 
 #include "clang/AST/ASTContext.h"
+#include "llvm/ADT/StringRef.h"
 
 #include "backend.h"
 #include "frontend/program.h"
 
 namespace tapa::cc {
+
+class TreeSession;
 
 // Emit the self-contained vendor C++ for one task: the task itself fully
 // rewritten (signature + body/shell), every other task reduced to a signature,
@@ -27,6 +30,18 @@ std::string EmitTaskCode(const Program& program, const TaskModel& task,
 std::string EmitSharedCode(const Program& program, const Backend& backend,
                            clang::ASTContext& ctx,
                            const std::string& file_name);
+
+// Tree-mode assembly: applies the same per-decl rules as EmitTaskCode once
+// across the mirrored files, wrapping each task definition in its sanitized
+// guard and emitting exact rewritten-signature stubs in the else branches.
+void RewriteTreeFiles(const Program& program, SynthTarget default_target,
+                      const Backend& hls, const Backend& vitis,
+                      const Backend& ignore, clang::ASTContext& ctx,
+                      TreeSession& session);
+
+// Reports any lowered attribute text left in one final emitted file.
+void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef label,
+                       clang::ASTContext& ctx);
 
 }  // namespace tapa::cc
 

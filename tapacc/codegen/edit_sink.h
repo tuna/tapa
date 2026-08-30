@@ -36,6 +36,8 @@ class EditSink {
 
   void TrackFile(clang::FileID file, Resnap resnap);
   void Describe(std::string construct) { construct_ = std::move(construct); }
+  bool CanRewrite(clang::SourceRange range);
+  bool CanRewrite(clang::CharSourceRange range);
 
   bool ReplaceText(clang::SourceRange range, llvm::StringRef text);
   bool ReplaceText(clang::SourceLocation start, unsigned length,

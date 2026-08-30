@@ -27,9 +27,6 @@ namespace tapa::cc {
 // real relative locations, rewriting include lines only where the mirror
 // moved a file and emitting `#line` markers so diagnostics keep pointing
 // at the original sources.
-//
-// Standalone layer: no production pass drives it yet (the emission wiring
-// is the next slice); unit tests are its only consumer.
 
 // One resolved `#include` directive as written in user source.
 struct IncludeDirective {
@@ -136,6 +133,8 @@ class TreeFileBuffer {
   // count by construction).
   bool InsertGuard(clang::SourceRange range, llvm::StringRef opening,
                    llvm::StringRef closing);
+  bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening);
+  bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing);
 
   bool had_edits() const { return had_edits_; }
 
@@ -172,6 +171,13 @@ class TreeSession {
 
   EditSink& edits() { return edits_; }
   TreeFileBuffer* BufferForPath(llvm::StringRef path);
+  TreeFileBuffer* BufferForLocation(clang::SourceLocation loc);
+  bool InsertGuard(clang::SourceRange range, llvm::StringRef opening,
+                   llvm::StringRef closing, std::string construct);
+  bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening,
+                          std::string construct);
+  bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing,
+                          std::string construct);
   const std::map<std::string, std::unique_ptr<TreeFileBuffer>>& buffers()
       const {
     return buffers_;
@@ -181,6 +187,7 @@ class TreeSession {
   clang::Rewriter rewriter_;
   EditSink edits_;
   std::map<std::string, std::unique_ptr<TreeFileBuffer>> buffers_;
+  std::map<clang::FileID, TreeFileBuffer*> buffers_by_file_;
 };
 
 // Materializes the mirror tree: which files to mirror (the `-f` inputs
@@ -212,6 +219,14 @@ class TreeWriter {
   bool AddTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
              TreeSession& session, std::string* error);
 
+  // Tree-relative main-file keys in input order: the `srcs` manifest shared
+  // by every task in tree mode.
+  std::vector<std::string> MainFileKeys() const;
+
+  // Every `_external/<digest8>` bucket used by the rendered closure, sorted
+  // and deduplicated: the manifest's non-root include dirs.
+  std::vector<std::string> ExternalBuckets() const;
+
   // Checks the layout for key collisions and writes every rendered file
   // under out_root, creating directories as needed.
   bool Write(std::string* error);
@@ -234,6 +249,13 @@ std::string CanonicalPath(llvm::StringRef name);
 // disagree about whether a source file is user code.
 std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
                                     const std::vector<IncludeDirective>& log);
+
+// The subset of a TU's mirror closure for which its SourceManager has bytes,
+// keyed by canonical path. The index and rewrite passes build their FileID
+// filters from this same mapping; TreeSession builds its buffers from it.
+std::map<std::string, clang::FileID> MirrorFiles(
+    clang::ASTContext& ctx, const std::vector<std::string>& main_files,
+    const std::vector<IncludeDirective>& log);
 
 }  // namespace tapa::cc
 

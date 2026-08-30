@@ -1,5 +1,6 @@
 #include "rewrite.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -13,6 +14,8 @@
 #include "frontend/program.h"
 #include "frontend/program_builder.h"
 #include "frontend/tapa_stub_decls.h"
+#include "ignore.h"
+#include "tree_writer.h"
 #include "xilinx.h"
 
 namespace tapa::cc {
@@ -349,6 +352,45 @@ TEST(Rewrite, OtherTasksStrippedToSignatures) {
   EXPECT_FALSE(Contains(code, ".invoke(Mmap2Stream"));
 }
 
+TEST(RewriteTree, EmitsGuardsAndExactRewrittenStubs) {
+  auto e = Build();
+  clang::ASTContext& ctx = e.ast->getASTContext();
+  clang::SourceManager& sm = ctx.getSourceManager();
+  const std::string main_file = CanonicalPath(
+      sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
+  TreeSession session(ctx, /*log=*/{}, {main_file});
+  const XilinxBackend hls(/*is_vitis=*/false);
+  const XilinxBackend vitis(/*is_vitis=*/true);
+  const IgnoreBackend ignore;
+
+  RewriteTreeFiles(e.program, SynthTarget::kXilinxHls, hls, vitis, ignore, ctx,
+                   session);
+  TreeFileBuffer* const buffer = session.BufferForPath(main_file);
+  ASSERT_NE(buffer, nullptr);
+  const std::string code = buffer->Render();
+
+  EXPECT_TRUE(Contains(code, "#ifdef TAPA_TASK_DEF_Add"));
+  EXPECT_TRUE(Contains(code,
+                       "#else\n"
+                       "void Add(tapa::istream<float>& a, "
+                       "tapa::istream<float>& b,"))
+      << code;
+  EXPECT_TRUE(Contains(code, "#ifdef TAPA_TASK_DEF_VecAdd"));
+  EXPECT_FALSE(Contains(code, "void VecAdd(tapa::mmap<const float> a"));
+
+  // The upper task's mmap-to-offset rewrite is byte-identical in the full
+  // definition and the else-branch declaration: one signature spelling,
+  // exactly two occurrences.
+  constexpr llvm::StringLiteral kTopSignature(
+      "void VecAdd(uint64_t a_offset, uint64_t b_offset,");
+  size_t count = 0;
+  for (size_t pos = code.find(kTopSignature); pos != std::string::npos;
+       pos = code.find(kTopSignature, pos + kTopSignature.size())) {
+    ++count;
+  }
+  EXPECT_EQ(count, 2u) << code;
+}
+
 TEST(Rewrite, UpperTaskBecomesShellWithOffsets) {
   auto e = Build();
   const XilinxBackend backend(/*is_vitis=*/false);
@@ -410,6 +452,50 @@ struct CollectingDiagConsumer : clang::DiagnosticConsumer {
     errors.emplace_back(msg.data(), msg.size());
   }
 };
+
+TEST(RewriteTree, MacroOwnedEditIsAHardError) {
+  constexpr char kMacroTask[] = R"cpp(
+#define TAPA_TASK_BODY    \
+      {                       \
+        out.write(in.read()); \
+      }
+    void MacroTask(tapa::istream<float>& in,
+                   tapa::ostream<float>& out) TAPA_TASK_BODY
+        void MacroTop(tapa::istream<float>& in, tapa::ostream<float>& out) {
+      tapa::stream<float, 2> q;
+      tapa::task().invoke(MacroTask, in, q);
+    }
+  )cpp";
+  const std::string code = std::string(kTapaStubDecls) + "\n" + kMacroTask;
+  auto diag = std::make_unique<CollectingDiagConsumer>();
+  auto ast = clang::tooling::buildASTFromCodeWithArgs(
+      code, std::vector<std::string>{"-std=c++17"}, "macro.cpp", "macro",
+      std::make_shared<clang::PCHContainerOperations>(),
+      clang::tooling::getClangStripDependencyFileAdjuster(),
+      clang::tooling::FileContentMappings(), diag.get());
+  ASSERT_NE(ast, nullptr);
+  Program program = ViewOf(ast->getASTContext(), "MacroTop");
+  clang::ASTContext& ctx = ast->getASTContext();
+  TreeSession session(ctx, /*log=*/{}, {"macro.cpp"});
+  const XilinxBackend hls(/*is_vitis=*/false);
+  const XilinxBackend vitis(/*is_vitis=*/true);
+  const IgnoreBackend ignore;
+
+  diag->errors.clear();
+  RewriteTreeFiles(program, SynthTarget::kXilinxHls, hls, vitis, ignore, ctx,
+                   session);
+
+  ASSERT_FALSE(diag->errors.empty());
+  EXPECT_TRUE(std::any_of(diag->errors.begin(), diag->errors.end(),
+                          [](const std::string& error) {
+                            return Contains(error,
+                                            "definition of task "
+                                            "'MacroTask'") &&
+                                   Contains(error, "macro expansion") &&
+                                   Contains(error, "TAPA_ANALYZE_TREE");
+                          }))
+      << diag->errors.front();
+}
 
 TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   const std::string code = std::string(kTapaStubDecls) + "\n" + kLeakedAttr;
@@ -549,6 +635,24 @@ TEST(Rewrite, TargetAttrIsNotReportedAsALeak) {
 
   EXPECT_TRUE(Contains(emitted, "[[tapa::target"));
   EXPECT_TRUE(diag->errors.empty());
+
+  TreeSession session(ast->getASTContext(), /*log=*/{}, {"t.cpp"});
+  const XilinxBackend vitis(/*is_vitis=*/true);
+  const IgnoreBackend ignore;
+  RewriteTreeFiles(program, SynthTarget::kXilinxHls, backend, vitis, ignore,
+                   ast->getASTContext(), session);
+  TreeFileBuffer* const buffer = session.BufferForPath("t.cpp");
+  ASSERT_NE(buffer, nullptr);
+  const std::string tree = buffer->Render();
+  const size_t guard = tree.find("#ifdef TAPA_TASK_DEF_TargetTask");
+  const size_t attr = tree.find("[[tapa::target");
+  const size_t stub = tree.find("#else", attr);
+  ASSERT_NE(guard, std::string::npos);
+  ASSERT_NE(attr, std::string::npos);
+  ASSERT_NE(stub, std::string::npos);
+  EXPECT_LT(guard, attr) << tree;
+  EXPECT_LT(attr, stub) << tree;
+  EXPECT_FALSE(Contains(tree, "[[#ifdef")) << tree;
 }
 
 }  // namespace

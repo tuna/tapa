@@ -5,6 +5,7 @@
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
@@ -12,7 +13,9 @@
 #include "edit_sink.h"
 #include "llvm/ADT/StringRef.h"
 
+#include "conventions.h"
 #include "emit.h"
+#include "tree_writer.h"
 #include "wrapper.h"
 
 #include "frontend/diag.h"
@@ -100,8 +103,8 @@ constexpr bool IsTapaDeclAttr(clang::attr::Kind kind) {
 // how a vendor `#pragma HLS pipeline` written at function scope migrates),
 // but nothing lowered it: the pragma was never emitted and the raw
 // `[[tapa::pipeline(...)]]` text reached the vendor compiler verbatim.
-void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
-                    EditSink& edits) {
+void LowerFuncAttrPragmas(const clang::FunctionDecl* func,
+                          const Backend& backend, EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) return;
   const clang::Stmt* body = func->getBody();
   if (body == nullptr) return;
@@ -109,7 +112,6 @@ void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
     if (attr->getKind() != clang::attr::TapaPipeline) continue;
     const auto* pa = llvm::cast<clang::TapaPipelineAttr>(attr);
     backend.LowerPipeline(pa->getII(), pa->getStyle().str(), body, edits);
-    RemoveLoweredAttr(edits, attr->getRange());
   }
 }
 
@@ -122,6 +124,12 @@ void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
       RemoveLoweredAttr(edits, attr->getRange());
     }
   }
+}
+
+void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
+                    EditSink& edits) {
+  LowerFuncAttrPragmas(func, backend, edits);
+  RemoveFuncAttrs(func, edits);
 }
 
 // Lower every [[tapa::*]] loop and variable attribute in a function body to
@@ -230,21 +238,38 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
 // Lower [[tapa::*]] variable attributes on function parameters (array
 // ports): the pragma goes at the top of the body, exactly where the old
 // vendor pragma sat.
+void LowerParamAttrPragmas(const clang::FunctionDecl* func,
+                           const Backend& backend, EditSink& edits) {
+  if (!func->isThisDeclarationADefinition()) return;
+  const clang::Stmt* body = func->getBody();
+  if (body == nullptr) return;
+  for (const clang::ParmVarDecl* param : func->parameters()) {
+    for (const clang::Attr* attr : param->attrs()) {
+      if (IsTapaDeclAttr(attr->getKind())) {
+        backend.LowerParamAttr(*attr, *param, body, edits);
+      }
+    }
+  }
+}
+
+void RemoveParamAttrs(const clang::FunctionDecl* func, EditSink& edits) {
+  for (const clang::ParmVarDecl* param : func->parameters()) {
+    for (const clang::Attr* attr : param->attrs()) {
+      if (IsTapaDeclAttr(attr->getKind())) {
+        RemoveLoweredAttr(edits, attr->getRange());
+      }
+    }
+  }
+}
+
 void LowerParamAttrs(const clang::FunctionDecl* func, const Backend& backend,
                      EditSink& edits) {
   // Only the DEFINITION carries lowerable parameter attributes. A forward
   // declaration's source range would be removed while its rewriting target
   // (the body) does not exist — the rewriter asserts on the inverted range.
   if (!func->isThisDeclarationADefinition()) return;
-  const clang::Stmt* body = func->getBody();
-  if (body == nullptr) return;
-  for (const clang::ParmVarDecl* param : func->parameters()) {
-    for (const clang::Attr* attr : param->attrs()) {
-      if (!IsTapaDeclAttr(attr->getKind())) continue;
-      backend.LowerParamAttr(*attr, *param, body, edits);
-      RemoveLoweredAttr(edits, attr->getRange());
-    }
-  }
+  LowerParamAttrPragmas(func, backend, edits);
+  RemoveParamAttrs(func, edits);
 }
 
 // Report any `[[tapa::...]]` text that survived into the emitted source.
@@ -310,8 +335,8 @@ std::string BlankCommentsAndStrings(llvm::StringRef code) {
   return out;
 }
 
-void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef task,
-                       clang::ASTContext& ctx) {
+void ReportLeakedAttrsImpl(llvm::StringRef code, llvm::StringRef task,
+                           clang::ASTContext& ctx) {
   const std::string scannable = BlankCommentsAndStrings(code);
   code = scannable;
   // Every emitted file contains all helpers, so one leaked attribute in a
@@ -338,6 +363,11 @@ void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef task,
 }
 
 }  // namespace
+
+void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef label,
+                       clang::ASTContext& ctx) {
+  ReportLeakedAttrsImpl(code, label, ctx);
+}
 
 // The primary-template pattern of a template-specialization task's definition
 // (the decl that actually appears in the source), or nullptr.
@@ -490,6 +520,198 @@ std::string EmitSharedCode(const Program& program, const Backend& backend,
                            clang::ASTContext& ctx,
                            const std::string& file_name) {
   return EmitFile(program, nullptr, backend, ctx, file_name);
+}
+
+namespace {
+
+const Backend& BackendFor(SynthTarget target, const Backend& hls,
+                          const Backend& vitis, const Backend& ignore) {
+  switch (target) {
+    case SynthTarget::kXilinxHls:
+      return hls;
+    case SynthTarget::kXilinxVitis:
+      return vitis;
+    case SynthTarget::kIgnore:
+      return ignore;
+  }
+  return hls;
+}
+
+std::string RewrittenSignature(const clang::FunctionDecl* func,
+                               clang::SourceLocation begin, EditSink& edits) {
+  return edits.getRewrittenText(clang::CharSourceRange::getCharRange(
+      begin, func->getBody()->getBeginLoc()));
+}
+
+clang::SourceRange DefinitionRange(const clang::FunctionDecl* func,
+                                   const EditSink& edits) {
+  const clang::SourceManager& sm = edits.getSourceMgr();
+  clang::SourceLocation begin = func->getBeginLoc();
+  auto take_earlier = [&](clang::SourceLocation candidate) {
+    if (candidate.isValid() && sm.isBeforeInTranslationUnit(candidate, begin)) {
+      begin = candidate;
+    }
+  };
+  if (const clang::FunctionTemplateDecl* tpl =
+          func->getDescribedFunctionTemplate()) {
+    take_earlier(tpl->getBeginLoc());
+  }
+  for (const clang::Attr* attr : func->attrs()) {
+    if (!IsTapaAttr(attr->getKind())) continue;
+    clang::SourceLocation attr_begin = attr->getRange().getBegin();
+    if (attr_begin.isFileID()) {
+      const clang::FileID file = sm.getFileID(attr_begin);
+      const llvm::StringRef source = sm.getBufferData(file);
+      unsigned offset = sm.getFileOffset(attr_begin);
+      // Clang's attribute range starts at `tapa`, not the enclosing `[[`.
+      // Find that introducer on the same source line so a guard directive
+      // never lands in the middle of `[[tapa::...]]`.
+      while (offset >= 2 && source[offset - 1] != '\n') {
+        if (source.substr(offset - 2, 2) == "[[") {
+          attr_begin =
+              sm.getLocForStartOfFile(file).getLocWithOffset(offset - 2);
+          break;
+        }
+        --offset;
+      }
+    }
+    take_earlier(attr_begin);
+  }
+  return {begin, func->getEndLoc()};
+}
+
+std::string GuardOpening(const std::vector<std::string>& defines) {
+  if (defines.size() == 1) return "#ifdef " + defines.front() + "\n";
+  std::string opening = "#if ";
+  for (size_t i = 0; i < defines.size(); ++i) {
+    if (i > 0) opening += " || ";
+    opening += "defined(" + defines[i] + ")";
+  }
+  return opening + "\n";
+}
+
+}  // namespace
+
+void RewriteTreeFiles(const Program& program, SynthTarget default_target,
+                      const Backend& hls, const Backend& vitis,
+                      const Backend& ignore, clang::ASTContext& ctx,
+                      TreeSession& session) {
+  EditSink& edits = session.edits();
+  const Backend& shared = BackendFor(default_target, hls, vitis, ignore);
+
+  std::map<const clang::FunctionDecl*, std::vector<const TaskModel*>> specs;
+  for (const auto& [name, model] : program.tasks) {
+    (void)name;
+    if (const clang::FunctionDecl* primary = SpecPrimary(model)) {
+      specs[primary].push_back(&model);
+    }
+  }
+
+  auto guard_definition =
+      [&](const TaskModel& model, const clang::FunctionDecl* func, bool is_top,
+          const Backend& backend, const std::vector<std::string>& defines,
+          bool rewrite_signature) {
+        edits.Describe("signature of task '" + model.name + "'");
+        if (rewrite_signature) backend.RewriteSignature(model, is_top, edits);
+        // Signature text is shared by the full definition and stub branches.
+        // Remove parameter/function attributes once; their body pragmas stay in
+        // the guarded full-definition branch below.
+        RemoveParamAttrs(func, edits);
+        RemoveFuncAttrs(func, edits);
+        const clang::SourceRange definition = DefinitionRange(func, edits);
+        const std::string stub =
+            RewrittenSignature(func, definition.getBegin(), edits);
+
+        const std::string construct = "definition of task '" + model.name + "'";
+        if (!session.InsertGuardOpening(definition, GuardOpening(defines),
+                                        construct)) {
+          return;
+        }
+        edits.Describe(construct);
+        backend.RewriteTaskFunc(model, is_top, edits);
+        LowerParamAttrPragmas(func, backend, edits);
+        LowerFuncAttrPragmas(func, backend, edits);
+        LowerAttrs(func->getBody(), ctx, backend, edits,
+                   /*in_block=*/false);
+
+        const std::string closing = "\n#else\n" + stub + ";\n#endif\n";
+        session.InsertGuardClosing(definition, closing, construct);
+      };
+
+  // Plain task definitions: unconditional signatures, one guarded body each.
+  for (const auto& [name, model] : program.tasks) {
+    if (model.is_template_spec) continue;
+    const Backend& backend = BackendFor(model.target, hls, vitis, ignore);
+    guard_definition(model, model.def, name == program.top, backend,
+                     {TaskGuardDefine(model.name)},
+                     /*rewrite_signature=*/true);
+  }
+
+  // Remaining source functions: template-task primaries, task redeclarations,
+  // unreachable upper tasks, and helpers. This is the same classification and
+  // per-decl treatment as EmitFile; only task-definition assembly differs.
+  for (const clang::FunctionDecl* func : program.file_funcs) {
+    const auto task = program.tasks.find(func->getNameAsString());
+    if (task != program.tasks.end() && !task->second.is_template_spec) {
+      if (!func->isThisDeclarationADefinition()) RemoveInline(func, edits);
+      continue;
+    }
+
+    const clang::FunctionDecl* canonical = func->getCanonicalDecl();
+    if (const auto spec = specs.find(canonical); spec != specs.end()) {
+      const TaskModel& representative = *spec->second.front();
+      TaskModel primary = representative;
+      primary.def = func;
+      std::vector<std::string> defines;
+      defines.reserve(spec->second.size());
+      for (const TaskModel* model : spec->second) {
+        defines.push_back(TaskGuardDefine(model->name));
+      }
+      guard_definition(primary, func, /*is_top=*/false,
+                       BackendFor(representative.target, hls, vitis, ignore),
+                       defines, /*rewrite_signature=*/false);
+    } else if (GetTapaTaskObject(func->getBody()) != nullptr) {
+      TaskModel model;
+      model.def = func;
+      model.level = TaskLevel::kUpper;
+      edits.Describe("unreachable task '" + func->getNameAsString() + "'");
+      shared.RewriteSignature(model, /*is_top=*/false, edits);
+      RemoveFuncAttrs(func, edits);
+      shared.StripOtherTask(func, edits);
+    } else {
+      edits.Describe("helper function '" + func->getNameAsString() + "'");
+      shared.RewriteHelperFunc(func, edits);
+      if (func->isThisDeclarationADefinition()) {
+        LowerParamAttrs(func, shared, edits);
+        LowerFuncAttrs(func, shared, edits);
+        LowerAttrs(func->getBody(), ctx, shared, edits,
+                   /*in_block=*/false);
+      }
+    }
+  }
+
+  for (const clang::FunctionDecl* func : program.local_funcs) {
+    edits.Describe("helper function '" + func->getNameAsString() + "'");
+    shared.RewriteHelperFunc(func, edits);
+    LowerParamAttrs(func, shared, edits);
+    LowerFuncAttrs(func, shared, edits);
+    LowerAttrs(func->getBody(), ctx, shared, edits,
+               /*in_block=*/false);
+  }
+
+  // Insert wrappers only after every definition guard is in place. A wrapper
+  // shares its invoker's end offset; doing this last guarantees it lands after
+  // that invoker's #endif, under the specialization's own guard alone.
+  for (const auto& [name, model] : program.tasks) {
+    if (!model.is_template_spec || model.invoker == nullptr) continue;
+    const std::string define = TaskGuardDefine(model.name);
+    const Backend& backend = BackendFor(model.target, hls, vitis, ignore);
+    edits.Describe("wrapper for template task '" + name + "'");
+    edits.InsertTextAfterToken(model.invoker->getEndLoc(),
+                               "\n#ifdef " + define + "\n" +
+                                   GenerateWrapper(model, backend, ctx) +
+                                   "#endif\n");
+  }
 }
 
 }  // namespace tapa::cc

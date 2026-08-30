@@ -75,6 +75,17 @@ TEST(Conventions, MatchesCrossLanguageFixture) {
   EXPECT_GE(productions, 8) << "fixture lost productions";
 }
 
+TEST(Conventions, TaskGuardCollisionIsHardAndDeterministic) {
+  EXPECT_EQ(TaskGuardDefine("plain-task.v1"), "TAPA_TASK_DEF_plain_task_v1");
+  EXPECT_FALSE(TaskGuardCollision({"same", "same"}));
+
+  const auto collision = TaskGuardCollision({"task-a", "task.a"});
+  ASSERT_TRUE(collision);
+  EXPECT_NE(collision->find("task-a"), std::string::npos);
+  EXPECT_NE(collision->find("task.a"), std::string::npos);
+  EXPECT_NE(collision->find("TAPA_TASK_DEF_task_a"), std::string::npos);
+}
+
 TEST(CodeSink, Accumulates) {
   CodeSink out;
   EXPECT_TRUE(out.Empty());

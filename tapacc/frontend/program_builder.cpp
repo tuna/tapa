@@ -12,10 +12,13 @@
 
 #include "build_program.h"
 #include "classify.h"
+#include "codegen/conventions.h"
 #include "codegen/ignore.h"
 #include "codegen/rewrite.h"
 #include "codegen/schema_fields.h"
+#include "codegen/tree_writer.h"
 #include "codegen/xilinx.h"
+#include "diag.h"
 #include "discover.h"
 #include "invoke_parser.h"
 #include "names.h"
@@ -65,12 +68,12 @@ std::string CanonicalSignature(const clang::FunctionDecl* func) {
 // that instantiated it.
 class MainFileFuncs : public clang::RecursiveASTVisitor<MainFileFuncs> {
  public:
-  explicit MainFileFuncs(const clang::ASTContext& ctx) : ctx_(ctx) {}
+  MainFileFuncs(const clang::ASTContext& ctx,
+                const std::set<clang::FileID>* files)
+      : ctx_(ctx), files_(files) {}
 
   bool VisitFunctionDecl(clang::FunctionDecl* func) {
-    if (!ctx_.getSourceManager().isWrittenInMainFile(func->getLocation())) {
-      return true;
-    }
+    if (!IsInSourceFiles(ctx_, func->getLocation(), files_)) return true;
     if (!func->isImplicit() && !func->isDefaulted() && !func->isDeleted()) {
       funcs_.push_back(func);
     }
@@ -83,6 +86,7 @@ class MainFileFuncs : public clang::RecursiveASTVisitor<MainFileFuncs> {
 
  private:
   const clang::ASTContext& ctx_;
+  const std::set<clang::FileID>* files_;
   std::vector<const clang::FunctionDecl*> funcs_;
 };
 
@@ -157,16 +161,39 @@ nlohmann::json StreamJson(const StreamDecl& stream) {
 
 }  // namespace
 
-ProgramBuilder::ProgramBuilder(std::string top, SynthTarget default_target)
-    : top_(std::move(top)), default_target_(default_target) {}
+ProgramBuilder::ProgramBuilder(std::string top, SynthTarget default_target,
+                               std::optional<TreeConfig> tree)
+    : top_(std::move(top)),
+      default_target_(default_target),
+      tree_config_(std::move(tree)) {
+  if (tree_config_) {
+    tree_writer_ = std::make_unique<TreeWriter>(tree_config_->out_root,
+                                                tree_config_->main_files);
+  }
+}
+
+ProgramBuilder::~ProgramBuilder() = default;
+ProgramBuilder::ProgramBuilder(ProgramBuilder&&) noexcept = default;
+ProgramBuilder& ProgramBuilder::operator=(ProgramBuilder&&) noexcept = default;
 
 std::string ProgramBuilder::KeyOf(clang::MangleContext& mangler,
                                   const clang::FunctionDecl* func) const {
-  if (func->isFunctionTemplateSpecialization()) {
-    return MangledTaskName(mangler, func);
+  if (const clang::FunctionDecl* definition = func->getDefinition()) {
+    func = definition;
   }
-  return func->getQualifiedNameAsString() + "(" + CanonicalSignature(func) +
-         ")";
+  std::string key = func->isFunctionTemplateSpecialization()
+                        ? MangledTaskName(mangler, func)
+                        : func->getQualifiedNameAsString() + "(" +
+                              CanonicalSignature(func) + ")";
+  if (!tree_mode()) return key;
+
+  const clang::SourceManager& sm = func->getASTContext().getSourceManager();
+  const clang::SourceLocation loc = sm.getExpansionLoc(func->getLocation());
+  const clang::FileID file = sm.getFileID(loc);
+  const clang::OptionalFileEntryRef entry = sm.getFileEntryRefForID(file);
+  const std::string path = entry ? CanonicalPath(entry->getName())
+                                 : CanonicalPath(sm.getFilename(loc));
+  return key + "@" + path + ":" + std::to_string(sm.getFileOffset(loc));
 }
 
 ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
@@ -183,7 +210,8 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
       sighting.is_spec &&
       def->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation;
   sighting.key = KeyOf(mangler, def);
-  sighting.name = sighting.is_spec ? sighting.key : sighting.plain_name;
+  sighting.name =
+      sighting.is_spec ? MangledTaskName(mangler, def) : sighting.plain_name;
   sighting.readable_name = ReadableTaskName(ctx, def);
   sighting.task_shaped = GetTapaTaskObject(def->getBody()) != nullptr;
   sighting.ignored = IsIgnored(def);
@@ -195,10 +223,10 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
 }
 
 ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
-    clang::ASTContext& ctx) const {
+    clang::ASTContext& ctx, const std::set<clang::FileID>* files) const {
   TuIndex index;
   const auto mangler = CreateMangleContext(ctx);
-  MainFileFuncs collector(ctx);
+  MainFileFuncs collector(ctx, files);
   // TraverseDecl mutates nothing but is non-const in the API.
   collector.TraverseDecl(ctx.getTranslationUnitDecl());
   const int tu = static_cast<int>(tu_files_.size());  // provisional id
@@ -314,8 +342,27 @@ void ProgramBuilder::Fail(std::string message) {
   errors_.push_back(std::move(message));
 }
 
-void ProgramBuilder::IndexTu(clang::ASTContext& ctx) {
-  TuIndex index = IndexTuImpl(ctx);
+std::set<clang::FileID> ProgramBuilder::TreeFiles(
+    clang::ASTContext& ctx, const std::vector<IncludeDirective>* log) const {
+  static const std::vector<IncludeDirective> kEmptyLog;
+  std::set<clang::FileID> files;
+  for (const auto& [path, file] : MirrorFiles(
+           ctx, tree_config_->main_files, log == nullptr ? kEmptyLog : *log)) {
+    (void)path;
+    files.insert(file);
+  }
+  return files;
+}
+
+void ProgramBuilder::IndexTu(clang::ASTContext& ctx,
+                             const std::vector<IncludeDirective>* log) {
+  std::set<clang::FileID> files;
+  const std::set<clang::FileID>* selected = nullptr;
+  if (tree_mode()) {
+    files = TreeFiles(ctx, log);
+    selected = &files;
+  }
+  TuIndex index = IndexTuImpl(ctx, selected);
   const int tu = RegisterTu(MainFilePath(ctx));
   for (DefSighting& sighting : index.defs) {
     sighting.tu = tu;
@@ -488,15 +535,35 @@ bool ProgramBuilder::MergeAndDiscover() {
       return false;
     }
   }
+
+  if (tree_mode()) {
+    std::vector<std::string> task_keys;
+    task_keys.reserve(tasks_.size());
+    for (const auto& [key, task] : tasks_) {
+      task_keys.push_back(task.model.name);
+    }
+    if (const std::optional<std::string> collision =
+            TaskGuardCollision(task_keys)) {
+      Fail(*collision);
+      return false;
+    }
+  }
   return true;
 }
 
-Program ProgramBuilder::TuView(clang::ASTContext& ctx) {
-  TuIndex index = IndexTuImpl(ctx);
+Program ProgramBuilder::TuView(clang::ASTContext& ctx,
+                               const std::vector<IncludeDirective>* log) {
+  std::set<clang::FileID> files;
+  const std::set<clang::FileID>* selected = nullptr;
+  if (tree_mode()) {
+    files = TreeFiles(ctx, log);
+    selected = &files;
+  }
+  TuIndex index = IndexTuImpl(ctx, selected);
   Program view;
   view.top = top_;
-  view.file_funcs = CollectFileFuncs(ctx);
-  view.local_funcs = CollectLocalFuncs(ctx);
+  view.file_funcs = CollectFileFuncs(ctx, selected);
+  view.local_funcs = CollectLocalFuncs(ctx, selected);
   for (const auto& [key, task] : tasks_) {
     auto visible_it = index.visible.find(key);
     if (visible_it == index.visible.end()) continue;
@@ -518,13 +585,8 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx) {
   return view;
 }
 
-void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
-  const int tu = TuOf(MainFilePath(ctx));
-  Program view = TuView(ctx);
-
-  const XilinxBackend hls(/*is_vitis=*/false);
-  const XilinxBackend vitis(/*is_vitis=*/true);
-  const IgnoreBackend ignore;
+void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
+                                    clang::ASTContext& ctx) {
   for (auto& [key, task] : tasks_) {
     if (task.owner_tu != tu) continue;
     TaskModel& model = view.tasks.at(task.model.name);
@@ -534,6 +596,20 @@ void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
       ParseUpperTask(ctx, model, /*is_top=*/model.name == top_);
     }
     task.model = model;
+  }
+}
+
+void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
+  const int tu = TuOf(MainFilePath(ctx));
+  Program view = TuView(ctx);
+  FillOwnedTasks(tu, view, ctx);
+
+  const XilinxBackend hls(/*is_vitis=*/false);
+  const XilinxBackend vitis(/*is_vitis=*/true);
+  const IgnoreBackend ignore;
+  for (const auto& [key, task] : tasks_) {
+    if (task.owner_tu != tu) continue;
+    const TaskModel& model = view.tasks.at(task.model.name);
     const Backend* backend = &hls;
     if (model.target == SynthTarget::kXilinxVitis) backend = &vitis;
     if (model.target == SynthTarget::kIgnore) backend = &ignore;
@@ -554,6 +630,32 @@ void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
     const Backend& backend =
         default_target_ == SynthTarget::kXilinxVitis ? vitis : hls;
     shared_code_[tu] = EmitSharedCode(view, backend, ctx, SharedSourceName(tu));
+  }
+}
+
+void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
+                                   std::vector<IncludeDirective> log) {
+  const int tu = TuOf(MainFilePath(ctx));
+  Program view = TuView(ctx, &log);
+  FillOwnedTasks(tu, view, ctx);
+
+  const XilinxBackend hls(/*is_vitis=*/false);
+  const XilinxBackend vitis(/*is_vitis=*/true);
+  const IgnoreBackend ignore;
+  TreeSession session(ctx, log, tree_config_->main_files);
+  RewriteTreeFiles(view, default_target_, hls, vitis, ignore, ctx, session);
+
+  std::string error;
+  if (!tree_writer_->AddTu(ctx, std::move(log), session, &error)) {
+    ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                     ctx.getSourceManager().getLocForStartOfFile(
+                         ctx.getSourceManager().getMainFileID()),
+                     "rewritten-tree emission failed: %0")
+        << error;
+    return;
+  }
+  for (const auto& [path, buffer] : session.buffers()) {
+    ReportLeakedAttrs(buffer->Render(), path, ctx);
   }
 }
 
@@ -630,11 +732,31 @@ bool ProgramBuilder::WriteSources(const std::string& emit_dir,
   return true;
 }
 
+bool ProgramBuilder::WriteTree(std::string* error) {
+  if (tree_writer_ == nullptr) {
+    *error = "rewritten-tree output requested outside tree mode";
+    return false;
+  }
+  return tree_writer_->Write(error);
+}
+
 nlohmann::json ProgramBuilder::EmitJson() const {
   // Sorted by graph name, exactly as the single-TU std::map ordered tasks.
   std::map<std::string, const MergedTask*> by_name;
   for (const auto& [key, task] : tasks_) {
     by_name.emplace(task.model.name, &task);
+  }
+
+  nlohmann::json tree_srcs = nlohmann::json::array();
+  nlohmann::json tree_include_dirs = nlohmann::json::array();
+  if (tree_mode()) {
+    for (const std::string& src : tree_writer_->MainFileKeys()) {
+      tree_srcs.push_back(src);
+    }
+    tree_include_dirs.push_back("");
+    for (const std::string& dir : tree_writer_->ExternalBuckets()) {
+      tree_include_dirs.push_back(dir);
+    }
   }
 
   nlohmann::json out;
@@ -645,19 +767,24 @@ nlohmann::json ProgramBuilder::EmitJson() const {
   for (const auto& [name, task] : by_name) {
     const TaskModel& model = task->model;
     nlohmann::json& t = out[kFieldTasks][name];
-    // The manifest names the files this task's HLS job compiles, under
-    // `-emit-dir` (WriteSources): its own rewritten blob first, then every
-    // OTHER TU's shared file in input-file order, carrying the helper
-    // definitions this task's blob only declares. A single-TU program lists
-    // the blob alone, exactly as it did before shared files existed.
-    nlohmann::json srcs = nlohmann::json::array({name + ".cpp"});
-    for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
-      if (static_cast<int>(tu) == task->owner_tu) continue;
-      srcs.push_back(SharedSourceName(static_cast<int>(tu)));
+    if (tree_mode()) {
+      // Every task compiles the same mirrored TUs; one define selects its
+      // full definition while every other task takes its exact signature stub.
+      t[kFieldSrcs] = tree_srcs;
+      t[kFieldIncludeDirs] = tree_include_dirs;
+      t[kFieldDefines] = nlohmann::json::array({TaskGuardDefine(model.name)});
+    } else {
+      // The flattened bridge names this task's blob first, then every OTHER
+      // TU's shared helper file in input order.
+      nlohmann::json srcs = nlohmann::json::array({name + ".cpp"});
+      for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
+        if (static_cast<int>(tu) == task->owner_tu) continue;
+        srcs.push_back(SharedSourceName(static_cast<int>(tu)));
+      }
+      t[kFieldSrcs] = std::move(srcs);
+      t[kFieldIncludeDirs] = nlohmann::json::array();
+      t[kFieldDefines] = nlohmann::json::array();
     }
-    t[kFieldSrcs] = std::move(srcs);
-    t[kFieldIncludeDirs] = nlohmann::json::array();
-    t[kFieldDefines] = nlohmann::json::array();
     t[kFieldLevel] = LevelStr(model.level);
     t[kFieldSynth] = SynthStr(model.target);
     t[kFieldReadableName] = model.readable_name;

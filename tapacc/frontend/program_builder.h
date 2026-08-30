@@ -2,7 +2,9 @@
 #define TAPA_FRONTEND_PROGRAM_BUILDER_H_
 
 #include <map>
+#include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -15,20 +17,22 @@
 
 namespace tapa::cc {
 
+struct IncludeDirective;
+class TreeWriter;
+
 // Builds one merged task graph out of any number of translation units, in two
 // passes over the same file list (each ClangTool action owns its ASTContext,
 // so AST nodes never survive their TU):
 //
-//   pass 1  IndexTu          collect, per TU, every function definition
-//                           sighted in the main file plus every invoke edge
-//                           (the callee resolved through the declaration
-//                           visible in that TU); no rewriting, no JSON.
+//   pass 1  IndexTu          collect definitions and invoke edges from the
+//                           flattened main file, or from every mirrored user
+//                           file in tree mode; no rewriting, no JSON.
 //   merge   MergeAndDiscover build the merged definition index, BFS from the
 //                           top over the merged invoke edges, and check the
 //                           merge rules below; pure data, no AST.
-//   pass 2  RewriteTu        per TU, build a per-TU Program view of the
-//                           merged task set and run the per-task emission
-//                           for every merged task defined in that TU.
+//   pass 2  RewriteTu        build a per-TU Program view and either emit the
+//                           flattened bridge's per-task text or apply one
+//                           guarded rewrite across the mirrored files.
 //
 // after both passes, EmitJson prints the single graph tapa-ir consumes.
 //
@@ -38,23 +42,32 @@ namespace tapa::cc {
 //      whose callee has no definition anywhere is an error naming the invoke
 //      site and the scanned TUs (plus the location of a same-name definition
 //      with a different signature, the decl/def mismatch case);
-//   2. a task sighted as an identical definition in several TUs (a
-//      header-defined task, inlined into every flattened TU) dedupes on
-//      identical key + level/target/readable_name/signature; any difference
-//      is an error printing both definitions;
+//   2. a header-defined task dedupes by its identity key (the flattened
+//      function identity on the bridge path; canonical path + offset in tree
+//      mode); divergent sightings are an error printing both definitions;
 //   3. template specializations merge by mangled key; distinct
 //      instantiations are distinct tasks;
 //   4. an internal-linkage task (`static`, anonymous namespace) is a hard
 //      error whether it is task-shaped or referenced by an invoke;
 //   5. the top must resolve to exactly one merged definition; "top not
 //      found" lists every TU scanned.
+struct TreeConfig {
+  std::string out_root;
+  std::vector<std::string> main_files;
+};
+
 class ProgramBuilder {
  public:
-  ProgramBuilder(std::string top, SynthTarget default_target);
+  ProgramBuilder(std::string top, SynthTarget default_target,
+                 std::optional<TreeConfig> tree = std::nullopt);
+  ~ProgramBuilder();
+  ProgramBuilder(ProgramBuilder&&) noexcept;
+  ProgramBuilder& operator=(ProgramBuilder&&) noexcept;
 
   // Pass 1. Registers the TU (by main-file path, in first-seen order) and
   // folds its sightings and invoke edges into the shared index.
-  void IndexTu(clang::ASTContext& ctx);
+  void IndexTu(clang::ASTContext& ctx,
+               const std::vector<IncludeDirective>* log = nullptr);
 
   // Merge + discovery. Returns false (and fills `errors()`) on a violated
   // merge rule; the caller must not run pass 2 afterwards.
@@ -67,15 +80,22 @@ class ProgramBuilder {
   // attributes) go through `ctx` as today.
   void RewriteTu(clang::ASTContext& ctx);
 
+  // Tree-mode pass 2: apply one guarded rewrite across the mirror and absorb
+  // the TU while its SourceManager-bound include log is alive.
+  void RewriteTreeTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log);
+
+  bool tree_mode() const { return tree_config_.has_value(); }
+
   // The per-TU Program view of the merged task set: `file_funcs` /
   // `local_funcs` as today, plus one TaskModel per merged task visible in
-  // this TU — the definition if owned here, else a visible redeclaration
-  // (headers are inlined into flattened TUs, so cross-TU tasks have decls),
-  // else omitted, since its text does not exist in this TU. Ports and
-  // instances are filled only for owned tasks (BuildPorts and
-  // ParseUpperTask need the definition), which RewriteTu does. Valid only
+  // this TU — the definition if owned here, else a visible redeclaration,
+  // else omitted since its text does not exist in this TU's selected source
+  // files. Ports and instances are filled only for owned tasks (BuildPorts
+  // and ParseUpperTask need the definition), which the rewrite pass does.
+  // Valid only
   // while `ctx` is alive.
-  Program TuView(clang::ASTContext& ctx);
+  Program TuView(clang::ASTContext& ctx,
+                 const std::vector<IncludeDirective>* log = nullptr);
 
   // The merged model of a task by graph name (the JSON `tasks` key), or
   // nullptr. Ports/instances/streams are filled once the owning TU has gone
@@ -99,6 +119,9 @@ class ProgramBuilder {
   // re-run. Returns false and sets `*error` on a write failure.
   bool WriteSources(const std::string& emit_dir, std::string* error);
 
+  // Materializes the guarded mirror accumulated by RewriteTreeTu.
+  bool WriteTree(std::string* error);
+
   // The single merged task graph, in today's field order and spelling.
   nlohmann::json EmitJson() const;
 
@@ -114,8 +137,8 @@ class ProgramBuilder {
   // are dropped at the end of IndexTu, so the merge never touches dead state.
   struct DefSighting {
     // Identity key: FQN + canonical parameter signature for plain
-    // functions, the mangled name for template specializations (Itanium
-    // mangling is identical across TUs for the same specialization).
+    // functions, the mangled name for template specializations, plus the
+    // definition's canonical path + file offset in tree mode.
     std::string key;
     std::string name;        // graph key: plain name, mangled for specs
     std::string plain_name;  // unqualified name, the old lookup key
@@ -172,7 +195,11 @@ class ProgramBuilder {
   DefSighting MakeFacts(clang::MangleContext& mangler,
                         const clang::FunctionDecl* def, int tu) const;
 
-  TuIndex IndexTuImpl(clang::ASTContext& ctx) const;
+  TuIndex IndexTuImpl(clang::ASTContext& ctx,
+                      const std::set<clang::FileID>* files) const;
+  std::set<clang::FileID> TreeFiles(
+      clang::ASTContext& ctx, const std::vector<IncludeDirective>* log) const;
+  void FillOwnedTasks(int tu, Program& view, clang::ASTContext& ctx);
   int RegisterTu(const std::string& file);
   int TuOf(const std::string& file) const;
   // The shared file name of one TU, and the merge-time check that TU
@@ -185,6 +212,8 @@ class ProgramBuilder {
 
   std::string top_;
   SynthTarget default_target_;
+  std::optional<TreeConfig> tree_config_;
+  std::unique_ptr<TreeWriter> tree_writer_;
   std::vector<std::string> tu_files_;  // TU id -> main-file path
 
   // key -> sightings, in TU order.

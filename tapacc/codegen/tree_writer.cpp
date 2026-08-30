@@ -78,6 +78,32 @@ std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
   return mirrored;
 }
 
+std::map<std::string, clang::FileID> MirrorFiles(
+    clang::ASTContext& ctx, const std::vector<std::string>& main_files,
+    const std::vector<IncludeDirective>& log) {
+  clang::SourceManager& sm = ctx.getSourceManager();
+  const std::set<std::string> mirrored = MirrorClosure(main_files, log);
+  std::map<std::string, clang::FileID> files;
+  auto remember = [&](const std::string& path, clang::FileID file) {
+    files.try_emplace(path, file);
+  };
+  if (const clang::OptionalFileEntryRef main =
+          sm.getFileEntryRefForID(sm.getMainFileID())) {
+    remember(CanonicalPath(main->getName()), sm.getMainFileID());
+  }
+  for (const IncludeDirective& record : log) {
+    if (mirrored.count(record.writing_file) > 0) {
+      remember(record.writing_file,
+               sm.getFileID(record.filename_range.getBegin()));
+    }
+    if (mirrored.count(record.resolved) > 0 && record.resolved_entry) {
+      remember(record.resolved, sm.getOrCreateFileID(*record.resolved_entry,
+                                                     clang::SrcMgr::C_User));
+    }
+  }
+  return files;
+}
+
 // ── Mirror layout ─────────────────────────────────────────────────────────
 
 std::string TreeLayout::SrcRoot(const std::vector<std::string>& main_files) {
@@ -201,14 +227,21 @@ bool TreeFileBuffer::ReplaceWithLineResnap(clang::CharSourceRange range,
 bool TreeFileBuffer::InsertGuard(clang::SourceRange range,
                                  llvm::StringRef opening,
                                  llvm::StringRef closing) {
+  return InsertGuardOpening(range, opening) &&
+         InsertGuardClosing(range, closing);
+}
+
+bool TreeFileBuffer::InsertGuardOpening(clang::SourceRange range,
+                                        llvm::StringRef opening) {
+  return range.getBegin().isFileID() && ApplyEdit(range.getBegin(), 0, opening);
+}
+
+bool TreeFileBuffer::InsertGuardClosing(clang::SourceRange range,
+                                        llvm::StringRef closing) {
   const clang::SourceLocation after_last_token =
       clang::Lexer::getLocForEndOfToken(range.getEnd(), 0, sm_,
                                         rewriter_.getLangOpts());
-  if (!range.getBegin().isFileID() || !after_last_token.isFileID()) {
-    return false;
-  }
-  return ApplyEdit(range.getBegin(), 0, opening) &&
-         ApplyEdit(after_last_token, 0, closing);
+  return after_last_token.isFileID() && ApplyEdit(after_last_token, 0, closing);
 }
 
 bool TreeFileBuffer::ApplyEdit(clang::SourceLocation begin, unsigned length,
@@ -282,37 +315,53 @@ TreeSession::TreeSession(clang::ASTContext& ctx,
     : rewriter_(ctx.getSourceManager(), ctx.getLangOpts()),
       edits_(ctx, rewriter_) {
   clang::SourceManager& sm = ctx.getSourceManager();
-  const std::set<std::string> mirrored = MirrorClosure(main_files, log);
-  auto remember = [&](const std::string& path, clang::FileID file) {
-    if (buffers_.count(path) > 0) return;
+  for (const auto& [path, file] : MirrorFiles(ctx, main_files, log)) {
     auto buffer = std::make_unique<TreeFileBuffer>(sm, rewriter_, file, path);
     TreeFileBuffer* const ptr = buffer.get();
     edits_.TrackFile(file, [ptr](clang::SourceLocation begin, unsigned length,
                                  llvm::StringRef text) {
       return ptr->ResnapAfterEdit(begin, length, text);
     });
+    buffers_by_file_[file] = ptr;
     buffers_.emplace(path, std::move(buffer));
-  };
-
-  if (const clang::OptionalFileEntryRef main =
-          sm.getFileEntryRefForID(sm.getMainFileID())) {
-    remember(CanonicalPath(main->getName()), sm.getMainFileID());
-  }
-  for (const IncludeDirective& record : log) {
-    if (mirrored.count(record.writing_file) > 0) {
-      remember(record.writing_file,
-               sm.getFileID(record.filename_range.getBegin()));
-    }
-    if (mirrored.count(record.resolved) > 0 && record.resolved_entry) {
-      remember(record.resolved, sm.getOrCreateFileID(*record.resolved_entry,
-                                                     clang::SrcMgr::C_User));
-    }
   }
 }
 
 TreeFileBuffer* TreeSession::BufferForPath(llvm::StringRef path) {
   const auto it = buffers_.find(path.str());
   return it == buffers_.end() ? nullptr : it->second.get();
+}
+
+TreeFileBuffer* TreeSession::BufferForLocation(clang::SourceLocation loc) {
+  if (!loc.isFileID()) return nullptr;
+  const auto it = buffers_by_file_.find(edits_.getSourceMgr().getFileID(loc));
+  return it == buffers_by_file_.end() ? nullptr : it->second;
+}
+
+bool TreeSession::InsertGuard(clang::SourceRange range, llvm::StringRef opening,
+                              llvm::StringRef closing, std::string construct) {
+  edits_.Describe(std::move(construct));
+  if (!edits_.CanRewrite(range)) return false;
+  TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
+  return buffer != nullptr && buffer->InsertGuard(range, opening, closing);
+}
+
+bool TreeSession::InsertGuardOpening(clang::SourceRange range,
+                                     llvm::StringRef opening,
+                                     std::string construct) {
+  edits_.Describe(std::move(construct));
+  if (!edits_.CanRewrite(range)) return false;
+  TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
+  return buffer != nullptr && buffer->InsertGuardOpening(range, opening);
+}
+
+bool TreeSession::InsertGuardClosing(clang::SourceRange range,
+                                     llvm::StringRef closing,
+                                     std::string construct) {
+  edits_.Describe(std::move(construct));
+  if (!edits_.CanRewrite(range)) return false;
+  TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
+  return buffer != nullptr && buffer->InsertGuardClosing(range, closing);
 }
 
 // ── The writer ────────────────────────────────────────────────────────────
@@ -343,7 +392,9 @@ bool TreeWriter::AddTu(clang::ASTContext&, std::vector<IncludeDirective> log,
     }
     TreeFileBuffer* const buffer = session.BufferForPath(record.writing_file);
     if (buffer == nullptr) continue;
-    if (!buffer->ReplaceWithLineResnap(
+    session.edits().Describe("include directive");
+    if (!session.edits().CanRewrite(record.filename_range) ||
+        !buffer->ReplaceWithLineResnap(
             record.filename_range,
             "\"" + TreeLayout::ExternalKey(record.resolved) + "\"")) {
       *error = "cannot rewrite the include of '" + record.resolved + "' in '" +
@@ -358,6 +409,30 @@ bool TreeWriter::AddTu(clang::ASTContext&, std::vector<IncludeDirective> log,
     if (rendered_.count(path) == 0) rendered_[path] = buffer->Render();
   }
   return true;
+}
+
+std::vector<std::string> TreeWriter::MainFileKeys() const {
+  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
+  std::vector<std::string> keys;
+  keys.reserve(main_files_.size());
+  for (const std::string& path : main_files_) {
+    keys.push_back(layout.InRoot(path) ? layout.InRootKey(path)
+                                       : TreeLayout::ExternalKey(path));
+  }
+  return keys;
+}
+
+std::vector<std::string> TreeWriter::ExternalBuckets() const {
+  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
+  std::set<std::string> buckets;
+  for (const auto& [path, bytes] : rendered_) {
+    (void)bytes;
+    if (layout.InRoot(path)) continue;
+    buckets.insert(llvm::sys::path::parent_path(TreeLayout::ExternalKey(path),
+                                                llvm::sys::path::Style::native)
+                       .str());
+  }
+  return {buckets.begin(), buckets.end()};
 }
 
 bool TreeWriter::Write(std::string* error) {

@@ -151,8 +151,10 @@ cc_library(
     includes = [".."],
     deps = [
         ":backend",
+        ":conventions",
         ":edit_sink",
         ":emit",
+        ":tree_writer",
         ":wrapper",
         "//tapacc/frontend:diag",
         "//tapacc/frontend:discover",
@@ -194,7 +196,9 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":ignore",
         ":rewrite",
+        ":tree_writer",
         ":xilinx",
         "//tapacc/frontend:program",
         "//tapacc/frontend:program_builder",

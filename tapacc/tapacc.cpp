@@ -1,31 +1,28 @@
 // tapacc: the TAPA C-to-HLS rewriter. Parses every input translation unit
-// (flattened by `tapa analyze`) into one merged task graph and emits that
-// single graph on stdout for the tapa-ir crate to consume:
+// into one merged task graph and emits that single graph on stdout for the
+// tapa-ir crate to consume:
 // {top, target, tasks:{name:{srcs, include_dirs, defines, level, synth,
 // readable_name, ports, tasks, fifos}}}. `tapa analyze` nests that payload
 // under the "graph" key of the work dir's tapa.json.
 //
-// The per-task rewritten C++ text is NOT inline in that JSON: each task's
-// `srcs` names files under the required `-emit-dir` that tapacc writes the
-// text to -- the task's own blob `<emit-dir>/<task>.cpp`, plus, in a
-// multi-TU program, every OTHER TU's shared file `<emit-dir>/<tu
-// basename>-shared.cpp` (that TU's text with every task reduced to a
-// rewritten signature, carrying the helper definitions the task's blob only
-// declares). The work dir's rewritten/ tree plus tapa.json together are the
-// analyze artifact.
+// The default bridge consumes flattened inputs and writes one source blob per
+// task (plus cross-TU shared helper files). Hidden `-tree` consumes original
+// sources instead: it mirrors each TU's non-system include closure under
+// `-emit-dir`, rewrites declarations/helpers once per file, and wraps every
+// task definition in its `TAPA_TASK_DEF_*` guard. Every task manifest then
+// names the same mirrored TUs and selects one definition through its guard.
 //
-// Each ClangTool action owns its ASTContext and AST nodes never outlive
-// their TU, so the pipeline runs as TWO passes over the same file list
-// around a pure-data merge (frontend/program_builder.{h,cpp}):
+// Each ClangTool action owns its ASTContext and AST nodes never outlive their
+// TU, so the pipeline runs as TWO passes over the same file list around a
+// pure-data merge (frontend/program_builder.{h,cpp}):
 //
-//   1. an index action per TU: collect every function definition sighted
-//      in the main file plus every `tapa::task::invoke` edge, the callee
-//      resolved through the declaration visible in that TU;
-//   2. the merge: one definition index keyed by FQN + canonical parameter
-//      signature (mangled name for template specializations), BFS from
-//      `--top` over the merged edges, and the merge-rule diagnostics;
-//   3. a rewrite action per TU: a per-TU view of the merged task set, with
-//      per-task emission for every merged task defined in that TU.
+//   1. an index action per TU: collect definitions and invoke edges from the
+//      flattened main file, or from the original TU's mirror closure;
+//   2. the merge: one definition index keyed by function identity (plus
+//      canonical definition path/offset under `-tree`), BFS from `--top`, and
+//      the merge-rule diagnostics;
+//   3. a rewrite action per TU: emit per-task blobs on the bridge path, or
+//      apply one guarded per-file rewrite and absorb its live include log.
 //
 // The single JSON prints only when both passes ran clean for every TU, so a
 // program that fails a merge rule or a per-task diagnostic exits non-zero
@@ -48,6 +45,9 @@
 
 #include <iostream>
 #include <memory>
+#include <optional>
+#include <utility>
+#include <vector>
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
@@ -59,6 +59,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "codegen/tree_writer.h"
 #include "frontend/program_builder.h"
 #include "frontend/vendor_scan.h"
 
@@ -77,12 +78,17 @@ llvm::cl::opt<bool> g_no_vendor_scan(
     llvm::cl::desc("Disable the vendor-usage soft warnings"),
     llvm::cl::cat(g_category));
 
-// Where each task's rewritten source is written (`<dir>/<task>.cpp`), the
-// file the task's `srcs` manifest entry names. The caller creates the
-// directory; tapacc refuses to run if it is missing or not writable.
+llvm::cl::opt<bool> g_tree(
+    "tree", llvm::cl::init(false), llvm::cl::Hidden,
+    llvm::cl::desc("Emit one guarded rewritten source tree"),
+    llvm::cl::cat(g_category));
+
+// Where rewritten sources are materialized: per-task blobs on the default
+// flattened path, or the mirrored guarded tree under `-tree`. The caller
+// creates the directory; tapacc refuses to run if it is missing.
 llvm::cl::opt<std::string> g_emit_dir(
     "emit-dir", llvm::cl::Required,
-    llvm::cl::desc("Directory to write each task's rewritten source to"),
+    llvm::cl::desc("Directory to write rewritten sources to"),
     llvm::cl::value_desc("dir"), llvm::cl::cat(g_category));
 
 enum class CliTarget { kHls, kVitis };
@@ -104,6 +110,10 @@ class BuilderAction : public clang::ASTFrontendAction {
   bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
     if (index_pass_ && !g_no_vendor_scan)
       AttachVendorScan(ci.getPreprocessor());
+    if (builder_.tree_mode()) {
+      ci.getPreprocessor().addPPCallbacks(std::make_unique<IncludeRecorder>(
+          ci.getSourceManager(), &include_log_));
+    }
     return true;
   }
 
@@ -111,12 +121,17 @@ class BuilderAction : public clang::ASTFrontendAction {
       clang::CompilerInstance&, llvm::StringRef) override {
     class Consumer : public clang::ASTConsumer {
      public:
-      Consumer(ProgramBuilder& builder, bool index_pass)
-          : builder_(builder), index_pass_(index_pass) {}
+      Consumer(ProgramBuilder& builder, bool index_pass,
+               std::vector<IncludeDirective>* include_log)
+          : builder_(builder),
+            index_pass_(index_pass),
+            include_log_(include_log) {}
       void HandleTranslationUnit(clang::ASTContext& ctx) override {
         if (index_pass_) {
           if (!g_no_vendor_scan) ScanVendorAsts(ctx);
-          builder_.IndexTu(ctx);
+          builder_.IndexTu(ctx, builder_.tree_mode() ? include_log_ : nullptr);
+        } else if (builder_.tree_mode()) {
+          builder_.RewriteTreeTu(ctx, std::move(*include_log_));
         } else {
           builder_.RewriteTu(ctx);
         }
@@ -125,13 +140,15 @@ class BuilderAction : public clang::ASTFrontendAction {
      private:
       ProgramBuilder& builder_;
       bool index_pass_;
+      std::vector<IncludeDirective>* include_log_;
     };
-    return std::make_unique<Consumer>(builder_, index_pass_);
+    return std::make_unique<Consumer>(builder_, index_pass_, &include_log_);
   }
 
  private:
   ProgramBuilder& builder_;
   bool index_pass_;
+  std::vector<IncludeDirective> include_log_;
 };
 
 class BuilderActionFactory : public clang::tooling::FrontendActionFactory {
@@ -163,9 +180,29 @@ int main(int argc, const char** argv) {
                     "creates <work_dir>/rewritten)\n";
     return 1;
   }
+  const std::vector<std::string>& sources = parser->getSourcePathList();
+  if (g_tree && sources.size() != 1) {
+    llvm::errs() << "error: multi-file input is not yet supported under "
+                    "TAPA_ANALYZE_TREE; this tree path accepts exactly one "
+                    "translation unit\n";
+    return 1;
+  }
+
+  std::optional<TreeConfig> tree;
+  if (g_tree) {
+    std::vector<std::string> main_files;
+    main_files.reserve(sources.size());
+    for (const std::string& source : sources) {
+      main_files.push_back(CanonicalPath(source));
+    }
+    tree = TreeConfig{g_emit_dir.getValue(), std::move(main_files)};
+  }
+
   const bool is_vitis = g_target == CliTarget::kVitis;
-  ProgramBuilder builder(g_top.getValue(), is_vitis ? SynthTarget::kXilinxVitis
-                                                    : SynthTarget::kXilinxHls);
+  ProgramBuilder builder(
+      g_top.getValue(),
+      is_vitis ? SynthTarget::kXilinxVitis : SynthTarget::kXilinxHls,
+      std::move(tree));
 
   clang::tooling::ClangTool index_tool(parser->getCompilations(),
                                        parser->getSourcePathList());
@@ -186,7 +223,10 @@ int main(int argc, const char** argv) {
   if (rc != 0) return rc;
 
   std::string error;
-  if (!builder.WriteSources(g_emit_dir.getValue(), &error)) {
+  const bool written =
+      g_tree ? builder.WriteTree(&error)
+             : builder.WriteSources(g_emit_dir.getValue(), &error);
+  if (!written) {
     llvm::errs() << "error: cannot write rewritten sources to -emit-dir "
                  << g_emit_dir.getValue() << ": " << error << "\n";
     return 1;
