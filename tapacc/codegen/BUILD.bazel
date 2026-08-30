@@ -191,6 +191,20 @@ cc_test(
 )
 
 cc_test(
+    name = "expansion_splice_test",
+    srcs = ["expansion_splice_test.cpp"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        "//tapacc/frontend:tapa_stub_decls",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        CLANG_TOOLING,
+        "@tapa-llvm-project//clang:tooling_syntax",
+    ],
+)
+
+cc_test(
     name = "rewrite_test",
     srcs = ["rewrite_test.cpp"],
     copts = TAPACC_COPTS,
