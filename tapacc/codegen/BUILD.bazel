@@ -51,141 +51,14 @@ cc_test(
 )
 
 cc_library(
-    name = "edit_sink",
-    srcs = ["edit_sink.cpp"],
-    hdrs = ["edit_sink.h"],
+    name = "macro_splice",
+    srcs = ["macro_splice.cpp"],
+    hdrs = ["macro_splice.h"],
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
-        "//tapacc/frontend:diag",
         CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "emit",
-    srcs = ["emit.cpp"],
-    hdrs = ["emit.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":code_sink",
-        ":conventions",
-        ":edit_sink",
-        "//tapacc/frontend:classify",
-        "//tapacc/frontend:type_args",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_test(
-    name = "emit_test",
-    srcs = ["emit_test.cpp"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":code_sink",
-        ":emit",
-        "//tapacc/frontend:classify",
-        "//tapacc/frontend:tapa_stub_decls",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "xilinx",
-    srcs = ["xilinx.cpp"],
-    hdrs = ["xilinx.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":backend",
-        ":conventions",
-        ":edit_sink",
-        ":emit",
-        "//tapacc/frontend:classify",
-        "//tapacc/frontend:type_args",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "ignore",
-    srcs = ["ignore.cpp"],
-    hdrs = ["ignore.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":backend",
-        ":code_sink",
-        ":edit_sink",
-        ":emit",
-        "//tapacc/frontend:classify",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "wrapper",
-    srcs = ["wrapper.cpp"],
-    hdrs = ["wrapper.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":backend",
-        ":code_sink",
-        ":edit_sink",
-        "//tapacc/frontend:classify",
-        "//tapacc/frontend:program",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "rewrite",
-    srcs = ["rewrite.cpp"],
-    hdrs = ["rewrite.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":backend",
-        ":conventions",
-        ":edit_sink",
-        ":emit",
-        ":tree_writer",
-        ":wrapper",
-        "//tapacc/frontend:diag",
-        "//tapacc/frontend:discover",
-        "//tapacc/frontend:program",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_library(
-    name = "tree_writer",
-    srcs = ["tree_writer.cpp"],
-    hdrs = ["tree_writer.h"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":edit_sink",
-        CLANG_TOOLING,
-        "@tapa-llvm-project//llvm:Support",
-    ],
-)
-
-cc_test(
-    name = "tree_writer_test",
-    srcs = ["tree_writer_test.cpp"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":tree_writer",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
+        "@tapa-llvm-project//clang:tooling_syntax",
         "@tapa-llvm-project//llvm:Support",
     ],
 )
@@ -196,29 +69,11 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":macro_splice",
         "//tapacc/frontend:tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         CLANG_TOOLING,
         "@tapa-llvm-project//clang:tooling_syntax",
-    ],
-)
-
-cc_test(
-    name = "rewrite_test",
-    srcs = ["rewrite_test.cpp"],
-    copts = TAPACC_COPTS,
-    includes = [".."],
-    deps = [
-        ":ignore",
-        ":rewrite",
-        ":tree_writer",
-        ":xilinx",
-        "//tapacc/frontend:program",
-        "//tapacc/frontend:program_builder",
-        "//tapacc/frontend:tapa_stub_decls",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
     ],
 )
