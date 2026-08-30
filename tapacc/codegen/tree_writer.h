@@ -12,6 +12,8 @@
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Rewrite/Core/Rewriter.h"
 
+#include "edit_sink.h"
+
 namespace clang {
 class ASTContext;
 class LangOptions;
@@ -120,7 +122,7 @@ class TreeLayout {
 // correct no matter how many earlier edits shifted the text physically.
 class TreeFileBuffer {
  public:
-  TreeFileBuffer(clang::SourceManager& sm, const clang::LangOptions& lang_opts,
+  TreeFileBuffer(clang::SourceManager& sm, clang::Rewriter& rewriter,
                  clang::FileID file, std::string abs_path);
 
   // Replaces the character range with `text`. False when the Rewriter
@@ -137,6 +139,12 @@ class TreeFileBuffer {
 
   bool had_edits() const { return had_edits_; }
 
+  // Announces an edit already applied through the shared Rewriter. Emits the
+  // re-snap marker when its replacement changed the line count. This is the
+  // hook EditSink registers for the per-decl rewrite rules.
+  bool ResnapAfterEdit(clang::SourceLocation begin, unsigned length,
+                       llvm::StringRef text);
+
   // The whole file: original bytes when unedited, else the rewritten text.
   std::string Render();
 
@@ -147,10 +155,32 @@ class TreeFileBuffer {
                  llvm::StringRef text);
 
   clang::SourceManager& sm_;
-  clang::Rewriter rewriter_;
+  clang::Rewriter& rewriter_;
   clang::FileID file_;
   std::string abs_path_;
   bool had_edits_ = false;
+};
+
+// One TU's shared editing session: one Rewriter spans every mirrored file,
+// one TreeFileBuffer per file adds exact `#line` bookkeeping, and one EditSink
+// routes the reusable per-decl rewrite rules through those buffers. Construct
+// and consume it while the TU's ASTContext is alive.
+class TreeSession {
+ public:
+  TreeSession(clang::ASTContext& ctx, const std::vector<IncludeDirective>& log,
+              const std::vector<std::string>& main_files);
+
+  EditSink& edits() { return edits_; }
+  TreeFileBuffer* BufferForPath(llvm::StringRef path);
+  const std::map<std::string, std::unique_ptr<TreeFileBuffer>>& buffers()
+      const {
+    return buffers_;
+  }
+
+ private:
+  clang::Rewriter rewriter_;
+  EditSink edits_;
+  std::map<std::string, std::unique_ptr<TreeFileBuffer>> buffers_;
 };
 
 // Materializes the mirror tree: which files to mirror (the `-f` inputs
@@ -177,6 +207,11 @@ class TreeWriter {
   bool AddTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
              std::string* error);
 
+  // As above, but consumes a session on which the caller has already applied
+  // per-decl rewrites. Include edits land in the same buffers before render.
+  bool AddTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
+             TreeSession& session, std::string* error);
+
   // Checks the layout for key collisions and writes every rendered file
   // under out_root, creating directories as needed.
   bool Write(std::string* error);
@@ -192,6 +227,13 @@ class TreeWriter {
 // (symlinks resolved), or the path as named when nothing sits there
 // (virtual files).
 std::string CanonicalPath(llvm::StringRef name);
+
+// The path set the mirror owns for one TU: every input main file plus every
+// include target reached through a non-system search entry. Both frontend
+// passes use this exact predicate so indexing and tree materialization cannot
+// disagree about whether a source file is user code.
+std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
+                                    const std::vector<IncludeDirective>& log);
 
 }  // namespace tapa::cc
 

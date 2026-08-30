@@ -52,10 +52,14 @@ cc_test(
 
 cc_library(
     name = "edit_sink",
+    srcs = ["edit_sink.cpp"],
     hdrs = ["edit_sink.h"],
     copts = TAPACC_COPTS,
     includes = [".."],
-    deps = [CLANG_TOOLING],
+    deps = [
+        "//tapacc/frontend:diag",
+        CLANG_TOOLING,
+    ],
 )
 
 cc_library(
@@ -164,6 +168,7 @@ cc_library(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":edit_sink",
         CLANG_TOOLING,
         "@tapa-llvm-project//llvm:Support",
     ],

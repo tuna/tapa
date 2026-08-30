@@ -67,6 +67,17 @@ void IncludeRecorder::InclusionDirective(
   log_->push_back(std::move(record));
 }
 
+std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
+                                    const std::vector<IncludeDirective>& log) {
+  std::set<std::string> mirrored(main_files.begin(), main_files.end());
+  for (const IncludeDirective& record : log) {
+    if (!record.resolved.empty() && !record.from_system_search) {
+      mirrored.insert(record.resolved);
+    }
+  }
+  return mirrored;
+}
+
 // ── Mirror layout ─────────────────────────────────────────────────────────
 
 std::string TreeLayout::SrcRoot(const std::vector<std::string>& main_files) {
@@ -166,11 +177,12 @@ const std::string* TreeLayout::KeyOf(llvm::StringRef abs_path) const {
 // ── Per-file buffer with #line re-snap ────────────────────────────────────
 
 TreeFileBuffer::TreeFileBuffer(clang::SourceManager& sm,
-                               const clang::LangOptions& lang_opts,
-                               clang::FileID file, std::string abs_path)
-    : sm_(sm), file_(file), abs_path_(std::move(abs_path)) {
-  rewriter_.setSourceMgr(sm_, lang_opts);
-}
+                               clang::Rewriter& rewriter, clang::FileID file,
+                               std::string abs_path)
+    : sm_(sm),
+      rewriter_(rewriter),
+      file_(file),
+      abs_path_(std::move(abs_path)) {}
 
 bool TreeFileBuffer::ReplaceWithLineResnap(clang::CharSourceRange range,
                                            llvm::StringRef text) {
@@ -202,18 +214,23 @@ bool TreeFileBuffer::InsertGuard(clang::SourceRange range,
 bool TreeFileBuffer::ApplyEdit(clang::SourceLocation begin, unsigned length,
                                llvm::StringRef text) {
   if (!begin.isFileID() || sm_.getFileID(begin) != file_) return false;
-  const llvm::StringRef original = sm_.getBufferData(file_);
-  const unsigned begin_offset = sm_.getFileOffset(begin);
-  const unsigned end_offset = begin_offset + length;
-  const unsigned old_lines =
-      llvm::count(original.substr(begin_offset, length), '\n');
   // Insertions go through InsertTextAfter, not ReplaceText(len 0): a
   // replace records its delta at an offset the marker's own mapping then
   // excludes, which would place the marker before the inserted text.
   const bool rejected = length == 0
                             ? rewriter_.InsertTextAfter(begin, text)
                             : rewriter_.ReplaceText(begin, length, text);
-  if (rejected) return false;
+  return !rejected && ResnapAfterEdit(begin, length, text);
+}
+
+bool TreeFileBuffer::ResnapAfterEdit(clang::SourceLocation begin,
+                                     unsigned length, llvm::StringRef text) {
+  if (!begin.isFileID() || sm_.getFileID(begin) != file_) return false;
+  const llvm::StringRef original = sm_.getBufferData(file_);
+  const unsigned begin_offset = sm_.getFileOffset(begin);
+  const unsigned end_offset = begin_offset + length;
+  const unsigned old_lines =
+      llvm::count(original.substr(begin_offset, length), '\n');
   had_edits_ = true;
   if (old_lines == llvm::count(text, '\n')) return true;  // count preserved
 
@@ -257,39 +274,26 @@ std::string TreeFileBuffer::Render() {
   return out;
 }
 
-// ── The writer ────────────────────────────────────────────────────────────
+// ── One-TU editing session ────────────────────────────────────────────────
 
-TreeWriter::TreeWriter(std::string out_root,
-                       std::vector<std::string> main_files)
-    : out_root_(std::move(out_root)), main_files_(std::move(main_files)) {}
-
-bool TreeWriter::AddTu(clang::ASTContext& ctx,
-                       std::vector<IncludeDirective> log, std::string* error) {
+TreeSession::TreeSession(clang::ASTContext& ctx,
+                         const std::vector<IncludeDirective>& log,
+                         const std::vector<std::string>& main_files)
+    : rewriter_(ctx.getSourceManager(), ctx.getLangOpts()),
+      edits_(ctx, rewriter_) {
   clang::SourceManager& sm = ctx.getSourceManager();
-  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
-
-  // Which files exist in the mirror at all: the `-f` inputs plus every
-  // target this TU resolved through a user (non-system) search entry.
-  std::set<std::string> mirrored(main_files_.begin(), main_files_.end());
-  for (const IncludeDirective& record : log) {
-    if (!record.resolved.empty() && !record.from_system_search) {
-      mirrored.insert(record.resolved);
-    }
-  }
-
-  // The bytes of each mirrored file this TU can speak for: its main file,
-  // every file its records are written in (rewritten when an include must
-  // move to its `_external` spelling), and every header it pulled in that
-  // no earlier TU has rendered. First sighting owns the file.
-  std::map<std::string, std::unique_ptr<TreeFileBuffer>> buffers;
-  std::map<std::string, clang::FileID> plain;
+  const std::set<std::string> mirrored = MirrorClosure(main_files, log);
   auto remember = [&](const std::string& path, clang::FileID file) {
-    if (rendered_.count(path) > 0 || buffers.count(path) > 0 ||
-        plain.count(path) > 0) {
-      return;
-    }
-    plain.emplace(path, file);
+    if (buffers_.count(path) > 0) return;
+    auto buffer = std::make_unique<TreeFileBuffer>(sm, rewriter_, file, path);
+    TreeFileBuffer* const ptr = buffer.get();
+    edits_.TrackFile(file, [ptr](clang::SourceLocation begin, unsigned length,
+                                 llvm::StringRef text) {
+      return ptr->ResnapAfterEdit(begin, length, text);
+    });
+    buffers_.emplace(path, std::move(buffer));
   };
+
   if (const clang::OptionalFileEntryRef main =
           sm.getFileEntryRefForID(sm.getMainFileID())) {
     remember(CanonicalPath(main->getName()), sm.getMainFileID());
@@ -304,39 +308,54 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
                                                      clang::SrcMgr::C_User));
     }
   }
+}
+
+TreeFileBuffer* TreeSession::BufferForPath(llvm::StringRef path) {
+  const auto it = buffers_.find(path.str());
+  return it == buffers_.end() ? nullptr : it->second.get();
+}
+
+// ── The writer ────────────────────────────────────────────────────────────
+
+TreeWriter::TreeWriter(std::string out_root,
+                       std::vector<std::string> main_files)
+    : out_root_(std::move(out_root)), main_files_(std::move(main_files)) {}
+
+bool TreeWriter::AddTu(clang::ASTContext& ctx,
+                       std::vector<IncludeDirective> log, std::string* error) {
+  TreeSession session(ctx, log, main_files_);
+  return AddTu(ctx, std::move(log), session, error);
+}
+
+bool TreeWriter::AddTu(clang::ASTContext&, std::vector<IncludeDirective> log,
+                       TreeSession& session, std::string* error) {
+  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
 
   // Include-line rewriting: a quoted include of an out-of-root mirror
   // moves to its `_external` spelling (the tree root is on the include
   // path, so it resolves); in-root targets and angle directives keep
-  // what the user wrote.
+  // what the user wrote. These edits share the same per-file buffers as
+  // the caller's decl rewrites.
   for (const IncludeDirective& record : log) {
     if (record.angled || record.resolved.empty() || record.from_system_search ||
         layout.InRoot(record.resolved)) {
       continue;
     }
-    const auto it = plain.find(record.writing_file);
-    if (it == plain.end()) continue;
-    if (buffers.count(record.writing_file) == 0) {
-      buffers.emplace(
-          record.writing_file,
-          std::make_unique<TreeFileBuffer>(sm, ctx.getLangOpts(), it->second,
-                                           record.writing_file));
-    }
-    if (!buffers.at(record.writing_file)
-             ->ReplaceWithLineResnap(
-                 record.filename_range,
-                 "\"" + TreeLayout::ExternalKey(record.resolved) + "\"")) {
+    TreeFileBuffer* const buffer = session.BufferForPath(record.writing_file);
+    if (buffer == nullptr) continue;
+    if (!buffer->ReplaceWithLineResnap(
+            record.filename_range,
+            "\"" + TreeLayout::ExternalKey(record.resolved) + "\"")) {
       *error = "cannot rewrite the include of '" + record.resolved + "' in '" +
                record.writing_file + "'";
       return false;
     }
   }
 
-  // Render: rewritten files through their buffer, the rest byte-identical.
-  for (const auto& [path, file] : plain) {
-    const auto it = buffers.find(path);
-    rendered_[path] = it != buffers.end() ? it->second->Render()
-                                          : sm.getBufferData(file).str();
+  // The session covers every mirrored file this TU can speak for. First
+  // sighting owns a file; an unedited buffer renders its original bytes.
+  for (const auto& [path, buffer] : session.buffers()) {
+    if (rendered_.count(path) == 0) rendered_[path] = buffer->Render();
   }
   return true;
 }

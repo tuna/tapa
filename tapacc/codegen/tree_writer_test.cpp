@@ -309,8 +309,8 @@ TEST(TreeFileBuffer, MultiLineReplacementResnapsWithLineMarker) {
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeFileBuffer buffer(sm, ast->getLangOpts(), sm.getMainFileID(),
-                        "/src/main.cpp");
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
 
   // Replace f's 3-line definition with a 4-line one (+1 line): the edit
   // itself shifts `int two;` down, so a marker must pin it back to line 5.
@@ -333,13 +333,40 @@ TEST(TreeFileBuffer, MultiLineReplacementResnapsWithLineMarker) {
             "int two;\n");
 }
 
+TEST(TreeSession, DeclEditSinkResnapsInsideTheFile) {
+  auto ast = clang::tooling::buildASTFromCodeWithArgs(
+      kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
+  ASSERT_NE(ast, nullptr);
+  clang::SourceManager& sm = ast->getSourceManager();
+  TreeSession session(ast->getASTContext(), /*log=*/{}, {"main.cpp"});
+  session.edits().Describe("function 'f'");
+
+  const size_t brace_offset = std::string(kLinesCode).find("void f() {") + 9;
+  const clang::SourceLocation brace =
+      sm.getLocForStartOfFile(sm.getMainFileID())
+          .getLocWithOffset(brace_offset);
+  ASSERT_FALSE(
+      session.edits().InsertTextAfterToken(brace, "\n  int inserted;"));
+
+  TreeFileBuffer* const buffer = session.BufferForPath("main.cpp");
+  ASSERT_NE(buffer, nullptr);
+  EXPECT_EQ(buffer->Render(),
+            "int one;\n"
+            "void f() {\n"
+            "  int inserted;\n"
+            "#line 3 \"main.cpp\"\n"
+            "  one = 1;\n"
+            "}\n"
+            "int two;\n");
+}
+
 TEST(TreeFileBuffer, GuardWrappingResnapsBothHalves) {
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeFileBuffer buffer(sm, ast->getLangOpts(), sm.getMainFileID(),
-                        "/src/main.cpp");
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
 
   const std::string body = "void f() {\n  one = 1;\n}";
   const size_t offset = std::string(kLinesCode).find(body);
@@ -376,8 +403,8 @@ TEST(TreeFileBuffer, LaterEditEarlierInTheFileStillResnaps) {
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeFileBuffer buffer(sm, ast->getLangOpts(), sm.getMainFileID(),
-                        "/src/main.cpp");
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
 
   // Edit the later region first, then the earlier one: both markers are
   // computed in original coordinates, so each pins the text that follows
@@ -407,8 +434,8 @@ TEST(TreeFileBuffer, LineCountPreservingEditsEmitNoMarker) {
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeFileBuffer buffer(sm, ast->getLangOpts(), sm.getMainFileID(),
-                        "/src/main.cpp");
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
 
   const size_t offset = std::string(kLinesCode).find("one = 1");
   ASSERT_NE(offset, std::string::npos);
@@ -427,8 +454,8 @@ TEST(TreeFileBuffer, UneditedBuffersRenderByteIdentical) {
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeFileBuffer buffer(sm, ast->getLangOpts(), sm.getMainFileID(),
-                        "/src/main.cpp");
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
   EXPECT_FALSE(buffer.had_edits());
   EXPECT_EQ(buffer.Render(), kLinesCode);
 }
