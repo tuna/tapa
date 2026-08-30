@@ -204,6 +204,7 @@ cc_library(
         "//tapacc/codegen:tree_writer",
         "//tapacc/codegen:xilinx",
         "@nlohmann_json//:json",
+        "@tapa-llvm-project//clang:tooling_syntax",
         CLANG_TOOLING,
     ],
 )

@@ -13,6 +13,7 @@ cc_binary(
     copts = ["-fno-rtti"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tapacc/codegen:macro_splice",
         "//tapacc/codegen:tree_writer",
         "//tapacc/frontend:program_builder",
         "//tapacc/frontend:vendor_scan",

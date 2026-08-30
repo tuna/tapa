@@ -695,7 +695,8 @@ void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
 }
 
 void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
-                                   std::vector<IncludeDirective> log) {
+                                   std::vector<IncludeDirective> log,
+                                   const clang::syntax::TokenBuffer* tokens) {
   const int tu = TuOf(MainFilePath(ctx));
   Program view = TuView(ctx, &log);
   FillOwnedTasks(tu, view, ctx);
@@ -703,8 +704,9 @@ void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
   const XilinxBackend hls(/*is_vitis=*/false);
   const XilinxBackend vitis(/*is_vitis=*/true);
   const IgnoreBackend ignore;
-  TreeSession session(ctx, log, tree_config_->main_files);
+  TreeSession session(ctx, log, tree_config_->main_files, tokens);
   RewriteTreeFiles(view, default_target_, hls, vitis, ignore, ctx, session);
+  session.FlushMacroSplices();
 
   std::string error;
   if (!tree_writer_->AddTu(ctx, std::move(log), session, &error)) {

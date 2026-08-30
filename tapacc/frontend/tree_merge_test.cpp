@@ -105,7 +105,7 @@ bool RunTreePass(ProgramBuilder* builder, bool index_pass,
           if (index_pass_) {
             builder_->IndexTu(ctx, log_);
           } else {
-            builder_->RewriteTreeTu(ctx, std::move(*log_));
+            builder_->RewriteTreeTu(ctx, std::move(*log_), /*tokens=*/nullptr);
           }
         }
 

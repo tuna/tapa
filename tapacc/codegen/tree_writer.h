@@ -7,10 +7,13 @@
 #include <string>
 #include <vector>
 
+#include <optional>
+
 #include "clang/Basic/FileEntry.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Lex/PPCallbacks.h"
 #include "clang/Rewrite/Core/Rewriter.h"
+#include "clang/Tooling/Syntax/Tokens.h"
 
 #include "edit_sink.h"
 
@@ -162,12 +165,16 @@ class TreeFileBuffer {
 
 // One TU's shared editing session: one Rewriter spans every mirrored file,
 // one TreeFileBuffer per file adds exact `#line` bookkeeping, and one EditSink
-// routes the reusable per-decl rewrite rules through those buffers. Construct
-// and consume it while the TU's ASTContext is alive.
+// routes the reusable per-decl rewrite rules through those buffers -- macro-
+// owned edits included, composed into the splices of `tokens` (null when the
+// run recorded none; such edits then fail with the precise reason). Construct
+// and consume it while the TU's ASTContext is alive, calling
+// FlushMacroSplices once after every rewrite rule ran.
 class TreeSession {
  public:
   TreeSession(clang::ASTContext& ctx, const std::vector<IncludeDirective>& log,
-              const std::vector<std::string>& main_files);
+              const std::vector<std::string>& main_files,
+              const clang::syntax::TokenBuffer* tokens);
 
   EditSink& edits() { return edits_; }
   TreeFileBuffer* BufferForPath(llvm::StringRef path);
@@ -178,6 +185,10 @@ class TreeSession {
                           std::string construct);
   bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing,
                           std::string construct);
+  // Renders every edited macro expansion and replaces its spelled
+  // invocation through the file's buffer in one edit: the `#line` re-snap
+  // and the same-line neighbors are handled by the ordinary path.
+  void FlushMacroSplices();
   const std::map<std::string, std::unique_ptr<TreeFileBuffer>>& buffers()
       const {
     return buffers_;
@@ -186,6 +197,7 @@ class TreeSession {
  private:
   clang::Rewriter rewriter_;
   EditSink edits_;
+  std::optional<MacroSplices> splices_;
   std::map<std::string, std::unique_ptr<TreeFileBuffer>> buffers_;
   std::map<clang::FileID, TreeFileBuffer*> buffers_by_file_;
 };

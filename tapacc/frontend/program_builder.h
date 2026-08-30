@@ -10,6 +10,7 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
+#include "clang/Tooling/Syntax/Tokens.h"
 
 #include "nlohmann/json.hpp"
 
@@ -84,8 +85,12 @@ class ProgramBuilder {
   void RewriteTu(clang::ASTContext& ctx);
 
   // Tree-mode pass 2: apply one guarded rewrite across the mirror and absorb
-  // the TU while its SourceManager-bound include log is alive.
-  void RewriteTreeTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log);
+  // the TU while its SourceManager-bound include log is alive. `tokens` is
+  // the TU's recorded expanded-token stream (null when this run recorded
+  // none); rewrite edits anchored inside macro expansions compose into its
+  // invocation splices.
+  void RewriteTreeTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
+                     const clang::syntax::TokenBuffer* tokens);
 
   bool tree_mode() const { return tree_config_.has_value(); }
 

@@ -11,6 +11,7 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
+#include "diag_capture.h"
 #include "frontend/program.h"
 #include "frontend/program_builder.h"
 #include "frontend/tapa_stub_decls.h"
@@ -358,7 +359,7 @@ TEST(RewriteTree, EmitsGuardsAndExactRewrittenStubs) {
   clang::SourceManager& sm = ctx.getSourceManager();
   const std::string main_file = CanonicalPath(
       sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
-  TreeSession session(ctx, /*log=*/{}, {main_file});
+  TreeSession session(ctx, /*log=*/{}, {main_file}, /*tokens=*/nullptr);
   const XilinxBackend hls(/*is_vitis=*/false);
   const XilinxBackend vitis(/*is_vitis=*/true);
   const IgnoreBackend ignore;
@@ -440,62 +441,6 @@ constexpr char kLeakedAttr[] = R"cpp(
     tapa::task().invoke(LeakTask, mem, q, n);
   }
 )cpp";
-
-struct CollectingDiagConsumer : clang::DiagnosticConsumer {
-  std::vector<std::string> errors;
-
-  void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
-                        const clang::Diagnostic& info) override {
-    if (level < clang::DiagnosticsEngine::Error) return;
-    llvm::SmallVector<char, 128> msg;
-    info.FormatDiagnostic(msg);
-    errors.emplace_back(msg.data(), msg.size());
-  }
-};
-
-TEST(RewriteTree, MacroOwnedEditIsAHardError) {
-  constexpr char kMacroTask[] = R"cpp(
-#define TAPA_TASK_BODY    \
-      {                       \
-        out.write(in.read()); \
-      }
-    void MacroTask(tapa::istream<float>& in,
-                   tapa::ostream<float>& out) TAPA_TASK_BODY
-        void MacroTop(tapa::istream<float>& in, tapa::ostream<float>& out) {
-      tapa::stream<float, 2> q;
-      tapa::task().invoke(MacroTask, in, q);
-    }
-  )cpp";
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kMacroTask;
-  auto diag = std::make_unique<CollectingDiagConsumer>();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "macro.cpp", "macro",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), diag.get());
-  ASSERT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "MacroTop");
-  clang::ASTContext& ctx = ast->getASTContext();
-  TreeSession session(ctx, /*log=*/{}, {"macro.cpp"});
-  const XilinxBackend hls(/*is_vitis=*/false);
-  const XilinxBackend vitis(/*is_vitis=*/true);
-  const IgnoreBackend ignore;
-
-  diag->errors.clear();
-  RewriteTreeFiles(program, SynthTarget::kXilinxHls, hls, vitis, ignore, ctx,
-                   session);
-
-  ASSERT_FALSE(diag->errors.empty());
-  EXPECT_TRUE(std::any_of(diag->errors.begin(), diag->errors.end(),
-                          [](const std::string& error) {
-                            return Contains(error,
-                                            "definition of task "
-                                            "'MacroTask'") &&
-                                   Contains(error, "macro expansion") &&
-                                   Contains(error, "TAPA_ANALYZE_TREE");
-                          }))
-      << diag->errors.front();
-}
 
 TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   const std::string code = std::string(kTapaStubDecls) + "\n" + kLeakedAttr;
@@ -636,7 +581,8 @@ TEST(Rewrite, TargetAttrIsNotReportedAsALeak) {
   EXPECT_TRUE(Contains(emitted, "[[tapa::target"));
   EXPECT_TRUE(diag->errors.empty());
 
-  TreeSession session(ast->getASTContext(), /*log=*/{}, {"t.cpp"});
+  TreeSession session(ast->getASTContext(), /*log=*/{}, {"t.cpp"},
+                      /*tokens=*/nullptr);
   const XilinxBackend vitis(/*is_vitis=*/true);
   const IgnoreBackend ignore;
   RewriteTreeFiles(program, SynthTarget::kXilinxHls, backend, vitis, ignore,

@@ -15,6 +15,7 @@
 
 #include "conventions.h"
 #include "emit.h"
+#include "macro_splice.h"
 #include "tree_writer.h"
 #include "wrapper.h"
 
@@ -292,15 +293,32 @@ void LowerParamAttrs(const clang::FunctionDecl* func, const Backend& backend,
 // changes nothing because the decision it carried has already been made.
 // Comments and string literals copied into the emitted buffer may QUOTE an
 // attribute spelling (`// migrate to [[tapa::pipeline]]`, a doc string)
-// without being one; the scan must not report those. Blanking them (every
+// without being one, and preprocessor directives may DEFINE one (a macro
+// whose body builds a `[[tapa::...]]` that selective expansion splices
+// into user source -- the definition text itself never reaches the vendor
+// as an attribute). The scan must not report those. Blanking them (every
 // non-newline byte, so line numbers still match) keeps the guard about
 // actual attribute text.
 std::string BlankCommentsAndStrings(llvm::StringRef code) {
   std::string out = code.str();
   const size_t n = out.size();
+  // One preprocessor directive, backslash continuations included.
+  const auto directive_end = [&out, n](size_t i) {
+    size_t end = out.find('\n', i);
+    end = end == std::string::npos ? n : end;
+    while (end > 0 && end < n && out[end - 1] == '\\') {
+      const size_t next = out.find('\n', end + 1);
+      end = next == std::string::npos ? n : next;
+    }
+    return end;
+  };
   for (size_t i = 0; i < n;) {
     size_t end = n;
-    if (out[i] == '/' && i + 1 < n && out[i + 1] == '/') {
+    size_t first = i;
+    while (first < n && (out[first] == ' ' || out[first] == '\t')) ++first;
+    if (first < n && out[first] == '#') {
+      end = directive_end(first);
+    } else if (out[i] == '/' && i + 1 < n && out[i + 1] == '/') {
       end = out.find('\n', i);
       end = end == std::string::npos ? n : end;
     } else if (out[i] == '/' && i + 1 < n && out[i + 1] == '*') {
@@ -547,8 +565,14 @@ const Backend& BackendFor(SynthTarget target, const Backend& hls,
 
 std::string RewrittenSignature(const clang::FunctionDecl* func,
                                clang::SourceLocation begin, EditSink& edits) {
-  return edits.getRewrittenText(clang::CharSourceRange::getCharRange(
-      begin, func->getBody()->getBeginLoc()));
+  clang::SourceLocation end = func->getBody()->getBeginLoc();
+  if (end.isMacroID()) {
+    // The body is spelled by a macro invocation; the signature text ends
+    // where that invocation begins (the splice replaces the rest).
+    end = OutermostInvocation(edits.getSourceMgr(), end).getBegin();
+  }
+  return edits.getRewrittenText(
+      clang::CharSourceRange::getCharRange(begin, end));
 }
 
 clang::SourceRange DefinitionRange(const clang::FunctionDecl* func,

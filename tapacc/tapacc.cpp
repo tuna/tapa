@@ -62,6 +62,7 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include "codegen/macro_splice.h"
 #include "codegen/tree_writer.h"
 #include "frontend/program_builder.h"
 #include "frontend/vendor_scan.h"
@@ -116,6 +117,11 @@ class BuilderAction : public clang::ASTFrontendAction {
     if (builder_.tree_mode()) {
       ci.getPreprocessor().addPPCallbacks(std::make_unique<IncludeRecorder>(
           ci.getSourceManager(), &include_log_));
+      // Selective macro expansion needs the expanded token stream; only the
+      // rewrite pass edits, so only it records.
+      if (!index_pass_) {
+        recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
+      }
     }
     return true;
   }
@@ -124,17 +130,22 @@ class BuilderAction : public clang::ASTFrontendAction {
       clang::CompilerInstance&, llvm::StringRef) override {
     class Consumer : public clang::ASTConsumer {
      public:
-      Consumer(ProgramBuilder& builder, bool index_pass,
-               std::vector<IncludeDirective>* include_log)
-          : builder_(builder),
-            index_pass_(index_pass),
-            include_log_(include_log) {}
+      explicit Consumer(BuilderAction& owner)
+          : builder_(owner.builder_),
+            index_pass_(owner.index_pass_),
+            include_log_(&owner.include_log_),
+            owner_(owner) {}
       void HandleTranslationUnit(clang::ASTContext& ctx) override {
+        // Consume before any rewriting: the collector is complete only once
+        // the whole top-level loop has run.
+        const clang::syntax::TokenBuffer* tokens =
+            owner_.recorder_ == nullptr ? nullptr
+                                        : &owner_.recorder_->Consume();
         if (index_pass_) {
           if (!g_no_vendor_scan) ScanVendorAsts(ctx);
           builder_.IndexTu(ctx, builder_.tree_mode() ? include_log_ : nullptr);
         } else if (builder_.tree_mode()) {
-          builder_.RewriteTreeTu(ctx, std::move(*include_log_));
+          builder_.RewriteTreeTu(ctx, std::move(*include_log_), tokens);
         } else {
           builder_.RewriteTu(ctx);
         }
@@ -144,14 +155,16 @@ class BuilderAction : public clang::ASTFrontendAction {
       ProgramBuilder& builder_;
       bool index_pass_;
       std::vector<IncludeDirective>* include_log_;
+      BuilderAction& owner_;
     };
-    return std::make_unique<Consumer>(builder_, index_pass_, &include_log_);
+    return std::make_unique<Consumer>(*this);
   }
 
  private:
   ProgramBuilder& builder_;
   bool index_pass_;
   std::vector<IncludeDirective> include_log_;
+  std::unique_ptr<TokenRecorder> recorder_;
 };
 
 class BuilderActionFactory : public clang::tooling::FrontendActionFactory {

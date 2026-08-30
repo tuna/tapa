@@ -1,6 +1,7 @@
 #include "emit.h"
 
 #include <cctype>
+#include <optional>
 #include <string>
 
 #include "clang/AST/Stmt.h"
@@ -108,7 +109,46 @@ void RemoveInline(const clang::FunctionDecl* func, EditSink& edits) {
   }
 }
 
+// The token-based twin for an attribute spelled by a macro: character
+// arithmetic (getLocWithOffset) is meaningless inside an expansion, so the
+// attribute's own tokens are dropped, and a neighbouring comma or an
+// enclosing `[[ ]]` pair swallowed only when those tokens belong to the same
+// invocation -- a bracket in user source stays (that edit would have to span
+// the file/expansion boundary).
+void RemoveMacroAttrTokens(EditSink& edits, clang::SourceRange attr_range) {
+  edits.Describe("lowered attribute");
+  const clang::SourceLocation begin = attr_range.getBegin();
+  ExpansionSplice* const splice =
+      edits.MacroSpliceFor(begin.isMacroID() ? begin : attr_range.getEnd());
+  if (splice == nullptr) return;
+  const std::optional<size_t> first = splice->IndexAtOrAfter(begin);
+  const std::optional<size_t> last =
+      splice->IndexAtOrBefore(attr_range.getEnd());
+  if (!first || !last || *first > *last) {
+    edits.RemoveText(attr_range);  // reports the precise reason
+    return;
+  }
+  size_t lo = *first;
+  size_t hi = *last;
+  const auto token = [&](size_t i) { return splice->TokenText(i); };
+  if (lo > 0 && token(lo - 1) == ",") {
+    lo -= 1;
+  } else if (hi + 1 < splice->size() && token(hi + 1) == ",") {
+    hi += 1;
+  } else if (lo >= 2 && hi + 2 < splice->size() && token(lo - 2) == "[" &&
+             token(lo - 1) == "[" && token(hi + 1) == "]" &&
+             token(hi + 2) == "]") {
+    lo -= 2;
+    hi += 2;
+  }
+  edits.DropSpliceTokens(splice, lo, hi, {});
+}
+
 void RemoveLoweredAttr(EditSink& edits, clang::SourceRange attr_range) {
+  if (attr_range.getBegin().isMacroID() || attr_range.getEnd().isMacroID()) {
+    RemoveMacroAttrTokens(edits, attr_range);
+    return;
+  }
   auto begin = attr_range.getBegin();
   auto end = attr_range.getEnd();
   auto at = [&](clang::SourceLocation a, clang::SourceLocation b) {

@@ -339,7 +339,8 @@ TEST(TreeSession, DeclEditSinkResnapsInsideTheFile) {
       kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
   ASSERT_NE(ast, nullptr);
   clang::SourceManager& sm = ast->getSourceManager();
-  TreeSession session(ast->getASTContext(), /*log=*/{}, {"main.cpp"});
+  TreeSession session(ast->getASTContext(), /*log=*/{}, {"main.cpp"},
+                      /*tokens=*/nullptr);
   session.edits().Describe("function 'f'");
 
   const size_t brace_offset = std::string(kLinesCode).find("void f() {") + 9;
@@ -538,7 +539,8 @@ bool AbsorbRenamingTu(TreeWriter* writer, const std::string& code,
         Consumer(RenameAction* owner) : owner_(owner) {}
         void HandleTranslationUnit(clang::ASTContext& ctx) override {
           TreeSession session(ctx, owner_->log_,
-                              {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
+                              {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"},
+                              /*tokens=*/nullptr);
           // The header-defined helper, located through the AST the way a
           // decl-rewrite rule would.
           const clang::FunctionDecl* helper = nullptr;

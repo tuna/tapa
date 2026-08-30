@@ -311,10 +311,15 @@ std::string TreeFileBuffer::Render() {
 
 TreeSession::TreeSession(clang::ASTContext& ctx,
                          const std::vector<IncludeDirective>& log,
-                         const std::vector<std::string>& main_files)
+                         const std::vector<std::string>& main_files,
+                         const clang::syntax::TokenBuffer* tokens)
     : rewriter_(ctx.getSourceManager(), ctx.getLangOpts()),
       edits_(ctx, rewriter_) {
   clang::SourceManager& sm = ctx.getSourceManager();
+  if (tokens != nullptr) {
+    splices_.emplace(*tokens, sm);
+    edits_.RouteMacroEdits(&*splices_);
+  }
   for (const auto& [path, file] : MirrorFiles(ctx, main_files, log)) {
     auto buffer = std::make_unique<TreeFileBuffer>(sm, rewriter_, file, path);
     TreeFileBuffer* const ptr = buffer.get();
@@ -346,10 +351,17 @@ bool TreeSession::InsertGuard(clang::SourceRange range, llvm::StringRef opening,
   return buffer != nullptr && buffer->InsertGuard(range, opening, closing);
 }
 
+// The opening renders immediately before the definition and the closing
+// immediately after it. A macro-owned anchor (a body spelled by a macro:
+// the closing brace, or the whole definition) composes into that
+// invocation's splice, at the slot before its first / after its last
+// token -- exactly where the definition renders.
 bool TreeSession::InsertGuardOpening(clang::SourceRange range,
                                      llvm::StringRef opening,
                                      std::string construct) {
   edits_.Describe(std::move(construct));
+  if (range.getBegin().isMacroID())
+    return !edits_.InsertTextBefore(range.getBegin(), opening);
   if (!edits_.CanRewrite(range)) return false;
   TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
   return buffer != nullptr && buffer->InsertGuardOpening(range, opening);
@@ -359,9 +371,23 @@ bool TreeSession::InsertGuardClosing(clang::SourceRange range,
                                      llvm::StringRef closing,
                                      std::string construct) {
   edits_.Describe(std::move(construct));
+  if (range.getEnd().isMacroID())
+    return !edits_.InsertTextAfterToken(range.getEnd(), closing);
   if (!edits_.CanRewrite(range)) return false;
   TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
   return buffer != nullptr && buffer->InsertGuardClosing(range, closing);
+}
+
+void TreeSession::FlushMacroSplices() {
+  if (!splices_.has_value()) return;
+  for (ExpansionSplice* splice : splices_->Edited()) {
+    TreeFileBuffer* const buffer =
+        BufferForLocation(splice->invocation().getBegin());
+    // An unmirrored spelling file was rejected when its edits arrived.
+    if (buffer != nullptr) {
+      buffer->ReplaceWithLineResnap(splice->invocation(), splice->Render());
+    }
+  }
 }
 
 // ── The writer ────────────────────────────────────────────────────────────
@@ -372,7 +398,7 @@ TreeWriter::TreeWriter(std::string out_root,
 
 bool TreeWriter::AddTu(clang::ASTContext& ctx,
                        std::vector<IncludeDirective> log, std::string* error) {
-  TreeSession session(ctx, log, main_files_);
+  TreeSession session(ctx, log, main_files_, /*tokens=*/nullptr);
   return AddTu(ctx, std::move(log), session, error);
 }
 
