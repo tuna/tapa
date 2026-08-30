@@ -376,8 +376,9 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
   return AddTu(ctx, std::move(log), session, error);
 }
 
-bool TreeWriter::AddTu(clang::ASTContext&, std::vector<IncludeDirective> log,
-                       TreeSession& session, std::string* error) {
+bool TreeWriter::AddTu(clang::ASTContext& ctx,
+                       std::vector<IncludeDirective> log, TreeSession& session,
+                       std::string* error) {
   const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
 
   // Include-line rewriting: a quoted include of an out-of-root mirror
@@ -405,8 +406,30 @@ bool TreeWriter::AddTu(clang::ASTContext&, std::vector<IncludeDirective> log,
 
   // The session covers every mirrored file this TU can speak for. First
   // sighting owns a file; an unedited buffer renders its original bytes.
+  // Every later sighting must compute the same bytes: one mirror serves
+  // every task variant, so a header rewritten differently per TU (which
+  // can only happen through context-dependent rewrites, e.g. a macro that
+  // expands differently per TU) has no single honest rendering.
+  const clang::SourceManager& sm = ctx.getSourceManager();
+  const std::string tu = CanonicalPath(
+      sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
   for (const auto& [path, buffer] : session.buffers()) {
-    if (rendered_.count(path) == 0) rendered_[path] = buffer->Render();
+    const std::string bytes = buffer->Render();
+    const auto [it, inserted] = rendered_.try_emplace(path, bytes);
+    if (inserted) {
+      owners_[path] = tu;
+      continue;
+    }
+    if (it->second != bytes) {
+      *error = "mirrored file '" + path +
+               "' is rewritten differently by translation units '" +
+               owners_[path] + "' and '" + tu +
+               "'; a file shared across translation units must rewrite "
+               "identically in each (divergence can only come from "
+               "context-dependent rewrites such as a macro expanding "
+               "differently per translation unit)";
+      return false;
+    }
   }
   return true;
 }

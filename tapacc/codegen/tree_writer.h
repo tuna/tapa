@@ -236,6 +236,9 @@ class TreeWriter {
   std::vector<std::string> main_files_;
   // Canonical path -> final bytes, in first-sighting order across TUs.
   std::map<std::string, std::string> rendered_;
+  // Canonical path -> the main file of the TU that rendered it first, for
+  // the divergence diagnostic.
+  std::map<std::string, std::string> owners_;
 };
 
 // The canonical form used for every recorded path: the on-disk realpath

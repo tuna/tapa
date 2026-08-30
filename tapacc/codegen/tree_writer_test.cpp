@@ -18,6 +18,7 @@
 
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/CompilerInstance.h"
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/Tooling.h"
@@ -509,6 +510,90 @@ TEST(TreeWriter, IdenticalInputsProduceIdenticalTrees) {
 
 // ── multi-TU ownership ────────────────────────────────────────────────────
 
+// Parses one TU, rewrites the shared header's helper name through the
+// session's edit sink (the surface the decl-rewrite rules write through),
+// then absorbs the TU: the shape of one tree-mode rewrite pass, with the
+// replacement standing for whatever the real rewrites compute per TU.
+bool AbsorbRenamingTu(TreeWriter* writer, const std::string& code,
+                      const std::string& main_file,
+                      const std::vector<std::string>& args,
+                      const FileContentMappings& virtual_files,
+                      llvm::StringRef replacement, std::string* error) {
+  class RenameAction : public clang::ASTFrontendAction {
+   public:
+    RenameAction(TreeWriter* writer, llvm::StringRef replacement,
+                 std::string* error)
+        : writer_(writer), replacement_(replacement), error_(error) {}
+
+    bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
+      ci.getPreprocessor().addPPCallbacks(
+          std::make_unique<IncludeRecorder>(ci.getSourceManager(), &log_));
+      return true;
+    }
+
+    std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
+        clang::CompilerInstance&, llvm::StringRef) override {
+      class Consumer : public clang::ASTConsumer {
+       public:
+        Consumer(RenameAction* owner) : owner_(owner) {}
+        void HandleTranslationUnit(clang::ASTContext& ctx) override {
+          TreeSession session(ctx, owner_->log_,
+                              {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
+          // The header-defined helper, located through the AST the way a
+          // decl-rewrite rule would.
+          const clang::FunctionDecl* helper = nullptr;
+          class Find : public clang::RecursiveASTVisitor<Find> {
+           public:
+            Find(const clang::FunctionDecl** out) : out_(out) {}
+            bool VisitFunctionDecl(clang::FunctionDecl* decl) {
+              if (decl->getNameAsString() == "shared") *out_ = decl;
+              return true;
+            }
+            const clang::FunctionDecl** out_;
+          };
+          Find find(&helper);
+          find.TraverseDecl(ctx.getTranslationUnitDecl());
+          ASSERT_NE(helper, nullptr) << "shared.h must define 'shared'";
+          session.edits().Describe("helper 'shared'");
+          // The Rewriter convention: true means the edit was rejected.
+          if (session.edits().ReplaceText(
+                  helper->getLocation(),
+                  static_cast<unsigned>(llvm::StringRef("shared").size()),
+                  owner_->replacement_)) {
+            *owner_->error_ = "the test edit was rejected";
+            owner_->absorbed_ = false;
+            return;
+          }
+          std::string error;
+          owner_->absorbed_ = owner_->writer_->AddTu(
+              ctx, std::move(owner_->log_), session, &error);
+          if (!owner_->absorbed_) *owner_->error_ = error;
+        }
+
+       private:
+        RenameAction* owner_;
+      };
+      return std::make_unique<Consumer>(this);
+    }
+
+    bool absorbed() const { return absorbed_; }
+
+   private:
+    TreeWriter* writer_;
+    llvm::StringRef replacement_;
+    std::string* error_;
+    bool absorbed_ = false;
+    std::vector<IncludeDirective> log_;
+  };
+
+  auto action = std::make_unique<RenameAction>(writer, replacement, error);
+  RenameAction* const handle = action.get();
+  const bool parsed = clang::tooling::runToolOnCodeWithArgs(
+      std::move(action), code, args, main_file, "tree_writer_test",
+      std::make_shared<clang::PCHContainerOperations>(), virtual_files);
+  return parsed && handle->absorbed();
+}
+
 TEST(TreeWriter, TwoTusShareTheTreeAndTheirHeaders) {
   // Two TUs under one src root, both including the shared out-of-root
   // header and each their own in-root header. Both TUs' logs feed one
@@ -558,6 +643,69 @@ TEST(TreeWriter, TwoTusShareTheTreeAndTheirHeaders) {
                 bucket +
                 "\"\n"
                 "int B() { return b() + a() + moved(); }\n");
+}
+
+// ── per-TU byte-identity tripwire (plan §3.4) ─────────────────────────────
+
+// Two TUs, one shared in-root header defining a helper. The src root is
+// /proj/src, so the header mirrors at "shared.h" and both TUs include it.
+constexpr char kSharedHelper[] = "int shared() { return 7; }\n";
+
+struct TuComposition {
+  FileContentMappings files;
+  std::vector<std::string> args;
+  std::string tu_a;
+  std::string tu_b;
+};
+
+TuComposition SharedHeaderComposition() {
+  TuComposition c;
+  c.files = FileContentMappings{
+      {"/proj/src/shared.h", kSharedHelper},
+  };
+  c.args = {"-std=c++17", "-I/proj/src"};
+  c.tu_a = "#include \"shared.h\"\nint A() { return shared(); }\n";
+  c.tu_b = "#include \"shared.h\"\nint B() { return shared() + 1; }\n";
+  return c;
+}
+
+TEST(TreeWriter, DivergentHeaderRewriteIsAHardError) {
+  // The two TUs rewrite the shared header differently (the stand-in for a
+  // context-dependent rewrite, e.g. a macro expanding differently per TU):
+  // one mirror serves every task variant, so that has no single honest
+  // rendering and the second TU's absorption fails, naming both TUs.
+  const TuComposition c = SharedHeaderComposition();
+  const std::string root = TempRoot("diverge");
+  TreeWriter writer(root, {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
+  std::string error;
+  ASSERT_TRUE(AbsorbRenamingTu(&writer, c.tu_a, "/proj/src/a.cpp", c.args,
+                               c.files, "shared_a", &error))
+      << error;
+  EXPECT_FALSE(AbsorbRenamingTu(&writer, c.tu_b, "/proj/src/sub/b.cpp", c.args,
+                                c.files, "shared_b", &error));
+  EXPECT_NE(error.find("'/proj/src/shared.h'"), std::string::npos) << error;
+  EXPECT_NE(error.find("'/proj/src/a.cpp'"), std::string::npos) << error;
+  EXPECT_NE(error.find("'/proj/src/sub/b.cpp'"), std::string::npos) << error;
+  EXPECT_NE(error.find("rewrite identically"), std::string::npos) << error;
+}
+
+TEST(TreeWriter, IdenticalHeaderRewritesMergeSilently) {
+  // Same header, same rewrite in both TUs: the first sighting owns the
+  // bytes, the second agrees, and the tree carries one edited header.
+  const TuComposition c = SharedHeaderComposition();
+  const std::string root = TempRoot("converge");
+  TreeWriter writer(root, {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
+  std::string error;
+  ASSERT_TRUE(AbsorbRenamingTu(&writer, c.tu_a, "/proj/src/a.cpp", c.args,
+                               c.files, "shared_renamed", &error))
+      << error;
+  ASSERT_TRUE(AbsorbRenamingTu(&writer, c.tu_b, "/proj/src/sub/b.cpp", c.args,
+                               c.files, "shared_renamed", &error))
+      << error;
+  ASSERT_TRUE(writer.Write(&error)) << error;
+  const std::map<std::string, std::string> tree = ReadTree(root);
+  ASSERT_EQ(tree.size(), 3u);
+  EXPECT_EQ(tree.at("shared.h"), "int shared_renamed() { return 7; }\n");
 }
 
 }  // namespace

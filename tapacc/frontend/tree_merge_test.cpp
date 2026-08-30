@@ -261,6 +261,44 @@ TEST(TreeMerge, TreeModeEmitsNoFlattenSharedFiles) {
   }
 }
 
+TEST(TreeMerge, DivergentHeaderRewriteFailsTheRewritePass) {
+  // A header whose rewrite is context-dependent: the helper's stream depth
+  // comes from a macro each TU defines differently, so the two TUs compute
+  // different bytes for the one shared mirror. The second TU's rewrite
+  // pass must fail (the §3.4 tripwire reports a hard diagnostic, which
+  // fails the frontend action), while the first TU's pass still succeeds.
+  const std::string root = TempRoot("diverge");
+  ProgramBuilder builder("Top", SynthTarget::kXilinxHls,
+                         TreeConfig{root, {"/proj/a.cpp", "/proj/b.cpp"}});
+  const std::string header =
+      "void Top(tapa::istream<float>& in, tapa::ostream<float>& out);\n"
+      "void Fill(tapa::ostream<float>& out) {\n"
+      "  tapa::stream<float, DEPTH> s;\n"
+      "  out.write(1.f);\n"
+      "}\n";
+  const FileContentMappings files = FileContentMappings{
+      {"/proj/shared.h", header},
+  };
+  const std::vector<std::string> args = {"-std=c++17", "-I/proj"};
+  const std::string top =
+      "#include \"shared.h\"\n"
+      "void Top(tapa::istream<float>& in, tapa::ostream<float>& out) {\n"
+      "  tapa::task().invoke(Fill, out);\n"
+      "}\n";
+  const std::string tu_a = "#define DEPTH 2\n" + top;
+  const std::string tu_b = "#define DEPTH 3\n#include \"shared.h\"\n";
+  ASSERT_TRUE(RunTreePass(&builder, /*index_pass=*/true, tu_a, "/proj/a.cpp",
+                          args, files));
+  ASSERT_TRUE(RunTreePass(&builder, /*index_pass=*/true, tu_b, "/proj/b.cpp",
+                          args, files));
+  EXPECT_TRUE(builder.MergeAndDiscover());
+  EXPECT_TRUE(RunTreePass(&builder, /*index_pass=*/false, tu_a, "/proj/a.cpp",
+                          args, files));
+  EXPECT_FALSE(RunTreePass(&builder, /*index_pass=*/false, tu_b, "/proj/b.cpp",
+                           args, files))
+      << "a header rewritten differently per TU must fail the rewrite pass";
+}
+
 TEST(TreeMerge, SecondDefinitionSiteIsAnError) {
   // Same identity, two definition sites: one mirror cannot honor both.
   // TU A carries the composition's own LeafB definition, and TU B adds a
