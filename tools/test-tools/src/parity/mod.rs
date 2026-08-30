@@ -32,7 +32,13 @@
 //! ```text
 //! bazel-bin/tools/bin/tapa-test-tools parity capture
 //! bazel-bin/tools/bin/tapa-test-tools parity check --apps vadd
+//! bazel-bin/tools/bin/tapa-test-tools parity check --tree
 //! ```
+//!
+//! `--tree` is the MF3+ gate: it exports `TAPA_ANALYZE_TREE=1` for analyze and
+//! compares canonical Verilog only. Rewritten C++ is deliberately incomparable:
+//! the baseline has one blob per task, while tree mode has one mirrored source
+//! closure (including headers) shared by every task.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -152,6 +158,7 @@ struct Options {
     apps: Vec<&'static ParityApp>,
     jobs: u32,
     keep: bool,
+    tree: bool,
     part_num: String,
 }
 
@@ -172,7 +179,7 @@ pub fn parity(args: &[OsString]) -> Result<()> {
 
 fn parse_options(args: &[OsString]) -> Result<Options> {
     let usage = "usage: tapa-test-tools parity <capture|check> \
-[--apps a,b,c] [--jobs N] [--part-num PART] [--keep]";
+[--apps a,b,c] [--jobs N] [--part-num PART] [--keep] [--tree]";
     let Some(mode_name) = args.first().and_then(|arg| arg.to_str()) else {
         return Err(usage.to_string());
     };
@@ -185,6 +192,7 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
     let mut apps_arg: Option<String> = None;
     let mut jobs = DEFAULT_JOBS;
     let mut keep = false;
+    let mut tree = false;
     let mut part_num = DEFAULT_PART_NUM.to_string();
 
     let mut index = 1;
@@ -210,7 +218,16 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
                 }
             }
             "--part-num" => part_num = value()?,
-            "--keep" if matches!(mode, Mode::Capture) => keep = true,
+            "--keep" if matches!(mode, Mode::Capture) => {
+                keep = true;
+                index += 1;
+                continue;
+            }
+            "--tree" if matches!(mode, Mode::Check) => {
+                tree = true;
+                index += 1;
+                continue;
+            }
             _ => return Err(format!("{usage}\nunknown flag {flag}")),
         }
         index += 2;
@@ -248,6 +265,7 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
         apps,
         jobs,
         keep,
+        tree,
         part_num,
     })
 }
@@ -330,7 +348,11 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
         return Err(format!("missing kernel source {}", source.display()));
     }
 
-    let status = Command::new(tapa)
+    let mut command = Command::new(tapa);
+    if options.tree {
+        command.env("TAPA_ANALYZE_TREE", "1");
+    }
+    let status = command
         .arg("--work-dir")
         .arg(work_dir)
         .arg("analyze")
@@ -370,25 +392,27 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
 /// distinct files whose names canonicalize to the same key collide and
 /// fail loudly instead of silently merging — that would mask exactly
 /// the drift this gate exists to catch.
-fn hash_app(work_dir: &Path, app_name: &str) -> Result<AppHashes> {
+fn hash_app(work_dir: &Path, app_name: &str, tree: bool) -> Result<AppHashes> {
     let mut cpp = BTreeMap::new();
-    let cpp_dir = work_dir.join("rewritten");
-    for entry in sorted_entries(&cpp_dir, app_name)? {
-        let file_name = entry
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| format!("{app_name}: non-UTF-8 name in rewritten/"))?;
-        let Some(task) = file_name.strip_suffix(".cpp") else {
+    if !tree {
+        let cpp_dir = work_dir.join("rewritten");
+        for entry in sorted_entries(&cpp_dir, app_name)? {
+            let file_name = entry
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| format!("{app_name}: non-UTF-8 name in rewritten/"))?;
+            let Some(task) = file_name.strip_suffix(".cpp") else {
+                return Err(format!(
+                    "{app_name}: unexpected non-.cpp file in rewritten/: {file_name}"
+                ));
+            };
+            cpp.insert(task.to_string(), hash_file(&entry, app_name)?);
+        }
+        if cpp.is_empty() {
             return Err(format!(
-                "{app_name}: unexpected non-.cpp file in rewritten/: {file_name}"
+                "{app_name}: analyze produced no rewritten/<task>.cpp"
             ));
-        };
-        cpp.insert(task.to_string(), hash_file(&entry, app_name)?);
-    }
-    if cpp.is_empty() {
-        return Err(format!(
-            "{app_name}: analyze produced no rewritten/<task>.cpp"
-        ));
+        }
     }
 
     let mut verilog = BTreeMap::new();
@@ -514,7 +538,7 @@ fn synth_and_hash_all(
         let work_dir = base.path().join(app.name);
         let started = Instant::now();
         let hashes = match synth_app(app, tapa, &work_dir, options)
-            .and_then(|()| hash_app(&work_dir, app.name))
+            .and_then(|()| hash_app(&work_dir, app.name, options.tree))
         {
             Ok(hashes) => hashes,
             Err(error) => {
@@ -587,7 +611,17 @@ fn check(options: &Options, tapa: &Path, version: &str) -> Result<()> {
                 app.name, MANIFEST_REL_PATH
             )
         })?;
-        drift += diff_app(app.name, baseline, &fresh[app.name], &mut report);
+        drift += if options.tree {
+            diff_map(
+                app.name,
+                "verilog",
+                &baseline.verilog,
+                &fresh[app.name].verilog,
+                &mut report,
+            )
+        } else {
+            diff_app(app.name, baseline, &fresh[app.name], &mut report)
+        };
     }
     for line in &report {
         println!("{line}");
@@ -763,6 +797,23 @@ mod tests {
                 && error.contains("VITIS_LOOP_39_1"),
             "collision error must name both files: {error}"
         );
+    }
+
+    #[test]
+    fn tree_flag_composes_with_value_flags() {
+        let options = parse_options(&[
+            OsString::from("check"),
+            OsString::from("--tree"),
+            OsString::from("--apps"),
+            OsString::from("vadd"),
+            OsString::from("--jobs"),
+            OsString::from("2"),
+        ])
+        .expect("parse tree options");
+        assert!(options.tree);
+        assert_eq!(options.jobs, 2);
+        assert_eq!(options.apps.len(), 1);
+        assert_eq!(options.apps[0].name, "vadd");
     }
 
     #[test]
