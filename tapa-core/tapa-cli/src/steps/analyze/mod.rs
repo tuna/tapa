@@ -124,15 +124,6 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // paths; direct `tapa analyze` runs on a developer machine still
     // fall through to the default discovery path.
     let tree_mode = env::var("TAPA_ANALYZE_TREE").is_ok_and(|value| value == "1");
-    if tree_mode && args.input_files.len() != 1 {
-        return Err(CliError::InvalidArg(
-            concat!(
-                "multi-file input is not yet supported under TAPA_ANALYZE_TREE; ",
-                "this tree path accepts exactly one translation unit",
-            )
-            .to_string(),
-        ));
-    }
     let tapa_cpp = if tree_mode {
         None
     } else {

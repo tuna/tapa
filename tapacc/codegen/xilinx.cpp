@@ -286,11 +286,32 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   }
 }
 
+void XilinxBackend::WrapTaskDeclExternC(const clang::FunctionDecl* decl,
+                                        EditSink& edits) const {
+  clang::SourceLocation end = decl->getEndLoc();
+  // Insert after the declaration's trailing semicolon.
+  const clang::SourceLocation after = clang::Lexer::findLocationAfterToken(
+      end, clang::tok::semi, edits.getSourceMgr(), edits.getLangOpts(),
+      /*SkipTrailingWhitespaceAndNewLine=*/true);
+  if (after.isValid()) end = after;
+  edits.InsertTextAfter(decl->getBeginLoc(), "extern \"C\" {\n\n");
+  edits.InsertTextAfterToken(end, "\n\n}  // extern \"C\"\n");
+  RemoveInline(decl, edits);
+}
+
 void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
                                     EditSink& edits) const {
   const clang::FunctionDecl* func = task.def;
-  if (!func->hasBody()) return;
   const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
+  if (!func->hasBody()) {
+    // A TU holding only declarations of the task (the shared header
+    // announcing a task another TU defines) still takes the one
+    // declaration-level rewrite the defining TU applies to that same
+    // declaration through its redeclaration chain; without it the header
+    // would rewrite differently in the two translation units including it.
+    if (lvl == Lvl::kTop) WrapTaskDeclExternC(func, edits);
+    return;
+  }
   const std::string lines = GeneratePreamble(*this, task, is_top);
 
   if (lvl == Lvl::kLower) {
@@ -316,19 +337,14 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
       "{\n" + lines +
       "#pragma HLS interface s_axilite port = return bundle = control\n}\n";
   for (const clang::FunctionDecl* decl : func->redecls()) {
-    clang::SourceLocation end = decl->getEndLoc();
     if (decl->isThisDeclarationADefinition()) {
       edits.ReplaceText(decl->getBody()->getSourceRange(), shell);
+      edits.InsertTextAfter(decl->getBeginLoc(), "extern \"C\" {\n\n");
+      edits.InsertTextAfterToken(decl->getEndLoc(), "\n\n}  // extern \"C\"\n");
+      RemoveInline(decl, edits);
     } else {
-      // Insert after the declaration's trailing semicolon.
-      const clang::SourceLocation after = clang::Lexer::findLocationAfterToken(
-          end, clang::tok::semi, edits.getSourceMgr(), edits.getLangOpts(),
-          /*SkipTrailingWhitespaceAndNewLine=*/true);
-      if (after.isValid()) end = after;
+      WrapTaskDeclExternC(decl, edits);
     }
-    edits.InsertTextAfter(decl->getBeginLoc(), "extern \"C\" {\n\n");
-    edits.InsertTextAfterToken(end, "\n\n}  // extern \"C\"\n");
-    RemoveInline(decl, edits);
   }
 }
 

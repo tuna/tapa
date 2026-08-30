@@ -38,6 +38,12 @@ class XilinxBackend final : public Backend {
   void EmitScalarPort(const PortContext&, CodeSink&) const override;
 
  private:
+  // One non-defining declaration of the Vitis top, wrapped in extern "C"
+  // after its trailing semicolon: the declaration-level half of the
+  // top-level rewrite RewriteTaskFunc applies to every redeclaration.
+  void WrapTaskDeclExternC(const clang::FunctionDecl* decl,
+                           EditSink& edits) const;
+
   bool is_vitis_;
 };
 

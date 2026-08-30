@@ -238,6 +238,20 @@ cc_test(
 )
 
 cc_test(
+    name = "tree_merge_test",
+    srcs = ["tree_merge_test.cpp"],
+    copts = TAPACC_COPTS,
+    deps = [
+        ":program_builder",
+        ":tapa_stub_decls",
+        "//tapacc/codegen:tree_writer",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+        CLANG_TOOLING,
+    ],
+)
+
+cc_test(
     name = "classify_test",
     srcs = ["classify_test.cpp"],
     copts = TAPACC_COPTS,

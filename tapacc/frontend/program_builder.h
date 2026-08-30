@@ -42,9 +42,12 @@ class TreeWriter;
 //      whose callee has no definition anywhere is an error naming the invoke
 //      site and the scanned TUs (plus the location of a same-name definition
 //      with a different signature, the decl/def mismatch case);
-//   2. a header-defined task dedupes by its identity key (the flattened
-//      function identity on the bridge path; canonical path + offset in tree
-//      mode); divergent sightings are an error printing both definitions;
+//   2. a header-defined task dedupes by its identity key (FQN + canonical
+//      signature, the same key in both modes, so a TU that invokes through
+//      a bare declaration matches the TU that owns the definition);
+//      divergent sightings are an error printing both definitions, and --
+//      tree mode only, where one mirror serves every TU -- a task defined
+//      at two distinct sites is an error printing both locations;
 //   3. template specializations merge by mangled key; distinct
 //      instantiations are distinct tasks;
 //   4. an internal-linkage task (`static`, anonymous namespace) is a hard
@@ -137,9 +140,20 @@ class ProgramBuilder {
   // are dropped at the end of IndexTu, so the merge never touches dead state.
   struct DefSighting {
     // Identity key: FQN + canonical parameter signature for plain
-    // functions, the mangled name for template specializations, plus the
-    // definition's canonical path + file offset in tree mode.
+    // functions, the mangled name for template specializations. The same
+    // spelling in every TU of both modes: a cross-TU invoke resolves through
+    // a declaration that has no definition in its own TU, so the key cannot
+    // carry anything TU-local.
     std::string key;
+    // The definition's canonical path + file offset, the tree-mode site
+    // identity: one key sighted at two distinct sites is one function
+    // defined twice, which a single mirrored tree cannot honor.
+    std::string site;
+    // For a template specialization: the identity key of its primary
+    // template pattern, so a TU that never instantiates the task can still
+    // find (and identically guard) the shared header that defines the
+    // pattern.
+    std::string primary_key;
     std::string name;        // graph key: plain name, mangled for specs
     std::string plain_name;  // unqualified name, the old lookup key
     std::string readable_name;
@@ -185,6 +199,8 @@ class ProgramBuilder {
     // Template specializations carry their invoking upper task, so the
     // mangled wrapper is emitted right after it (where the invoke is).
     std::optional<std::string> invoker_key;
+    // The primary-template key of a specialization (see DefSighting).
+    std::string primary_key;
     TaskModel model;
   };
 

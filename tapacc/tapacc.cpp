@@ -7,10 +7,13 @@
 //
 // The default bridge consumes flattened inputs and writes one source blob per
 // task (plus cross-TU shared helper files). Hidden `-tree` consumes original
-// sources instead: it mirrors each TU's non-system include closure under
-// `-emit-dir`, rewrites declarations/helpers once per file, and wraps every
-// task definition in its `TAPA_TASK_DEF_*` guard. Every task manifest then
-// names the same mirrored TUs and selects one definition through its guard.
+// sources instead, any number of TUs in one run: it mirrors the union of the
+// TUs' non-system include closures under `-emit-dir`, rewrites
+// declarations/helpers once per file, and wraps every task definition in its
+// `TAPA_TASK_DEF_*` guard. Every task manifest then names the same mirrored
+// TUs and selects one definition through its guard. A file sighted by several
+// TUs is rendered once, from the first TU in input order, and every later
+// TU's rendering of it must agree byte for byte.
 //
 // Each ClangTool action owns its ASTContext and AST nodes never outlive their
 // TU, so the pipeline runs as TWO passes over the same file list around a
@@ -181,12 +184,6 @@ int main(int argc, const char** argv) {
     return 1;
   }
   const std::vector<std::string>& sources = parser->getSourcePathList();
-  if (g_tree && sources.size() != 1) {
-    llvm::errs() << "error: multi-file input is not yet supported under "
-                    "TAPA_ANALYZE_TREE; this tree path accepts exactly one "
-                    "translation unit\n";
-    return 1;
-  }
 
   std::optional<TreeConfig> tree;
   if (g_tree) {

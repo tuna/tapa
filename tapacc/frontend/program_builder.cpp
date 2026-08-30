@@ -46,6 +46,21 @@ std::string MainFilePath(const clang::ASTContext& ctx) {
       sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
 }
 
+// The definition's canonical path + file offset: the site identity behind
+// the tree-mode "one task, one definition site" rule. Distinct from the
+// identity key on purpose -- a declaration and the definition it announces
+// share a key but never a site, and the site is only compared between two
+// definitions.
+std::string DefinitionSite(const clang::FunctionDecl* func) {
+  const clang::SourceManager& sm = func->getASTContext().getSourceManager();
+  const clang::SourceLocation loc = sm.getExpansionLoc(func->getLocation());
+  const clang::FileID file = sm.getFileID(loc);
+  const clang::OptionalFileEntryRef entry = sm.getFileEntryRefForID(file);
+  const std::string path = entry ? CanonicalPath(entry->getName())
+                                 : CanonicalPath(sm.getFilename(loc));
+  return path + ":" + std::to_string(sm.getFileOffset(loc));
+}
+
 // Canonical parameter-type signature: the identity half that makes a
 // declaration and its definition (possibly in different TUs) compute the
 // same key.
@@ -181,19 +196,10 @@ std::string ProgramBuilder::KeyOf(clang::MangleContext& mangler,
   if (const clang::FunctionDecl* definition = func->getDefinition()) {
     func = definition;
   }
-  std::string key = func->isFunctionTemplateSpecialization()
-                        ? MangledTaskName(mangler, func)
-                        : func->getQualifiedNameAsString() + "(" +
-                              CanonicalSignature(func) + ")";
-  if (!tree_mode()) return key;
-
-  const clang::SourceManager& sm = func->getASTContext().getSourceManager();
-  const clang::SourceLocation loc = sm.getExpansionLoc(func->getLocation());
-  const clang::FileID file = sm.getFileID(loc);
-  const clang::OptionalFileEntryRef entry = sm.getFileEntryRefForID(file);
-  const std::string path = entry ? CanonicalPath(entry->getName())
-                                 : CanonicalPath(sm.getFilename(loc));
-  return key + "@" + path + ":" + std::to_string(sm.getFileOffset(loc));
+  return func->isFunctionTemplateSpecialization()
+             ? MangledTaskName(mangler, func)
+             : func->getQualifiedNameAsString() + "(" +
+                   CanonicalSignature(func) + ")";
 }
 
 ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
@@ -210,6 +216,15 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
       sighting.is_spec &&
       def->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation;
   sighting.key = KeyOf(mangler, def);
+  if (tree_mode()) {
+    sighting.site = DefinitionSite(def);
+    if (sighting.is_spec) {
+      if (const clang::FunctionDecl* pattern =
+              def->getTemplateInstantiationPattern()) {
+        sighting.primary_key = KeyOf(mangler, pattern);
+      }
+    }
+  }
   sighting.name =
       sighting.is_spec ? MangledTaskName(mangler, def) : sighting.plain_name;
   sighting.readable_name = ReadableTaskName(ctx, def);
@@ -319,10 +334,11 @@ std::string ProgramBuilder::SharedSourceName(int tu) const {
 // A shared file is named after its TU's basename, so two TUs with one
 // basename have no distinguishable shared file. Flattened input cannot hit
 // this (every flatten path carries a content digest in its name); it exists
-// for the rare genuinely-equal basenames, and the tree path replaces the
-// whole scheme with source-path-mirrored names.
+// for the rare genuinely-equal basenames. The tree path emits no shared
+// files at all -- it mirrors each TU at its source-relative path -- so
+// equal basenames in different directories are fine there.
 bool ProgramBuilder::CheckSharedFileNames() {
-  if (tu_files_.size() < 2) return true;
+  if (tree_mode() || tu_files_.size() < 2) return true;
   std::map<std::string, size_t> stem_tu;
   for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
     const std::string stem = llvm::sys::path::stem(tu_files_[tu]).str();
@@ -458,6 +474,7 @@ bool ProgramBuilder::MergeAndDiscover() {
     MergedTask& task = it->second;
     task.owner_tu = sighting.tu;
     task.invoker_key = std::move(invoker_key);
+    task.primary_key = sighting.primary_key;
     task.model.is_template_spec = sighting.is_spec;
     task.model.name = sighting.name;
     task.model.readable_name = sighting.readable_name;
@@ -508,6 +525,29 @@ bool ProgramBuilder::MergeAndDiscover() {
       }
       discover(callee,
                callee.is_spec ? std::optional<std::string>(key) : std::nullopt);
+    }
+  }
+
+  // Rule 2, site half (tree mode): the mirror writes one file per source
+  // path, so a task sighted at two distinct sites would need two different
+  // rewrites of the same task. A header task sighted by several TUs sits at
+  // one site and dedupes; an implicit specialization is sighted at its
+  // point of instantiation, which is per-TU by construction and carries no
+  // second definition.
+  if (tree_mode()) {
+    for (const auto& [key, task] : tasks_) {
+      const DefSighting& first = FirstSighting(key);
+      for (const DefSighting& other : defs_.at(key)) {
+        if (other.implicit_spec || other.internal) continue;
+        if (other.site == first.site) continue;
+        Fail("task '" + first.name + "' is defined at two locations: " +
+             first.loc + " (" + tu_files_[first.tu] + ") and " + other.loc +
+             " (" + tu_files_[other.tu] +
+             "); under TAPA_ANALYZE_TREE a task must be defined in exactly "
+             "one place (a task defined in a header shared by several "
+             "translation units is one definition and merges silently)");
+        return false;
+      }
     }
   }
 
@@ -565,18 +605,39 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx,
   view.file_funcs = CollectFileFuncs(ctx, selected);
   view.local_funcs = CollectLocalFuncs(ctx, selected);
   for (const auto& [key, task] : tasks_) {
-    auto visible_it = index.visible.find(key);
-    if (visible_it == index.visible.end()) continue;
+    // This TU's best decl for the task: the definition when it is visible
+    // here, else a visible redeclaration (the shared header announcing a
+    // task another TU defines). A template specialization is only declared
+    // by its point of instantiation, so a TU that never instantiates it
+    // resolves through the primary template instead: the shared header
+    // defining that pattern must carry the same task guard in every TU
+    // that includes it.
+    const clang::FunctionDecl* def = nullptr;
+    if (auto visible_it = index.visible.find(key);
+        visible_it != index.visible.end()) {
+      def = visible_it->second;
+    } else if (task.model.is_template_spec && !task.primary_key.empty()) {
+      if (auto primary_it = index.visible.find(task.primary_key);
+          primary_it != index.visible.end()) {
+        def = primary_it->second;
+      }
+    }
+    if (def == nullptr) continue;
     TaskModel model;
-    model.def = visible_it->second;
+    model.def = def;
     model.is_template_spec = task.model.is_template_spec;
     model.name = task.model.name;
     model.readable_name = task.model.readable_name;
     model.level = task.model.level;
     model.target = task.model.target;
+    // The mangled wrapper is spliced after its invoker's definition; a TU
+    // holding only the invoker's declaration must not splice anything into
+    // it, or the header holding that declaration would render differently
+    // than in the TU that owns the definition.
     if (task.invoker_key) {
-      auto invoker_it = index.visible.find(*task.invoker_key);
-      if (invoker_it != index.visible.end()) {
+      if (auto invoker_it = index.visible.find(*task.invoker_key);
+          invoker_it != index.visible.end() &&
+          invoker_it->second->isThisDeclarationADefinition()) {
         model.invoker = invoker_it->second;
       }
     }

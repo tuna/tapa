@@ -373,9 +373,17 @@ void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef label,
 // (the decl that actually appears in the source), or nullptr.
 const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
   if (!model.is_template_spec || model.def == nullptr) return nullptr;
-  const clang::FunctionDecl* pattern =
-      model.def->getTemplateInstantiationPattern();
-  return pattern != nullptr ? pattern->getCanonicalDecl() : nullptr;
+  if (const clang::FunctionDecl* pattern =
+          model.def->getTemplateInstantiationPattern()) {
+    return pattern->getCanonicalDecl();
+  }
+  // A TU that never instantiates the task resolves its model to the primary
+  // template itself (see ProgramBuilder::TuView): the pattern is already in
+  // hand, and the shared header defining it must take the same guard there
+  // as in the instantiating TU.
+  return model.def->getDescribedFunctionTemplate() != nullptr
+             ? model.def->getCanonicalDecl()
+             : nullptr;
 }
 
 // One rewritten main-file text. `current` is the task this file is the HLS
@@ -642,6 +650,18 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   for (const auto& [name, model] : program.tasks) {
     if (model.is_template_spec) continue;
     const Backend& backend = BackendFor(model.target, hls, vitis, ignore);
+    if (!model.def->isThisDeclarationADefinition()) {
+      // A TU holding only a declaration of the task (the shared header
+      // announcing a task another TU defines) takes the declaration-level
+      // rewrites the defining TU applies to that same declaration through
+      // its redeclaration chain: the signature rewrite, and the extern "C"
+      // wrap of the Vitis top. Guards and bodies exist only at the
+      // definition, which this TU cannot see.
+      edits.Describe("declaration of task '" + model.name + "'");
+      backend.RewriteSignature(model, name == program.top, edits);
+      backend.RewriteTaskFunc(model, name == program.top, edits);
+      continue;
+    }
     guard_definition(model, model.def, name == program.top, backend,
                      {TaskGuardDefine(model.name)},
                      /*rewrite_signature=*/true);
