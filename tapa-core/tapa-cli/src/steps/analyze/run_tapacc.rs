@@ -1,8 +1,8 @@
 //! `tapacc` semantic-analyzer invocation for `tapa analyze`.
 //!
-//! Drives the `tapacc` binary against the flattened sources and hands back
-//! its raw JSON stdout. Parsing is the caller's job: `analyze` persists these
-//! bytes verbatim as a debug artifact *before* interpreting them, so a
+//! Drives the `tapacc` binary against either flattened sources or the original
+//! source tree and hands back its raw JSON stdout. Parsing is the caller's
+//! job: `analyze` persists these bytes verbatim as a debug artifact *before* interpreting them, so a
 //! `tapacc` output that fails to parse is still on disk to look at.
 
 use std::fs;
@@ -26,6 +26,7 @@ pub(super) fn run_tapacc(
     cflags: &[String],
     target: &str,
     work_dir: &Path,
+    tree: bool,
 ) -> Result<String> {
     let shim = work_dir.join(TAPACC_HLS_SHIM_FILE);
     fs::write(&shim, TAPACC_HLS_SHIM)?;
@@ -41,6 +42,9 @@ pub(super) fn run_tapacc(
     }
     cmd.args(["-top", top, "--target", target]);
     cmd.arg("-emit-dir").arg(&emit_dir);
+    if tree {
+        cmd.arg("-tree");
+    }
     cmd.arg("--");
     for f in cflags {
         cmd.arg(f);

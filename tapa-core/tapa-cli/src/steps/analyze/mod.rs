@@ -1,10 +1,12 @@
 //! `tapa analyze` orchestration.
 //!
-//! Composes `tapa-cpp` (preprocessor) and `tapacc` (semantic analyzer)
-//! invocations, then writes the work dir's one state file,
+//! Runs the default `tapa-cpp` + `tapacc` pipeline, or hands original sources
+//! directly to tapacc under the internal tree switch, then writes the work
+//! dir's one state file,
 //! `<work_dir>/tapa.json`, plus the verbatim `tapacc` output as a debug
 //! artifact.
 
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -121,10 +123,24 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     // search. Used by the Bazel driver to inject the exact sandbox
     // paths; direct `tapa analyze` runs on a developer machine still
     // fall through to the default discovery path.
-    let tapa_cpp = if let Some(p) = args.tapa_cpp.as_ref() {
-        p.clone()
+    let tree_mode = env::var("TAPA_ANALYZE_TREE").is_ok_and(|value| value == "1");
+    if tree_mode && args.input_files.len() != 1 {
+        return Err(CliError::InvalidArg(
+            concat!(
+                "multi-file input is not yet supported under TAPA_ANALYZE_TREE; ",
+                "this tree path accepts exactly one translation unit",
+            )
+            .to_string(),
+        ));
+    }
+    let tapa_cpp = if tree_mode {
+        None
     } else {
-        find_clang_binary("tapa-cpp-binary")?
+        Some(if let Some(p) = args.tapa_cpp.as_ref() {
+            p.clone()
+        } else {
+            find_clang_binary("tapa-cpp-binary")?
+        })
     };
     let tapacc = if let Some(p) = args.tapacc.as_ref() {
         p.clone()
@@ -142,15 +158,19 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
 
     let work_dir = ctx.work_dir.as_path();
     fs::create_dir_all(work_dir)?;
-    let flatten_files = run_flatten(&tapa_cpp, &args.input_files, &all_cflags, work_dir)?;
+    let input_files = match tapa_cpp {
+        Some(ref tapa_cpp) => run_flatten(tapa_cpp, &args.input_files, &all_cflags, work_dir)?,
+        None => args.input_files.clone(),
+    };
     let target_str = args.target.as_str();
     let stdout = run_tapacc(
         &tapacc,
-        &flatten_files,
+        &input_files,
         &args.top,
         &all_cflags,
         target_str,
         work_dir,
+        tree_mode,
     )?;
 
     // Persist the raw bytes first, so a `tapacc` output that fails the parse
