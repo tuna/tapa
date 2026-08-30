@@ -35,6 +35,42 @@
             "mode": "flatten",
             "name": "line_directive_present",
             "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "sanity_vadd_analyze",
+            "note": "single-TU tree analyze, the D2a path"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "multi_tu_analyze",
+            "note": "flipped with the MF3 multi-TU tree path"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "macro_invoke_seen",
+            "note": "the macro-wrapped invoke needs no in-place rewrite: upper-task bodies become shells wholesale, so the graph carries the invoke while the macro text is discarded; graph and jacobi (macro-held definitions) stay the MF4 corpus"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "synthesis_branch_preserved",
+            "note": "flipped with the MF3 rewritten tree: #ifdef arms survive for HLS"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "header_not_inlined",
+            "note": "flipped with the MF3 rewritten tree: the header mirrors once"
+        },
+        {
+            "expect": "pass",
+            "mode": "tree",
+            "name": "line_directive_present",
+            "note": "flipped with the MF3 rewritten tree: guard edits re-snap with #line"
         }
     ]
 }

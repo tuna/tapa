@@ -92,6 +92,23 @@ struct Env<'a> {
     tree: bool,
 }
 
+impl Env<'_> {
+    /// The flag putting `tapa_lib` on the compiler's include path for this
+    /// mode. Flatten inlines whatever it reaches, so it keeps riding the
+    /// user `-I` set this manifest was captured with. Tree mode must not
+    /// mirror tapa-lib as user code -- its `int.h` defines operator
+    /// helpers through macros, which the unexpanded tree path cannot yet
+    /// rewrite -- so it rides `-isystem` there, the same class of entry
+    /// production `tapa analyze` adds through `get_tapacc_cflags`.
+    fn tapa_lib_flag(&self) -> String {
+        format!(
+            "{}{}",
+            if self.tree { "-isystem" } else { "-I" },
+            self.tapa_lib.display()
+        )
+    }
+}
+
 /// A named probe: runs one capability check against the current
 /// pipeline and reports what actually happened.
 type Probe = fn(&Env) -> Result<ProbeOutcome>;
@@ -197,10 +214,7 @@ fn probe_sanity_vadd_analyze(env: &Env) -> Result<ProbeOutcome> {
     let source_dir = source
         .parent()
         .ok_or_else(|| format!("source has no parent: {}", source.display()))?;
-    let cflags = [
-        format!("-I{}", source_dir.display()),
-        format!("-I{}", env.tapa_lib.display()),
-    ];
+    let cflags = [format!("-I{}", source_dir.display()), env.tapa_lib_flag()];
     match tapa_analyze(env, "VecAdd", &[source], &cflags)? {
         AnalyzeOutcome::Failure(reason) => Ok(ProbeOutcome::Fail(reason)),
         AnalyzeOutcome::Success { work_dir } => {
@@ -360,7 +374,7 @@ fn analyze_multi_file(env: &Env) -> Result<AnalyzeOutcome> {
     let inputs = [workspace_path(APP_A), workspace_path(APP_B)];
     let cflags = [
         format!("-I{}", workspace_path(APP_EXT_INCLUDE).display()),
-        format!("-I{}", env.tapa_lib.display()),
+        env.tapa_lib_flag(),
     ];
     tapa_analyze(env, "MultiFileTop", &inputs, &cflags)
 }
