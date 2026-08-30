@@ -21,9 +21,11 @@
 //!   relative to `<work>/hls/<task>/verilog` — CANONICAL bytes: both
 //!   the recorded file names and the contents pass through the
 //!   normalizer in [`canonical`], which erases the source-line numbers
-//!   Vitis HLS bakes into generated names (details and residual blind
-//!   spots there). The sibling `report/` dir is excluded on purpose:
-//!   Vitis report files embed run dates.
+//!   Vitis HLS bakes into generated names and sorts the lines (details
+//!   and residual blind spots there). Artifacts whose normalized paths
+//!   collide are keyed as a sorted multiset, never silently merged. The
+//!   sibling `report/` dir is excluded on purpose: Vitis report files
+//!   embed run dates.
 //!
 //! This is an operator tool, not a bazel test target: a full capture is
 //! hours of vendor HLS runtime. Run it from the workspace root after
@@ -388,10 +390,11 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
 
 /// Hash one app's synthesis outputs under `work_dir`.
 ///
-/// Verilog keys and contents are canonicalized (see [`canonical`]); two
-/// distinct files whose names canonicalize to the same key collide and
-/// fail loudly instead of silently merging — that would mask exactly
-/// the drift this gate exists to catch.
+/// Verilog keys and contents are canonicalized (see [`canonical`]);
+/// files whose names canonicalize to the same key are keyed as a sorted
+/// multiset (see [`canonical::keyed_multiset`]) instead of silently
+/// merging — that would mask exactly the drift this gate exists to
+/// catch.
 fn hash_app(work_dir: &Path, app_name: &str, tree: bool) -> Result<AppHashes> {
     let mut cpp = BTreeMap::new();
     if !tree {
@@ -447,17 +450,18 @@ fn hash_tree(
     out: &mut BTreeMap<String, String>,
     ctx: &str,
 ) -> Result<()> {
-    // Canonical key -> original name, so normalization collisions are
-    // an error rather than a silent merge.
-    let mut origins: BTreeMap<String, String> = BTreeMap::new();
-    hash_tree_inner(dir, prefix, out, &mut origins, ctx)
+    // Normalized path -> canonical content hashes of every artifact on
+    // it; keyed_multiset turns each group into stable manifest keys.
+    let mut grouped: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    hash_tree_inner(dir, prefix, &mut grouped, ctx)?;
+    out.extend(canonical::keyed_multiset(grouped));
+    Ok(())
 }
 
 fn hash_tree_inner(
     dir: &Path,
     prefix: &str,
-    out: &mut BTreeMap<String, String>,
-    origins: &mut BTreeMap<String, String>,
+    grouped: &mut BTreeMap<String, Vec<String>>,
     ctx: &str,
 ) -> Result<()> {
     for entry in sorted_entries(dir, ctx)? {
@@ -466,17 +470,13 @@ fn hash_tree_inner(
             .and_then(|name| name.to_str())
             .ok_or_else(|| format!("{ctx}: non-UTF-8 name under {}", dir.display()))?;
         if entry.is_dir() {
-            hash_tree_inner(&entry, &format!("{prefix}{name}/"), out, origins, ctx)?;
+            hash_tree_inner(&entry, &format!("{prefix}{name}/"), grouped, ctx)?;
         } else {
             let key = format!("{prefix}{}", canonical::canonical_verilog(name));
-            if let Some(prior) = origins.get(&key) {
-                return Err(format!(
-                    "{ctx}: canonicalization collision: {prior} and {prefix}{name} \
-both normalize to {key}; refusing to hash them as one file"
-                ));
-            }
-            origins.insert(key.clone(), format!("{prefix}{name}"));
-            out.insert(key, hash_verilog_file(&entry, ctx)?);
+            grouped
+                .entry(key)
+                .or_default()
+                .push(hash_verilog_file(&entry, ctx)?);
         }
     }
     Ok(())
@@ -499,9 +499,9 @@ fn hash_file(path: &Path, ctx: &str) -> Result<String> {
     Ok(sha256_hex(&bytes))
 }
 
-/// Canonical sha256 of one verilog file: names and contents normalized
-/// (see [`canonical`]) before hashing, so line-layout-only differences
-/// between generations of the same design hash equal.
+/// Canonical sha256 of one verilog file: contents normalized and line
+/// sorted (see [`canonical`]) before hashing, so line-layout-only
+/// differences between generations of the same design hash equal.
 fn hash_verilog_file(path: &Path, ctx: &str) -> Result<String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("{ctx}: failed to read {}: {error}", path.display()))?;
@@ -774,29 +774,84 @@ mod tests {
         assert!(quiet.is_empty());
     }
 
+    // Two distinct loop modules at different source lines but the same
+    // loop id normalize to one path: they must hash as a sorted
+    // multiset under `#<ordinal>` keys — count and contents survive,
+    // and sabotage of either body still moves the manifest.
     #[test]
-    fn hash_tree_rejects_files_that_canonicalize_to_one_key() {
-        // Two distinct loop modules at different source lines but the
-        // same loop id must not silently merge into one manifest entry:
-        // that would mask exactly the drift this gate exists to catch.
+    fn hash_tree_keys_colliding_names_as_a_multiset() {
         let dir = tempfile::tempdir().expect("tempdir");
         let vdir = dir.path().join("verilog");
         fs::create_dir_all(&vdir).expect("mkdir");
+        fs::write(
+            vdir.join("Add_Add_Pipeline_VITIS_LOOP_38_1.v"),
+            "module a(); assign x = icmp_ln38; endmodule\n",
+        )
+        .expect("write");
+        fs::write(
+            vdir.join("Add_Add_Pipeline_VITIS_LOOP_39_1.v"),
+            "module b(); assign y = 1'b1; endmodule\n",
+        )
+        .expect("write");
+        let mut out = BTreeMap::new();
+        hash_tree(&vdir, "Add/", &mut out, "vadd").expect("hash");
+        let keys: Vec<&String> = out.keys().collect();
+        assert_eq!(
+            keys,
+            vec![
+                &"Add/Add_Add_Pipeline_VITIS_LOOP_~_1.v#1".to_string(),
+                &"Add/Add_Add_Pipeline_VITIS_LOOP_~_1.v#2".to_string(),
+            ],
+            "colliding names must key as a two-entry multiset: {keys:?}"
+        );
+
+        // Sabotage one colliding body: the multiset must drift.
+        fs::write(
+            vdir.join("Add_Add_Pipeline_VITIS_LOOP_39_1.v"),
+            "module b(); assign y = 1'b0; endmodule\n",
+        )
+        .expect("rewrite");
+        let mut sabotaged = BTreeMap::new();
+        hash_tree(&vdir, "Add/", &mut sabotaged, "vadd").expect("hash");
+        assert_ne!(out, sabotaged, "constant sabotage must register as drift");
+
+        // Remove one loop module of the pair: the multiset shrinks.
+        fs::remove_file(vdir.join("Add_Add_Pipeline_VITIS_LOOP_39_1.v")).expect("remove");
+        let mut shrunk = BTreeMap::new();
+        hash_tree(&vdir, "Add/", &mut shrunk, "vadd").expect("hash");
+        assert_eq!(
+            shrunk.keys().next(),
+            Some(&"Add/Add_Add_Pipeline_VITIS_LOOP_~_1.v".to_string()),
+            "a singleton path keeps the plain key"
+        );
+    }
+
+    // Byte-identical files on one normalized path stay two entries:
+    // deleting one of them must register as drift, not as a no-op.
+    #[test]
+    fn hash_tree_keeps_multiplicity_of_identical_colliding_files() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let vdir = dir.path().join("verilog");
+        fs::create_dir_all(&vdir).expect("mkdir");
+        let body = "module a(); assign x = icmp_ln38; endmodule\n";
         for name in [
             "Add_Add_Pipeline_VITIS_LOOP_38_1.v",
             "Add_Add_Pipeline_VITIS_LOOP_39_1.v",
         ] {
-            fs::write(vdir.join(name), "module x(); endmodule\n").expect("write");
+            fs::write(vdir.join(name), body).expect("write");
         }
-        let mut out = BTreeMap::new();
-        let error = hash_tree(&vdir, "Add/", &mut out, "vadd")
-            .expect_err("names that normalize equal must collide");
-        assert!(
-            error.contains("canonicalization collision")
-                && error.contains("VITIS_LOOP_38_1")
-                && error.contains("VITIS_LOOP_39_1"),
-            "collision error must name both files: {error}"
+        let mut both = BTreeMap::new();
+        hash_tree(&vdir, "Add/", &mut both, "vadd").expect("hash");
+        assert_eq!(both.len(), 2);
+        assert_eq!(
+            both.values().collect::<Vec<_>>(),
+            vec![&both["Add/Add_Add_Pipeline_VITIS_LOOP_~_1.v#1"]; 2],
+            "identical artifacts hash equal but stay two entries"
         );
+        fs::remove_file(vdir.join("Add_Add_Pipeline_VITIS_LOOP_39_1.v")).expect("remove");
+        let mut one = BTreeMap::new();
+        hash_tree(&vdir, "Add/", &mut one, "vadd").expect("hash");
+        assert_ne!(both, one, "losing one of two identical files must drift");
     }
 
     #[test]
