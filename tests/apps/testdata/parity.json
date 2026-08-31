@@ -12,7 +12,7 @@
                 "AsyncReader/AsyncReader_flow_control_loop_pipe_sequential_init.v": "9edfeddeba5929d9ff48823870902b1908562f08525af63f552bddd1d09bb0e0",
                 "AsyncTop/AsyncTop.v": "86d7a3cc9f08e29ddb1ce87ffd72b286c585aceee6b9460a6c608383dbb6c3a7",
                 "AsyncTop/AsyncTop_control_s_axi.v": "69be5cdfce1675245ba75caaeb9b510d7dd5d5dfba7f21143750633ca13fe980",
-                "Writer/Writer.v": "fe1832dd6dba3bd104bba32bc8eab54dd56e4c3fed441ca3daa34fa53245d657",
+                "Writer/Writer.v": "1f5381f970dfdc743d734c0bef8cddf066369a147f340f25fdd315ee9445973c",
                 "Writer/Writer_Writer_Pipeline_VITIS_LOOP_~_1.v": "04b760988266684dad819a674bff7ccd36bbe79805f626ec654ed2a6977d8340",
                 "Writer/Writer_dst_m_axi.v": "a48d12f1184853515e3a5974658399e0ee7e0e884e9266e6c1d6d2245e09c12c",
                 "Writer/Writer_flow_control_loop_pipe_sequential_init.v": "9b087ccadfae981c7b49059b207af5363d1636ba52bab9befb086998d627efaa"
@@ -26,8 +26,8 @@
             "verilog": {
                 "Bandwidth/Bandwidth.v": "7499345fbd57998920b12cdab315a341e3ad00d9c7856d955375e781e0748401",
                 "Bandwidth/Bandwidth_control_s_axi.v": "85cd6d6050708185792f12fc6bebb307ad5b4c1138324c52aa73d49406b573d8",
-                "Copy/Copy.v": "c90c7c3e5edbfe6f6f62bd922a5a77fe9524b3169c2869732e000140cf852257",
-                "Copy/Copy_Copy_Pipeline_VITIS_LOOP_~_2.v": "5b571213452943e9f79f8b17ca009ec1121d050fefa2f6f23d09abe24979255d",
+                "Copy/Copy.v": "fc073ed4776c4ba06101ec2de520dca579e5768cce70af7907a28813f98ce59a",
+                "Copy/Copy_Copy_Pipeline_VITIS_LOOP_~_2.v": "20dd70e0ac995a9e6fae8acf0c41ce5f04221b0600973717007ae1c80f241cfe",
                 "Copy/Copy_flow_control_loop_pipe_sequential_init.v": "8c68101a4eb72ac89d815504cd28d86abadac127c7df7bd8db646d0c93eda8c2"
             }
         },
@@ -41,7 +41,7 @@
             "verilog": {
                 "Cannon/Cannon.v": "06b601e17c86ef687c1c635d6b80f518d5c7e9287cb9d4a34a1eb6f49821b268",
                 "Cannon/Cannon_control_s_axi.v": "8d94fe4db27661686dad33b476943420725e10e15be4ad3d439127e64eed9d56",
-                "Gather/Gather.v": "4ee000ae6a80dda81a909ed89c5646b18c5d63af157ed64d2125d71bf46be1c8",
+                "Gather/Gather.v": "32b41c8b5c1e424b7bcaa73a140cff0adcc06af55b2e951c46c441f6794f03a7",
                 "Gather/Gather_Gather_Pipeline_VITIS_LOOP_~_1_VITIS_LOOP_~_2.v": "4430521a2618daea47241a4569ef65d0c734229df2a514cf3145a70fae4118a9",
                 "Gather/Gather_flow_control_loop_pipe_sequential_init.v": "698dad712dcf34801fa42f503a64bed168e0de39a233a1c979d31c58d828f3ad",
                 "Gather/Gather_matrix_ptr_m_axi.v": "ff58ab3d022689ccf796e38142dbecaa62a9d000afa1aea18c48d375e172f11c",
@@ -57,7 +57,7 @@
                 "ProcElem/ProcElem_fmul_32ns_32ns_32_4_max_dsp_1_ip.tcl": "63f94ad0d6628adeec00763bbf44a9b8d14c1734689f1a6e8a6ac93d9b03b4f9",
                 "ProcElem/ProcElem_sparsemux_19_4_32_1_1.v": "60991eef2b6766b3c5ef62702e1bf7be453e6e7fd360953d0302129f9f07a84e",
                 "ProcElem/ProcElem_sparsemux_7_2_32_1_1.v": "dccf84b9e26dba408f3fc40f6c26681a3ce2f1169666775633cff00ee3fec1c4",
-                "Scatter/Scatter.v": "fcaec675a2083805e7f5ba0d733eaf3e819035a81b2b6324e03b50a369f7c746",
+                "Scatter/Scatter.v": "b290c38293b03fe291a14d7282471021a7062bd0cc54d7b4d8008597896cdcb7",
                 "Scatter/Scatter_Scatter_Pipeline_VITIS_LOOP_~_1_VITIS_LOOP_~_2.v": "e8d185fae59d7b28e0443dc17620f79fffc83cab55bf64ffd2d67ba333967535",
                 "Scatter/Scatter_flow_control_loop_pipe_sequential_init.v": "97cf7a4db9b206075666fcee4d18a8775957199eefa1b21de32dcb0239b8cc01",
                 "Scatter/Scatter_matrix_ptr_m_axi.v": "e42d7116569a0c5fe96600264d9b8629873c5266c69bd87800e51caa5e36fe2a"
@@ -71,10 +71,10 @@
             "verilog": {
                 "Gemv/Gemv.v": "900d3a156eae8bcdc75fa31da4c175b9f7ba100d27d49a6912369b44a1e2ed62",
                 "Gemv/Gemv_control_s_axi.v": "da67fcb825c5599de86623a6a81568bc5710d5525863b22ea520726a83ddbf63",
-                "GemvCore/GemvCore.v": "9a1f18232d72c8b5aa5866365e120f19f15f17c8a820607c2a0d0975e29201b2",
+                "GemvCore/GemvCore.v": "5b15925865ad4079eb4e57487122bbacf53fd208caf7f7ac4b61ffbd7472ba59",
                 "GemvCore/GemvCore_GemvCore_Pipeline_VITIS_LOOP_~_1.v": "34418e1a7862ffda5315c86ee73ffbf91af8a7146cb25d690a903ab5a5137080",
                 "GemvCore/GemvCore_GemvCore_Pipeline_VITIS_LOOP_~_2.v": "10cb193688021b5b95576c0de0d57a1e9fae395fcaa89688e7bbc10bf8a6f153",
-                "GemvCore/GemvCore_GemvCore_Pipeline_VITIS_LOOP_~_3_VITIS_LOOP_~_4.v": "176e9a049126711527b22cdf98bcb5ae357dd77acc1f376aaabb1be36e7b0634",
+                "GemvCore/GemvCore_GemvCore_Pipeline_VITIS_LOOP_~_3_VITIS_LOOP_~_4.v": "226c1f996237052abf9700b0560b2c4daacf2305dc49c5df1d8a1e3b41f95133",
                 "GemvCore/GemvCore_GemvCore_Pipeline_VITIS_LOOP_~_5.v": "7ca39afbf28771d75b7636fa24594106a666377c1e75e8a4122e684ae7dc1c88",
                 "GemvCore/GemvCore_a_m_axi.v": "df04667d41a90e6bcd801e595183a64f847f0d650bc1ed58843d341641013711",
                 "GemvCore/GemvCore_flow_control_loop_pipe_sequential_init.v": "f854ec531f4a7b7aff3613a8e77145cf482fded21549a511cd2a7ed62a3a1bd2",
@@ -93,7 +93,7 @@
                 "UpdateHandler": "d686407a888f053dd4ccd24444c6f96c5a44e4413a951e36e7b1f90454f1aef1"
             },
             "verilog": {
-                "Control/Control.v": "676310c384c9a73af1854a223938e6a77a618e4106e6430049c4e8671c9f9372",
+                "Control/Control.v": "7b38f2b8a78c796db91bfc35e8f04922495c3aee5d0657636787a5e8fe7eac99",
                 "Control/Control_Control_Pipeline_1.v": "91d3fda4c2aa21f27c6fce2f90cc777a8a3d9e6f9004baf0d5f3d20c2ed642d2",
                 "Control/Control_Control_Pipeline_gather_req.v": "3e8bfd71c8b37c7034e71cfd6b7dbde7f47482fdea633c4fbb4bddded069bbdf",
                 "Control/Control_Control_Pipeline_gather_resp.v": "6bc4930f6c48621eff6f37485445a75b15f655125b475e3aa0428ddb2bc0c22a",
@@ -112,7 +112,7 @@
                 "ProcElem/ProcElem_ProcElem_Pipeline_1.v": "53f675a1427903e38f9dd50e28d94199560a505fb613bc44d53ecef4c05a2d9b",
                 "ProcElem/ProcElem_ProcElem_Pipeline_4.v": "443b3e451a98fcf044596a8bd53d8f00008aef0bb98fe30d9282d376b750f273",
                 "ProcElem/ProcElem_ProcElem_Pipeline_gather.v": "55a5bc2a70b7cfd5a84e3587dd9e9f4b1454374f905e1dd31174ef935edc896c",
-                "ProcElem/ProcElem_ProcElem_Pipeline_scatter.v": "464edc31c469978e241cd42cef04615301f54f29e2f46ebe974e00328801fb70",
+                "ProcElem/ProcElem_ProcElem_Pipeline_scatter.v": "0b1ba4c729ecd05b29a688533336538c12936b445a17dcc20a94816f426f3f87",
                 "ProcElem/ProcElem_edges_m_axi.v": "9c8e212ba05a4b7351211b0d3b26313f8384cdc8ae86b36f2d4adfb72ce2d1af",
                 "ProcElem/ProcElem_flow_control_loop_pipe_sequential_init.v": "d4554bb904ce8d79efaa439f07a6df49be4900b982706842ed032e04fd52cec5",
                 "ProcElem/ProcElem_vertices_local_RAM_T2P_URAM_3R2W.v": "a1ee121e5811fdd94986e9067dee801dc91ed78e153f581ccb49050b335d21dd",
@@ -120,7 +120,7 @@
                 "UpdateHandler/UpdateHandler.v": "5a9c1942de79037b5a21d403a5aacbc80cec4823cf902754b009cd294f659679",
                 "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_1.v": "fd51de7f3d2e75b3b5e365b13040568edec4711b2fa2072fddfddbdc0f50cefb",
                 "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_2.v": "c40ced3afd7f05953d3c21e4ef0ae5e4ce3b4f8036f9b1fd9caaf508b8618ffa",
-                "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_gather.v": "47a8368814411c0271db70b9ba1846c19ac438ffbbc3c59488178dcf7d5a56c0",
+                "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_gather.v": "53328c2ca12dab6879f7b869f3530786141579dff0ae11ed2ed70df34c0bba68",
                 "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_init.v": "7d83f9d55eff51d5ed7ddddec736e2f8b3eefeab89d6637a996c66ab008c57c1",
                 "UpdateHandler/UpdateHandler_UpdateHandler_Pipeline_scatter.v": "025e19c890f8fede7300f91a8d6796e71bb2a9ac5c52241f0a1b82310cc9ee87",
                 "UpdateHandler/UpdateHandler_flow_control_loop_pipe_sequential_init.v": "029577cf3bdca592be7d000a84129e1cee154eafaf7ca844c6e20274c4d7231f",
@@ -139,11 +139,11 @@
             "verilog": {
                 "IgnoreTop/IgnoreTop.v": "c63161c8eb4cb2dd7b5880f5788894b14ec2bfd5832818d02c2466c19d0cbc3e",
                 "IgnoreTop/IgnoreTop_control_s_axi.v": "4c0f218e8b5fa87420494f7d788f00eabcb8c1a85f40ab0bb5e0b6a2d3a8795a",
-                "Mmap2Stream/Mmap2Stream.v": "55ce9ecbc46d3a70f6157b6739083b43375e1536f29d212cca9bec25d29e0a08",
+                "Mmap2Stream/Mmap2Stream.v": "ce7476436ee0f12ef952e9f89e0671c9b8cdd04aa054f51bcd5f952f1bd8657e",
                 "Mmap2Stream/Mmap2Stream_Mmap2Stream_Pipeline_VITIS_LOOP_~_1.v": "b83233d9c8d3b18bbcfd3ff6d4b2ebad61071bc1c04548141675bfddbed34270",
                 "Mmap2Stream/Mmap2Stream_flow_control_loop_pipe_sequential_init.v": "1f300bb45189308cb7ca5ab095bf85b282c3754734bd5c3c16f394125b83e0ff",
                 "Mmap2Stream/Mmap2Stream_mmap_m_axi.v": "0589454b4c79ad960af8efcae8ff5e5a9765d6afa8579afb5e1e0b7ea2992907",
-                "Stream2Mmap/Stream2Mmap.v": "92d40dc42a6f10039a353ca7c84233260a93d3d42d570ef5c9bbc8afdd5c8ebd",
+                "Stream2Mmap/Stream2Mmap.v": "48ae61858ddbb62b15eb9f3b24c501e33bd69ea63538e8f79ba7126f410cced6",
                 "Stream2Mmap/Stream2Mmap_Stream2Mmap_Pipeline_VITIS_LOOP_~_1.v": "e560b39bfb2400480ba6273918999cdea36e0c6861df6e3fa04142de2353f43e",
                 "Stream2Mmap/Stream2Mmap_flow_control_loop_pipe_sequential_init.v": "2a005b311c85dffdb1dec67f4efdf75153d336a3b96e91297160633ce443bed0",
                 "Stream2Mmap/Stream2Mmap_mmap_m_axi.v": "7b917cc3d6051ccb819f0e80c7087434931c9c12a626cf57b7d9e2bc79713ee3"
@@ -165,7 +165,7 @@
             "verilog": {
                 "Jacobi/Jacobi.v": "a0b113e6fe6b82d9a23b3102446b5ba29ba512e8a93ed3bd9f4cebf10a60bd2c",
                 "Jacobi/Jacobi_control_s_axi.v": "3cff1e566c32b9fe9c3771a644f20d7cf4277980dfc4bb9bd1121e2c16039817",
-                "Mmap2Stream/Mmap2Stream.v": "69b6a8647182c340c50db50278f289eb60ad1d30156047c453e35b014e10e2e2",
+                "Mmap2Stream/Mmap2Stream.v": "ed2242e556acc5a3e6fe0149c249ee768997e3518e84b507971f4f6fb383cde1",
                 "Mmap2Stream/Mmap2Stream_Mmap2Stream_Pipeline_VITIS_LOOP_~_1.v": "b23d531f7602ad5450bf4a662ee1482b2ba9ee7b207557be3e7a9ce8c3e95e05",
                 "Mmap2Stream/Mmap2Stream_flow_control_loop_pipe_sequential_init.v": "1f300bb45189308cb7ca5ab095bf85b282c3754734bd5c3c16f394125b83e0ff",
                 "Mmap2Stream/Mmap2Stream_mmap_m_axi.v": "0589454b4c79ad960af8efcae8ff5e5a9765d6afa8579afb5e1e0b7ea2992907",
@@ -203,7 +203,7 @@
                 "Module8Func/Module8Func_Module8Func_Pipeline_module_8_epoch.v": "f1559513f11f9e8064773b31ceae8f00f42cb7497b124e3eab313e079d1cecb1",
                 "Module8Func/Module8Func_flow_control_loop_pipe_sequential_init.v": "0b6001cbbddbbf1b76cc17b488599a2427bb8a957c3979817520362da67098e9",
                 "Stream2Mmap/Stream2Mmap.v": "8ecf6e8bb65759ed18fcabc27c7b03c246a6852b9b8b3d472d895abe35a935da",
-                "Stream2Mmap/Stream2Mmap_Stream2Mmap_Pipeline_VITIS_LOOP_~_1.v": "c43980ac2ae636646b9e09ca5e45a00dcaec321232e15bb5f057612d0ac6782c",
+                "Stream2Mmap/Stream2Mmap_Stream2Mmap_Pipeline_VITIS_LOOP_~_1.v": "0ded60d8c5ba0780d37291f580b4112788cf6013c046ea738eea1b182a933bea",
                 "Stream2Mmap/Stream2Mmap_flow_control_loop_pipe_sequential_init.v": "2a005b311c85dffdb1dec67f4efdf75153d336a3b96e91297160633ce443bed0",
                 "Stream2Mmap/Stream2Mmap_mmap_m_axi.v": "7b917cc3d6051ccb819f0e80c7087434931c9c12a626cf57b7d9e2bc79713ee3"
             }
@@ -225,7 +225,7 @@
                 "InnerStage/InnerStage.v": "a4e9ab890010060c177cb7a41b5c17f5741b7241a47240ce20ca995bead76361",
                 "Network/Network.v": "bc75d5989aa890bc73ff91a144358302f1a7422ad6023d03147cda207787f69a",
                 "Network/Network_control_s_axi.v": "50f2ccd55e482816dcbd765c2ea14f78f7ea2324ccfe1991dff8e802aeb5806e",
-                "Produce/Produce.v": "e543771fecaa4b97fa63cbf2422133dc0e981e9d2547a5ce331486c6df4778ec",
+                "Produce/Produce.v": "c016c13c5fdb229044a963d4f013466dbe9913c0bd8e91c986583d5d864131d9",
                 "Produce/Produce_Produce_Pipeline_produce.v": "deee29fec18dc1647ec763a8e9b1362dd18c5621622ea0de3d92941502855116",
                 "Produce/Produce_flow_control_loop_pipe_sequential_init.v": "378bdb4e31d0194aacd21bbd69d19e174b269b407113eb6e87a6b02e355762ae",
                 "Produce/Produce_mmap_in_m_axi.v": "5a1f75cc709fd81a76b2a1fda8745a560b99bce4cd8b5bf2f09d3c620be0828b",
@@ -242,11 +242,11 @@
                 "tapa_mangled_Z20TemplatedPassthroughIfEvRN4tapa7istreamIT_EERNS0_7ostreamIS2_EEm": "57fedcbc2adbec2a16e0be47b4fd45b9037533ad4ba8cee3ea6c5b618135ccae"
             },
             "verilog": {
-                "Mmap2Stream/Mmap2Stream.v": "55ce9ecbc46d3a70f6157b6739083b43375e1536f29d212cca9bec25d29e0a08",
+                "Mmap2Stream/Mmap2Stream.v": "ce7476436ee0f12ef952e9f89e0671c9b8cdd04aa054f51bcd5f952f1bd8657e",
                 "Mmap2Stream/Mmap2Stream_Mmap2Stream_Pipeline_VITIS_LOOP_~_1.v": "b83233d9c8d3b18bbcfd3ff6d4b2ebad61071bc1c04548141675bfddbed34270",
                 "Mmap2Stream/Mmap2Stream_flow_control_loop_pipe_sequential_init.v": "1f300bb45189308cb7ca5ab095bf85b282c3754734bd5c3c16f394125b83e0ff",
                 "Mmap2Stream/Mmap2Stream_mmap_m_axi.v": "0589454b4c79ad960af8efcae8ff5e5a9765d6afa8579afb5e1e0b7ea2992907",
-                "Stream2Mmap/Stream2Mmap.v": "92d40dc42a6f10039a353ca7c84233260a93d3d42d570ef5c9bbc8afdd5c8ebd",
+                "Stream2Mmap/Stream2Mmap.v": "48ae61858ddbb62b15eb9f3b24c501e33bd69ea63538e8f79ba7126f410cced6",
                 "Stream2Mmap/Stream2Mmap_Stream2Mmap_Pipeline_VITIS_LOOP_~_1.v": "e560b39bfb2400480ba6273918999cdea36e0c6861df6e3fa04142de2353f43e",
                 "Stream2Mmap/Stream2Mmap_flow_control_loop_pipe_sequential_init.v": "2a005b311c85dffdb1dec67f4efdf75153d336a3b96e91297160633ce443bed0",
                 "Stream2Mmap/Stream2Mmap_mmap_m_axi.v": "7b917cc3d6051ccb819f0e80c7087434931c9c12a626cf57b7d9e2bc79713ee3",
@@ -270,11 +270,11 @@
                 "Add/Add_fadd_32ns_32ns_32_7_full_dsp_1.v": "d9c38ffa4b0d82a04628153a29f441f996d11d15e6679fc9711932c9e853441c",
                 "Add/Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.tcl": "e94806eab69740d01cea586134cad2898f508047f4a730f82a6af780d4b022c6",
                 "Add/Add_flow_control_loop_pipe_sequential_init.v": "789f90e95e4b0ede6a4adec4c6bcf6dc3e2f997c00bda0ef633ea14f8008afe1",
-                "Mmap2Stream/Mmap2Stream.v": "55ce9ecbc46d3a70f6157b6739083b43375e1536f29d212cca9bec25d29e0a08",
+                "Mmap2Stream/Mmap2Stream.v": "ce7476436ee0f12ef952e9f89e0671c9b8cdd04aa054f51bcd5f952f1bd8657e",
                 "Mmap2Stream/Mmap2Stream_Mmap2Stream_Pipeline_VITIS_LOOP_~_1.v": "b83233d9c8d3b18bbcfd3ff6d4b2ebad61071bc1c04548141675bfddbed34270",
                 "Mmap2Stream/Mmap2Stream_flow_control_loop_pipe_sequential_init.v": "1f300bb45189308cb7ca5ab095bf85b282c3754734bd5c3c16f394125b83e0ff",
                 "Mmap2Stream/Mmap2Stream_mmap_m_axi.v": "0589454b4c79ad960af8efcae8ff5e5a9765d6afa8579afb5e1e0b7ea2992907",
-                "Stream2Mmap/Stream2Mmap.v": "92d40dc42a6f10039a353ca7c84233260a93d3d42d570ef5c9bbc8afdd5c8ebd",
+                "Stream2Mmap/Stream2Mmap.v": "48ae61858ddbb62b15eb9f3b24c501e33bd69ea63538e8f79ba7126f410cced6",
                 "Stream2Mmap/Stream2Mmap_Stream2Mmap_Pipeline_VITIS_LOOP_~_1.v": "e560b39bfb2400480ba6273918999cdea36e0c6861df6e3fa04142de2353f43e",
                 "Stream2Mmap/Stream2Mmap_flow_control_loop_pipe_sequential_init.v": "2a005b311c85dffdb1dec67f4efdf75153d336a3b96e91297160633ce443bed0",
                 "Stream2Mmap/Stream2Mmap_mmap_m_axi.v": "7b917cc3d6051ccb819f0e80c7087434931c9c12a626cf57b7d9e2bc79713ee3",

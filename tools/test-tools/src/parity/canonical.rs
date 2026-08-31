@@ -64,7 +64,11 @@ const LOOP_TAG: &str = "VITIS_LOOP_";
 /// as `ap_phi_mux_phi_ln50_phi_fu_100_p4`. Both the line and the
 /// same-line occurrence vary with source layout, so both are erased;
 /// structural suffixes around them (`_fu_190_p2`, `_cast_reg_380`, …)
-/// are kept.
+/// are kept. A line-attributed name with NO number (`trunc_ln`) is the
+/// same family with an unknown line (HLS omits the digits when the
+/// operation has no debug location — the flattened blob, whose `-P`
+/// strip lost some, versus the tree's `#line`-restored one), so a bare
+/// `_ln` at the identifier's end erases to the same marker.
 const LN_TAG: &str = "_ln";
 
 /// Fixed marker replacing every erased line number. `~` cannot appear
@@ -200,7 +204,8 @@ fn scan_ln_units(text: &str) -> Vec<(usize, usize)> {
 }
 
 /// The `(start, end)` of the first `_ln<digits>[_<digits>]` unit in
-/// `text[start..end]` with a non-empty prefix, if any.
+/// `text[start..end]` with a non-empty prefix, if any. A `_ln` ending
+/// the identifier is the unknown-line spelling of the same family.
 fn first_ln_unit(text: &str, start: usize, end: usize) -> Option<(usize, usize)> {
     let mut from = start;
     while let Some(found) = text[from..end].find(LN_TAG) {
@@ -210,6 +215,17 @@ fn first_ln_unit(text: &str, start: usize, end: usize) -> Option<(usize, usize)>
         }
         let num_start = unit_start + LN_TAG.len();
         let Some(line_len) = leading_digits(&text[num_start..end]) else {
+            // Unknown line: the name's next segment is a structural
+            // suffix (`_fu_113_p4`, `_reg_144`) or nothing at all. Only
+            // those forms are the family -- `_ln` inside another
+            // identifier (`or_lnfoo`) is not -- and an already-marked
+            // unit is left alone, keeping canonicalization a fixed point.
+            let unknown = (num_start == end && !text[end..].starts_with(MARKER))
+                || text[num_start..end].starts_with("_fu")
+                || text[num_start..end].starts_with("_reg");
+            if unknown {
+                return Some((unit_start, num_start));
+            }
             from = num_start;
             continue;
         };
@@ -267,12 +283,26 @@ mod tests {
         );
     }
 
-    // Text without the families is untouched, including `_ln` not
-    // followed by digits.
+    // Text without the families is untouched, including `_ln` followed
+    // by letters (a different identifier, not the family's end form).
     #[test]
     fn unrelated_text_is_untouched() {
         let text = "wire [31:0] a; // _lnfoo VITIS_LOOP\nassign a = data_q_s_din;";
         assert_eq!(canonical_verilog(text), text);
+    }
+
+    // An unknown line and a known one are the same family: the flattened
+    // blob emits `trunc_ln` where the tree's `#line`-restored source
+    // emits `trunc_ln9`, with identical allocation numbers around them.
+    #[test]
+    fn unknown_line_and_known_line_names_canonicalize_equal() {
+        let flat = "wire signed [61:0] trunc_ln_fu_113_p4;\nreg [61:0] trunc_ln_reg_144;";
+        let tree = "wire signed [61:0] trunc_ln9_fu_113_p4;\nreg [61:0] trunc_ln9_reg_144;";
+        assert_eq!(canonical_verilog(flat), canonical_verilog(tree));
+        assert_eq!(
+            canonical_verilog(flat),
+            "wire signed [61:0] trunc_ln~_fu_113_p4;\nreg [61:0] trunc_ln~_reg_144;"
+        );
     }
 
     // The motivating corpus case: the tree's `#line` re-snaps map a
