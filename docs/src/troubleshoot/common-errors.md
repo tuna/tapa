@@ -160,29 +160,23 @@ Run `tapa compile --help` for the full option list.
 
 ---
 
-## Tasks not defined in the same compilation unit as the top-level function
+## Task has no definition in any scanned translation unit
 
-**Symptom:** `tapacc` cannot find a task function, or a link error occurs for a task symbol.
+**Symptom:** `tapacc` reports `task 'X' is invoked by 'Y' at <file>:<line> but has no definition in any scanned translation unit (…)`, listing the inputs it scanned.
 
-**Cause:** TAPA requires all task functions to be visible in the same compilation unit as the top-level function. Placing tasks in separate `.cpp` files means the compiler never sees them together.
+**Cause:** The translation unit that defines the task was not passed to `tapa analyze`. If a function with the same name but a different signature exists, the message points at it — the declaration and the definition must match.
 
-**Fix:** Define tasks in header files and `#include` them in the main kernel file.
+**Fix:** Pass every translation unit of the program, one per `-f`. A single `tapacc` process parses all inputs with the same cflags, so a task may be defined in any input file (or a header) and invoked from any other.
 
-```cpp
-// task1.hpp
-void Task1(/* ... */) { /* ... */ }
+---
 
-// task2.hpp
-void Task2(/* ... */) { /* ... */ }
+## Task with internal linkage
 
-// top_level.cpp
-#include "task1.hpp"
-#include "task2.hpp"
+**Symptom:** `tapacc` reports that a task `has internal linkage (static or anonymous namespace); tasks must have external linkage`, or that a function `builds a tapa::task() but is not an externally linked global function (static, anonymous namespace, or a member function), so it can never be a task`.
 
-void TopLevel(/* ... */) {
-  tapa::task().invoke(Task1, /* ... */).invoke(Task2, /* ... */);
-}
-```
+**Cause:** A task is an RTL module instantiated by its parent, referenced across translation units. A `static` function, a function in an anonymous namespace, or a member function has internal or class linkage and can never fill that role.
+
+**Fix:** Give the task external linkage: move it out of the anonymous namespace, drop the `static`, or make it a free function.
 
 ---
 

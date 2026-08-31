@@ -41,9 +41,12 @@ placement + timing constraints
 .xclbin
 ```
 
-**`tapa analyze`** — Runs `tapa-cpp` and `tapacc` locally. Reads your C++
-source, resolves task boundaries, and writes the task graph to `tapa.json` in
-the work directory. No vendor tools are required for this step.
+**`tapa analyze`** — Runs `tapacc` locally, one process over every input
+file. Each `-f` is one translation unit and all inputs parse with the same
+cflags, so tasks may be defined in any input and invoked from any other.
+`tapacc` rewrites the sources into the work directory's `rewritten/` tree
+and stores the task graph in `tapa.json`. No vendor tools are required for
+this step.
 
 **`tapa synth`** — Invokes Vitis HLS for each task to produce per-task
 Verilog RTL. This is the most time-consuming step. With `-j N`, up to N tasks

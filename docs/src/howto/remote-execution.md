@@ -19,13 +19,15 @@ TAPA splits work between local and remote:
 
 | Step | Runs where |
 |------|------------|
-| `tapa analyze` (runs `tapa-cpp` and `tapacc`) | Always local |
+| `tapa analyze` (runs `tapacc`) | Always local |
 | `tapa synth` (Vitis HLS synthesis) | Remote when `--remote-host` is set |
 | `tapa floorplan` with `--run-impl` or `--dse` (`v++ --link`) | Remote when `--remote-host` is set |
 | `tapa pack` (IP packaging) | Remote when `--remote-host` is set |
 | File transfer (`.xo`, `.zip` artifacts) | Handled automatically by TAPA |
 
 Planning-only `tapa floorplan` (no `--run-impl`, no `--dse`) needs no vendor tool and always runs locally, using the local `cbc` solver.
+
+Each remote `synth` job uploads exactly what it compiles: the task's rewritten source files, their directories, and every include directory named in its cflags — in practice the work directory's `rewritten/` tree. Nothing has to be staged on the remote host by hand.
 
 ```admonish warning
 Remote execution applies to the **`tapa` compiler only**. The host executable

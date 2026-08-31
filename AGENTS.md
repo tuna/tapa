@@ -38,7 +38,7 @@ C++ source ─tapacc (Clang frontend)→ task graph/JSON
   `tapa-codegen`, `tapa-rtl`, `tapa-protocol`, `tapa-xilinx`,
   orchestrated by `tapa-cli`.
 - `fpga-runtime/` — `frt` runtime and cosim/DPI backends (Rust).
-- `tapa-cpp/`, `tapa-lib/` — C++ headers and host library.
+- `tapa-lib/` — C++ headers and host library.
 
 ## Process
 

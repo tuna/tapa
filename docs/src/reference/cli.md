@@ -49,7 +49,7 @@ Run the full compilation pipeline (analyze → synth → pack) in a single comma
 | Flag | Description |
 |------|-------------|
 | `--top TASK` / `-t TASK` | Top-level task function name. |
-| `--input FILE` / `-f FILE` | Kernel source file. Repeat the flag for multiple sources. |
+| `--input FILE` / `-f FILE` | Kernel source file; each flag is one translation unit. Repeat for multi-file programs. |
 
 ### Commonly used optional flags
 
@@ -80,14 +80,14 @@ tapa compile \
 
 ## tapa analyze
 
-Parse C++ source and extract the task graph to `tapa.json` in the work directory. This stage always runs locally and does not require vendor tools.
+Parse C++ source and extract the task graph to `tapa.json` in the work directory, alongside the rewritten C++ source tree that `tapa synth` compiles (see [Output Files](output-files.md)). One `tapacc` process parses every `--input` translation unit with the shared cflags, so tasks may be defined in any input file and invoked from any other. This stage always runs locally and does not require vendor tools.
 
 ### Required flags
 
 | Flag | Description |
 |------|-------------|
 | `--top TASK` / `-t TASK` | Top-level task function name. |
-| `--input FILE` / `-f FILE` | Kernel source file. Repeat the flag for multiple sources. |
+| `--input FILE` / `-f FILE` | Kernel source file; each flag is one translation unit. Repeat for multi-file programs. |
 
 ### Optional flags
 
@@ -121,7 +121,7 @@ These are never errors: the program still analyzes and compiles. They exist to p
 
 ## tapa synth
 
-Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph produced by `tapa analyze` from the work directory. Can run on a remote host via `--remote-host`.
+Run Vitis HLS on each task to produce per-task Verilog RTL. Reads the task graph produced by `tapa analyze` from the work directory. Each task is compiled from the `rewritten/` source tree: HLS receives the task's `srcs` file list together with the tree's include directories and the task's guard define as cflags. Can run on a remote host via `--remote-host`.
 
 ### Required flags
 

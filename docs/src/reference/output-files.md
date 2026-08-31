@@ -38,7 +38,6 @@ When `--work-dir` is specified (recommended), TAPA writes intermediate files to 
 
 ```text
 work.out/
-├── flatten/
 ├── rewritten/
 ├── hls/
 │   └── TASK/
@@ -61,13 +60,23 @@ work.out/
 
 ### File and directory descriptions
 
-**`flatten/`**
-
-Created during `tapa analyze`. Contains preprocessed (flattened) copies of the input source files, one per input file, with a short hash prefix in the filename to avoid collisions. All `#include` directives are expanded and comments are preserved, giving `tapacc` self-contained translation units to operate on.
-
 **`rewritten/`**
 
-The rewritten C++ source tree written by `tapacc` during `tapa analyze`. Each task in `tapa.json` carries a source manifest (`srcs`, `include_dirs`, `defines`) whose `srcs` paths are relative to this tree; `tapa synth` stages them (verifying they exist and resolving them to absolute paths) and hands the task's files to `vitis_hls`. A task's first `srcs` entry is its own file (`<task>.cpp`); when the program has several input files, the remaining entries are the other files' shared sources (`<input-basename>-shared.cpp`), which carry the helper definitions that input defines but the task's own file only declares. Because the manifest references this tree, `tapa.json` alone is not self-contained: the work directory — the JSON plus `rewritten/` — is the analyze artifact.
+The rewritten C++ source tree written by `tapacc` during `tapa analyze`. It mirrors your own layout: every file in the include closure of the input translation units that was reached through a normal (non-`-isystem`) include is mirrored, keeping its path relative to the common ancestor of the inputs; files pulled in from outside that root land at `_external/<digest8>/<basename>`. Files under `-isystem` paths (TAPA's headers, vendor HLS headers) are not mirrored — Vitis HLS resolves them through its own include path. Quoted includes that resolved to an out-of-root mirrored file are rewritten to its `_external` spelling so the tree stays self-consistent; angle includes are never touched.
+
+Task definitions are wrapped in a guard, so one tree serves every task:
+
+```cpp
+#ifdef TAPA_TASK_DEF_<task>
+/* the task's fully rewritten definition */
+#else
+/* a signature-only stub */
+#endif
+```
+
+Non-task rewrites (helper adjustments, TAPA attributes lowered to vendor pragmas) are emitted unconditionally — they are identical for every task variant. Macro invocations that contain no rewritten construct keep their original spelling; only those a rewrite lands inside are replaced by their expansion, and `#ifdef` blocks are never evaluated away. After any edit that changes line counts, a `#line` directive re-snaps positions so HLS diagnostics point at your source files. Files needing no edits are copied byte-identical.
+
+Each task in `tapa.json` carries a source manifest (`srcs`, `include_dirs`, `defines`) whose paths are relative to this tree: `srcs` lists every input translation unit — the same list for every task, the guard define selects each task's variant — `include_dirs` holds the tree root (the empty string) plus any `_external` buckets, and `defines` holds the task's guard. `tapa synth` verifies the files exist, resolves them to absolute paths, and hands the list to `vitis_hls` as `add_files` with the include dirs and guard define as cflags. Because the manifest references this tree, `tapa.json` alone is not self-contained: the work directory — the JSON plus `rewritten/` — is the analyze artifact.
 
 **`hls/`**
 

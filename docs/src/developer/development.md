@@ -46,13 +46,6 @@ The TAPA codebase is organized into several key directories:
   with XO object file, and interacts with XRT library for Vitis simulation or
   on-board testing with XCLBIN file.
 
-- `tapa-cpp/`: Customizes the Clang C++ preprocessor for TAPA.
-
-  The TAPA C++ preprocessor reprocesses TAPA C++ code before passing to
-  `tapacc` compiler. It supports TAPA-specific features, such as
-  `[[tapa::pipeline]]` annotations (maps to Vitis HLS PIPELINE pragma) and
-  `[[tapa::unroll]]` annotations (maps to Vitis HLS UNROLL pragma).
-
 - `tapa-lib/`: Houses the TAPA runtime library.
 
   The TAPA runtime library provides core functionality for TAPA tasks,
@@ -68,14 +61,14 @@ The TAPA codebase is organized into several key directories:
 
 - `tapa-system-include/`: Creates a custom system include directory for TAPA.
 
-  This Bazel build target collects system include files for `tapa-cpp`
-  and `tapacc` compilers. It includes standard C++ headers, TAPA
-  dependencies, and TAPA-specific headers for the compilers to run on every OS.
+  This Bazel build target collects system include files for the `tapacc`
+  compiler. It includes standard C++ headers, TAPA dependencies, and
+  TAPA-specific headers for the compiler to run on every OS.
 
 - `tapa-core/`: Contains the supported Rust TAPA compiler implementation.
 
   The TAPA compiler serves as the entry point for the TAPA framework. It
-  invokes `tapa-cpp` and `tapacc` compilers, synthesizes tasks into RTL
+  invokes the `tapacc` compiler, synthesizes tasks into RTL
   using HLS tools, and generates system interconnect and XO object file for
   FPGA. For the `xilinx-hls` target, a `.zip` RTL archive is generated
   instead. The Bazel `//tapa-core:tapa` target provides the command wrapper
@@ -83,8 +76,10 @@ The TAPA codebase is organized into several key directories:
 
 - `tapacc/`: Implements the TAPA C++ compiler to translate TAPA tasks to JSON.
 
-  The TAPA C++ compiler is a Clang-based compiler for TAPA tasks. It analyzes
-  tasks and streams, generating JSON representation of tasks and dataflow.
+  The TAPA C++ compiler is a Clang-based compiler for TAPA tasks. It parses
+  every translation unit in one process, merges the task graph, writes the
+  rewritten source tree that synthesis compiles, and emits the JSON
+  representation of tasks and dataflow.
 
 - `tests/`: Includes test cases for the TAPA compiler and runtime library.
 

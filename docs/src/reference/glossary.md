@@ -82,7 +82,7 @@ The `tapa pack` step. Packages per-task RTL produced by `tapa synth` into a sing
 
 **remote execution**
 
-Offloading vendor-tool steps (HLS, pack) to a remote Linux host over SSH. Configured with `--remote-host`. The local machine runs `tapacc` (the analyze step) and transfers source files; the remote host runs Vitis HLS. Useful when cross-compiling from macOS or when the local machine lacks a Vitis licence.
+Offloading vendor-tool steps (HLS, pack) to a remote Linux host over SSH. Configured with `--remote-host`. The local machine runs `tapacc` (the analyze step) and uploads each task's rewritten sources to the remote host, which runs Vitis HLS. Useful when cross-compiling from macOS or when the local machine lacks a Vitis licence.
 
 ---
 
