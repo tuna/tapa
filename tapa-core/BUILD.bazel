@@ -134,7 +134,6 @@ sh_binary(
     srcs = ["tapa_wrapper.sh"],
     data = [
         ":tapa-cli",
-        "//tapa-cpp:gen-tapa-cpp",
         "//tapa-lib:extra-runtime-include",
         "//tapa-lib:include",
         "//tapa-system-include",
@@ -256,7 +255,7 @@ cargo_test(
         "TAPA_CONFORMANCE_IGNORE": "tests/apps/ignore/ignore.cpp",
     },
     data = [
-        # Brings `//tapacc`, `//tapa-cpp`, and the system includes along as
+        # Brings `//tapacc` and the system includes along as
         # its own runfiles — the same tree a real `tapa analyze` walks.
         ":tapa",
         "//tests/apps/vadd:vadd.cpp",

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Wrapper that makes `bazel run //tapa-core:tapa` expose the sibling tools
-# (tapacc, tapa-cpp, tapa-system-include) that the native `tapa-cli`
+# (tapacc, tapa-system-include) that the native `tapa-cli`
 # walks up to find via `find_resource`. Without this, the Rust binary
 # would start in its own runfiles subtree and fail to discover the
 # Clang-based front-ends.
@@ -39,8 +39,7 @@ fi
 
 # Anchor `find_resource` at the runfiles copy of the tapa binary so its
 # parent walk reaches `<runfiles>/<workspace>/` and resolves siblings
-# `tapacc/tapacc`, `tapa-cpp/tapa-cpp`, and
-# `tapa-system-include/tapa-system-include`.
+# `tapacc/tapacc` and `tapa-system-include/tapa-system-include`.
 export TAPA_CLI_SEARCH_ANCHOR="${tapa_bin}"
 
 exec "${tapa_bin}" "$@"
