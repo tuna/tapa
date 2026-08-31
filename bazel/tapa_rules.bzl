@@ -164,12 +164,20 @@ def _tapa_xo_impl(ctx):
         inputs.append(ctx.file.connectivity)
     if ctx.file.ssh_key:
         inputs.append(ctx.file.ssh_key)
+
+    # Default shell env so `--action_env=NAME=VALUE` reaches `tapa`: with the
+    # Starlark default (no shell env) the action's environment is empty and
+    # flags like the campaign's TAPA_ANALYZE_TREE are silently ignored, which
+    # makes a flag-on build a cache hit of the flag-off action. Under
+    # --incompatible_strict_action_env only PATH plus explicitly set
+    # --action_env values are inherited, so the key stays deterministic.
     ctx.actions.run(
         outputs = outputs,
         inputs = inputs,
         tools = [tapa_cli, ctx.executable.vitis_hls_env],
         executable = ctx.executable.vitis_hls_env,
         arguments = tapa_cmd,
+        use_default_shell_env = True,
         execution_requirements = _vendor_exec_requirements(ctx.attr.jobs, remote_host),
     )
 
