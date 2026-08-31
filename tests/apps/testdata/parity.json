@@ -2,9 +2,8 @@
     "apps": {
         "async_mmap": {
             "cpp": {
-                "AsyncReader": "97d5ed01ee054547d6dee4495989a3a40be1654c49460be31bfdb0b8b02f4438",
-                "AsyncTop": "7903353ff64c3bac0f009d4eaa61527d9affcc0c2b81d7d9da4cc68b450f01d4",
-                "Writer": "3d7790caa483419181507e7c29ed405579eddf52009787c572508c3b8931d8dc"
+                "rewritten/async_mmap.cpp": "821095dde6e1c0d8d0dc949f31aaa8f219feb9de12148eeb8dfe9552fe9c923f",
+                "rewritten/async_mmap.h": "f68b2f0d08d4ae2ca5bace8ba10e1ad78e80a5c1d0e3f5dfae902d06a1561a56"
             },
             "verilog": {
                 "AsyncReader/AsyncReader.v": "17ae596172c482b5f8a4bd2ce747ba7e01e825213ca7013310e812ab93ed99ff",
@@ -20,8 +19,9 @@
         },
         "bandwidth": {
             "cpp": {
-                "Bandwidth": "9021e31d78774608cf36013c8f701e6c71322a186ec116d11c852dae734ad6ed",
-                "Copy": "bf7952b396ac9aca285b25ddc6d4a4db1258d9e47c44777b5168bed780c0bd84"
+                "rewritten/bandwidth.cpp": "3d0ed16672fb9bfd1e268eee91ebf0ff9bf707111699987b5d535f065301a0e4",
+                "rewritten/bandwidth.h": "e932b13ab894b34092ac68e0f501fcf3fe3a0edf15a4d43bb393a39e4a7383b6",
+                "rewritten/lfsr.h": "6a2bafee14c976639f275d0a374dc4f53264c84c2964675bc931d6066829b40a"
             },
             "verilog": {
                 "Bandwidth/Bandwidth.v": "7499345fbd57998920b12cdab315a341e3ad00d9c7856d955375e781e0748401",
@@ -33,10 +33,8 @@
         },
         "cannon": {
             "cpp": {
-                "Cannon": "26fca87f11179c40279b6e26b099c43cabb6c9094273f545d2b14ca1885a67bd",
-                "Gather": "b90e4165f786faec3b39703b1d115ce65456f875dc558cbe2b7ab9ea4786458e",
-                "ProcElem": "8fcc390129867d9d438618a02c9bfecdd233d01cf79f85933f86eb1b1bff6d77",
-                "Scatter": "b97a32a61043a7cb863d4f209434e7a67e0fc6f92b416ce6ffded1bfdc1a45c7"
+                "rewritten/cannon.cpp": "07ab6921dda6c361cf009f10f118f471a0981751bcede186d96a43e3dcbaae9b",
+                "rewritten/cannon.h": "bd1c0a909804cb1af41ae73164b71d53c771e09fe23172a5beefe281eab4edad"
             },
             "verilog": {
                 "Cannon/Cannon.v": "06b601e17c86ef687c1c635d6b80f518d5c7e9287cb9d4a34a1eb6f49821b268",
@@ -65,8 +63,8 @@
         },
         "gemv": {
             "cpp": {
-                "Gemv": "a2fea8587313ab4f12bfd676ad9c466994711506979c20bc30341abace274cad",
-                "GemvCore": "6c09866539cb3eb73acc49aa709a49cc9e172ca2145b98a2417cb020060a6066"
+                "rewritten/gemv.cpp": "3d2bd3e95ebf3107d34b4322f6c5c01078b84693bf7d0645ef9e0d3576036413",
+                "rewritten/gemv.h": "a6c5db6690107b24ed532b6b22d3a61ec506fb3c3b6351d9a604afebd349f3f8"
             },
             "verilog": {
                 "Gemv/Gemv.v": "900d3a156eae8bcdc75fa31da4c175b9f7ba100d27d49a6912369b44a1e2ed62",
@@ -87,10 +85,8 @@
         },
         "graph": {
             "cpp": {
-                "Control": "ee0dc158c09ac3410272947abd2db0df3fa9a0e87cd5cbb617a5d3edd1d93a06",
-                "Graph": "fe86c4ecf941a81e1d0a8be6b4dd4758a1672ec5c94d7cdb9796f18359a99f71",
-                "ProcElem": "d66e41c81d7a301e29ee835e9c9b4915671b62c6cf522d034d6763679b1593dc",
-                "UpdateHandler": "d686407a888f053dd4ccd24444c6f96c5a44e4413a951e36e7b1f90454f1aef1"
+                "rewritten/graph.cpp": "89217ba0b6cac6cdb18ad8c3b889a3dfdab9401f56733ebbf2afa1ac30587f97",
+                "rewritten/graph.h": "e4b915fbe682522da7f6245177192b84877cb2352e58314fd0863d867a9413b1"
             },
             "verilog": {
                 "Control/Control.v": "abe32cfcbfb1ec8112def0465f18be453ea23e4bf35df82b9d8aa10d828daf72",
@@ -131,10 +127,7 @@
         },
         "ignore": {
             "cpp": {
-                "IgnoreTop": "be15d98e34151f969183f95d8e4af1b36336917418e4b3335449c44db4e84aec",
-                "IgnoreUpper": "3951dee32dc84ff923bd0a7e403fd5b26a94f5a626d71adff2f14f547c6a7c48",
-                "Mmap2Stream": "cdcf01f8f3ad1945c5125527bae41a51d7204b53f6339992a51538f2e86313d0",
-                "Stream2Mmap": "b7d1783168cb87f4f7165ebb723a9b2201ae440d9fbc1ce205c974ecce645c8b"
+                "rewritten/ignore.cpp": "a9e5b2ea69ae66e239cb00dff60ef506784a4e09d6faee815e65154d3cffbc4a"
             },
             "verilog": {
                 "IgnoreTop/IgnoreTop.v": "c63161c8eb4cb2dd7b5880f5788894b14ec2bfd5832818d02c2466c19d0cbc3e",
@@ -151,16 +144,8 @@
         },
         "jacobi": {
             "cpp": {
-                "Jacobi": "b196ecf2793ce03a8925370f7dd7339eed13641a947da0e2187cf93dbde8f673",
-                "Mmap2Stream": "68617fd119e031619dbb1d18c8541c2b1773d8863f55353f402239a8e0fa0871",
-                "Module0Func": "d7cf522cafa0be200a96f3ecd4bd31eb49a17eb06f14c02bf6cdb4a1299245a4",
-                "Module1Func": "c1b7f54f0e4146076c14d38e412dac2a6bcfc19a6ef9aea4932f8f3a4530398f",
-                "Module3Func1": "77656a5190f2ffccb41586c2362cea23c318359ad697bf0f2d60c94938c206df",
-                "Module3Func2": "8bca9816a3206954249e357a5fd00973610eaf4f99379553af715201a07954af",
-                "Module6Func1": "4c7f0371f2da614b871b3d51ef871a379620a771009ff5bf6975355442fcc088",
-                "Module6Func2": "b018c5b5aa09a00a6f22ccf2401ba10abcddf17358eca185e774b2103d4481c8",
-                "Module8Func": "286306d7c9c56a380f480b007871d781537ca08d7dcffed7c16cdf414f4cace8",
-                "Stream2Mmap": "5c3bde38c41ca5fba33037d9981a65231f729d8b9973b0390b18aee3c3aa8325"
+                "rewritten/jacobi.cpp": "fd9d9ccb2fd74c62ca4ea1f65cc80c9e1cfa2b17d11d3d7b0d400e443eaf4d2a",
+                "rewritten/jacobi.h": "63e78088ca077f5ba7380e85442f53f9418ac448d9cc7ad7bb6a63e663d7a9f6"
             },
             "verilog": {
                 "Jacobi/Jacobi.v": "a0b113e6fe6b82d9a23b3102446b5ba29ba512e8a93ed3bd9f4cebf10a60bd2c",
@@ -210,12 +195,8 @@
         },
         "network": {
             "cpp": {
-                "Consume": "24014ca55874e91a07c57eb38b6954e2aa21dc62a83672a6bcd9caade86f37d9",
-                "InnerStage": "b6e74fb0af66c3a69b5ddf6e4c9fbc14a7774dcc587052e937b751bd52b5628c",
-                "Network": "d59aac8884c4b9ae45edf69125e93a579906a380799c239fa7154d848c88ca26",
-                "Produce": "31be7dae5fa4dd0f98590e3316ff9d694cfeb905e8a202dce077adf8e6b00c0f",
-                "Stage": "f9a823f7bca3df3c85e3c3027250c17bcb4aa2b3d00cffc8fa0a56f10d1f9948",
-                "Switch2x2": "5a9a993f894642002fd2a28a3673e81d68f801efd187fec7f381bce2e1beee4f"
+                "rewritten/network.cpp": "13fd2ba4b034a0c4b0d63f1484ab2083e084513a0eb50643c8f4108d522d9084",
+                "rewritten/network.h": "cb192a2a60b36cc8501dbcfc1de9cb7eeba11a1ac113e00db3e134c4d7c0af5b"
             },
             "verilog": {
                 "Consume/Consume.v": "b7b6d8f51eef0ad592a1f4934c6b53db8db68f88e97c4b004ae07df560fc8a0a",
@@ -236,10 +217,7 @@
         },
         "templated": {
             "cpp": {
-                "Mmap2Stream": "300faa03513cbae586db3e276730b4924dba3bdd8d01b0010fc247cfc9798ac1",
-                "Stream2Mmap": "45002b19e48421e8669ec356359b0235ffcec2f93aa941abfacf96dbf264e936",
-                "TemplatedTop": "35f05f4b97e4470ef77c79981a52d58f06505e60c7365f89b44ab6193753d162",
-                "tapa_mangled_Z20TemplatedPassthroughIfEvRN4tapa7istreamIT_EERNS0_7ostreamIS2_EEm": "57fedcbc2adbec2a16e0be47b4fd45b9037533ad4ba8cee3ea6c5b618135ccae"
+                "rewritten/templated.cpp": "04aed5bba9af4d91723ace9432e5a9f8a7ff9cbc75663bf70e0e1ee4f9c60d88"
             },
             "verilog": {
                 "Mmap2Stream/Mmap2Stream.v": "e881b1805ecfd976ad01ce7a9360c6b73e7f3f7467e3af953609c51a19fa6308",
@@ -259,10 +237,8 @@
         },
         "vadd": {
             "cpp": {
-                "Add": "27badd3007b6ef54dab6d41519405019b2ad1f563523c20c434cd33ce6f21817",
-                "Mmap2Stream": "d878ae3733c71c5e467ebb1edd6a61d52e5339f30155983c40ed85743ad32a43",
-                "Stream2Mmap": "cd7678dadf57abc9305294b8e6068190f813fc7b585bb16e94fb98477665b17d",
-                "VecAdd": "c1cf9d59ed5837c1e2894a9970c7829292595e49d3e3e4568bdabf590d45dd07"
+                "rewritten/vadd.cpp": "99bf374292e497fc973fdf64f0b9836f79b2365fe99dfcb36989b896ca8e7567",
+                "rewritten/vadd.h": "7b99be0d2ed2d0b0183963b81e9acc93fe7434460ee0fc72b81fb655ed102e1f"
             },
             "verilog": {
                 "Add/Add.v": "46bd0f972017af9093026c37dd7d352eaabba99b040084ba60315d022f5f9468",

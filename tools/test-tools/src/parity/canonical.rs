@@ -5,25 +5,24 @@
 //! module/file names (`Add_Pipeline_VITIS_LOOP_38_1.v`), SSA-value
 //! spellings (`exitcond262`, `pid_4`), and derived signals keyed on
 //! those names (`ap_sig_allocacmp_pid_6`). Two syntheses of the *same*
-//! design whose C++ differs only in line layout — e.g. the campaign's
-//! mirrored tree with its `#line` re-snaps versus the flattened blob —
-//! produce RTL that differs in exactly those tokens and nothing else
-//! (established empirically by diffing such generations across the
-//! parity apps); the only other byte difference is the order of
-//! independent statements, which HLS keys on those same names.
+//! design whose C++ differs only in line layout produce RTL that
+//! differs in exactly those tokens and nothing else (established
+//! empirically by diffing such generations across the parity apps);
+//! the only other byte difference is the order of independent
+//! statements, which HLS keys on those same names.
 //!
-//! The two layouts do not even agree on the *order* of the line
-//! numbers: a `#line` re-snap maps one construct back to user line 81
-//! while the flattened blob places it at line 96, behind a construct
-//! that stays at line 94 in both. And the attribution itself can
-//! differ: the flattened blob attributes one allocation to the source
-//! variable (`pid_4_fu_95_p3`) where the tree attributes it to a
-//! source-line operation (`select_ln9_fu_95_p3`), shifting every later
-//! SSA occurrence of the variable by one. So canonicalization ranks
-//! nothing by numeric line — that was the previous design and it
-//! drifted — and keys no identity on the debug spelling. It erases the
-//! debug-derived components of every family with a fixed marker, keeps
-//! every structural component verbatim (loop ids, `_fu_N`/`_reg_N`
+//! The layouts do not even agree on the *order* of the line numbers:
+//! one layout maps a construct back to user line 81 while another
+//! places it at line 96, behind a construct that stays at line 94 in
+//! both. And the attribution itself can differ: one layout attributes
+//! an allocation to the source variable (`pid_4_fu_95_p3`) where
+//! another attributes it to a source-line operation
+//! (`select_ln9_fu_95_p3`), shifting every later SSA occurrence of the
+//! variable by one. So canonicalization ranks nothing by numeric line
+//! — that was the previous design and it drifted — and keys no
+//! identity on the debug spelling. It erases the debug-derived
+//! components of every family with a fixed marker, keeps every
+//! structural component verbatim (loop ids, `_fu_N`/`_reg_N`
 //! allocation numbers, port and module names, `_cast`, …), and sorts
 //! the lines of the result, so semantically identical RTL hashes equal
 //! while content drift (literals, port sets, module sets, module
@@ -80,9 +79,8 @@ const LOOP_TAG: &str = "VITIS_LOOP_";
 /// structural suffixes around them (`_fu_190_p2`, `_cast_reg_380`, …)
 /// are kept. A line-attributed name with NO number (`trunc_ln`) is the
 /// same family with an unknown line (HLS omits the digits when the
-/// operation has no debug location — the flattened blob, whose `-P`
-/// strip lost some, versus the tree's `#line`-restored one), so a bare
-/// `_ln` at the identifier's end erases to the same marker.
+/// operation has no debug location), so a bare `_ln` at the
+/// identifier's end erases to the same marker.
 const LN_TAG: &str = "_ln";
 
 /// Infixes of the HLS structural allocation suffix: `_fu_<n>` for a
@@ -377,11 +375,11 @@ mod tests {
         assert_eq!(canonical_verilog("VITIS_LOOP_7"), "VITIS_LOOP_~");
     }
 
-    // The motivating corpus case: the flattened blob attributes an
-    // allocation to the source variable (`pid_4`), the tree to a
-    // source-line operation (`select_ln9`); SSA-value spellings
-    // (`exitcond262`) and register-allocated names shift the same way.
-    // The allocation suffix is the identity; the debug prefix is not.
+    // The motivating corpus case: one layout attributes an allocation
+    // to the source variable (`pid_4`), another to a source-line
+    // operation (`select_ln9`); SSA-value spellings (`exitcond262`)
+    // and register-allocated names shift the same way. The allocation
+    // suffix is the identity; the debug prefix is not.
     #[test]
     fn debug_prefixes_before_allocations_canonicalize_equal() {
         assert_eq!(canonical_verilog("pid_4_fu_95_p3"), "~_fu_95_p3");
@@ -445,16 +443,16 @@ mod tests {
         );
     }
 
-    // An unknown line and a known one are the same family: the flattened
-    // blob emits `trunc_ln` where the tree's `#line`-restored source
-    // emits `trunc_ln9`, with identical allocation numbers around them.
+    // An unknown line and a known one are the same family: one source
+    // emits `trunc_ln` where another emits `trunc_ln9`, with identical
+    // allocation numbers around them.
     #[test]
     fn unknown_line_and_known_line_names_canonicalize_equal() {
-        let flat = "wire signed [61:0] trunc_ln_fu_113_p4;\nreg [61:0] trunc_ln_reg_144;";
-        let tree = "wire signed [61:0] trunc_ln9_fu_113_p4;\nreg [61:0] trunc_ln9_reg_144;";
-        assert_eq!(canonical_verilog(flat), canonical_verilog(tree));
+        let unknown = "wire signed [61:0] trunc_ln_fu_113_p4;\nreg [61:0] trunc_ln_reg_144;";
+        let known = "wire signed [61:0] trunc_ln9_fu_113_p4;\nreg [61:0] trunc_ln9_reg_144;";
+        assert_eq!(canonical_verilog(unknown), canonical_verilog(known));
         assert_eq!(
-            canonical_verilog(flat),
+            canonical_verilog(unknown),
             "wire signed [61:0] ~_fu_113_p4;\nreg [61:0] ~_reg_144;"
         );
     }
@@ -511,23 +509,23 @@ mod tests {
         );
     }
 
-    // The tree's `#line` re-snaps map a construct back to user line 81
-    // while the flattened blob places it at line 96, behind line-94
-    // constructs that are identical in both. Ranking by numeric line
-    // assigned the families different ranks; erasing the lines does not.
+    // Two layouts of one design map a construct to user line 81 and to
+    // line 96 respectively, behind line-94 constructs that are
+    // identical in both. Ranking by numeric line assigned the families
+    // different ranks; erasing the lines does not.
     #[test]
     fn line_order_inversion_canonicalizes_equal() {
-        let flat = concat!(
+        let first = concat!(
             "assign trunc_ln96_4_reg_403 = add_ln96_fu_257_p2[63:6];\n",
             "assign trunc_ln94_reg_408 = trunc_ln94_fu_277_p1;\n",
         );
-        let tree = concat!(
+        let second = concat!(
             "assign trunc_ln94_reg_408 = trunc_ln94_fu_277_p1;\n",
             "assign trunc_ln81_4_reg_403 = add_ln81_fu_257_p2[63:6];\n",
         );
         assert_eq!(
-            canonical_verilog_contents(flat),
-            canonical_verilog_contents(tree)
+            canonical_verilog_contents(first),
+            canonical_verilog_contents(second)
         );
     }
 
@@ -537,19 +535,19 @@ mod tests {
     // allocation-compare signal) by one.
     #[test]
     fn attribution_shift_canonicalizes_equal() {
-        let flat = concat!(
+        let variable = concat!(
             "reg [10:0] ap_sig_allocacmp_pid_6;\n",
             "wire [10:0] pid_7_fu_136_p2;\n",
             "assign pid_7_fu_136_p2 = (ap_sig_allocacmp_pid_6 + 11'd1);\n",
         );
-        let tree = concat!(
+        let operation = concat!(
             "reg [10:0] ap_sig_allocacmp_pid_5;\n",
             "wire [10:0] pid_6_fu_136_p2;\n",
             "assign pid_6_fu_136_p2 = (ap_sig_allocacmp_pid_5 + 11'd1);\n",
         );
         assert_eq!(
-            canonical_verilog_contents(flat),
-            canonical_verilog_contents(tree)
+            canonical_verilog_contents(variable),
+            canonical_verilog_contents(operation)
         );
     }
 

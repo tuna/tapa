@@ -4,11 +4,10 @@
 //! Bazel has no xfail, so "this capability is expected to fail on the
 //! current pipeline" is pinned by a committed manifest instead:
 //! `tests/apps/multi-file/testdata/capabilities.json`. Every entry names a
-//! probe of the current pipeline against the multi-file app and the
-//! outcome it must have. The runner passes only when reality matches the
-//! manifest exactly, so a capability that gets fixed forces its manifest
-//! entry to flip in the same milestone — and an unexpected pass fails the
-//! test just like an unexpected fail.
+//! probe of the pipeline against the multi-file app and the outcome it
+//! must have. The runner passes only when reality matches the manifest
+//! exactly, so a capability that regresses fails the test with the
+//! manifest naming the contract that broke.
 
 use serde::Deserialize;
 use serde_json::{Map, Value as JsonValue};
@@ -29,8 +28,6 @@ const APP_A: &str = "tests/apps/multi-file/a.cpp";
 const APP_B: &str = "tests/apps/multi-file/b.cpp";
 /// Include dir outside the app dir, reached via `-I`.
 const APP_EXT_INCLUDE: &str = "tests/apps/multi-file-ext";
-/// Undocumented tree-mode env flag of the campaign (inert until MF3).
-const TREE_ENV: &str = "TAPA_ANALYZE_TREE";
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -40,26 +37,9 @@ struct Manifest {
 #[derive(Deserialize)]
 struct Entry {
     name: String,
-    mode: Mode,
     expect: Expectation,
-    /// One line: the milestone that flips this entry.
+    /// One line: the contract this entry pins.
     note: String,
-}
-
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum Mode {
-    Flatten,
-    Tree,
-}
-
-impl Mode {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Flatten => "flatten",
-            Self::Tree => "tree",
-        }
-    }
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -84,28 +64,19 @@ enum ProbeOutcome {
     Fail(String),
 }
 
-/// Shared probe context: the tools to drive and the pipeline mode.
+/// Shared probe context: the tools to drive.
 struct Env<'a> {
     tapa: &'a Path,
     tapa_lib: &'a Path,
-    /// `TAPA_ANALYZE_TREE=1` for tree mode; removed for flatten mode.
-    tree: bool,
 }
 
 impl Env<'_> {
-    /// The flag putting `tapa_lib` on the compiler's include path for this
-    /// mode. Flatten inlines whatever it reaches, so it keeps riding the
-    /// user `-I` set this manifest was captured with. Tree mode must not
-    /// mirror tapa-lib as user code -- its `int.h` defines operator
-    /// helpers through macros, which the unexpanded tree path cannot yet
-    /// rewrite -- so it rides `-isystem` there, the same class of entry
-    /// production `tapa analyze` adds through `get_tapacc_cflags`.
+    /// The flag putting `tapa_lib` on the compiler's include path. It rides
+    /// `-isystem`, the same class of entry production `tapa analyze` adds
+    /// through `get_tapacc_cflags`: tapa-lib is vendor support, not user
+    /// code the mirror owns.
     fn tapa_lib_flag(&self) -> String {
-        format!(
-            "{}{}",
-            if self.tree { "-isystem" } else { "-I" },
-            self.tapa_lib.display()
-        )
+        format!("-isystem{}", self.tapa_lib.display())
     }
 }
 
@@ -144,7 +115,6 @@ pub fn mf_capabilities() -> Result<()> {
         let env = Env {
             tapa: &tapa,
             tapa_lib: &tapa_lib,
-            tree: entry.mode == Mode::Tree,
         };
         let actual = probe(&env)?;
         rows.push((entry, actual));
@@ -183,8 +153,8 @@ fn print_table(rows: &[(&Entry, ProbeOutcome)]) {
     let mut table = String::new();
     writeln!(
         table,
-        "{:<27} {:<8} {:<7} {:<7} note",
-        "capability", "mode", "expect", "actual"
+        "{:<27} {:<7} {:<7} note",
+        "capability", "expect", "actual"
     )
     .expect("write to String cannot fail");
     for (entry, actual) in rows {
@@ -194,9 +164,8 @@ fn print_table(rows: &[(&Entry, ProbeOutcome)]) {
         };
         writeln!(
             table,
-            "{:<27} {:<8} {:<7} {:<7} {}",
+            "{:<27} {:<7} {:<7} {}",
             entry.name,
-            entry.mode.as_str(),
             entry.expect.as_str(),
             actual,
             entry.note
@@ -294,7 +263,7 @@ fn probe_macro_invoke_seen(env: &Env) -> Result<ProbeOutcome> {
 
 /// `synthesis_branch_preserved`: two-TU analyze succeeds AND `Produce`'s
 /// per-task HLS text contains BOTH `kLanes = 4` and `kLanes = 1` (the
-/// `#ifdef __SYNTHESIS__` survived for the downstream consumer).
+/// `#ifdef __SYNTHESIS__` arms survive for the downstream consumer).
 fn probe_synthesis_branch_preserved(env: &Env) -> Result<ProbeOutcome> {
     let work_dir = match analyze_multi_file(env)? {
         AnalyzeOutcome::Failure(reason) => return Ok(ProbeOutcome::Fail(reason)),
@@ -411,11 +380,6 @@ fn tapa_analyze(
     command.arg("--top").arg(top);
     for flag in cflags {
         command.arg("--cflags").arg(flag);
-    }
-    if env.tree {
-        command.env(TREE_ENV, "1");
-    } else {
-        command.env_remove(TREE_ENV);
     }
     let output = command
         .output()

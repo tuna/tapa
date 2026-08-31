@@ -2,75 +2,33 @@
     "capabilities": [
         {
             "expect": "pass",
-            "mode": "flatten",
             "name": "sanity_vadd_analyze",
-            "note": "positive control, never flips; MF6 drops the mode when the flatten path dies"
+            "note": "positive control, never flips: single-TU analyze of the vadd app"
         },
         {
             "expect": "pass",
-            "mode": "flatten",
             "name": "multi_tu_analyze",
-            "note": "flipped with the MF1 multi-TU merge (tapacc ProgramBuilder)"
+            "note": "multi-TU merge: both TUs analyzed as one program"
         },
         {
             "expect": "pass",
-            "mode": "flatten",
             "name": "macro_invoke_seen",
-            "note": "flipped with the MF1 multi-TU merge (tapacc ProgramBuilder)"
+            "note": "the graph sees through the user macro wrapping a task invocation"
         },
         {
-            "expect": "xfail",
-            "mode": "flatten",
+            "expect": "pass",
             "name": "synthesis_branch_preserved",
-            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+            "note": "#ifdef arms survive in the mirror for the downstream consumer"
         },
         {
-            "expect": "xfail",
-            "mode": "flatten",
+            "expect": "pass",
             "name": "header_not_inlined",
-            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
+            "note": "the shared header mirrors once instead of being inlined per task"
         },
         {
-            "expect": "xfail",
-            "mode": "flatten",
+            "expect": "pass",
             "name": "line_directive_present",
-            "note": "MF3 flips this to pass together with its mode (flatten -> tree)"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "sanity_vadd_analyze",
-            "note": "single-TU tree analyze, the D2a path"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "multi_tu_analyze",
-            "note": "flipped with the MF3 multi-TU tree path"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "macro_invoke_seen",
-            "note": "the macro-wrapped invoke needs no in-place rewrite: upper-task bodies become shells wholesale, so the graph carries the invoke while the macro text is discarded; graph and jacobi (macro-held definitions) stay the MF4 corpus"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "synthesis_branch_preserved",
-            "note": "flipped with the MF3 rewritten tree: #ifdef arms survive for HLS"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "header_not_inlined",
-            "note": "flipped with the MF3 rewritten tree: the header mirrors once"
-        },
-        {
-            "expect": "pass",
-            "mode": "tree",
-            "name": "line_directive_present",
-            "note": "flipped with the MF3 rewritten tree: guard edits re-snap with #line"
+            "note": "guard edits re-snap with #line so diagnostics cite user source"
         }
     ]
 }

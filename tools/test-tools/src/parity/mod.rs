@@ -1,22 +1,23 @@
 //! RTL/C++ parity baseline for the multi-file-frontend campaign.
 //!
 //! `parity capture` synthesizes every `tests/apps/*` kernel with the
-//! current (flatten) pipeline and records a sha256 manifest of the HLS
-//! outputs at `tests/apps/testdata/parity.json`; `parity check` re-runs
-//! the same synthesis and diffs against the committed manifest. Later
-//! milestones (MF2+) re-run `check` to prove RTL parity old-vs-new.
+//! current pipeline and records a sha256 manifest of the outputs at
+//! `tests/apps/testdata/parity.json`; `parity check` re-runs the same
+//! synthesis and diffs against the committed manifest, proving the
+//! producer stays deterministic (capture is verified reproducible by
+//! capturing once and checking once).
 //!
 //! Per app, the tool mirrors the production invocation that
 //! `bazel/tapa_rules.bzl:_tapa_xo_impl` drives — one `tapa` call with
 //! `analyze` chained into `synth`, `--cflags -I<app dir>` (the rule's
 //! `include = ["."]`), `--target xilinx-vitis`, and the report-schema
 //! stamp — minus `pack` and the mtime-reuse path: parity cares about
-//! HLS outputs only.
+//! synthesis outputs only.
 //!
 //! Hashed per app (sha256, keys sorted):
-//! - `rewritten/<task>.cpp` for every task, keyed by task name — RAW
-//!   bytes: this is our own producer's output and stays
-//!   byte-accountable;
+//! - `rewritten/**` — the whole mirrored source tree, keyed by
+//!   tree-relative path — RAW bytes: this is our own producer's output
+//!   and stays byte-accountable;
 //! - `hls/<task>/verilog/**` for every task, keyed `<task>/<file>`
 //!   relative to `<work>/hls/<task>/verilog` — CANONICAL bytes: both
 //!   the recorded file names and the contents pass through the
@@ -34,13 +35,7 @@
 //! ```text
 //! bazel-bin/tools/bin/tapa-test-tools parity capture
 //! bazel-bin/tools/bin/tapa-test-tools parity check --apps vadd
-//! bazel-bin/tools/bin/tapa-test-tools parity check --tree
 //! ```
-//!
-//! `--tree` is the MF3+ gate: it exports `TAPA_ANALYZE_TREE=1` for analyze and
-//! compares canonical Verilog only. Rewritten C++ is deliberately incomparable:
-//! the baseline has one blob per task, while tree mode has one mirrored source
-//! closure (including headers) shared by every task.
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -160,7 +155,6 @@ struct Options {
     apps: Vec<&'static ParityApp>,
     jobs: u32,
     keep: bool,
-    tree: bool,
     part_num: String,
 }
 
@@ -181,7 +175,7 @@ pub fn parity(args: &[OsString]) -> Result<()> {
 
 fn parse_options(args: &[OsString]) -> Result<Options> {
     let usage = "usage: tapa-test-tools parity <capture|check> \
-[--apps a,b,c] [--jobs N] [--part-num PART] [--keep] [--tree]";
+[--apps a,b,c] [--jobs N] [--part-num PART] [--keep]";
     let Some(mode_name) = args.first().and_then(|arg| arg.to_str()) else {
         return Err(usage.to_string());
     };
@@ -194,7 +188,6 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
     let mut apps_arg: Option<String> = None;
     let mut jobs = DEFAULT_JOBS;
     let mut keep = false;
-    let mut tree = false;
     let mut part_num = DEFAULT_PART_NUM.to_string();
 
     let mut index = 1;
@@ -222,11 +215,6 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
             "--part-num" => part_num = value()?,
             "--keep" if matches!(mode, Mode::Capture) => {
                 keep = true;
-                index += 1;
-                continue;
-            }
-            "--tree" if matches!(mode, Mode::Check) => {
-                tree = true;
                 index += 1;
                 continue;
             }
@@ -267,7 +255,6 @@ fn parse_options(args: &[OsString]) -> Result<Options> {
         apps,
         jobs,
         keep,
-        tree,
         part_num,
     })
 }
@@ -351,9 +338,6 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
     }
 
     let mut command = Command::new(tapa);
-    if options.tree {
-        command.env("TAPA_ANALYZE_TREE", "1");
-    }
     let status = command
         .arg("--work-dir")
         .arg(work_dir)
@@ -395,27 +379,44 @@ fn synth_app(app: &ParityApp, tapa: &Path, work_dir: &Path, options: &Options) -
 /// multiset (see [`canonical::keyed_multiset`]) instead of silently
 /// merging — that would mask exactly the drift this gate exists to
 /// catch.
-fn hash_app(work_dir: &Path, app_name: &str, tree: bool) -> Result<AppHashes> {
+fn hash_app(work_dir: &Path, app_name: &str) -> Result<AppHashes> {
+    // The mirrored source tree, keyed by tree-relative path: the producer's
+    // own output, hashed raw so byte drift anywhere in the tree trips the
+    // gate.
     let mut cpp = BTreeMap::new();
-    if !tree {
-        let cpp_dir = work_dir.join("rewritten");
-        for entry in sorted_entries(&cpp_dir, app_name)? {
-            let file_name = entry
+    let mut stack = vec![work_dir.join("rewritten")];
+    while let Some(dir) = stack.pop() {
+        for entry in sorted_entries(&dir, app_name)? {
+            if entry.is_dir() {
+                stack.push(entry);
+                continue;
+            }
+            let name = entry
                 .file_name()
                 .and_then(|name| name.to_str())
                 .ok_or_else(|| format!("{app_name}: non-UTF-8 name in rewritten/"))?;
-            let Some(task) = file_name.strip_suffix(".cpp") else {
-                return Err(format!(
-                    "{app_name}: unexpected non-.cpp file in rewritten/: {file_name}"
-                ));
+            let prefix = dir
+                .strip_prefix(work_dir)
+                .map_err(|_| {
+                    format!(
+                        "{app_name}: rewritten/ escapes the work dir: {}",
+                        dir.display()
+                    )
+                })?
+                .to_string_lossy()
+                .into_owned();
+            let key = if prefix.is_empty() {
+                name.to_string()
+            } else {
+                format!("{prefix}/{name}")
             };
-            cpp.insert(task.to_string(), hash_file(&entry, app_name)?);
+            cpp.insert(key, hash_file(&entry, app_name)?);
         }
-        if cpp.is_empty() {
-            return Err(format!(
-                "{app_name}: analyze produced no rewritten/<task>.cpp"
-            ));
-        }
+    }
+    if cpp.is_empty() {
+        return Err(format!(
+            "{app_name}: analyze produced no rewritten/ source tree"
+        ));
     }
 
     let mut verilog = BTreeMap::new();
@@ -538,7 +539,7 @@ fn synth_and_hash_all(
         let work_dir = base.path().join(app.name);
         let started = Instant::now();
         let hashes = match synth_app(app, tapa, &work_dir, options)
-            .and_then(|()| hash_app(&work_dir, app.name, options.tree))
+            .and_then(|()| hash_app(&work_dir, app.name))
         {
             Ok(hashes) => hashes,
             Err(error) => {
@@ -611,17 +612,7 @@ fn check(options: &Options, tapa: &Path, version: &str) -> Result<()> {
                 app.name, MANIFEST_REL_PATH
             )
         })?;
-        drift += if options.tree {
-            diff_map(
-                app.name,
-                "verilog",
-                &baseline.verilog,
-                &fresh[app.name].verilog,
-                &mut report,
-            )
-        } else {
-            diff_app(app.name, baseline, &fresh[app.name], &mut report)
-        };
+        drift += diff_app(app.name, baseline, &fresh[app.name], &mut report);
     }
     for line in &report {
         println!("{line}");
@@ -852,23 +843,6 @@ mod tests {
         let mut one = BTreeMap::new();
         hash_tree(&vdir, "Add/", &mut one, "vadd").expect("hash");
         assert_ne!(both, one, "losing one of two identical files must drift");
-    }
-
-    #[test]
-    fn tree_flag_composes_with_value_flags() {
-        let options = parse_options(&[
-            OsString::from("check"),
-            OsString::from("--tree"),
-            OsString::from("--apps"),
-            OsString::from("vadd"),
-            OsString::from("--jobs"),
-            OsString::from("2"),
-        ])
-        .expect("parse tree options");
-        assert!(options.tree);
-        assert_eq!(options.jobs, 2);
-        assert_eq!(options.apps.len(), 1);
-        assert_eq!(options.apps[0].name, "vadd");
     }
 
     #[test]
