@@ -38,7 +38,6 @@ pub fn check_package_layout(path: &Path) -> Result<()> {
     }
 
     require_regular(&entries, "usr/bin/tapa")?;
-    require_regular(&entries, "usr/bin/tapa-cpp")?;
     require_regular(&entries, "usr/bin/tapacc")?;
     require_regular(&entries, "usr/include/tapa.h")?;
     require_regular(&entries, "usr/lib/libtapa.so")?;
