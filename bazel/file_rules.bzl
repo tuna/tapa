@@ -4,31 +4,6 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-def _renamed_executable_impl(ctx):
-    output = ctx.actions.declare_file(ctx.attr.out)
-    args = ctx.actions.args()
-    args.add(ctx.file.src)
-    args.add(output)
-    ctx.actions.run_shell(
-        inputs = [ctx.file.src],
-        outputs = [output],
-        arguments = [args],
-        command = "cp \"$1\" \"$2\" && chmod +x \"$2\"",
-        mnemonic = "RenameExecutable",
-    )
-    return [DefaultInfo(files = depset([output]))]
-
-renamed_executable = rule(
-    implementation = _renamed_executable_impl,
-    attrs = {
-        "src": attr.label(
-            allow_single_file = True,
-            mandatory = True,
-        ),
-        "out": attr.string(mandatory = True),
-    },
-)
-
 def _facebook_txt_impl(ctx):
     output = ctx.actions.declare_file(ctx.attr.out)
     args = ctx.actions.args()
