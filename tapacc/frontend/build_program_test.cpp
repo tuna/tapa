@@ -1,29 +1,22 @@
-#include "program_builder.h"
+// The typed program model one TU yields: task set, levels, ports, streams,
+// and instances, asserted on the builder after the full pipeline ran.
 
-#include <fcntl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-
-#include <cstdlib>
-#include <fstream>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
+#include "nlohmann/json.hpp"
 
 #include "classify.h"
-#include "codegen/schema_fields.h"
+#include "codegen/tree_pipeline.h"
 #include "program.h"
-#include "tapa_stub_decls.h"
 
 namespace tapa::cc {
 namespace {
+
+using test_support::TreePipelineRun;
+using test_support::VirtualTu;
 
 constexpr char kVadd[] = R"cpp(
   void Mmap2Stream(tapa::mmap<const float> mem, unsigned long long n,
@@ -45,28 +38,19 @@ constexpr char kVadd[] = R"cpp(
   }
 )cpp";
 
-struct Built {
-  std::unique_ptr<clang::ASTUnit> ast;
-  ProgramBuilder builder;
-};
-
-Built Build() {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kVadd;
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  ProgramBuilder builder("VecAdd", SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  EXPECT_TRUE(builder.MergeAndDiscover());
-  EXPECT_TRUE(builder.errors().empty());
-  builder.RewriteTu(ast->getASTContext());
-  return Built{std::move(ast), std::move(builder)};
+TreePipelineRun Build() {
+  auto run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/vadd.cpp", kVadd}}, "VecAdd",
+      testing::TempDir() + "/build_program_vadd", {"-std=c++17"});
+  EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  return run;
 }
 
 TEST(BuildProgram, TopAndTaskSet) {
-  auto b = Build();
+  const TreePipelineRun b = Build();
   EXPECT_EQ(b.builder.top(), "VecAdd");
-  EXPECT_EQ(b.builder.EmitJson()[kFieldTasks].size(), 4u);
+  EXPECT_EQ(nlohmann::json::parse(b.json)["tasks"].size(), 4u);
+  EXPECT_NE(b.builder.FindTask("VecAdd"), nullptr);
   EXPECT_EQ(b.builder.FindTask("VecAdd")->level, TaskLevel::kUpper);
   EXPECT_EQ(b.builder.FindTask("Add")->level, TaskLevel::kLower);
   EXPECT_EQ(b.builder.FindTask("Mmap2Stream")->level, TaskLevel::kLower);
@@ -74,7 +58,7 @@ TEST(BuildProgram, TopAndTaskSet) {
 }
 
 TEST(BuildProgram, TopPorts) {
-  auto b = Build();
+  const TreePipelineRun b = Build();
   const std::vector<Port>& ports = b.builder.FindTask("VecAdd")->ports;
   ASSERT_EQ(ports.size(), 4u);
   EXPECT_EQ(ports[0].name, "a");
@@ -87,7 +71,7 @@ TEST(BuildProgram, TopPorts) {
 }
 
 TEST(BuildProgram, UpperStreamsAndInstances) {
-  auto b = Build();
+  const TreePipelineRun b = Build();
   const TaskModel& top = *b.builder.FindTask("VecAdd");
 
   ASSERT_EQ(top.streams.size(), 3u);
@@ -112,48 +96,12 @@ TEST(BuildProgram, UpperStreamsAndInstances) {
 }
 
 TEST(BuildProgram, LeafPortsPopulated) {
-  auto b = Build();
+  const TreePipelineRun b = Build();
   const std::vector<Port>& add_ports = b.builder.FindTask("Add")->ports;
   ASSERT_EQ(add_ports.size(), 4u);
   EXPECT_STREQ(TapaKindCat(add_ports[0].kind), "istream");
   EXPECT_STREQ(TapaKindCat(add_ports[2].kind), "ostream");
   EXPECT_STREQ(TapaKindCat(add_ports[3].kind), "scalar");
-}
-
-TEST(BuildProgram, WriteSourcesManifestAndFiles) {
-  auto b = Build();
-  // File names come from the JSON task keys, the same names EmitJson's
-  // `srcs` entries carry.
-  const nlohmann::json tasks = b.builder.EmitJson()[kFieldTasks];
-  const testing::TestInfo* info =
-      testing::UnitTest::GetInstance()->current_test_info();
-  const std::string dir = std::string("/tmp/tapacc-writesources-") +
-                          std::to_string(getpid()) + "-" + info->name();
-  ASSERT_EQ(::system(("rm -rf " + dir + " && mkdir -p " + dir).c_str()), 0);
-
-  std::string error;
-  ASSERT_TRUE(b.builder.WriteSources(dir, &error)) << error;
-  for (const auto& [name, task] : tasks.items()) {
-    const std::string src = task.at(kFieldSrcs)[0].get<std::string>();
-    ASSERT_EQ(src, name + ".cpp");
-    std::ifstream file(dir + "/" + src, std::ios::binary);
-    ASSERT_TRUE(file.is_open()) << dir + "/" + src;
-    std::string text((std::istreambuf_iterator<char>(file)),
-                     std::istreambuf_iterator<char>());
-    EXPECT_EQ(text, b.builder.TaskCode(name));
-  }
-
-  // Re-writing identical content must not fail nor change the file: the
-  // same-content skip keeps the mtime synth's HLS cache keys on.
-  const std::string path = dir + "/Add.cpp";
-  struct stat before{};
-  ASSERT_EQ(::stat(path.c_str(), &before), 0);
-  sleep(1);  // a coarse mtime resolution (e.g. ext4 1s) must still differ
-  ASSERT_TRUE(b.builder.WriteSources(dir, &error)) << error;
-  struct stat after{};
-  ASSERT_EQ(::stat(path.c_str(), &after), 0);
-  EXPECT_EQ(before.st_mtim.tv_sec, after.st_mtim.tv_sec);
-  EXPECT_EQ(before.st_mtim.tv_nsec, after.st_mtim.tv_nsec);
 }
 
 }  // namespace

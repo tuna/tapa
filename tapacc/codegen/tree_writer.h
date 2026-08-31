@@ -232,7 +232,7 @@ class TreeWriter {
              TreeSession& session, std::string* error);
 
   // Tree-relative main-file keys in input order: the `srcs` manifest shared
-  // by every task in tree mode.
+  // by every task.
   std::vector<std::string> MainFileKeys() const;
 
   // Every `_external/<digest8>` bucket used by the rendered closure, sorted

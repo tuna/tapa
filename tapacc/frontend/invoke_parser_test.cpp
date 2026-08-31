@@ -9,9 +9,10 @@
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
+#include "codegen/tree_pipeline.h"
+#include "codegen/tree_writer.h"
 #include "ports.h"
 #include "program.h"
 #include "program_builder.h"
@@ -38,11 +39,10 @@ constexpr char kProgram[] = R"cpp(
 )cpp";
 
 struct Parsed {
-  std::unique_ptr<clang::ASTUnit> ast;
-  ProgramBuilder builder;
+  test_support::TreePipelineRun run;
 
   const TaskModel& Task(llvm::StringRef name) const {
-    const TaskModel* model = builder.FindTask(name.str());
+    const TaskModel* model = run.builder.FindTask(name.str());
     EXPECT_NE(model, nullptr);
     return *model;
   }
@@ -51,15 +51,11 @@ struct Parsed {
 // Full pipeline over one TU: index, merge, rewrite (which fills ports,
 // instances, and streams, with is_top true exactly for the requested top).
 Parsed ParseCode(llvm::StringRef code, llvm::StringRef top) {
-  const std::string full = std::string(kTapaStubDecls) + "\n" + code.str();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      full, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  EXPECT_TRUE(builder.MergeAndDiscover());
-  builder.RewriteTu(ast->getASTContext());
-  return Parsed{std::move(ast), std::move(builder)};
+  auto run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/invoke.cpp", code.str()}}, top.str(),
+      testing::TempDir() + "/invoke_parser", {"-std=c++17"});
+  EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  return Parsed{std::move(run)};
 }
 
 Parsed ParseTop() { return ParseCode(kProgram, "Top"); }
@@ -111,15 +107,17 @@ TEST(InvokeParser, NonTopStreamPortsDoNotBecomeFifos) {
   // out of `streams` (middle tasks bind them by port name instead). Drives
   // ParseUpperTask directly because the builder always marks the requested
   // top as the top — the is_top distinction belongs to this unit.
-  const std::string full =
-      std::string(kTapaStubDecls) + "\n" + kTopStreamProgram;
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      full, std::vector<std::string>{"-std=c++17"});
+      std::string(kTapaStubDecls) + "\n" + kTopStreamProgram,
+      std::vector<std::string>{"-std=c++17"}, "/proj/nontop.cpp");
   ASSERT_NE(ast, nullptr);
-  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
+  const std::vector<IncludeDirective> log;  // no includes
+  ProgramBuilder builder(
+      "Top", SynthTarget::kXilinxHls,
+      TreeConfig{testing::TempDir() + "/nontop", {"/proj/nontop.cpp"}});
+  builder.IndexTu(ast->getASTContext(), log);
   ASSERT_TRUE(builder.MergeAndDiscover());
-  TaskModel model = builder.TuView(ast->getASTContext()).tasks.at("Top");
+  TaskModel model = builder.TuView(ast->getASTContext(), log).tasks.at("Top");
   model.ports = BuildPorts(ast->getASTContext(), model.def);
   ParseUpperTask(ast->getASTContext(), model, /*is_top=*/false);
   EXPECT_TRUE(model.streams.empty());
@@ -252,31 +250,14 @@ TEST(InvokeParser, InstancesAndArgs) {
   EXPECT_EQ(top.instances.at("Consumer")[0].args.at("in").arg, "qc");
 }
 
-// Diagnostics sink for error-path tests (mirrors ports_test.cpp): the
-// default printer asserts on diagnostics emitted after parsing, which is
-// exactly when ParseUpperTask runs against a finished test AST.
-class CountingDiags : public clang::DiagnosticConsumer {
- public:
-  void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
-                        const clang::Diagnostic&) override {
-    if (level >= clang::DiagnosticsEngine::Error) ++errors;
-  }
-  unsigned errors = 0;
-};
-
-// Parse `code` expecting upper-task diagnostics; returns the error count.
+// Parse `code` expecting upper-task diagnostics; returns the error count
+// the pipeline collected (the harness fails a run on any error diagnostic,
+// so the count is what distinguishes rejected from accepted).
 unsigned CountUpperTaskErrors(llvm::StringRef code, llvm::StringRef top) {
-  const std::string full = std::string(kTapaStubDecls) + "\n" + code.str();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      full, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  CountingDiags diags;
-  ast->getDiagnostics().setClient(&diags, /*ShouldOwn=*/false);
-  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  if (!builder.MergeAndDiscover()) return 1;
-  builder.RewriteTu(ast->getASTContext());
-  return diags.errors;
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/invoke_err.cpp", code.str()}}, top.str(),
+      testing::TempDir() + "/invoke_parser_err", {"-std=c++17"});
+  return static_cast<unsigned>(run.diags.size());
 }
 
 TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {

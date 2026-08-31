@@ -4,7 +4,6 @@
 
 #include "clang/AST/Decl.h"
 #include "clang/Basic/LangOptions.h"
-#include "edit_sink.h"
 
 #include "code_sink.h"
 #include "frontend/classify.h"
@@ -48,13 +47,6 @@ std::string GenerateWrapper(const TaskModel& task, const Backend& backend,
   }
   code += ");\n}\n";
   return code;
-}
-
-void InsertWrapper(const TaskModel& task, const Backend& backend,
-                   clang::ASTContext& ctx, EditSink& edits) {
-  if (task.invoker == nullptr) return;
-  edits.InsertTextAfterToken(task.invoker->getEndLoc(),
-                             GenerateWrapper(task, backend, ctx));
 }
 
 }  // namespace tapa::cc

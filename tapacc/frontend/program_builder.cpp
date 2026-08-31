@@ -1,6 +1,5 @@
 #include "program_builder.h"
 
-#include <fstream>
 #include <queue>
 #include <set>
 
@@ -8,7 +7,6 @@
 #include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Basic/SourceManager.h"
 #include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/Path.h"
 
 #include "build_program.h"
 #include "classify.h"
@@ -47,10 +45,9 @@ std::string MainFilePath(const clang::ASTContext& ctx) {
 }
 
 // The definition's canonical path + file offset: the site identity behind
-// the tree-mode "one task, one definition site" rule. Distinct from the
-// identity key on purpose -- a declaration and the definition it announces
-// share a key but never a site, and the site is only compared between two
-// definitions.
+// the "one task, one definition site" rule. Distinct from the identity key
+// on purpose -- a declaration and the definition it announces share a key
+// but never a site, and the site is only compared between two definitions.
 std::string DefinitionSite(const clang::FunctionDecl* func) {
   const clang::SourceManager& sm = func->getASTContext().getSourceManager();
   const clang::SourceLocation loc = sm.getExpansionLoc(func->getLocation());
@@ -177,14 +174,12 @@ nlohmann::json StreamJson(const StreamDecl& stream) {
 }  // namespace
 
 ProgramBuilder::ProgramBuilder(std::string top, SynthTarget default_target,
-                               std::optional<TreeConfig> tree)
+                               TreeConfig tree)
     : top_(std::move(top)),
       default_target_(default_target),
       tree_config_(std::move(tree)) {
-  if (tree_config_) {
-    tree_writer_ = std::make_unique<TreeWriter>(tree_config_->out_root,
-                                                tree_config_->main_files);
-  }
+  tree_writer_ = std::make_unique<TreeWriter>(tree_config_.out_root,
+                                              tree_config_.main_files);
 }
 
 ProgramBuilder::~ProgramBuilder() = default;
@@ -216,13 +211,11 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
       sighting.is_spec &&
       def->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation;
   sighting.key = KeyOf(mangler, def);
-  if (tree_mode()) {
-    sighting.site = DefinitionSite(def);
-    if (sighting.is_spec) {
-      if (const clang::FunctionDecl* pattern =
-              def->getTemplateInstantiationPattern()) {
-        sighting.primary_key = KeyOf(mangler, pattern);
-      }
+  sighting.site = DefinitionSite(def);
+  if (sighting.is_spec) {
+    if (const clang::FunctionDecl* pattern =
+            def->getTemplateInstantiationPattern()) {
+      sighting.primary_key = KeyOf(mangler, pattern);
     }
   }
   sighting.name =
@@ -312,7 +305,7 @@ int ProgramBuilder::TuOf(const std::string& file) const {
     if (tu_files_[i] == file) return static_cast<int>(i);
   }
   llvm::report_fatal_error(
-      "ProgramBuilder: RewriteTu called on a TU that IndexTu never saw");
+      "ProgramBuilder: RewriteTreeTu called on a TU that IndexTu never saw");
 }
 
 // The scanned-TU list every "found nothing anywhere" diagnostic carries.
@@ -325,45 +318,15 @@ std::string ProgramBuilder::ScannedTus() const {
   return scanned;
 }
 
-// `<tu basename>-shared.cpp`, the file WriteSources writes this TU's shared
-// text to and every other TU's task manifests name.
-std::string ProgramBuilder::SharedSourceName(int tu) const {
-  return llvm::sys::path::stem(tu_files_[tu]).str() + "-shared.cpp";
-}
-
-// A shared file is named after its TU's basename, so two TUs with one
-// basename have no distinguishable shared file. Flattened input cannot hit
-// this (every flatten path carries a content digest in its name); it exists
-// for the rare genuinely-equal basenames. The tree path emits no shared
-// files at all -- it mirrors each TU at its source-relative path -- so
-// equal basenames in different directories are fine there.
-bool ProgramBuilder::CheckSharedFileNames() {
-  if (tree_mode() || tu_files_.size() < 2) return true;
-  std::map<std::string, size_t> stem_tu;
-  for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
-    const std::string stem = llvm::sys::path::stem(tu_files_[tu]).str();
-    auto [it, inserted] = stem_tu.emplace(stem, tu);
-    if (inserted) continue;
-    Fail("translation units " + tu_files_[it->second] + " and " +
-         tu_files_[tu] + " share the basename '" + stem +
-         "'; each translation unit's shared file is named after its "
-         "basename, so the two cannot be told apart. Rename one of the "
-         "inputs");
-    return false;
-  }
-  return true;
-}
-
 void ProgramBuilder::Fail(std::string message) {
   errors_.push_back(std::move(message));
 }
 
 std::set<clang::FileID> ProgramBuilder::TreeFiles(
-    clang::ASTContext& ctx, const std::vector<IncludeDirective>* log) const {
-  static const std::vector<IncludeDirective> kEmptyLog;
+    clang::ASTContext& ctx, const std::vector<IncludeDirective>& log) const {
   std::set<clang::FileID> files;
-  for (const auto& [path, file] : MirrorFiles(
-           ctx, tree_config_->main_files, log == nullptr ? kEmptyLog : *log)) {
+  for (const auto& [path, file] :
+       MirrorFiles(ctx, tree_config_.main_files, log)) {
     (void)path;
     files.insert(file);
   }
@@ -371,14 +334,9 @@ std::set<clang::FileID> ProgramBuilder::TreeFiles(
 }
 
 void ProgramBuilder::IndexTu(clang::ASTContext& ctx,
-                             const std::vector<IncludeDirective>* log) {
-  std::set<clang::FileID> files;
-  const std::set<clang::FileID>* selected = nullptr;
-  if (tree_mode()) {
-    files = TreeFiles(ctx, log);
-    selected = &files;
-  }
-  TuIndex index = IndexTuImpl(ctx, selected);
+                             const std::vector<IncludeDirective>& log) {
+  const std::set<clang::FileID> files = TreeFiles(ctx, log);
+  TuIndex index = IndexTuImpl(ctx, &files);
   const int tu = RegisterTu(MainFilePath(ctx));
   for (DefSighting& sighting : index.defs) {
     sighting.tu = tu;
@@ -396,8 +354,6 @@ const ProgramBuilder::DefSighting& ProgramBuilder::FirstSighting(
 }
 
 bool ProgramBuilder::MergeAndDiscover() {
-  if (!CheckSharedFileNames()) return false;
-
   // Rule 2: one key, one task. Sighted definitions must agree on
   // level/target/readable_name/signature; anything else is two different
   // functions wearing one identity.
@@ -528,26 +484,24 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
   }
 
-  // Rule 2, site half (tree mode): the mirror writes one file per source
-  // path, so a task sighted at two distinct sites would need two different
-  // rewrites of the same task. A header task sighted by several TUs sits at
-  // one site and dedupes; an implicit specialization is sighted at its
-  // point of instantiation, which is per-TU by construction and carries no
-  // second definition.
-  if (tree_mode()) {
-    for (const auto& [key, task] : tasks_) {
-      const DefSighting& first = FirstSighting(key);
-      for (const DefSighting& other : defs_.at(key)) {
-        if (other.implicit_spec || other.internal) continue;
-        if (other.site == first.site) continue;
-        Fail("task '" + first.name + "' is defined at two locations: " +
-             first.loc + " (" + tu_files_[first.tu] + ") and " + other.loc +
-             " (" + tu_files_[other.tu] +
-             "); under TAPA_ANALYZE_TREE a task must be defined in exactly "
-             "one place (a task defined in a header shared by several "
-             "translation units is one definition and merges silently)");
-        return false;
-      }
+  // Rule 2, site half: the mirror writes one file per source path, so a
+  // task sighted at two distinct sites would need two different rewrites of
+  // the same task. A header task sighted by several TUs sits at one site
+  // and dedupes; an implicit specialization is sighted at its point of
+  // instantiation, which is per-TU by construction and carries no second
+  // definition.
+  for (const auto& [key, task] : tasks_) {
+    const DefSighting& first = FirstSighting(key);
+    for (const DefSighting& other : defs_.at(key)) {
+      if (other.implicit_spec || other.internal) continue;
+      if (other.site == first.site) continue;
+      Fail("task '" + first.name + "' is defined at two locations: " +
+           first.loc + " (" + tu_files_[first.tu] + ") and " + other.loc +
+           " (" + tu_files_[other.tu] +
+           "); a task must be defined in exactly one place (a task defined "
+           "in a header shared by several translation units is one "
+           "definition and merges silently)");
+      return false;
     }
   }
 
@@ -576,34 +530,27 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
   }
 
-  if (tree_mode()) {
-    std::vector<std::string> task_keys;
-    task_keys.reserve(tasks_.size());
-    for (const auto& [key, task] : tasks_) {
-      task_keys.push_back(task.model.name);
-    }
-    if (const std::optional<std::string> collision =
-            TaskGuardCollision(task_keys)) {
-      Fail(*collision);
-      return false;
-    }
+  std::vector<std::string> task_keys;
+  task_keys.reserve(tasks_.size());
+  for (const auto& [key, task] : tasks_) {
+    task_keys.push_back(task.model.name);
+  }
+  if (const std::optional<std::string> collision =
+          TaskGuardCollision(task_keys)) {
+    Fail(*collision);
+    return false;
   }
   return true;
 }
 
 Program ProgramBuilder::TuView(clang::ASTContext& ctx,
-                               const std::vector<IncludeDirective>* log) {
-  std::set<clang::FileID> files;
-  const std::set<clang::FileID>* selected = nullptr;
-  if (tree_mode()) {
-    files = TreeFiles(ctx, log);
-    selected = &files;
-  }
-  TuIndex index = IndexTuImpl(ctx, selected);
+                               const std::vector<IncludeDirective>& log) {
+  const std::set<clang::FileID> files = TreeFiles(ctx, log);
+  TuIndex index = IndexTuImpl(ctx, &files);
   Program view;
   view.top = top_;
-  view.file_funcs = CollectFileFuncs(ctx, selected);
-  view.local_funcs = CollectLocalFuncs(ctx, selected);
+  view.file_funcs = CollectFileFuncs(ctx, &files);
+  view.local_funcs = CollectLocalFuncs(ctx, &files);
   for (const auto& [key, task] : tasks_) {
     // This TU's best decl for the task: the definition when it is visible
     // here, else a visible redeclaration (the shared header announcing a
@@ -660,51 +607,17 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
   }
 }
 
-void ProgramBuilder::RewriteTu(clang::ASTContext& ctx) {
-  const int tu = TuOf(MainFilePath(ctx));
-  Program view = TuView(ctx);
-  FillOwnedTasks(tu, view, ctx);
-
-  const XilinxBackend hls(/*is_vitis=*/false);
-  const XilinxBackend vitis(/*is_vitis=*/true);
-  const IgnoreBackend ignore;
-  for (const auto& [key, task] : tasks_) {
-    if (task.owner_tu != tu) continue;
-    const TaskModel& model = view.tasks.at(task.model.name);
-    const Backend* backend = &hls;
-    if (model.target == SynthTarget::kXilinxVitis) backend = &vitis;
-    if (model.target == SynthTarget::kIgnore) backend = &ignore;
-    code_[model.name] = EmitTaskCode(view, model, *backend, ctx);
-  }
-
-  // The TU's shared file: every task of this TU reduced to its rewritten
-  // signature, helpers rewritten, no current task. A task blob built from
-  // ANOTHER TU holds this TU's helper definitions only as declarations --
-  // flattened input inlines headers, not other TUs -- so the definitions
-  // have to travel in a file of their own (EmitJson lists it in every other
-  // TU's task manifests). Single-TU programs never reference one, so they
-  // emit nothing extra and stay byte-identical to the single-file path.
-  // The default target's backend rewrites it: the file has no task of its
-  // own whose per-task target could pick a different one.
-  if (tu_files_.size() > 1) {
-    shared_code_.resize(tu_files_.size());
-    const Backend& backend =
-        default_target_ == SynthTarget::kXilinxVitis ? vitis : hls;
-    shared_code_[tu] = EmitSharedCode(view, backend, ctx, SharedSourceName(tu));
-  }
-}
-
 void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
                                    std::vector<IncludeDirective> log,
                                    const clang::syntax::TokenBuffer* tokens) {
   const int tu = TuOf(MainFilePath(ctx));
-  Program view = TuView(ctx, &log);
+  Program view = TuView(ctx, log);
   FillOwnedTasks(tu, view, ctx);
 
   const XilinxBackend hls(/*is_vitis=*/false);
   const XilinxBackend vitis(/*is_vitis=*/true);
   const IgnoreBackend ignore;
-  TreeSession session(ctx, log, tree_config_->main_files, tokens);
+  TreeSession session(ctx, log, tree_config_.main_files, tokens);
   RewriteTreeFiles(view, default_target_, hls, vitis, ignore, ctx, session);
   session.FlushMacroSplices();
 
@@ -729,77 +642,7 @@ const TaskModel* ProgramBuilder::FindTask(const std::string& name) const {
   return nullptr;
 }
 
-const std::string& ProgramBuilder::TaskCode(const std::string& name) const {
-  static const std::string kEmpty;
-  auto it = code_.find(name);
-  return it == code_.end() ? kEmpty : it->second;
-}
-
-const std::string& ProgramBuilder::SharedCode(int tu) const {
-  static const std::string kEmpty;
-  return tu < 0 || static_cast<size_t>(tu) >= shared_code_.size()
-             ? kEmpty
-             : shared_code_[tu];
-}
-
-namespace {
-
-// Writes `content` to `path` unless the file already holds exactly those
-// bytes, so re-analyzing unchanged sources keeps the old mtime (synth's
-// HLS skip is keyed on it). Returns false and sets `*error` on failure.
-bool WriteIfChanged(const std::string& path, const std::string& content,
-                    std::string* error) {
-  {
-    std::ifstream existing(path, std::ios::binary);
-    if (existing) {
-      std::string current((std::istreambuf_iterator<char>(existing)),
-                          std::istreambuf_iterator<char>());
-      if (current == content) return true;
-    }
-  }
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    *error = "cannot open " + path + " for writing";
-    return false;
-  }
-  out.write(content.data(), static_cast<std::streamsize>(content.size()));
-  out.flush();
-  if (!out) {
-    *error = "failed writing " + path;
-    return false;
-  }
-  return true;
-}
-
-}  // namespace
-
-bool ProgramBuilder::WriteSources(const std::string& emit_dir,
-                                  std::string* error) {
-  // Same name order EmitJson emits: the JSON task key is the file name.
-  std::map<std::string, const MergedTask*> by_name;
-  for (const auto& [key, task] : tasks_) {
-    by_name.emplace(task.model.name, &task);
-  }
-  for (const auto& name_and_task : by_name) {
-    const std::string& name = name_and_task.first;
-    const std::string path = emit_dir + "/" + name + ".cpp";
-    if (!WriteIfChanged(path, TaskCode(name), error)) return false;
-  }
-  // The shared files follow, in TU order -- the order EmitJson lists them
-  // in every other TU's task manifests.
-  for (size_t tu = 0; tu < shared_code_.size(); ++tu) {
-    const std::string path =
-        emit_dir + "/" + SharedSourceName(static_cast<int>(tu));
-    if (!WriteIfChanged(path, shared_code_[tu], error)) return false;
-  }
-  return true;
-}
-
 bool ProgramBuilder::WriteTree(std::string* error) {
-  if (tree_writer_ == nullptr) {
-    *error = "rewritten-tree output requested outside tree mode";
-    return false;
-  }
   return tree_writer_->Write(error);
 }
 
@@ -811,15 +654,13 @@ nlohmann::json ProgramBuilder::EmitJson() const {
   }
 
   nlohmann::json tree_srcs = nlohmann::json::array();
+  for (const std::string& src : tree_writer_->MainFileKeys()) {
+    tree_srcs.push_back(src);
+  }
   nlohmann::json tree_include_dirs = nlohmann::json::array();
-  if (tree_mode()) {
-    for (const std::string& src : tree_writer_->MainFileKeys()) {
-      tree_srcs.push_back(src);
-    }
-    tree_include_dirs.push_back("");
-    for (const std::string& dir : tree_writer_->ExternalBuckets()) {
-      tree_include_dirs.push_back(dir);
-    }
+  tree_include_dirs.push_back("");
+  for (const std::string& dir : tree_writer_->ExternalBuckets()) {
+    tree_include_dirs.push_back(dir);
   }
 
   nlohmann::json out;
@@ -830,24 +671,11 @@ nlohmann::json ProgramBuilder::EmitJson() const {
   for (const auto& [name, task] : by_name) {
     const TaskModel& model = task->model;
     nlohmann::json& t = out[kFieldTasks][name];
-    if (tree_mode()) {
-      // Every task compiles the same mirrored TUs; one define selects its
-      // full definition while every other task takes its exact signature stub.
-      t[kFieldSrcs] = tree_srcs;
-      t[kFieldIncludeDirs] = tree_include_dirs;
-      t[kFieldDefines] = nlohmann::json::array({TaskGuardDefine(model.name)});
-    } else {
-      // The flattened bridge names this task's blob first, then every OTHER
-      // TU's shared helper file in input order.
-      nlohmann::json srcs = nlohmann::json::array({name + ".cpp"});
-      for (size_t tu = 0; tu < tu_files_.size(); ++tu) {
-        if (static_cast<int>(tu) == task->owner_tu) continue;
-        srcs.push_back(SharedSourceName(static_cast<int>(tu)));
-      }
-      t[kFieldSrcs] = std::move(srcs);
-      t[kFieldIncludeDirs] = nlohmann::json::array();
-      t[kFieldDefines] = nlohmann::json::array();
-    }
+    // Every task compiles the same mirrored TUs; one define selects its
+    // full definition while every other task takes its exact signature stub.
+    t[kFieldSrcs] = tree_srcs;
+    t[kFieldIncludeDirs] = tree_include_dirs;
+    t[kFieldDefines] = nlohmann::json::array({TaskGuardDefine(model.name)});
     t[kFieldLevel] = LevelStr(model.level);
     t[kFieldSynth] = SynthStr(model.target);
     t[kFieldReadableName] = model.readable_name;

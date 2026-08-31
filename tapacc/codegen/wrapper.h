@@ -2,7 +2,6 @@
 #define TAPA_CODEGEN_WRAPPER_H_
 
 #include "clang/AST/ASTContext.h"
-#include "edit_sink.h"
 
 #include "backend.h"
 #include "frontend/program.h"
@@ -15,10 +14,6 @@ namespace tapa::cc {
 // top-level module).
 std::string GenerateWrapper(const TaskModel& task, const Backend& backend,
                             clang::ASTContext& ctx);
-
-// Insert the wrapper right after the task's invoker function.
-void InsertWrapper(const TaskModel& task, const Backend& backend,
-                   clang::ASTContext& ctx, EditSink& edits);
 
 }  // namespace tapa::cc
 

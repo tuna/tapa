@@ -9,8 +9,6 @@
 
 namespace tapa::cc {
 
-EditSink::EditSink(clang::Rewriter& rewriter) : rewriter_(rewriter) {}
-
 EditSink::EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter)
     : ctx_(&ctx), rewriter_(rewriter) {}
 
@@ -33,8 +31,7 @@ bool EditSink::Mirrored(clang::SourceLocation loc) {
   clang::SourceManager& sm = rewriter_.getSourceMgr();
   if (resnaps_.count(sm.getFileID(loc)) != 0) return true;
   ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error, loc,
-                   "cannot rewrite %0 in non-mirrored file '%1' under "
-                   "TAPA_ANALYZE_TREE")
+                   "cannot rewrite %0 in non-mirrored file '%1'")
       << construct_ << sm.getFilename(loc);
   return false;
 }

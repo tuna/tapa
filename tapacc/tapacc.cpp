@@ -5,30 +5,29 @@
 // readable_name, ports, tasks, fifos}}}. `tapa analyze` nests that payload
 // under the "graph" key of the work dir's tapa.json.
 //
-// The default bridge consumes flattened inputs and writes one source blob per
-// task (plus cross-TU shared helper files). Hidden `-tree` consumes original
-// sources instead, any number of TUs in one run: it mirrors the union of the
-// TUs' non-system include closures under `-emit-dir`, rewrites
-// declarations/helpers once per file, and wraps every task definition in its
-// `TAPA_TASK_DEF_*` guard. Every task manifest then names the same mirrored
-// TUs and selects one definition through its guard. A file sighted by several
-// TUs is rendered once, from the first TU in input order, and every later
-// TU's rendering of it must agree byte for byte.
+// The inputs are the user's original translation units, any number of TUs in
+// one run: tapacc mirrors the union of the TUs' non-system include closures
+// under `-emit-dir`, rewrites declarations/helpers once per file, and wraps
+// every task definition in its `TAPA_TASK_DEF_*` guard. Every task manifest
+// then names the same mirrored TUs and selects one definition through its
+// guard. A file sighted by several TUs is rendered once, from the first TU
+// in input order, and every later TU's rendering of it must agree byte for
+// byte.
 //
 // Each ClangTool action owns its ASTContext and AST nodes never outlive their
 // TU, so the pipeline runs as TWO passes over the same file list around a
 // pure-data merge (frontend/program_builder.{h,cpp}):
 //
 //   1. an index action per TU: collect definitions and invoke edges from the
-//      flattened main file, or from the original TU's mirror closure;
-//   2. the merge: one definition index keyed by function identity (plus
-//      canonical definition path/offset under `-tree`), BFS from `--top`, and
-//      the merge-rule diagnostics;
-//   3. a rewrite action per TU: emit per-task blobs on the bridge path, or
-//      apply one guarded per-file rewrite and absorb its live include log.
+//      TU's mirror closure;
+//   2. the merge: one definition index keyed by function identity plus
+//      canonical definition path/offset, BFS from `--top`, and the
+//      merge-rule diagnostics;
+//   3. a rewrite action per TU: apply one guarded per-file rewrite and
+//      absorb its live include log.
 //
 // The single JSON prints only when both passes ran clean for every TU, so a
-// program that fails a merge rule or a per-task diagnostic exits non-zero
+// program that fails a merge rule or a rewrite diagnostic exits non-zero
 // with no graph on stdout.
 //
 // Two distinct notions of "target" live in that schema, and the tapa-ir
@@ -48,7 +47,6 @@
 
 #include <iostream>
 #include <memory>
-#include <optional>
 #include <utility>
 #include <vector>
 
@@ -82,13 +80,7 @@ llvm::cl::opt<bool> g_no_vendor_scan(
     llvm::cl::desc("Disable the vendor-usage soft warnings"),
     llvm::cl::cat(g_category));
 
-llvm::cl::opt<bool> g_tree(
-    "tree", llvm::cl::init(false), llvm::cl::Hidden,
-    llvm::cl::desc("Emit one guarded rewritten source tree"),
-    llvm::cl::cat(g_category));
-
-// Where rewritten sources are materialized: per-task blobs on the default
-// flattened path, or the mirrored guarded tree under `-tree`. The caller
+// Where the mirrored guarded source tree is materialized. The caller
 // creates the directory; tapacc refuses to run if it is missing.
 llvm::cl::opt<std::string> g_emit_dir(
     "emit-dir", llvm::cl::Required,
@@ -114,14 +106,12 @@ class BuilderAction : public clang::ASTFrontendAction {
   bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
     if (index_pass_ && !g_no_vendor_scan)
       AttachVendorScan(ci.getPreprocessor());
-    if (builder_.tree_mode()) {
-      ci.getPreprocessor().addPPCallbacks(std::make_unique<IncludeRecorder>(
-          ci.getSourceManager(), &include_log_));
-      // Selective macro expansion needs the expanded token stream; only the
-      // rewrite pass edits, so only it records.
-      if (!index_pass_) {
-        recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
-      }
+    ci.getPreprocessor().addPPCallbacks(std::make_unique<IncludeRecorder>(
+        ci.getSourceManager(), &include_log_));
+    // Selective macro expansion needs the expanded token stream; only the
+    // rewrite pass edits, so only it records.
+    if (!index_pass_) {
+      recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
     }
     return true;
   }
@@ -143,11 +133,9 @@ class BuilderAction : public clang::ASTFrontendAction {
                                         : &owner_.recorder_->Consume();
         if (index_pass_) {
           if (!g_no_vendor_scan) ScanVendorAsts(ctx);
-          builder_.IndexTu(ctx, builder_.tree_mode() ? include_log_ : nullptr);
-        } else if (builder_.tree_mode()) {
-          builder_.RewriteTreeTu(ctx, std::move(*include_log_), tokens);
+          builder_.IndexTu(ctx, *include_log_);
         } else {
-          builder_.RewriteTu(ctx);
+          builder_.RewriteTreeTu(ctx, std::move(*include_log_), tokens);
         }
       }
 
@@ -198,21 +186,16 @@ int main(int argc, const char** argv) {
   }
   const std::vector<std::string>& sources = parser->getSourcePathList();
 
-  std::optional<TreeConfig> tree;
-  if (g_tree) {
-    std::vector<std::string> main_files;
-    main_files.reserve(sources.size());
-    for (const std::string& source : sources) {
-      main_files.push_back(CanonicalPath(source));
-    }
-    tree = TreeConfig{g_emit_dir.getValue(), std::move(main_files)};
+  std::vector<std::string> main_files;
+  main_files.reserve(sources.size());
+  for (const std::string& source : sources) {
+    main_files.push_back(CanonicalPath(source));
   }
-
   const bool is_vitis = g_target == CliTarget::kVitis;
   ProgramBuilder builder(
       g_top.getValue(),
       is_vitis ? SynthTarget::kXilinxVitis : SynthTarget::kXilinxHls,
-      std::move(tree));
+      TreeConfig{g_emit_dir.getValue(), std::move(main_files)});
 
   clang::tooling::ClangTool index_tool(parser->getCompilations(),
                                        parser->getSourcePathList());
@@ -233,11 +216,9 @@ int main(int argc, const char** argv) {
   if (rc != 0) return rc;
 
   std::string error;
-  const bool written =
-      g_tree ? builder.WriteTree(&error)
-             : builder.WriteSources(g_emit_dir.getValue(), &error);
-  if (!written) {
-    llvm::errs() << "error: cannot write rewritten sources to -emit-dir "
+  if (!builder.WriteTree(&error)) {
+    llvm::errs() << "error: cannot write the rewritten source tree to "
+                    "-emit-dir "
                  << g_emit_dir.getValue() << ": " << error << "\n";
     return 1;
   }

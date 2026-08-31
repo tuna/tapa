@@ -159,6 +159,7 @@ cc_test(
     name = "invoke_parser_test",
     srcs = ["invoke_parser_test.cpp"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
         ":classify",
         ":invoke_parser",
@@ -166,9 +167,10 @@ cc_test(
         ":program",
         ":program_builder",
         ":tapa_stub_decls",
+        "//tapacc/codegen:tree_pipeline",
+        "//tapacc/codegen:tree_writer",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        CLANG_TOOLING,
     ],
 )
 
@@ -180,8 +182,8 @@ cc_library(
     deps = [CLANG_TOOLING],
 )
 
-# The multi-TU merge: index every TU, merge + discover on pure data, rewrite
-# per TU, emit one graph.
+# The multi-TU merge: index every TU, merge + discover on pure data, apply
+# the guarded tree rewrite per TU, emit one graph.
 cc_library(
     name = "program_builder",
     srcs = ["program_builder.cpp"],
@@ -218,10 +220,10 @@ cc_test(
         ":classify",
         ":program",
         ":program_builder",
-        ":tapa_stub_decls",
+        "//tapacc/codegen:tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        CLANG_TOOLING,
+        "@nlohmann_json//:json",
     ],
 )
 
@@ -229,26 +231,14 @@ cc_test(
     name = "merge_test",
     srcs = ["merge_test.cpp"],
     copts = TAPACC_COPTS,
+    includes = [".."],
     deps = [
+        ":program",
         ":program_builder",
-        ":tapa_stub_decls",
+        "//tapacc/codegen:tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        CLANG_TOOLING,
-    ],
-)
-
-cc_test(
-    name = "tree_merge_test",
-    srcs = ["tree_merge_test.cpp"],
-    copts = TAPACC_COPTS,
-    deps = [
-        ":program_builder",
-        ":tapa_stub_decls",
-        "//tapacc/codegen:tree_writer",
-        "@googletest//:gtest",
-        "@googletest//:gtest_main",
-        CLANG_TOOLING,
+        "@nlohmann_json//:json",
     ],
 )
 

@@ -18,10 +18,8 @@
 namespace tapa::cc {
 
 // The edit surface every decl-rewrite rule writes through: the exact
-// clang::Rewriter calls the rules make, behind one type, so the same rules
-// serve both producers. The flattened producer builds it over one bare
-// Rewriter and edits apply verbatim. The rewritten-tree producer additionally
-// registers one tracker per mirrored file: every edit then gets `#line`
+// clang::Rewriter calls the rules make, behind one type. The caller
+// registers one tracker per mirrored file, so every edit gets `#line`
 // re-snap bookkeeping, while a rewrite outside the mirror is a hard
 // diagnostic. A macro-owned edit never reaches the Rewriter: it composes
 // into token slots on the outermost spelled invocation owning it
@@ -31,16 +29,13 @@ class EditSink {
   using Resnap =
       std::function<bool(clang::SourceLocation, unsigned, llvm::StringRef)>;
 
-  // Flattened producer: forward every edit verbatim.
-  explicit EditSink(clang::Rewriter& rewriter);
-
-  // Rewritten-tree producer: rejected edits report through `ctx`; call
-  // TrackFile for every mirrored FileID before applying rewrite rules.
+  // Rejected edits report through `ctx`; call TrackFile for every mirrored
+  // FileID before applying rewrite rules.
   EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter);
 
   void TrackFile(clang::FileID file, Resnap resnap);
-  // Installs the splice queue for macro-owned edits (tree mode with a
-  // recorded token stream only).
+  // Installs the splice queue for macro-owned edits (requires a recorded
+  // token stream).
   void RouteMacroEdits(MacroSplices* splices) { splices_ = splices; }
   void Describe(std::string construct) { construct_ = std::move(construct); }
   bool CanRewrite(clang::SourceRange range);

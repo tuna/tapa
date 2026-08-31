@@ -12,7 +12,6 @@ anstyle = { workspace = true }
 const-str = { workspace = true }
 directories = { workspace = true }
 flate2 = { workspace = true }
-hex = { workspace = true }
 tar = { workspace = true }
 ureq = { workspace = true }
 camino = { workspace = true }
@@ -26,7 +25,6 @@ regex = { workspace = true }
 semver = { workspace = true }
 shellexpand = { workspace = true }
 serde = { workspace = true }
-sha2 = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
 serde_path_to_error = { workspace = true }
 serde_yaml = { workspace = true }

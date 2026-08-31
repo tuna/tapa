@@ -22,10 +22,6 @@ static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
         &["fpga-runtime/cargo", "fpga-runtime", "usr/lib"],
     ),
     (
-        "tapa-cpp-binary",
-        &["tapa-cpp/tapa-cpp", "usr/bin/tapa-cpp"],
-    ),
-    (
         "tapa-extra-runtime-include",
         &[
             "tapa-system-include/tapa-extra-runtime-include",
@@ -125,9 +121,8 @@ fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
     }
 }
 
-/// Resolve a clang-family helper (`tapacc-binary`, `tapa-cpp-binary`).
-/// Verifies the resolved file prints a parseable `--version`; otherwise
-/// surfaces a typed error.
+/// Resolve a clang-family helper (`tapacc-binary`). Verifies the resolved
+/// file prints a parseable `--version`; otherwise surfaces a typed error.
 pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
     let path = find_resource(name)?;
     verify_clang_version(&path)?;
@@ -206,13 +201,13 @@ mod tests {
         let system_include = dir.path().join("usr/share/tapa/system-include");
         fs::create_dir_all(&bin).unwrap();
         fs::create_dir_all(&system_include).unwrap();
-        let tapa_cpp = bin.join("tapa-cpp");
-        fs::write(&tapa_cpp, b"#!/bin/sh\nexit 0").unwrap();
+        let tapacc = bin.join("tapacc");
+        fs::write(&tapacc, b"#!/bin/sh\nexit 0").unwrap();
 
         let anchor = bin.join("tapa");
 
-        let resolved_cpp = find_resource_from("tapa-cpp-binary", &anchor).unwrap();
-        assert_eq!(resolved_cpp, tapa_cpp);
+        let resolved_tapacc = find_resource_from("tapacc-binary", &anchor).unwrap();
+        assert_eq!(resolved_tapacc, tapacc);
         let resolved_include = find_resource_from("tapa-system-include", &anchor).unwrap();
         assert_eq!(resolved_include, system_include);
     }

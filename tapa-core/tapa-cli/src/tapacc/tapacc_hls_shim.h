@@ -7,10 +7,10 @@
 //   * the `__builtin_bit_*` ap_int intrinsics (a Xilinx clang extension), and
 //   * `__fp16` passed or returned by value (storage-only in stock clang).
 //
-// This header is force-included (`-include`) into the tapacc stage ONLY. It
-// stubs both constructs so semantic analysis succeeds. It is never included in
-// the `tapa-cpp` flatten stage, and tapacc extracts each task's `code` from the
-// original source spelling, so the stubs never reach Vitis HLS synthesis.
+// This header is force-included (`-include`) into the tapacc parse ONLY. It
+// stubs both constructs so semantic analysis succeeds. The rewritten tree
+// mirrors the user's own `#include` spellings verbatim, so the stubs never
+// reach Vitis HLS synthesis.
 #ifndef TAPACC_HLS_SHIM_H_
 #define TAPACC_HLS_SHIM_H_
 

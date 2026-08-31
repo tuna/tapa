@@ -1,8 +1,8 @@
 //! `tapacc` semantic-analyzer invocation for `tapa analyze`.
 //!
-//! Drives the `tapacc` binary against either flattened sources or the original
-//! source tree and hands back its raw JSON stdout. Parsing is the caller's
-//! job: `analyze` persists these bytes verbatim as a debug artifact *before* interpreting them, so a
+//! Drives the `tapacc` binary against the original source files and hands
+//! back its raw JSON stdout. Parsing is the caller's job: `analyze` persists
+//! these bytes verbatim as a debug artifact *before* interpreting them, so a
 //! `tapacc` output that fails to parse is still on disk to look at.
 
 use std::fs;
@@ -16,9 +16,9 @@ use crate::tapacc::{TAPACC_HLS_SHIM, TAPACC_HLS_SHIM_FILE};
 ///
 /// The analysis shim ([`TAPACC_HLS_SHIM`]) is written into `work_dir` and
 /// force-included here so tapacc's clang can type-check Vitis HLS headers it
-/// otherwise rejects. It is deliberately *not* part of the shared cflags: the
-/// `tapa-cpp` flatten stage must never see the stub macros, or they would be
-/// baked into the flattened source that goes to real synthesis.
+/// otherwise rejects. It is deliberately *not* part of the shared cflags:
+/// tapacc mirrors the user's sources verbatim, so the stub macros must never
+/// become part of the flags the mirrored tree or the HLS jobs compile with.
 pub(super) fn run_tapacc(
     tapacc: &Path,
     files: &[PathBuf],
@@ -26,13 +26,12 @@ pub(super) fn run_tapacc(
     cflags: &[String],
     target: &str,
     work_dir: &Path,
-    tree: bool,
 ) -> Result<String> {
     let shim = work_dir.join(TAPACC_HLS_SHIM_FILE);
     fs::write(&shim, TAPACC_HLS_SHIM)?;
 
-    // The rewritten-source tree: tapacc writes each task's rewritten text
-    // here and references the files by name in each task's `srcs` manifest.
+    // The rewritten-source tree: tapacc mirrors the user's sources here
+    // and every task's `srcs` manifest names files relative to its root.
     let emit_dir = work_dir.join(crate::tapacc::REWRITTEN_DIR);
     fs::create_dir_all(&emit_dir)?;
 
@@ -42,9 +41,6 @@ pub(super) fn run_tapacc(
     }
     cmd.args(["-top", top, "--target", target]);
     cmd.arg("-emit-dir").arg(&emit_dir);
-    if tree {
-        cmd.arg("-tree");
-    }
     cmd.arg("--");
     for f in cflags {
         cmd.arg(f);

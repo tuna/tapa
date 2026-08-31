@@ -201,6 +201,28 @@ cc_library(
     ],
 )
 
+# The full tapacc pipeline over virtual TUs (index pass, merge, rewrite
+# pass with token recording, tree materialization), shared by the tests that
+# assert on the production shape.
+cc_library(
+    name = "tree_pipeline",
+    testonly = True,
+    srcs = ["tree_pipeline.cpp"],
+    hdrs = ["tree_pipeline.h"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        ":diag_capture",
+        ":macro_splice",
+        ":tree_writer",
+        "//tapacc/frontend:program_builder",
+        "//tapacc/frontend:tapa_stub_decls",
+        CLANG_TOOLING,
+        "@tapa-llvm-project//clang:tooling_syntax",
+        "@tapa-llvm-project//llvm:Support",
+    ],
+)
+
 cc_test(
     name = "tree_writer_test",
     srcs = ["tree_writer_test.cpp"],
@@ -236,16 +258,9 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
-        ":diag_capture",
-        ":macro_splice",
-        ":tree_writer",
-        "//tapacc/frontend:program_builder",
-        "//tapacc/frontend:tapa_stub_decls",
+        ":tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        CLANG_TOOLING,
-        "@tapa-llvm-project//clang:tooling_syntax",
-        "@tapa-llvm-project//llvm:Support",
     ],
 )
 
@@ -255,16 +270,8 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
-        ":diag_capture",
-        ":ignore",
-        ":rewrite",
-        ":tree_writer",
-        ":xilinx",
-        "//tapacc/frontend:program",
-        "//tapacc/frontend:program_builder",
-        "//tapacc/frontend:tapa_stub_decls",
+        ":tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
-        CLANG_TOOLING,
     ],
 )

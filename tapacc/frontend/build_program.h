@@ -10,8 +10,8 @@
 namespace tapa::cc {
 
 // True when `loc` belongs to the selected source files. A null set selects
-// only the main file (the flattened producer); a concrete set selects the
-// rewritten-tree mirror closure by FileID.
+// only the main file; a concrete set selects the rewritten-tree mirror
+// closure by FileID.
 bool IsInSourceFiles(const clang::ASTContext& ctx, clang::SourceLocation loc,
                      const std::set<clang::FileID>* files);
 

@@ -30,8 +30,8 @@ namespace tapa::cc {
 // BeginSourceFileAction (before preprocessing starts) and Consume() exactly
 // once at the top of HandleTranslationUnit: ParseAST finishes the whole
 // top-level loop -- hence the eof token consume() requires -- before handing
-// control to the consumer, so the stream is complete by then. The index and
-// flattened paths never record tokens.
+// control to the consumer, so the stream is complete by then. Only the
+// rewrite pass records; the index pass never edits.
 class TokenRecorder {
  public:
   explicit TokenRecorder(clang::Preprocessor& pp);

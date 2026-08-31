@@ -9,7 +9,6 @@
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
-#include "clang/Rewrite/Core/Rewriter.h"
 #include "edit_sink.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -357,9 +356,8 @@ void ReportLeakedAttrsImpl(llvm::StringRef code, llvm::StringRef task,
                            clang::ASTContext& ctx) {
   const std::string scannable = BlankCommentsAndStrings(code);
   code = scannable;
-  // Every emitted file contains all helpers, so one leaked attribute in a
-  // shared helper would error identically in every task's file; report
-  // once per unique spelling per process.
+  // One leaked attribute would error identically in every task's compile of
+  // the mirrored tree; report once per unique spelling per process.
   static std::set<std::string> reported;
   constexpr llvm::StringLiteral kMarker("[[tapa::");
   for (size_t pos = code.find(kMarker); pos != llvm::StringRef::npos;
@@ -402,150 +400,6 @@ const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
   return model.def->getDescribedFunctionTemplate() != nullptr
              ? model.def->getCanonicalDecl()
              : nullptr;
-}
-
-// One rewritten main-file text. `current` is the task this file is the HLS
-// entry point for -- its body is fully rewritten, and the mangled wrapper of
-// a template specialization is inserted after its invoker -- or null, the
-// shared variant, where EVERY task takes the non-current path (rewritten
-// signature, body stripped) and helpers are rewritten exactly as in any
-// task's file. `label` names the emitted file in diagnostics.
-std::string EmitFile(const Program& program, const TaskModel* current,
-                     const Backend& backend, clang::ASTContext& ctx,
-                     const std::string& label) {
-  clang::Rewriter rewriter(ctx.getSourceManager(), ctx.getLangOpts());
-  EditSink edits(rewriter);
-
-  // The source decls that are template patterns for some task specialization,
-  // and the pattern for the current task (if it is a specialization). These
-  // primaries appear as functions in the file but are keyed in program.tasks by
-  // mangled name, so they are handled here rather than as helpers.
-  std::set<const clang::FunctionDecl*> spec_primaries;
-  for (const auto& [name, model] : program.tasks) {
-    if (const clang::FunctionDecl* primary = SpecPrimary(model)) {
-      spec_primaries.insert(primary);
-    }
-  }
-  const clang::FunctionDecl* current_primary =
-      current == nullptr ? nullptr : SpecPrimary(*current);
-
-  // Non-template task functions: signature rewritten per level; current task
-  // keeps a rewritten body, the rest become signatures.
-  for (const auto& [name, model] : program.tasks) {
-    if (model.is_template_spec) continue;  // reached via its primary below
-    const bool is_top = name == program.top;
-    backend.RewriteSignature(model, is_top, edits);
-    if (current != nullptr && name == current->name) {
-      backend.RewriteTaskFunc(model, is_top, edits);
-      LowerParamAttrs(model.def, backend, edits);
-      LowerFuncAttrs(model.def, backend, edits);
-      LowerAttrs(model.def->getBody(), ctx, backend, edits,
-                 /*in_block=*/false);
-    } else {
-      RemoveFuncAttrs(model.def, edits);
-      backend.StripOtherTask(model.def, edits);
-    }
-  }
-
-  // Remaining source functions: template-task primaries and plain helpers.
-  for (const clang::FunctionDecl* func : program.file_funcs) {
-    if (program.tasks.count(func->getNameAsString()) != 0 &&
-        !program.tasks.at(func->getNameAsString()).is_template_spec) {
-      // A redeclaration of an already-handled task: Vitis rejects `inline`
-      // on tasks, so strip it here too (the definition was handled above).
-      if (!func->isThisDeclarationADefinition()) {
-        RemoveInline(func, edits);
-      }
-      continue;
-    }
-    const clang::FunctionDecl* canonical = func->getCanonicalDecl();
-    if (spec_primaries.count(canonical) != 0) {
-      // A template primary whose specialization(s) are tasks.
-      if (current_primary != nullptr && canonical == current_primary) {
-        // Rewrite the primary template using its OWN parameters: a bare
-        // template-parameter type (e.g. `tapa_mmap_type mmap`) is classified as
-        // a scalar here (no interface pragma) -- only the concrete wrapper
-        // does.
-        TaskModel primary = *current;
-        primary.def = func;
-        backend.RewriteTaskFunc(primary, /*is_top=*/false, edits);
-        LowerParamAttrs(func, backend, edits);
-        LowerFuncAttrs(func, backend, edits);
-        LowerAttrs(func->getBody(), ctx, backend, edits,
-                   /*in_block=*/false);
-      } else {
-        RemoveFuncAttrs(func, edits);
-        backend.StripOtherTask(func, edits);
-      }
-    } else if (GetTapaTaskObject(func->getBody()) != nullptr) {
-      // Unreachable upper-level task: discovery is reachability-based, so it
-      // is not in program.tasks, but its body still invokes sub-tasks and
-      // would no longer type-check against their rewritten signatures. Strip
-      // it like any non-current task.
-      TaskModel model;
-      model.def = func;
-      model.level = TaskLevel::kUpper;
-      backend.RewriteSignature(model, /*is_top=*/false, edits);
-      RemoveFuncAttrs(func, edits);
-      backend.StripOtherTask(func, edits);
-    } else {
-      backend.RewriteHelperFunc(func, edits);
-      // A redeclaration's getBody() recovers the DEFINITION's body across
-      // the chain: lowering here would lower the same attributes a second
-      // time and the second RemoveLoweredAttr would probe an already-removed
-      // range. Only definitions carry lowerable attributes.
-      if (func->isThisDeclarationADefinition()) {
-        LowerParamAttrs(func, backend, edits);
-        LowerFuncAttrs(func, backend, edits);
-        LowerAttrs(func->getBody(), ctx, backend, edits,
-                   /*in_block=*/false);
-      }
-    }
-  }
-
-  // Internal-linkage helpers and methods take the same inline policy as any
-  // other helper: without it they carry no inlining control and the vendor
-  // decides the hierarchy, which is what the keyword rule exists to prevent.
-  //
-  // No name-based exclusion here, and no task-shaped special case either:
-  // nothing in `local_funcs` can be a task. A function that both has
-  // internal linkage and builds a tapa::task() is rejected by the merge
-  // (frontend/program_builder.cpp) before any rewriting runs, so by the
-  // time this loop executes every entry is a plain helper.
-  for (const clang::FunctionDecl* func : program.local_funcs) {
-    backend.RewriteHelperFunc(func, edits);
-    LowerParamAttrs(func, backend, edits);
-    LowerFuncAttrs(func, backend, edits);
-    LowerAttrs(func->getBody(), ctx, backend, edits,
-               /*in_block=*/false);
-  }
-
-  // Emit the mangled wrapper for the current specialization after its invoker.
-  // The shared variant has no current task and no wrapper: the wrapper is the
-  // specialization's entry point and belongs in its own file alone.
-  if (current != nullptr && current->is_template_spec) {
-    InsertWrapper(*current, backend, ctx, edits);
-  }
-
-  const clang::SourceManager& sm = edits.getSourceMgr();
-  const clang::FileID main_file = sm.getMainFileID();
-  const llvm::RewriteBuffer* buffer = rewriter.getRewriteBufferFor(main_file);
-  const std::string code = buffer == nullptr
-                               ? sm.getBufferData(main_file).str()  // no edits
-                               : std::string(buffer->begin(), buffer->end());
-  ReportLeakedAttrs(code, label, ctx);
-  return code;
-}
-
-std::string EmitTaskCode(const Program& program, const TaskModel& task,
-                         const Backend& backend, clang::ASTContext& ctx) {
-  return EmitFile(program, &task, backend, ctx, task.name);
-}
-
-std::string EmitSharedCode(const Program& program, const Backend& backend,
-                           clang::ASTContext& ctx,
-                           const std::string& file_name) {
-  return EmitFile(program, nullptr, backend, ctx, file_name);
 }
 
 namespace {
@@ -692,8 +546,8 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   }
 
   // Remaining source functions: template-task primaries, task redeclarations,
-  // unreachable upper tasks, and helpers. This is the same classification and
-  // per-decl treatment as EmitFile; only task-definition assembly differs.
+  // unreachable upper tasks, and helpers, classified per decl and rewritten
+  // unconditionally -- the rewrites are identical for every task variant.
   for (const clang::FunctionDecl* func : program.file_funcs) {
     const auto task = program.tasks.find(func->getNameAsString());
     if (task != program.tasks.end() && !task->second.is_template_spec) {

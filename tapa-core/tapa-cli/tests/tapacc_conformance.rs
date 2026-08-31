@@ -11,13 +11,13 @@
 //!
 //! # What it actually runs
 //!
-//! `tapacc` is a Clang tool: driving it needs a flattened translation unit
-//! (from `tapa-cpp`), a `-resource-dir` pointing at Clang's staged builtin
-//! headers, and the TAPA/vendor include cascade. Hand-rolling that argv in a
-//! test would create a *second* invocation that can itself drift from the
-//! real one — a fake front-end wearing tapacc's name. So the test drives the
-//! production invocation instead: `tapa analyze`, which already composes
-//! `tapa-cpp` + `tapacc` and drops `tapacc`'s stdout **verbatim** at
+//! `tapacc` is a Clang tool: driving it needs the original translation
+//! units, a `-resource-dir` pointing at Clang's staged builtin headers, and
+//! the TAPA/vendor include cascade. Hand-rolling that argv in a test would
+//! create a *second* invocation that can itself drift from the real one — a
+//! fake front-end wearing tapacc's name. So the test drives the production
+//! invocation instead: `tapa analyze`, which already drives `tapacc` and
+//! drops its stdout **verbatim** at
 //! `<work_dir>/tapacc.json` (see `steps::analyze::TAPACC_ARTIFACT`). Those
 //! bytes are the raw producer output, untouched by analyze's `cflags`/`target`
 //! injection, and they are what gets strict-parsed below.
@@ -40,7 +40,7 @@ use serde_json::Value;
 use tapa_ir::{TaskGraph, TaskLevel};
 
 /// Runfiles-relative path of the `tapa` CLI wrapper (`//tapa-core:tapa`),
-/// whose runfiles stage the sibling `tapacc` / `tapa-cpp` / system headers.
+/// whose runfiles stage the sibling `tapacc` / system headers.
 const ENV_TAPA: &str = "TAPA_CONFORMANCE_TAPA";
 /// Set by the Bazel target only. Turns "inputs missing" from a skip into a
 /// failure, so a broken `cargo_env` block cannot quietly disable the guard.
@@ -330,8 +330,10 @@ fn check_conformance(
 }
 
 /// The per-task half of the conformance guard: every task's `srcs`
-/// manifest names files that exist under the work dir's `rewritten/`
-/// tree and carry the facts the old inline `code` assertions pinned.
+/// manifest names files that exist (non-empty) under the work dir's
+/// `rewritten/` tree, and the tree as a whole keeps the production TAPA
+/// include spelled (it rides the mirrored user headers as a system
+/// include) without embedding the analysis shim.
 fn check_task_sources(graph: &TaskGraph, work: &std::path::Path, flow: &str) {
     for (name, task) in &graph.tasks {
         assert!(
@@ -353,22 +355,42 @@ fn check_task_sources(graph: &TaskGraph, work: &std::path::Path, flow: &str) {
                 "task `{name}`: rewritten source `{src}` is empty \
                  (--target {flow})",
             );
-            assert!(
-                text.contains("#include <tapa.h>"),
-                "task `{name}`: rewritten source `{src}` lost \
-                 `#include <tapa.h>` (--target {flow}); the production TAPA \
-                 include must be discovered as a system include so flattening \
-                 preserves it",
-            );
-            assert!(
-                !text.contains("class istream {"),
-                "task `{name}`: rewritten source `{src}` embeds the stub \
-                 `istream` declaration (--target {flow}); synthesis must \
-                 consume the target implementation selected by \
-                 `#include <tapa.h>`",
-            );
         }
     }
+
+    let mut saw_tapa_include = false;
+    let mut shim_free = true;
+    let mut stack = vec![work.join("rewritten")];
+    while let Some(dir) = stack.pop() {
+        let entries =
+            std::fs::read_dir(&dir).unwrap_or_else(|e| panic!("read {}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("readdir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            let text = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+            saw_tapa_include |= text.contains("#include <tapa.h>");
+            // The analysis shim is force-included into the tapacc parse
+            // only; the mirror must carry the user's own include spelling
+            // so synthesis consumes the real header.
+            shim_free &= !text.contains("__tapacc_shim");
+        }
+    }
+    assert!(
+        saw_tapa_include,
+        "no mirrored file spells `#include <tapa.h>` (--target {flow}); the \
+         production TAPA include must be discovered as a system include so \
+         the mirror preserves it",
+    );
+    assert!(
+        shim_free,
+        "a mirrored file embeds the `__tapacc_shim` declarations \
+         (--target {flow}); synthesis must consume the target \
+         implementation selected by `#include <tapa.h>`",
+    );
 }
 
 #[test]

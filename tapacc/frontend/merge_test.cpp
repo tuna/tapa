@@ -1,13 +1,12 @@
 // Multi-TU merge rules (frontend/program_builder.h): each rule gets a
-// synthetic two-"TU" program driven through the full
-// index -> merge -> rewrite pipeline, the same way tapacc drives the builder
-// over flattened TUs. The two TUs share nothing but the TAPA stub
-// declarations, standing in for the shared inlined headers of flattened
-// input.
+// synthetic program driven through the full index -> merge -> rewrite ->
+// tree-materialization pipeline, the way `tapacc` drives the builder over
+// original sources. Two-TU fixtures share a real virtual header where the
+// contract needs one (one definition site shared by several TUs);
+// otherwise the TUs are independent virtual files. The pipeline harness is
+// codegen/tree_pipeline.h.
 
-#include "program_builder.h"
-
-#include <memory>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -15,53 +14,24 @@
 
 #include "nlohmann/json.hpp"
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
-
-#include "program.h"
-#include "tapa_stub_decls.h"
+#include "codegen/tree_pipeline.h"
 
 namespace tapa::cc {
 namespace {
 
-constexpr char kTuA[] = "tu_a.cpp";
-constexpr char kTuB[] = "tu_b.cpp";
+using test_support::TreePipelineRun;
+using test_support::VirtualTu;
 
-std::unique_ptr<clang::ASTUnit> ParseTu(const std::string& file,
-                                        const std::string& code) {
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      std::string(kTapaStubDecls) + "\n" + code,
-      std::vector<std::string>{"-std=c++17"}, file);
-  EXPECT_NE(ast, nullptr);
-  return ast;
+std::string TempRoot(const std::string& name) {
+  return testing::TempDir() + "/merge_" + name;
 }
 
-struct Merged {
-  std::unique_ptr<clang::ASTUnit> a;
-  std::unique_ptr<clang::ASTUnit> b;
-  ProgramBuilder builder;
-
-  Merged(std::unique_ptr<clang::ASTUnit> ast_a,
-         std::unique_ptr<clang::ASTUnit> ast_b, ProgramBuilder built)
-      : a(std::move(ast_a)), b(std::move(ast_b)), builder(std::move(built)) {}
-};
-
-// Build both TUs, index each, merge. `expect_ok` also runs the rewrite pass
-// so code-level assertions work on the happy paths.
-Merged Build(const std::string& code_a, const std::string& code_b,
-             const std::string& top, bool expect_ok = true) {
-  auto a = ParseTu(kTuA, code_a);
-  auto b = ParseTu(kTuB, code_b);
-  ProgramBuilder builder(top, SynthTarget::kXilinxHls);
-  builder.IndexTu(a->getASTContext());
-  builder.IndexTu(b->getASTContext());
-  EXPECT_EQ(builder.MergeAndDiscover(), expect_ok);
-  if (expect_ok) {
-    builder.RewriteTu(a->getASTContext());
-    builder.RewriteTu(b->getASTContext());
-  }
-  return Merged{std::move(a), std::move(b), std::move(builder)};
+// A two-TU run over independent files, both indexed before the merge.
+TreePipelineRun RunTwoTus(const std::string& name, const std::string& code_a,
+                          const std::string& code_b, const std::string& top) {
+  return test_support::RunTreePipeline(
+      {VirtualTu{"/proj/a.cpp", code_a}, VirtualTu{"/proj/b.cpp", code_b}}, top,
+      TempRoot(name), {"-std=c++17"});
 }
 
 bool Contains(const std::string& haystack, const std::string& needle) {
@@ -92,7 +62,9 @@ constexpr char kCrossCallee[] = R"cpp(
 )cpp";
 
 TEST(Merge, CrossTuInvokeTakesBodyFromOwningTu) {
-  auto m = Build(kCrossCaller, kCrossCallee, "Top");
+  const TreePipelineRun m =
+      RunTwoTus("cross", kCrossCaller, kCrossCallee, "Top");
+  ASSERT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
 
   ASSERT_NE(m.builder.FindTask("Top"), nullptr);
   ASSERT_NE(m.builder.FindTask("Worker"), nullptr);
@@ -105,63 +77,73 @@ TEST(Merge, CrossTuInvokeTakesBodyFromOwningTu) {
   EXPECT_EQ(top.instances.at("Worker").size(), 2u);
   ASSERT_EQ(top.streams.count("q"), 1u);
 
-  // The rewritten text comes from the owning TU: Worker's blob carries TU
-  // B's body and never sees the top, and the top's blob carries TU A's file
-  // (shell body plus Worker's rewritten declaration).
-  const std::string worker_code = m.builder.TaskCode("Worker");
-  EXPECT_TRUE(Contains(worker_code, "out.write(in.read())"));
-  EXPECT_FALSE(Contains(worker_code, "void Top("));
-  const std::string top_code = m.builder.TaskCode("Top");
-  EXPECT_TRUE(Contains(top_code, "void Top("));
-  EXPECT_TRUE(Contains(top_code, "void Worker("));
+  // The definition renders once, in the owning TU's mirror, under its own
+  // guard; the invoking TU carries only the declaration.
+  ASSERT_EQ(m.files.count("a.cpp"), 1u);
+  ASSERT_EQ(m.files.count("b.cpp"), 1u);
+  EXPECT_TRUE(Contains(m.files.at("b.cpp"), "out.write(in.read())"));
+  EXPECT_FALSE(Contains(m.files.at("a.cpp"), "out.write(in.read())"));
 }
 
 TEST(Merge, InvokedTaskWithoutDefinitionAnywhereIsAnError) {
-  auto m = Build(kCrossCaller, "", "Top", /*expect_ok=*/false);
+  const TreePipelineRun m = RunTwoTus("nodef", kCrossCaller, "", "Top");
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'Worker' is invoked by 'Top'"));
-  EXPECT_TRUE(Contains(error, kTuA));
-  EXPECT_TRUE(Contains(error, kTuB));
+  EXPECT_TRUE(Contains(error, "/proj/a.cpp"));
+  EXPECT_TRUE(Contains(error, "/proj/b.cpp"));
 }
 
 TEST(Merge, DeclDefSignatureMismatchNamesTheOtherDefinition) {
   // Same FQN, different parameter signature: the decl/def mismatch case.
-  auto m = Build(kCrossCaller,
-                 "void Worker(tapa::ostream<float>& out) {\n"
-                 "  out.write(1.f);\n"
-                 "}\n",
-                 "Top", /*expect_ok=*/false);
+  const TreePipelineRun m =
+      RunTwoTus("mismatch", kCrossCaller,
+                "void Worker(tapa::ostream<float>& out) {\n"
+                "  out.write(1.f);\n"
+                "}\n",
+                "Top");
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'Worker' is invoked by 'Top'"));
   EXPECT_TRUE(Contains(error, "different signature"));
-  EXPECT_TRUE(Contains(error, kTuB));
+  EXPECT_TRUE(Contains(error, "/proj/b.cpp"));
 }
 
-// ── Rule 2: a header-defined task sighted by several TUs ───────────────
+// ── Rule 2: one task, one definition site ──────────────────────────────
 
-constexpr char kHeaderTask[] = R"cpp(
+// A header task: several TUs include one definition.
+constexpr char kHeaderH[] = R"cpp(
   void H(tapa::istream<float>& in, tapa::ostream<float>& out) {
     out.write(in.read());
   }
 )cpp";
 
-TEST(Merge, IdenticalSightingsDedupe) {
-  // Both TUs carry the same definition (the flattened header) and the same
-  // top: one merged task each, owned by the first TU in input order.
-  const std::string top_body =
-      "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
-      "  tapa::task().invoke(H, x, y);\n"
-      "}\n";
-  auto m = Build(kHeaderTask + top_body, kHeaderTask + top_body, "Top");
+constexpr char kHeaderTop[] =
+    "#include \"shared.h\"\n"
+    "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+    "  tapa::task().invoke(H, x, y);\n"
+    "}\n";
+
+TEST(Merge, HeaderTaskSightedByBothTusMerges) {
+  // Both TUs include the same header definition of H (TU B sights it
+  // without defining anything of its own): one merged task, and the header
+  // mirrors once with its body intact under H's guard.
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/a.cpp", kHeaderTop},
+       VirtualTu{"/proj/b.cpp", "#include \"shared.h\"\n"}},
+      "Top", TempRoot("header"), {"-std=c++17", "-I/proj"},
+      {{"/proj/shared.h", kHeaderH}});
+  EXPECT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
   EXPECT_EQ(m.builder.errors().size(), 0u);
-  EXPECT_EQ(m.builder.EmitJson()["tasks"].size(), 2u);
-  EXPECT_TRUE(Contains(m.builder.TaskCode("H"), "out.write(in.read())"));
+  EXPECT_EQ(nlohmann::json::parse(m.json)["tasks"].size(), 2u);
+  ASSERT_EQ(m.files.count("shared.h"), 1u);
+  EXPECT_TRUE(Contains(m.files.at("shared.h"), "out.write(in.read())"));
 }
 
 TEST(Merge, ConflictingSightingsAreAnError) {
   // Same key (FQN + signature), different shape: TU A's H is a leaf, TU B's
   // H builds a tapa::task.
-  const std::string top_a =
+  const std::string top =
       "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
       "  tapa::task().invoke(H, x, y);\n"
       "}\n";
@@ -170,79 +152,34 @@ TEST(Merge, ConflictingSightingsAreAnError) {
       "void H(tapa::istream<float>& in, tapa::ostream<float>& out) {\n"
       "  tapa::task().invoke(Leaf, out);\n"
       "}\n";
-  auto m = Build(std::string(kHeaderTask) + top_a, upper_h, "Top",
-                 /*expect_ok=*/false);
+  const TreePipelineRun m =
+      RunTwoTus("conflict", std::string(kHeaderH) + top, upper_h, "Top");
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'H' is defined differently"));
-  EXPECT_TRUE(Contains(error, kTuA));
-  EXPECT_TRUE(Contains(error, kTuB));
+  EXPECT_TRUE(Contains(error, "/proj/a.cpp"));
+  EXPECT_TRUE(Contains(error, "/proj/b.cpp"));
 }
 
-// ── Shared files: cross-TU helper definitions ──────────────────────────
-
-// TU A owns the top and the helper that TU B's task calls; TU B owns the
-// leaf task the top invokes. Both directions of the cross-TU boundary.
-constexpr char kHelperOwnerTuA[] = R"cpp(
-  float Half(float v) { return v / 2.f; }
-  void Worker(tapa::istream<float>& in, tapa::ostream<float>& out);
-  void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {
-    tapa::stream<float> q;
-    tapa::task().invoke(Worker, x, q).invoke(Worker, q, y);
-  }
-)cpp";
-
-constexpr char kHelperUserTuB[] = R"cpp(
-  float Half(float v);
-  void Worker(tapa::istream<float>& in, tapa::ostream<float>& out) {
-    for (int i = 0; i < 3; ++i) out.write(Half(in.read()));
-  }
-)cpp";
-
-TEST(Merge, TaskSrcsListEveryOtherTusSharedFile) {
-  // A task's manifest is its own blob plus every OTHER TU's shared file,
-  // in input-file order; the owning TU's shared file is not its own src.
-  auto m = Build(kHelperOwnerTuA, kHelperUserTuB, "Top");
-  const nlohmann::json tasks = m.builder.EmitJson()["tasks"];
-  ASSERT_EQ(tasks.size(), 2u);
-  EXPECT_EQ(tasks.at("Top")["srcs"],
-            nlohmann::json::array({"Top.cpp", "tu_b-shared.cpp"}));
-  EXPECT_EQ(tasks.at("Worker")["srcs"],
-            nlohmann::json::array({"Worker.cpp", "tu_a-shared.cpp"}));
-}
-
-TEST(Merge, SharedFileCarriesForeignHelperAndStubsEveryTask) {
-  // TU A's shared file is TU A's text with no current task: Half keeps its
-  // rewritten definition (what TU B's Worker blob only declares), while
-  // every task — Top's own definition included — is a rewritten signature.
-  auto m = Build(kHelperOwnerTuA, kHelperUserTuB, "Top");
-  const std::string shared = m.builder.SharedCode(0);
-  EXPECT_TRUE(Contains(shared, "return v / 2.f;"));
-  EXPECT_TRUE(Contains(shared, "#pragma HLS inline off"));
-  EXPECT_TRUE(Contains(shared, "void Top("));
-  EXPECT_FALSE(Contains(shared, ".invoke("));
-  EXPECT_FALSE(Contains(shared, "tapa::stream<float> q"));
-  EXPECT_FALSE(Contains(shared, "out.write(Half(in.read())"));
-
-  // TU B's shared file mirrors that shape: Worker stubbed, no helper
-  // definition of its own to carry.
-  const std::string shared_b = m.builder.SharedCode(1);
-  EXPECT_TRUE(Contains(shared_b, "void Worker("));
-  EXPECT_FALSE(Contains(shared_b, "out.write(Half(in.read())"));
-}
-
-TEST(Merge, DuplicateTuBasenamesAreAnError) {
-  // Two TUs, distinct paths, one basename: no distinct shared file name
-  // exists for them, so the merge refuses to run.
-  auto a = ParseTu("d1/dup.cpp", kHelperOwnerTuA);
-  auto b = ParseTu("d2/dup.cpp", kHelperUserTuB);
-  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
-  builder.IndexTu(a->getASTContext());
-  builder.IndexTu(b->getASTContext());
-  EXPECT_FALSE(builder.MergeAndDiscover());
-  const std::string error = OneError(builder);
-  EXPECT_TRUE(Contains(error, "share the basename 'dup'"));
-  EXPECT_TRUE(Contains(error, "d1/dup.cpp"));
-  EXPECT_TRUE(Contains(error, "d2/dup.cpp"));
+TEST(Merge, SecondDefinitionSiteIsAnError) {
+  // Same identity, two definition sites: one mirror cannot honor both.
+  // LeafB must be discovered (Top invokes it) for the site rule to fire.
+  const std::string leaf_b =
+      "void LeafB(tapa::istream<float>& in, tapa::ostream<float>& out) {\n"
+      "  out.write(in.read());\n"
+      "}\n";
+  const std::string top_a =
+      "void LeafB(tapa::istream<float>& in, tapa::ostream<float>& out);\n"
+      "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+      "  tapa::task().invoke(LeafB, x, y);\n"
+      "}\n";
+  const TreePipelineRun m =
+      RunTwoTus("twosites", top_a + leaf_b, leaf_b, "Top");
+  EXPECT_FALSE(m.ok);
+  const std::string error = OneError(m.builder);
+  EXPECT_TRUE(Contains(error, "'LeafB' is defined at two locations"));
+  EXPECT_TRUE(Contains(error, "/proj/a.cpp"));
+  EXPECT_TRUE(Contains(error, "/proj/b.cpp"));
 }
 
 // ── Rule 3: template specializations merge by mangled key ──────────────
@@ -256,8 +193,8 @@ constexpr char kTemplate[] = R"cpp(
 
 TEST(Merge, TemplateSpecializationSightedInBothTusMerges) {
   // TU A's top instantiates Pass<float>; TU B's (unreached) upper task
-  // instantiates it too. One merged task, mangled key, wrapper after the
-  // invoking top in the owning TU.
+  // instantiates it too. One merged task under its mangled key, whose
+  // wrapper sits in the owning TU's mirror after the invoking top.
   const std::string tu_a = std::string(kTemplate) +
                            "void Top(tapa::istream<float>& x, "
                            "tapa::ostream<float>& y) {\n"
@@ -268,9 +205,10 @@ TEST(Merge, TemplateSpecializationSightedInBothTusMerges) {
                            "tapa::ostream<float>& y) {\n"
                            "  tapa::task().invoke(Pass<float>, x, y);\n"
                            "}\n";
-  auto m = Build(tu_a, tu_b, "Top");
+  const TreePipelineRun m = RunTwoTus("template", tu_a, tu_b, "Top");
+  ASSERT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
 
-  const nlohmann::json tasks = m.builder.EmitJson()["tasks"];
+  const nlohmann::json tasks = nlohmann::json::parse(m.json)["tasks"];
   ASSERT_EQ(tasks.size(), 2u);
   std::string spec_name;
   for (const auto& [name, task] : tasks.items()) {
@@ -278,39 +216,47 @@ TEST(Merge, TemplateSpecializationSightedInBothTusMerges) {
   }
   EXPECT_EQ(spec_name.rfind("tapa_mangled", 0), 0u);
   EXPECT_EQ(tasks.at(spec_name)["readable_name"], "Pass<float>");
-  // The wrapper for the mangled entry point sits after the invoking top.
-  EXPECT_TRUE(
-      Contains(m.builder.TaskCode(spec_name), "void " + spec_name + "("));
+  // The wrapper for the mangled entry point sits after the invoking top,
+  // inside the specialization's own guard.
+  EXPECT_TRUE(Contains(m.files.at("a.cpp"), "void " + spec_name + "("))
+      << m.files.at("a.cpp");
 }
 
 // ── Rule 4: internal-linkage tasks are a hard error ────────────────────
 
 TEST(Merge, InternalLinkageUpperTaskIsAnError) {
-  auto m = Build(
-      "template <typename T>\n"
-      "void Pass(tapa::istream<T>& in, tapa::ostream<T>& out) {}\n"
-      "static void Hidden(tapa::istream<float>& in) {\n"
-      "  tapa::ostream<float> out;\n"
-      "  tapa::task().invoke(Pass<float>, in, out);\n"
-      "}\n"
-      "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
-      "  tapa::task().invoke(Pass<float>, x, y);\n"
-      "}\n",
-      "", "Top", /*expect_ok=*/false);
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{
+          "/proj/a.cpp",
+          "template <typename T>\n"
+          "void Pass(tapa::istream<T>& in, tapa::ostream<T>& out) {}\n"
+          "static void Hidden(tapa::istream<float>& in) {\n"
+          "  tapa::ostream<float> out;\n"
+          "  tapa::task().invoke(Pass<float>, in, out);\n"
+          "}\n"
+          "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+          "  tapa::task().invoke(Pass<float>, x, y);\n"
+          "}\n"}},
+      "Top", TempRoot("internal_upper"), {"-std=c++17"});
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'Hidden'"));
   EXPECT_TRUE(Contains(error, "external linkage"));
 }
 
 TEST(Merge, InternalLinkageInvokedTaskIsAnError) {
-  auto m = Build(
-      "namespace {\n"
-      "void SLeaf(tapa::istream<float>& in, tapa::ostream<float>& out) {}\n"
-      "}\n"
-      "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
-      "  tapa::task().invoke(SLeaf, x, y);\n"
-      "}\n",
-      "", "Top", /*expect_ok=*/false);
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{
+          "/proj/a.cpp",
+          "namespace {\n"
+          "void SLeaf(tapa::istream<float>& in, "
+          "tapa::ostream<float>& out) {}\n"
+          "}\n"
+          "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+          "  tapa::task().invoke(SLeaf, x, y);\n"
+          "}\n"}},
+      "Top", TempRoot("internal_invoked"), {"-std=c++17"});
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'SLeaf' invoked by 'Top'"));
   EXPECT_TRUE(Contains(error, "internal linkage"));
@@ -319,37 +265,45 @@ TEST(Merge, InternalLinkageInvokedTaskIsAnError) {
 // ── Rule 5: the top ────────────────────────────────────────────────────
 
 TEST(Merge, TopNotFoundListsEveryTu) {
-  auto m = Build(kCrossCaller, kCrossCallee, "DoesNotExist",
-                 /*expect_ok=*/false);
+  const TreePipelineRun m =
+      RunTwoTus("notop", kCrossCaller, kCrossCallee, "DoesNotExist");
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "top-level task 'DoesNotExist' not found"));
-  EXPECT_TRUE(Contains(error, kTuA));
-  EXPECT_TRUE(Contains(error, kTuB));
+  EXPECT_TRUE(Contains(error, "/proj/a.cpp"));
+  EXPECT_TRUE(Contains(error, "/proj/b.cpp"));
 }
 
-TEST(Merge, TopSightedInSeveralTusIsTheHeaderDedupeCase) {
-  // Identical top definitions in both TUs merge into one task (rule 2
-  // applied to the top), not a redefinition.
-  const std::string code =
+TEST(Merge, HeaderTopSightedBySeveralTusIsOneDefinition) {
+  // The top defined in a header both TUs include: one definition site, one
+  // merged task (the header dedupe case applied to the top).
+  const std::string header =
       "void Leaf(tapa::istream<float>& in, tapa::ostream<float>& out) {}\n"
       "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
       "  tapa::task().invoke(Leaf, x, y);\n"
       "}\n";
-  auto m = Build(code, code, "Top");
+  const std::string tu = "#include \"shared.h\"\n";
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/a.cpp", tu}, VirtualTu{"/proj/b.cpp", tu}}, "Top",
+      TempRoot("headertop"), {"-std=c++17", "-I/proj"},
+      {{"/proj/shared.h", header}});
+  EXPECT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
   EXPECT_TRUE(m.builder.errors().empty());
-  EXPECT_EQ(m.builder.EmitJson()["tasks"].size(), 2u);
+  EXPECT_EQ(nlohmann::json::parse(m.json)["tasks"].size(), 2u);
 }
 
 TEST(Merge, DistinctTopDefinitionsAreAnError) {
   // Same plain name, different signatures: two definitions of the top.
-  auto m = Build(
-      "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
-      "  tapa::task();\n"
-      "}\n",
-      "void Top(tapa::istream<float>& x) {\n"
-      "  tapa::task();\n"
-      "}\n",
-      "Top", /*expect_ok=*/false);
+  const TreePipelineRun m =
+      RunTwoTus("twotops",
+                "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+                "  tapa::task();\n"
+                "}\n",
+                "void Top(tapa::istream<float>& x) {\n"
+                "  tapa::task();\n"
+                "}\n",
+                "Top");
+  EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'Top' has multiple definitions"));
 }
@@ -376,53 +330,49 @@ constexpr char kProgram[] = R"cpp(
   }
 )cpp";
 
+TreePipelineRun BuildSingle() {
+  auto run =
+      test_support::RunTreePipeline({VirtualTu{"/proj/single.cpp", kProgram}},
+                                    "Top", TempRoot("single"), {"-std=c++17"});
+  EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  return run;
+}
+
 TEST(Merge, SingleTuReachableSetAndLevels) {
-  auto ast = ParseTu("single.cpp", kProgram);
-  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  ASSERT_TRUE(builder.MergeAndDiscover());
-  builder.RewriteTu(ast->getASTContext());
+  const TreePipelineRun b = BuildSingle();
 
   // Top, Mid, Leaf, LeafIgn, TLeaf<float> — Unreached stays out and the
   // ignored upper's children stay out with it.
-  EXPECT_EQ(builder.EmitJson()["tasks"].size(), 5u);
-  EXPECT_NE(builder.FindTask("Top"), nullptr);
-  EXPECT_NE(builder.FindTask("Mid"), nullptr);
-  EXPECT_NE(builder.FindTask("Leaf"), nullptr);
-  EXPECT_NE(builder.FindTask("LeafIgn"), nullptr);
-  EXPECT_EQ(builder.FindTask("Unreached"), nullptr);
-  EXPECT_EQ(builder.FindTask("Top")->level, TaskLevel::kUpper);
-  EXPECT_EQ(builder.FindTask("Mid")->level, TaskLevel::kUpper);
-  EXPECT_EQ(builder.FindTask("Leaf")->level, TaskLevel::kLower);
+  EXPECT_EQ(nlohmann::json::parse(b.json)["tasks"].size(), 5u);
+  EXPECT_NE(b.builder.FindTask("Top"), nullptr);
+  EXPECT_NE(b.builder.FindTask("Mid"), nullptr);
+  EXPECT_NE(b.builder.FindTask("Leaf"), nullptr);
+  EXPECT_NE(b.builder.FindTask("LeafIgn"), nullptr);
+  EXPECT_EQ(b.builder.FindTask("Unreached"), nullptr);
+  EXPECT_EQ(b.builder.FindTask("Top")->level, TaskLevel::kUpper);
+  EXPECT_EQ(b.builder.FindTask("Mid")->level, TaskLevel::kUpper);
+  EXPECT_EQ(b.builder.FindTask("Leaf")->level, TaskLevel::kLower);
   // Ignored tasks are lower-level (their children are user-supplied RTL).
-  EXPECT_EQ(builder.FindTask("LeafIgn")->level, TaskLevel::kLower);
-  EXPECT_EQ(builder.FindTask("LeafIgn")->target, SynthTarget::kIgnore);
-  EXPECT_EQ(builder.FindTask("Leaf")->target, SynthTarget::kXilinxHls);
+  EXPECT_EQ(b.builder.FindTask("LeafIgn")->level, TaskLevel::kLower);
+  EXPECT_EQ(b.builder.FindTask("LeafIgn")->target, SynthTarget::kIgnore);
+  EXPECT_EQ(b.builder.FindTask("Leaf")->target, SynthTarget::kXilinxHls);
 }
 
-TEST(Merge, SingleTuSrcsStayOneFilePerTask) {
-  // No second TU means no shared file exists to reference: the manifest is
-  // byte-identical to the pre-shared-file single-TU output.
-  auto ast = ParseTu("single.cpp", kProgram);
-  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  ASSERT_TRUE(builder.MergeAndDiscover());
-  builder.RewriteTu(ast->getASTContext());
-
-  const nlohmann::json tasks = builder.EmitJson()["tasks"];
+TEST(Merge, SingleTuSrcsNameTheTuUnderOneIncludeRoot) {
+  // Every task compiles the same mirrored TU; one define selects its
+  // definition.
+  const TreePipelineRun b = BuildSingle();
+  const nlohmann::json tasks = nlohmann::json::parse(b.json)["tasks"];
+  ASSERT_FALSE(tasks.empty());
   for (const auto& [name, task] : tasks.items()) {
-    ASSERT_EQ(task["srcs"], nlohmann::json::array({name + ".cpp"}));
+    EXPECT_EQ(task["srcs"], nlohmann::json::array({"single.cpp"})) << name;
+    EXPECT_EQ(task["include_dirs"], nlohmann::json::array({""})) << name;
   }
 }
 
 TEST(Merge, SingleTuTemplateSpecialization) {
-  auto ast = ParseTu("single.cpp", kProgram);
-  ProgramBuilder builder("Top", SynthTarget::kXilinxHls);
-  builder.IndexTu(ast->getASTContext());
-  ASSERT_TRUE(builder.MergeAndDiscover());
-  builder.RewriteTu(ast->getASTContext());
-
-  const nlohmann::json tasks = builder.EmitJson()["tasks"];
+  const TreePipelineRun b = BuildSingle();
+  const nlohmann::json tasks = nlohmann::json::parse(b.json)["tasks"];
   for (const auto& [name, task] : tasks.items()) {
     if (name.rfind("tapa_mangled", 0) == 0) {
       EXPECT_EQ(task["readable_name"], "TLeaf<float>");
@@ -431,6 +381,124 @@ TEST(Merge, SingleTuTemplateSpecialization) {
     }
   }
   FAIL() << "no mangled template-specialization task in " << tasks.dump();
+}
+
+// ── The mirrored tree of a multi-TU composition ────────────────────────
+
+// The composition under test: a shared header declaring every task and
+// defining a template task, TU A owning the top and the helper TU B calls,
+// TU B owning one leaf. Mirrors the shape of tests/apps/multi-file.
+constexpr char kSharedHeader[] = R"cpp(
+  void LeafA(tapa::istream<float>& in, tapa::ostream<float>& out);
+  void LeafB(tapa::istream<float>& in, tapa::ostream<float>& out);
+  void Top(tapa::istream<float>& in, tapa::ostream<float>& out);
+  float Half(float v);
+  template <typename T>
+  void Pass(tapa::istream<T>& in, tapa::ostream<T>& out) {
+    out.write(in.read());
+  }
+)cpp";
+
+constexpr char kTuA[] = R"cpp(
+#include "shared.h"
+  float Half(float v) { return v / 2.f; }
+  void LeafA(tapa::istream<float>& in, tapa::ostream<float>& out) {
+    out.write(Half(in.read()));
+  }
+  void Top(tapa::istream<float>& in, tapa::ostream<float>& out) {
+    tapa::stream<float> q, r;
+    tapa::task()
+        .invoke(LeafA, in, q)
+        .invoke(LeafB, q, r)
+        .invoke(Pass<float>, r, out);
+  }
+)cpp";
+
+constexpr char kTuB[] = R"cpp(
+#include "shared.h"
+  void LeafB(tapa::istream<float>& in, tapa::ostream<float>& out) {
+    out.write(Half(in.read()));
+  }
+)cpp";
+
+TreePipelineRun RunComposition(const std::string& name) {
+  return test_support::RunTreePipeline(
+      {VirtualTu{"/proj/a.cpp", kTuA}, VirtualTu{"/proj/b.cpp", kTuB}}, "Top",
+      TempRoot(name), {"-std=c++17", "-I/proj"},
+      {{"/proj/shared.h", kSharedHeader}});
+}
+
+TEST(TreeMerge, TwoTusMergeIntoOneGuardedTree) {
+  const TreePipelineRun run = RunComposition("twotu");
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+
+  // The merge itself: one task per definition, no diagnostics.
+  ASSERT_TRUE(run.builder.errors().empty());
+  const nlohmann::json tasks = nlohmann::json::parse(run.json)["tasks"];
+  ASSERT_EQ(tasks.size(), 4u) << "Top, LeafA, LeafB and the Pass<float> spec";
+  std::size_t specs = 0;
+  for (const auto& [name, task] : tasks.items()) {
+    specs += task["readable_name"] == "Pass<float>" ? 1 : 0;
+  }
+  EXPECT_EQ(specs, 1u);
+
+  // The tree: both TUs and the shared header, each mirrored once.
+  ASSERT_EQ(run.files.size(), 3u);
+  for (const char* key : {"a.cpp", "b.cpp", "shared.h"}) {
+    EXPECT_NE(run.files.find(key), run.files.end())
+        << "missing mirror of " << key;
+  }
+
+  // The shared header rewrote identically in both TUs: the template
+  // primary carries the task guard even though only TU A instantiates it,
+  // and the cross-TU declarations survive untouched.
+  const std::string& header = run.files.at("shared.h");
+  EXPECT_TRUE(Contains(header, "#ifdef TAPA_TASK_DEF_"));
+  EXPECT_TRUE(Contains(header, "void Top(tapa::istream<float>& in"));
+  EXPECT_TRUE(Contains(header, "float Half(float v);"));
+}
+
+TEST(TreeMerge, TaskSrcsNameEveryTuIdentically) {
+  const TreePipelineRun run = RunComposition("srcs");
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  const nlohmann::json tasks = nlohmann::json::parse(run.json)["tasks"];
+  ASSERT_FALSE(tasks.empty());
+  for (const auto& [name, task] : tasks.items()) {
+    EXPECT_EQ(task["srcs"], nlohmann::json::array({"a.cpp", "b.cpp"}))
+        << "task " << name;
+    EXPECT_EQ(task["include_dirs"], nlohmann::json::array({""}))
+        << "task " << name;
+    const std::string define = task["defines"].at(0);
+    EXPECT_NE(define.find("TAPA_TASK_DEF_"), std::string::npos) << name;
+  }
+}
+
+TEST(TreeMerge, DivergentHeaderRewriteFailsTheRewritePass) {
+  // A header whose rewrite is context-dependent: the helper's stream depth
+  // comes from a macro each TU defines differently, so the two TUs compute
+  // different bytes for the one shared mirror. The second TU's rewrite
+  // pass reports the hard divergence diagnostic and no tree is written.
+  const std::string header =
+      "void Top(tapa::istream<float>& in, tapa::ostream<float>& out);\n"
+      "void Fill(tapa::ostream<float>& out) {\n"
+      "  tapa::stream<float, DEPTH> s;\n"
+      "  out.write(1.f);\n"
+      "}\n";
+  const std::string top =
+      "#include \"shared.h\"\n"
+      "void Top(tapa::istream<float>& in, tapa::ostream<float>& out) {\n"
+      "  tapa::task().invoke(Fill, out);\n"
+      "}\n";
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/a.cpp", "#define DEPTH 2\n" + top},
+       VirtualTu{"/proj/b.cpp", "#define DEPTH 3\n#include \"shared.h\"\n"}},
+      "Top", TempRoot("diverge"), {"-std=c++17", "-I/proj"},
+      {{"/proj/shared.h", header}});
+  EXPECT_FALSE(run.ok);
+  ASSERT_EQ(run.diags.size(), 1u) << "the divergence must fail the rewrite";
+  EXPECT_TRUE(Contains(run.diags.front(), "rewritten differently"))
+      << run.diags.front();
+  EXPECT_TRUE(run.files.empty()) << "a failed rewrite writes no tree";
 }
 
 }  // namespace

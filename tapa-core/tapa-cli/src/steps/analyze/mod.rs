@@ -1,12 +1,10 @@
 //! `tapa analyze` orchestration.
 //!
-//! Runs the default `tapa-cpp` + `tapacc` pipeline, or hands original sources
-//! directly to tapacc under the internal tree switch, then writes the work
-//! dir's one state file,
-//! `<work_dir>/tapa.json`, plus the verbatim `tapacc` output as a debug
-//! artifact.
+//! Hands the original input translation units to `tapacc`, which mirrors and
+//! rewrites them into `<work_dir>/rewritten/` as one guarded source tree, then
+//! writes the work dir's one state file, `<work_dir>/tapa.json`, plus the
+//! verbatim `tapacc` output as a debug artifact.
 
-use std::env;
 use std::fs;
 use std::path::PathBuf;
 
@@ -29,11 +27,9 @@ use crate::tapacc::discover::find_clang_binary;
 const TAPACC_ARTIFACT: &str = "tapacc.json";
 
 mod build_design;
-mod run_flatten;
 mod run_tapacc;
 
 use build_design::{flatten_graph_value, is_top_leaf};
-use run_flatten::run_flatten;
 use run_tapacc::run_tapacc;
 
 /// Target flows accepted by `tapa analyze`. Kebab-case spellings match
@@ -108,31 +104,18 @@ pub struct AnalyzeArgs {
     /// and pass them down explicitly.
     #[arg(long = "tapacc", value_name = "FILE")]
     pub tapacc: Option<PathBuf>,
-
-    /// Explicit path to the `tapa-cpp` (clang) binary. Same rationale
-    /// as `--tapacc`.
-    #[arg(long = "tapa-cpp", value_name = "FILE")]
-    pub tapa_cpp: Option<PathBuf>,
 }
 
-/// Run tapacc on each input, merge the task graphs, and write
-/// `<work_dir>/tapa.json` (plus the flattened sources when
-/// `--flatten-hierarchy` is set).
+/// Run tapacc on each input and write the work dir.
+///
+/// Merges the task graphs into `<work_dir>/tapa.json` and materializes the
+/// mirrored source tree under `<work_dir>/rewritten/`; with
+/// `--flatten-hierarchy` the stored graph is the leaf-flattened one.
 pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
-    // `--tapacc`/`--tapa-cpp` override the walk-up `find_resource`
-    // search. Used by the Bazel driver to inject the exact sandbox
-    // paths; direct `tapa analyze` runs on a developer machine still
-    // fall through to the default discovery path.
-    let tree_mode = env::var("TAPA_ANALYZE_TREE").is_ok_and(|value| value == "1");
-    let tapa_cpp = if tree_mode {
-        None
-    } else {
-        Some(if let Some(p) = args.tapa_cpp.as_ref() {
-            p.clone()
-        } else {
-            find_clang_binary("tapa-cpp-binary")?
-        })
-    };
+    // `--tapacc` overrides the walk-up `find_resource` search. Used by
+    // the Bazel driver to inject the exact sandbox paths; direct
+    // `tapa analyze` runs on a developer machine still fall through to
+    // the default discovery path.
     let tapacc = if let Some(p) = args.tapacc.as_ref() {
         p.clone()
     } else {
@@ -149,19 +132,14 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
 
     let work_dir = ctx.work_dir.as_path();
     fs::create_dir_all(work_dir)?;
-    let input_files = match tapa_cpp {
-        Some(ref tapa_cpp) => run_flatten(tapa_cpp, &args.input_files, &all_cflags, work_dir)?,
-        None => args.input_files.clone(),
-    };
     let target_str = args.target.as_str();
     let stdout = run_tapacc(
         &tapacc,
-        &input_files,
+        &args.input_files,
         &args.top,
         &all_cflags,
         target_str,
         work_dir,
-        tree_mode,
     )?;
 
     // Persist the raw bytes first, so a `tapacc` output that fails the parse
@@ -229,30 +207,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
 
-        // Plant fake `tapa-cpp` and `tapacc` binaries that satisfy
-        // `find_clang_binary`'s `--version` probe and emit a fixed graph.
-        let tapa_cpp_dir = root.join("tapa-cpp");
+        // Plant a fake `tapacc` binary that satisfies
+        // `find_clang_binary`'s `--version` probe and emits a fixed graph.
         let tapacc_dir = root.join("tapacc");
-        fs::create_dir_all(&tapa_cpp_dir).expect("mkdir tapa-cpp");
         fs::create_dir_all(&tapacc_dir).expect("mkdir tapacc");
-        let tapa_cpp = tapa_cpp_dir.join("tapa-cpp");
         let tapacc = tapacc_dir.join("tapacc");
-
-        // tapa-cpp: `--version` prints a parseable line; otherwise it
-        // writes its trailing positional input file's bytes to stdout.
-        fs::write(
-            &tapa_cpp,
-            "#!/bin/sh\n\
-             if [ \"$1\" = \"--version\" ]; then\n\
-               echo 'fake tapa-cpp version 18.0.0'\n\
-               exit 0\n\
-             fi\n\
-             # Last argument is the input file.\n\
-             eval last=\\${$#}\n\
-             cat \"$last\"\n",
-        )
-        .expect("write tapa-cpp");
-        fs::set_permissions(&tapa_cpp, fs::Permissions::from_mode(0o755)).expect("chmod tapa-cpp");
 
         // tapacc: `--version` is parseable; otherwise it emits a fixed
         // tapacc-shaped task graph on stdout.
@@ -277,7 +236,7 @@ mod tests {
         let input_file = root.join("vadd.cpp");
         fs::write(&input_file, b"void VecAdd() {}\n").expect("write vadd.cpp");
 
-        // Steer `find_resource` at `root` so the planted binaries win.
+        // Steer `find_resource` at `root` so the planted binary wins.
         std::env::set_var("TAPA_CLI_SEARCH_ANCHOR", root);
         let work_dir = root.join("work");
         let globals = GlobalArgs::try_parse_from([

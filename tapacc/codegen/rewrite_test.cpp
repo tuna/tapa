@@ -1,26 +1,30 @@
-#include "rewrite.h"
+// The per-decl rewrite rules of the guarded rewritten tree: attribute
+// lowering, signature rewrites, interface pragmas, and the exact stub/guard
+// shape — asserted on the mirrored TU the production pipeline renders, so
+// what fails here fails at HLS. Byte-sensitive fixtures use the `tapa`
+// raw-string delimiter, not `cpp`: clang-format maps C++ delimiters to the
+// C++ language and reflows their content, and no language is mapped to
+// `tapa`.
 
-#include <algorithm>
-#include <memory>
 #include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
+#include "llvm/ADT/StringRef.h"
 
-#include "diag_capture.h"
-#include "frontend/program.h"
-#include "frontend/program_builder.h"
-#include "frontend/tapa_stub_decls.h"
-#include "ignore.h"
-#include "tree_writer.h"
-#include "xilinx.h"
+#include "tree_pipeline.h"
 
 namespace tapa::cc {
 namespace {
+
+using test_support::TreePipelineRun;
+using test_support::VirtualTu;
+
+// The out root of the run under test: one per test, under the gtest tmp.
+std::string TempRoot(const std::string& name) {
+  return testing::TempDir() + "/rewrite_" + name;
+}
 
 constexpr char kVadd[] = R"cpp(
   void Mmap2Stream(tapa::mmap<const float> mem, unsigned long long n,
@@ -59,29 +63,19 @@ constexpr char kVadd[] = R"cpp(
   }
 )cpp";
 
-struct Emitted {
-  std::unique_ptr<clang::ASTUnit> ast;
-  Program program;
-};
-
-// Index, merge, and return the per-TU view of a single-TU program: the
-// same Program shape EmitTaskCode consumed before the merge, with TU-local
-// decl pointers.
-Program ViewOf(clang::ASTContext& ctx, llvm::StringRef top) {
-  ProgramBuilder builder(top.str(), SynthTarget::kXilinxHls);
-  builder.IndexTu(ctx);
-  EXPECT_TRUE(builder.MergeAndDiscover());
-  return builder.TuView(ctx);
+// One clean single-TU run over `code`, top `top`: the mirrored TU the way
+// tapacc writes it.
+std::string Rewrite(const std::string& name, const std::string& code,
+                    const std::string& top) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/" + name + ".cpp", code}}, top, TempRoot(name),
+      {"-std=c++17"});
+  EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  EXPECT_EQ(run.files.size(), 1u) << "one TU, no includes";
+  return run.files.at(name + ".cpp");
 }
 
-Emitted Build() {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kVadd;
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "VecAdd");
-  return Emitted{std::move(ast), std::move(program)};
-}
+std::string RewriteVadd() { return Rewrite("vadd", kVadd, "VecAdd"); }
 
 bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
@@ -155,44 +149,12 @@ constexpr char kAttrs[] = R"cpp(
   }
   void Top(tapa::mmap<const float> mem, tapa::ostream<float>& out,
            unsigned long long n) {
-    tapa::stream<float, 2> q;
-    tapa::task().invoke(AttrTask, mem, q, n);
+    tapa::task().invoke(AttrTask, mem, out, n);
   }
 )cpp";
 
-struct AttrEmitted {
-  std::unique_ptr<clang::ASTUnit> ast;
-  Program program;
-};
-
-struct PrintingDiagConsumer : clang::DiagnosticConsumer {
-  void HandleDiagnostic(clang::DiagnosticsEngine::Level,
-                        const clang::Diagnostic& info) override {
-    llvm::SmallVector<char, 128> msg;
-    info.FormatDiagnostic(msg);
-    llvm::errs() << "diag: " << llvm::StringRef(msg.data(), msg.size()) << "\n";
-  }
-};
-
-AttrEmitted BuildAttrs() {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kAttrs;
-  PrintingDiagConsumer diag;
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), &diag);
-  EXPECT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "Top");
-  return AttrEmitted{std::move(ast), std::move(program)};
-}
-
 TEST(Rewrite, StmtAttrsLowerToPragmas) {
-  auto e = BuildAttrs();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code =
-      EmitTaskCode(e.program, e.program.tasks.at("AttrTask"), backend,
-                   e.ast->getASTContext());
+  const std::string code = Rewrite("attrs", kAttrs, "Top");
   // An `if` region takes the pragma INSIDE its braces: before the `if`
   // would hand the constraint to the enclosing region instead.
   EXPECT_TRUE(
@@ -230,11 +192,7 @@ TEST(Rewrite, StmtAttrsLowerToPragmas) {
 }
 
 TEST(Rewrite, DeclAttrsAndInlineRuleLowerToPragmas) {
-  auto e = BuildAttrs();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code =
-      EmitTaskCode(e.program, e.program.tasks.at("AttrTask"), backend,
-                   e.ast->getASTContext());
+  const std::string code = Rewrite("attrs", kAttrs, "Top");
   EXPECT_TRUE(Contains(code,
                        "#pragma HLS array_partition variable = a type = cyclic "
                        "factor = 32"));
@@ -293,43 +251,26 @@ TEST(Rewrite, DeclAttrsAndInlineRuleLowerToPragmas) {
   EXPECT_TRUE(Contains(code, "inline T Twice"));
 }
 
-// Counts errors so a rejected attribute is distinguishable from one that
-// was accepted and lowered.
-struct CountingDiagConsumer : clang::DiagnosticConsumer {
-  int errors = 0;
-  void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
-                        const clang::Diagnostic&) override {
-    if (level >= clang::DiagnosticsEngine::Error) ++errors;
-  }
-};
-
 TEST(Rewrite, OutOfRangePositionalIntIsRejected) {
   // -1 is the "omitted" sentinel for the positional factor/dim pair. Any
   // other negative used to be zero-extended into the uint32 and emitted
   // verbatim (`factor = -7`), because factor was parsed as a plain uint32
   // while dim went through the sentinel-aware parser.
-  const std::string code = std::string(kTapaStubDecls) + R"cpp(
-    void Task(tapa::ostream<float>& out) {
-      [[tapa::partition("cyclic", -7)]] float a[32];
-      out.write(a[0]);
-    }
-    void Top(tapa::ostream<float>& out) { tapa::task().invoke(Task, out); }
-  )cpp";
-  CountingDiagConsumer diag;
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), &diag);
-  ASSERT_NE(ast, nullptr);
-  EXPECT_GT(diag.errors, 0) << "a factor below -1 must be diagnosed";
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/oor.cpp", R"cpp(
+                   void Task(tapa::ostream<float>& out) {
+                     [[tapa::partition("cyclic", -7)]] float a[32];
+                     out.write(a[0]);
+                   }
+                   void Top(tapa::ostream<float>& out) { tapa::task().invoke(Task, out); }
+                 )cpp"}},
+      "Top", TempRoot("oor"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  EXPECT_FALSE(run.diags.empty()) << "a factor below -1 must be diagnosed";
 }
 
 TEST(Rewrite, LowerTaskGetsFifoPragmas) {
-  auto e = Build();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code = EmitTaskCode(e.program, e.program.tasks.at("Add"),
-                                        backend, e.ast->getASTContext());
+  const std::string code = RewriteVadd();
 
   // istream ports get ap_fifo interface + peek pragmas and empty() stubs.
   EXPECT_TRUE(Contains(code, "#pragma HLS interface ap_fifo port = a._"));
@@ -341,34 +282,8 @@ TEST(Rewrite, LowerTaskGetsFifoPragmas) {
   EXPECT_TRUE(Contains(code, "a.read()"));
 }
 
-TEST(Rewrite, OtherTasksStrippedToSignatures) {
-  auto e = Build();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code = EmitTaskCode(e.program, e.program.tasks.at("Add"),
-                                        backend, e.ast->getASTContext());
-  // Mmap2Stream is not the current task: its body becomes ";", so its loop is
-  // gone.
-  EXPECT_FALSE(Contains(code, "out.write(mem[i])"));
-  // VecAdd's task() connection is gone too (stripped).
-  EXPECT_FALSE(Contains(code, ".invoke(Mmap2Stream"));
-}
-
-TEST(RewriteTree, EmitsGuardsAndExactRewrittenStubs) {
-  auto e = Build();
-  clang::ASTContext& ctx = e.ast->getASTContext();
-  clang::SourceManager& sm = ctx.getSourceManager();
-  const std::string main_file = CanonicalPath(
-      sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
-  TreeSession session(ctx, /*log=*/{}, {main_file}, /*tokens=*/nullptr);
-  const XilinxBackend hls(/*is_vitis=*/false);
-  const XilinxBackend vitis(/*is_vitis=*/true);
-  const IgnoreBackend ignore;
-
-  RewriteTreeFiles(e.program, SynthTarget::kXilinxHls, hls, vitis, ignore, ctx,
-                   session);
-  TreeFileBuffer* const buffer = session.BufferForPath(main_file);
-  ASSERT_NE(buffer, nullptr);
-  const std::string code = buffer->Render();
+TEST(Rewrite, EmitsGuardsAndExactRewrittenStubs) {
+  const std::string code = RewriteVadd();
 
   EXPECT_TRUE(Contains(code, "#ifdef TAPA_TASK_DEF_Add"));
   EXPECT_TRUE(Contains(code,
@@ -377,6 +292,8 @@ TEST(RewriteTree, EmitsGuardsAndExactRewrittenStubs) {
                        "tapa::istream<float>& b,"))
       << code;
   EXPECT_TRUE(Contains(code, "#ifdef TAPA_TASK_DEF_VecAdd"));
+  // The else-branch stub drops the mmap typedef spelling for the offset
+  // form.
   EXPECT_FALSE(Contains(code, "void VecAdd(tapa::mmap<const float> a"));
 
   // The upper task's mmap-to-offset rewrite is byte-identical in the full
@@ -393,10 +310,7 @@ TEST(RewriteTree, EmitsGuardsAndExactRewrittenStubs) {
 }
 
 TEST(Rewrite, UpperTaskBecomesShellWithOffsets) {
-  auto e = Build();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code = EmitTaskCode(e.program, e.program.tasks.at("VecAdd"),
-                                        backend, e.ast->getASTContext());
+  const std::string code = RewriteVadd();
 
   // mmap parameters are lowered to uint64 offsets in the signature.
   EXPECT_TRUE(Contains(code, "uint64_t a_offset"));
@@ -408,23 +322,20 @@ TEST(Rewrite, UpperTaskBecomesShellWithOffsets) {
 }
 
 TEST(Rewrite, UnreachableTaskIsStrippedLikeOtherTasks) {
-  auto e = Build();
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string code = EmitTaskCode(e.program, e.program.tasks.at("Add"),
-                                        backend, e.ast->getASTContext());
+  const std::string code = RewriteVadd();
 
   // UnusedTask is unreachable from the top, but its body still invokes
-  // sub-tasks with mmap args; it must be stripped like any non-current task
-  // or the uint64_t sub-task signatures no longer type-check.
+  // sub-tasks with mmap args; it must be stripped to its rewritten
+  // signature or the uint64_t sub-task signatures no longer type-check.
   EXPECT_TRUE(Contains(code, "UnusedTask(uint64_t a_offset"));
   EXPECT_FALSE(Contains(code, ".invoke("));
 }
 
 // An attribute Clang itself drops: [[tapa::partition]] applies to variables,
 // so on a function it never reaches the AST -- and no removal pass can see
-// what is not there. Its text stays in the buffer the rewriter copies out,
+// what is not there. Its text stays in the mirror the tree writer renders,
 // and the vendor, for which an unknown attribute is not an error, ignores a
-// directive the user wrote. The emitted code is checked for exactly this.
+// directive the user wrote. The emitted tree is checked for exactly this.
 constexpr char kLeakedAttr[] = R"cpp(
   [[tapa::partition("complete")]] void Helper(float a[4]) {
     a[0] = 1;
@@ -437,33 +348,18 @@ constexpr char kLeakedAttr[] = R"cpp(
   }
   void LeakTop(tapa::mmap<const float> mem, tapa::ostream<float>& out,
                unsigned long long n) {
-    tapa::stream<float, 2> q;
-    tapa::task().invoke(LeakTask, mem, q, n);
+    tapa::task().invoke(LeakTask, mem, out, n);
   }
 )cpp";
 
 TEST(Rewrite, AttrThatCannotLowerIsAnError) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kLeakedAttr;
-  // The consumer outlives the ASTUnit's diagnostics engine, which keeps
-  // pointing at it while EmitTaskCode reports.
-  auto diag = std::make_unique<CollectingDiagConsumer>();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), diag.get());
-  ASSERT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "LeakTop");
-  const XilinxBackend backend(/*is_vitis=*/false);
-
-  diag->errors.clear();
-  const std::string emitted = EmitTaskCode(
-      program, program.tasks.at("LeakTask"), backend, ast->getASTContext());
-
-  EXPECT_TRUE(Contains(emitted, "[[tapa::partition"));
-  ASSERT_EQ(diag->errors.size(), 1u);
-  EXPECT_TRUE(Contains(diag->errors.front(), "[[tapa::partition]]"));
-  EXPECT_TRUE(Contains(diag->errors.front(), "LeakTask"));
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/leak.cpp", kLeakedAttr}}, "LeakTop",
+      TempRoot("leak"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_EQ(run.diags.size(), 1u);
+  EXPECT_TRUE(Contains(run.diags.front(), "[[tapa::partition]]"))
+      << run.diags.front();
 }
 
 // A comment or string literal QUOTING an attribute spelling is not a leaked
@@ -479,28 +375,11 @@ TEST(Rewrite, AttrSpellingInCommentIsNotALeak) {
     }
     void QuotedTop(tapa::mmap<const float> mem, tapa::ostream<float>& out,
                    unsigned long long n) {
-      tapa::stream<float, 2> q;
-      tapa::task().invoke(QuotedTask, mem, q, n);
+      tapa::task().invoke(QuotedTask, mem, out, n);
     }
   )cpp";
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kCommentedAttr;
-  auto diag = std::make_unique<CollectingDiagConsumer>();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), diag.get());
-  ASSERT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "QuotedTop");
-  const XilinxBackend backend(/*is_vitis=*/false);
-
-  diag->errors.clear();
-  const std::string emitted = EmitTaskCode(
-      program, program.tasks.at("QuotedTask"), backend, ast->getASTContext());
-
-  EXPECT_TRUE(Contains(emitted, "[[tapa::pipeline")) << emitted;
-  EXPECT_TRUE(diag->errors.empty())
-      << (diag->errors.empty() ? "" : diag->errors.front());
+  const std::string code = Rewrite("quoted", kCommentedAttr, "QuotedTop");
+  EXPECT_TRUE(Contains(code, "[[tapa::pipeline")) << code;
 }
 
 // A forward declaration shares the definition's body through the
@@ -520,35 +399,24 @@ TEST(Rewrite, ForwardDeclaredHelperGetsOneStreamPragma) {
     }
     void FwdTop(tapa::mmap<const float> mem, tapa::ostream<float>& out,
                 unsigned long long n) {
-      tapa::stream<float, 2> q;
-      tapa::task().invoke(FwdTask, mem, q, n);
+      tapa::task().invoke(FwdTask, mem, out, n);
     }
   )cpp";
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kFwdHelper;
-  PrintingDiagConsumer diag;
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), &diag);
-  ASSERT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "FwdTop");
-  const XilinxBackend backend(/*is_vitis=*/false);
-  const std::string emitted = EmitTaskCode(program, program.tasks.at("FwdTask"),
-                                           backend, ast->getASTContext());
+  const std::string code = Rewrite("fwd", kFwdHelper, "FwdTop");
 
   const std::string pragma = "HLS stream variable = s";
   size_t count = 0;
-  for (size_t pos = emitted.find(pragma); pos != std::string::npos;
-       pos = emitted.find(pragma, pos + pragma.size())) {
+  for (size_t pos = code.find(pragma); pos != std::string::npos;
+       pos = code.find(pragma, pos + pragma.size())) {
     ++count;
   }
-  EXPECT_EQ(count, 1u) << emitted;
+  EXPECT_EQ(count, 1u) << code;
 }
 
-// `[[tapa::target]]` also survives into the emitted source, and is the one
-// spelling that should: it picks the backend, which discovery has already
-// acted on, so there is nothing left to lower and nothing lost.
+// `[[tapa::target]]` also survives into the mirror, and is the one spelling
+// that should: it picks the backend, which discovery has already acted on,
+// so there is nothing left to lower and nothing lost. It must sit inside
+// the guarded definition (its pragma-bearing body) and out of the stub.
 constexpr char kTargetAttr[] = R"cpp(
   [[tapa::target("ignore")]] void TargetTask(tapa::mmap<const float> mem,
                                              tapa::ostream<float>& out,
@@ -557,48 +425,21 @@ constexpr char kTargetAttr[] = R"cpp(
   }
   void TargetTop(tapa::mmap<const float> mem, tapa::ostream<float>& out,
                  unsigned long long n) {
-    tapa::stream<float, 2> q;
-    tapa::task().invoke(TargetTask, mem, q, n);
+    tapa::task().invoke(TargetTask, mem, out, n);
   }
 )cpp";
 
 TEST(Rewrite, TargetAttrIsNotReportedAsALeak) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kTargetAttr;
-  auto diag = std::make_unique<CollectingDiagConsumer>();
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"}, "t.cpp", "t",
-      std::make_shared<clang::PCHContainerOperations>(),
-      clang::tooling::getClangStripDependencyFileAdjuster(),
-      clang::tooling::FileContentMappings(), diag.get());
-  ASSERT_NE(ast, nullptr);
-  Program program = ViewOf(ast->getASTContext(), "TargetTop");
-  const XilinxBackend backend(/*is_vitis=*/false);
-
-  diag->errors.clear();
-  const std::string emitted = EmitTaskCode(
-      program, program.tasks.at("TargetTask"), backend, ast->getASTContext());
-
-  EXPECT_TRUE(Contains(emitted, "[[tapa::target"));
-  EXPECT_TRUE(diag->errors.empty());
-
-  TreeSession session(ast->getASTContext(), /*log=*/{}, {"t.cpp"},
-                      /*tokens=*/nullptr);
-  const XilinxBackend vitis(/*is_vitis=*/true);
-  const IgnoreBackend ignore;
-  RewriteTreeFiles(program, SynthTarget::kXilinxHls, backend, vitis, ignore,
-                   ast->getASTContext(), session);
-  TreeFileBuffer* const buffer = session.BufferForPath("t.cpp");
-  ASSERT_NE(buffer, nullptr);
-  const std::string tree = buffer->Render();
-  const size_t guard = tree.find("#ifdef TAPA_TASK_DEF_TargetTask");
-  const size_t attr = tree.find("[[tapa::target");
-  const size_t stub = tree.find("#else", attr);
+  const std::string code = Rewrite("target", kTargetAttr, "TargetTop");
+  const size_t guard = code.find("#ifdef TAPA_TASK_DEF_TargetTask");
+  const size_t attr = code.find("[[tapa::target");
+  const size_t stub = code.find("#else", attr);
   ASSERT_NE(guard, std::string::npos);
   ASSERT_NE(attr, std::string::npos);
   ASSERT_NE(stub, std::string::npos);
-  EXPECT_LT(guard, attr) << tree;
-  EXPECT_LT(attr, stub) << tree;
-  EXPECT_FALSE(Contains(tree, "[[#ifdef")) << tree;
+  EXPECT_LT(guard, attr) << code;
+  EXPECT_LT(attr, stub) << code;
+  EXPECT_FALSE(Contains(code, "[[#ifdef")) << code;
 }
 
 }  // namespace

@@ -8,10 +8,6 @@ namespace tapa::cc {
 // record names and template arity matter to the frontend.
 inline constexpr char kTapaStubDecls[] = R"cpp(
   namespace tapa {
-  template <typename T, int Depth = 2>
-  struct stream {};
-  template <typename T, int N, int Depth = 2>
-  struct streams {};
   template <typename T>
   struct istream {
     T read();
@@ -21,6 +17,10 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct ostream {
     void write(const T&);
   };
+  template <typename T, int Depth = 2>
+  struct stream : istream<T>, ostream<T> {};
+  template <typename T, int N, int Depth = 2>
+  struct streams {};
   template <typename T, int N>
   struct istreams {};
   template <typename T, int N>

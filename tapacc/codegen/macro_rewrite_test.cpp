@@ -1,188 +1,36 @@
 // Production-path tests for selective macro expansion (plan §3.5): the
-// full tree-mode pipeline -- index pass, merge, rewrite pass with the token
-// stream recorded, guarded mirror materialization -- over constructs a
-// rewrite anchors inside a macro expansion. Each fixture asserts the exact
-// rendered bytes, so an edit silently landing outside the spliced expansion
-// fails here rather than at HLS. The mechanics behind these paths are pinned
-// in expansion_splice_test.cpp.
+// full pipeline -- index pass, merge, rewrite pass with the token stream
+// recorded, guarded mirror materialization -- over constructs a rewrite
+// anchors inside a macro expansion. Each fixture asserts the exact rendered
+// bytes, so an edit silently landing outside the spliced expansion fails
+// here rather than at HLS. The mechanics behind these paths are pinned in
+// expansion_splice_test.cpp. The pipeline harness itself is
+// codegen/tree_pipeline.h.
 //
 // The fixtures use the `tapa` raw-string delimiter, not `cpp`:
 // clang-format maps C++ delimiters to the C++ language and reflows their
 // content, which the byte-exact assertions cannot tolerate. No language is
 // mapped to `tapa`, so they stay byte-stable under formatting.
 
-#include <dirent.h>
-
-#include <functional>
-#include <map>
-#include <memory>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "gtest/gtest.h"
 
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendAction.h"
-#include "clang/Tooling/Tooling.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
-
-#include "diag_capture.h"
-#include "frontend/program_builder.h"
-#include "frontend/tapa_stub_decls.h"
-#include "macro_splice.h"
-#include "tree_writer.h"
+#include "tree_pipeline.h"
 
 namespace tapa::cc {
 namespace {
 
 // ── Test scaffolding ──────────────────────────────────────────────────────
 
+// One writable directory per test, under the gtest temp root.
 std::string TempRoot(const std::string& name) {
-  const std::string root = testing::TempDir() + "/macro_rewrite_" + name;
-  llvm::sys::fs::remove_directories(root);
-  EXPECT_FALSE(llvm::sys::fs::create_directories(root));
-  return root;
+  return testing::TempDir() + "/macro_rewrite_" + name;
 }
 
-std::string ReadFile(const std::string& path) {
-  const auto buffer = llvm::MemoryBuffer::getFile(path);
-  EXPECT_TRUE(buffer) << path;
-  return buffer ? (*buffer)->getBuffer().str() : std::string();
-}
-
-std::map<std::string, std::string> ReadTree(const std::string& root) {
-  std::map<std::string, std::string> files;
-  std::function<void(const std::string&, const std::string&)> walk =
-      [&](const std::string& prefix, const std::string& dir) {
-        DIR* stream = opendir(dir.c_str());
-        ASSERT_NE(stream, nullptr);
-        while (dirent* entry = readdir(stream)) {
-          const std::string name = entry->d_name;
-          if (name == "." || name == "..") continue;
-          const std::string path = dir + "/" + name;
-          if (entry->d_type == DT_DIR) {
-            walk(prefix + name + "/", path);
-          } else {
-            files[prefix + name] = ReadFile(path);
-          }
-        }
-        closedir(stream);
-      };
-  walk("", root);
-  return files;
-}
-
-// One virtual translation unit: path plus code, and optionally its own
-// compile flags (a TU-local define is how a shared header's macro can
-// expand differently per TU).
-struct VirtualTu {
-  std::string path;
-  std::string code;
-  std::vector<std::string> own_args;
-  VirtualTu(std::string p, std::string c, std::vector<std::string> a = {})
-      : path(std::move(p)), code(std::move(c)), own_args(std::move(a)) {}
-};
-
-// The outcome of one pipeline run.
-struct TreePipelineRun {
-  // The rendered mirrored tree, tree-relative path -> bytes. Empty when the
-  // run failed before materialization.
-  std::map<std::string, std::string> files;
-  // Every error diagnostic of both passes, formatted text.
-  std::vector<std::string> diags;
-  // The single graph JSON, as tapa-ir consumes it.
-  std::string json;
-};
-
-// Runs exactly what `tapacc -tree` runs over the virtual TUs: an index
-// action per TU (include log, no tokens), the merge, then a rewrite action
-// per TU with the token stream recorded, then the tree materialization.
-// All TUs parse with `args`, except one carrying its own flags.
-TreePipelineRun RunTreePipeline(
-    const std::vector<VirtualTu>& tus, const std::string& top,
-    const std::string& out_root, const std::vector<std::string>& args,
-    const clang::tooling::FileContentMappings& virtual_files = {}) {
-  class PipelineAction : public clang::ASTFrontendAction {
-   public:
-    PipelineAction(ProgramBuilder& builder, bool index_pass,
-                   CollectingDiagConsumer* diags)
-        : builder_(builder), index_pass_(index_pass), diags_(diags) {}
-
-    bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
-      ci.getDiagnostics().setClient(diags_, /*OwnsClient=*/false);
-      ci.getPreprocessor().addPPCallbacks(
-          std::make_unique<IncludeRecorder>(ci.getSourceManager(), &log_));
-      // Only the rewrite pass edits, so only it records tokens.
-      if (!index_pass_) {
-        recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
-      }
-      return true;
-    }
-
-    std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-        clang::CompilerInstance&, llvm::StringRef) override {
-      class Consumer : public clang::ASTConsumer {
-       public:
-        explicit Consumer(PipelineAction& owner) : owner_(owner) {}
-        void HandleTranslationUnit(clang::ASTContext& ctx) override {
-          // Consume before any rewriting: the collector is complete only
-          // once the whole top-level loop has run.
-          const clang::syntax::TokenBuffer* tokens =
-              owner_.recorder_ == nullptr ? nullptr
-                                          : &owner_.recorder_->Consume();
-          if (owner_.index_pass_) {
-            owner_.builder_.IndexTu(ctx, &owner_.log_);
-          } else {
-            owner_.builder_.RewriteTreeTu(ctx, std::move(owner_.log_), tokens);
-          }
-        }
-
-       private:
-        PipelineAction& owner_;
-      };
-      return std::make_unique<Consumer>(*this);
-    }
-
-   private:
-    ProgramBuilder& builder_;
-    bool index_pass_;
-    CollectingDiagConsumer* diags_;
-    std::vector<IncludeDirective> log_;
-    std::unique_ptr<TokenRecorder> recorder_;
-  };
-
-  std::vector<std::string> main_files;
-  for (const VirtualTu& tu : tus) main_files.push_back(CanonicalPath(tu.path));
-  CollectingDiagConsumer diags;
-  ProgramBuilder builder(top, SynthTarget::kXilinxHls,
-                         TreeConfig{out_root, std::move(main_files)});
-
-  const auto run_pass = [&](bool index_pass) {
-    for (const VirtualTu& tu : tus) {
-      clang::tooling::runToolOnCodeWithArgs(
-          std::make_unique<PipelineAction>(builder, index_pass, &diags),
-          tu.code, tu.own_args.empty() ? args : tu.own_args, tu.path,
-          "macro_rewrite_test",
-          std::make_shared<clang::PCHContainerOperations>(), virtual_files);
-    }
-  };
-  run_pass(/*index_pass=*/true);
-  bool ok = builder.MergeAndDiscover();
-  if (ok) {
-    run_pass(/*index_pass=*/false);
-    std::string error;
-    ok = builder.WriteTree(&error);
-  }
-  TreePipelineRun run;
-  run.diags = diags.errors;
-  run.json = builder.EmitJson().dump();
-  if (ok) run.files = ReadTree(out_root);
-  return run;
-}
+using test_support::TreePipelineRun;
+using test_support::VirtualTu;
 
 bool Contains(const std::string& haystack, const std::string& needle) {
   return haystack.find(needle) != std::string::npos;
@@ -228,8 +76,8 @@ void Prod(tapa::ostream<float>& out, unsigned long long n) {
 // neighbor invocation on the same line must stay spelled, and the line
 // count change must re-snap the following text to its original numbering.
 TEST(MacroRewrite, PipelineLoopMacroSplicesAndResnaps) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + kLoopMacros +
-                           kFifoDecls + kLeafTask + kProdTask +
+  const std::string code = std::string(kLoopMacros) + kFifoDecls + kLeafTask +
+                           kProdTask +
                            R"tapa(
 void LoopTop(tapa::mmap<const float> a, tapa::mmap<float> c,
              unsigned long long n) {
@@ -244,9 +92,9 @@ void LoopTask(tapa::istream<float>& q, tapa::mmap<float> c,
       f) { q.read(); } FLUSH(f);
 }
 )tapa";
-  const TreePipelineRun run =
-      RunTreePipeline({VirtualTu{"/proj/src/loop.cpp", code}}, "LoopTop",
-                      TempRoot("loop"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/loop.cpp", code}}, "LoopTop", TempRoot("loop"),
+      {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   ASSERT_EQ(run.files.size(), 1u) << "one TU, no includes";
   const std::string& file = run.files.at("loop.cpp");
@@ -267,14 +115,14 @@ void LoopTask(tapa::istream<float>& q, tapa::mmap<float> c,
 // splice: a task whose BODY is spelled by a macro still gets its guard,
 // its interface preamble inside the expansion, and its signature stub.
 TEST(MacroRewrite, TaskBodyInAMacroRewritesThroughSplice) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + R"tapa(
+  const std::string code = std::string(R"tapa(
 #define TAPA_TASK_BODY \
   {                    \
     c[0] = q.read();   \
   }
 void MacroTask(tapa::istream<float>& q, tapa::mmap<float> c,
                unsigned long long n) TAPA_TASK_BODY
-)tapa" + kLeafTask + kProdTask +
+)tapa") + kLeafTask + kProdTask +
                            R"tapa(
 void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
          unsigned long long n) {
@@ -283,8 +131,8 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
 }
 )tapa";
   const TreePipelineRun run =
-      RunTreePipeline({VirtualTu{"/proj/src/body.cpp", code}}, "Top",
-                      TempRoot("body"), {"-std=c++17"});
+      test_support::RunTreePipeline({VirtualTu{"/proj/src/body.cpp", code}},
+                                    "Top", TempRoot("body"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   const std::string& file = run.files.at("body.cpp");
   // The guard opens in user source (before the signature, its own #line
@@ -314,11 +162,10 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
 // lives in the expansion. Removal drops the attribute's tokens and swallows
 // the enclosing `[[ ]]` because they belong to the same invocation.
 TEST(MacroRewrite, MacroOwnedAttributeIsRemovedByTokens) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" +
-                           R"tapa(
+  const std::string code = std::string(R"tapa(
 #define ATTR_LOOP(i, n) \
   [[tapa::pipeline(1)]] for (unsigned long long i = 0; i < n; ++i)
-)tapa" + kLeafTask + kProdTask +
+)tapa") + kLeafTask + kProdTask +
                            R"tapa(
 void AttrTask(tapa::istream<float>& in, tapa::mmap<float> mem,
               unsigned long long n) {
@@ -330,9 +177,9 @@ void AttrTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   tapa::task().invoke(Prod, q, n).invoke(AttrTask, q, c, n);
 }
 )tapa";
-  const TreePipelineRun run =
-      RunTreePipeline({VirtualTu{"/proj/src/attr.cpp", code}}, "AttrTop",
-                      TempRoot("attr"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/attr.cpp", code}}, "AttrTop", TempRoot("attr"),
+      {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   const std::string& file = run.files.at("attr.cpp");
   // The brackets went with the attribute (an empty `[[]]` would not
@@ -356,8 +203,7 @@ void AttrTop(tapa::mmap<const float> a, tapa::mmap<float> c,
 // INVOKE_CONSUME shape): the graph sees through the macro, and the top's
 // rewritten shell needs no splice.
 TEST(MacroRewrite, InvokeMacroStaysGraphVisible) {
-  const std::string code =
-      std::string(kTapaStubDecls) + "\n" + kLeafTask + kProdTask + R"tapa(
+  const std::string code = std::string(kLeafTask) + kProdTask + R"tapa(
 #define INVOKE_LEAF(q, c, n) .invoke(Leaf, q, c, n)
 void InvokeTop(tapa::mmap<const float> a, tapa::mmap<float> c,
                unsigned long long n) {
@@ -365,9 +211,9 @@ void InvokeTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   tapa::task().invoke(Prod, q, n) INVOKE_LEAF(q, c, n);
 }
 )tapa";
-  const TreePipelineRun run =
-      RunTreePipeline({VirtualTu{"/proj/src/invoke.cpp", code}}, "InvokeTop",
-                      TempRoot("invoke"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/invoke.cpp", code}}, "InvokeTop",
+      TempRoot("invoke"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   ASSERT_EQ(run.files.size(), 1u);
   // The graph carries the edge through the macro (the tapa.json payload).
@@ -385,12 +231,12 @@ void InvokeTop(tapa::mmap<const float> a, tapa::mmap<float> c,
 // The middle-level shell replaces the whole macro-owned body while the
 // lowered attribute inside it claims a token range of its own.
 TEST(MacroRewrite, OverlappingReplacementsOfOneInvocationError) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + R"tapa(
+  const std::string code = std::string(R"tapa(
 #define MID_BODY(q, c, n)                        \
   { [[tapa::pipeline(1)]]                        \
     for (unsigned long long i = 0; i < n; ++i) {}\
     tapa::task().invoke(Leaf, q, c, n); }
-)tapa" + kLeafTask + kProdTask +
+)tapa") + kLeafTask + kProdTask +
                            R"tapa(
 void MidTask(tapa::istream<float>& q, tapa::mmap<float> c,
              unsigned long long n) MID_BODY(q, c, n)
@@ -400,9 +246,9 @@ void MidTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   tapa::task().invoke(Prod, s, n).invoke(MidTask, s, c, n);
 }
 )tapa";
-  const TreePipelineRun run =
-      RunTreePipeline({VirtualTu{"/proj/src/overlap.cpp", code}}, "MidTop",
-                      TempRoot("overlap"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/overlap.cpp", code}}, "MidTop", TempRoot("overlap"),
+      {"-std=c++17"});
   ASSERT_FALSE(run.diags.empty());
   const std::string& error = run.diags.front();
   // The error carries the construct, the reason, and the user-source
@@ -426,15 +272,14 @@ void SharedHelper(tapa::ostream<float>& out) {
 )tapa";
 
 std::string SharedHeaderTu(const std::string& name) {
-  return std::string(kTapaStubDecls) +
-         "\n#include \"shared.h\"\ntapa::ostream<float>& SharedOut();\n" +
-         "void " + name + "() { SharedHelper(SharedOut()); }\n";
+  return "#include \"shared.h\"\ntapa::ostream<float>& SharedOut();\nvoid " +
+         name + "() { SharedHelper(SharedOut()); }\n";
 }
 
 TEST(MacroRewrite, SharedHeaderSplicesIdenticallyAcrossTus) {
   const clang::tooling::FileContentMappings files = {
       {"/proj/src/shared.h", kSharedHeader}};
-  const TreePipelineRun run = RunTreePipeline(
+  const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/a.cpp", SharedHeaderTu("A")},
        VirtualTu{"/proj/src/sub/b.cpp", SharedHeaderTu("B")}},
       "A", TempRoot("shared_ok"), {"-std=c++17", "-I/proj/src"}, files);
@@ -453,7 +298,7 @@ TEST(MacroRewrite, DivergentSharedHeaderSpliceIsAHardError) {
       {"/proj/src/shared.h", kSharedHeader}};
   // TU B redefines LIMIT, so the same header's expansion -- and with it the
   // rewritten bytes -- differs between the TUs.
-  const TreePipelineRun run = RunTreePipeline(
+  const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/a.cpp", SharedHeaderTu("A")},
        VirtualTu{"/proj/src/sub/b.cpp",
                  SharedHeaderTu("B"),

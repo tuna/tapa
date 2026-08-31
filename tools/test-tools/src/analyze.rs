@@ -165,12 +165,11 @@ fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()>
     }
 
     // `tapa analyze` persists exactly one state file plus the verbatim
-    // `tapacc` output kept as a debug artifact, and the rewritten source
+    // `tapacc` output kept as a debug artifact, and the mirrored source
     // tree the task manifests point into.
     let state_path = work_dir.path().join("tapa.json");
     require_file(&state_path)?;
     require_file(&work_dir.path().join("tapacc.json"))?;
-    require_dir(&work_dir.path().join("flatten"))?;
     require_dir(&work_dir.path().join("rewritten"))?;
 
     let state = read_json(&state_path)?;
