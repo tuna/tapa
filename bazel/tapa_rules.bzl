@@ -115,8 +115,6 @@ def _tapa_xo_impl(ctx):
 
     if ctx.file.tapacc:
         tapa_cmd.extend(["--tapacc", ctx.file.tapacc])
-    if ctx.file.tapa_cpp:
-        tapa_cmd.extend(["--tapa-cpp", ctx.file.tapa_cpp])
 
     if ctx.attr.cflags:
         tapa_cmd.extend(["--cflags", ctx.attr.cflags])
@@ -296,7 +294,6 @@ tapa_xo = rule(
             executable = True,
         ),
         "tapacc": attr.label(allow_single_file = True),
-        "tapa_cpp": attr.label(allow_single_file = True),
         "cflags": attr.string(),
         "target": attr.string(
             default = "xilinx-vitis",
