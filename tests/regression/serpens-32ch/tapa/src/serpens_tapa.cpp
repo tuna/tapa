@@ -324,47 +324,18 @@ l_rp:
       fifo_inst_out.write(end_32);
 
     computation:
-      [[tapa::
-            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
-          "local_C_pe6", "", "", "", 1,
-          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
-                                                      1,
-                                                      "DEP_DIST_LOAD_"
-                                                      "STORE")]] [[tapa::
-                                                                       dependence(
-                                                                           "loc"
-                                                                           "al_"
-                                                                           "C_"
-                                                                           "pe"
-                                                                           "4",
-                                                                           "",
-                                                                           1,
-                                                                           "DEP"
-                                                                           "_DI"
-                                                                           "ST_"
-                                                                           "LOA"
-                                                                           "D_"
-                                                                           "STO"
-                                                                           "R"
-                                                                           "E")]] [[tapa::
-                                                                                        dependence("local_C_pe3",
-                                                                                                   "",
-                                                                                                   1,
-                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                  dependence("local_C_pe2",
-                                                                                                                                             "",
-                                                                                                                                             1,
-                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                            dependence("local_C_pe1",
-                                                                                                                                                                                       "",
-                                                                                                                                                                                       1,
-                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                                                                      dependence("local_C_pe0",
-                                                                                                                                                                                                                                 "",
-                                                                                                                                                                                                                                 1,
-                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
-                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
-                                                                                                                                                                                                                                                                                                                                        end_32;) {
+      // clang-format off
+      [[tapa::dependence("local_C_pe7", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe6", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe5", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe4", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe3", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe2", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe1", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe0", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      // clang-format on
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 200)]] for (tapa::u<32> j = start_32; j < end_32;) {
         tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
@@ -595,47 +566,18 @@ l_rp:
       fifo_inst_out.write(end_32);
 
     computation:
-      [[tapa::
-            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
-          "local_C_pe6", "", "", "", 1,
-          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
-                                                      1,
-                                                      "DEP_DIST_LOAD_"
-                                                      "STORE")]] [[tapa::
-                                                                       dependence(
-                                                                           "loc"
-                                                                           "al_"
-                                                                           "C_"
-                                                                           "pe"
-                                                                           "4",
-                                                                           "",
-                                                                           1,
-                                                                           "DEP"
-                                                                           "_DI"
-                                                                           "ST_"
-                                                                           "LOA"
-                                                                           "D_"
-                                                                           "STO"
-                                                                           "R"
-                                                                           "E")]] [[tapa::
-                                                                                        dependence("local_C_pe3",
-                                                                                                   "",
-                                                                                                   1,
-                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                  dependence("local_C_pe2",
-                                                                                                                                             "",
-                                                                                                                                             1,
-                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                            dependence("local_C_pe1",
-                                                                                                                                                                                       "",
-                                                                                                                                                                                       1,
-                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                                                                      dependence("local_C_pe0",
-                                                                                                                                                                                                                                 "",
-                                                                                                                                                                                                                                 1,
-                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
-                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
-                                                                                                                                                                                                                                                                                                                                        end_32;) {
+      // clang-format off
+      [[tapa::dependence("local_C_pe7", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe6", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe5", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe4", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe3", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe2", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe1", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe0", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      // clang-format on
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 200)]] for (tapa::u<32> j = start_32; j < end_32;) {
         tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
@@ -851,47 +793,18 @@ l_rp:
       tapa::u<32> end_32 = HLS_REG(end_32_in);
 
     computation:
-      [[tapa::
-            dependence("local_C_pe7", "", 1, "DEP_DIST_LOAD_STORE")]] [[tapa::dependence(
-          "local_C_pe6", "", "", "", 1,
-          "DEP_DIST_LOAD_STORE")]] [[tapa::dependence("local_C_pe5", "", "", "",
-                                                      1,
-                                                      "DEP_DIST_LOAD_"
-                                                      "STORE")]] [[tapa::
-                                                                       dependence(
-                                                                           "loc"
-                                                                           "al_"
-                                                                           "C_"
-                                                                           "pe"
-                                                                           "4",
-                                                                           "",
-                                                                           1,
-                                                                           "DEP"
-                                                                           "_DI"
-                                                                           "ST_"
-                                                                           "LOA"
-                                                                           "D_"
-                                                                           "STO"
-                                                                           "R"
-                                                                           "E")]] [[tapa::
-                                                                                        dependence("local_C_pe3",
-                                                                                                   "",
-                                                                                                   1,
-                                                                                                   "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                  dependence("local_C_pe2",
-                                                                                                                                             "",
-                                                                                                                                             1,
-                                                                                                                                             "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                            dependence("local_C_pe1",
-                                                                                                                                                                                       "",
-                                                                                                                                                                                       1,
-                                                                                                                                                                                       "DEP_DIST_LOAD_STORE")]] [[tapa::
-                                                                                                                                                                                                                      dependence("local_C_pe0",
-                                                                                                                                                                                                                                 "",
-                                                                                                                                                                                                                                 1,
-                                                                                                                                                                                                                                 "DEP_DIST_LOAD_STORE")]] [[tapa::pipeline(1)]] [[tapa::tripcount(1,
-                                                                                                                                                                                                                                                                                                  200)]] for (tapa::u<32> j = start_32; j <
-                                                                                                                                                                                                                                                                                                                                        end_32;) {
+      // clang-format off
+      [[tapa::dependence("local_C_pe7", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe6", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe5", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe4", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe3", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe2", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe1", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      [[tapa::dependence("local_C_pe0", "", "", "", 1, "DEP_DIST_LOAD_STORE")]]
+      // clang-format on
+      [[tapa::pipeline(1)]] [[tapa::tripcount(
+          1, 200)]] for (tapa::u<32> j = start_32; j < end_32;) {
         tapa::u<512> a_pes;
         bool a_pes_ready = fifo_A.try_read(a_pes);
 
