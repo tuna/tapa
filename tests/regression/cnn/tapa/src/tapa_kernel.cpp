@@ -346,19 +346,13 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
               union {
                 unsigned int ui;
                 float ut;
-              } u7, u6, u5, u4, u3, u2, u1, u0;
-              u7.ut = local_B[0][7];
-              u6.ut = local_B[0][6];
-              u5.ut = local_B[0][5];
-              u4.ut = local_B[0][4];
-              u3.ut = local_B[0][3];
-              u2.ut = local_B[0][2];
-              u1.ut = local_B[0][1];
-              u0.ut = local_B[0][0];
-              fifo_data =
-                  (tapa::u<32>(u7.ui), tapa::u<32>(u6.ui), tapa::u<32>(u5.ui),
-                   tapa::u<32>(u4.ui), tapa::u<32>(u3.ui), tapa::u<32>(u2.ui),
-                   tapa::u<32>(u1.ui), tapa::u<32>(u0.ui));
+              } u[8];
+              for (int p = 0; p < 8; ++p) {
+                u[p].ut = local_B[0][p];
+              }
+              for (int p = 0; p < 8; ++p) {
+                fifo_data(32 * p + 31, 32 * p) = tapa::u<32>(u[p].ui);
+              }
               fifo_B_out.write(fifo_data);
             }
 
@@ -367,19 +361,13 @@ void PE(int idx, int idy, tapa::istream<A_t8>& fifo_A_in,
               union {
                 unsigned int ui;
                 float ut;
-              } u7, u6, u5, u4, u3, u2, u1, u0;
-              u7.ut = local_A[0][7];
-              u6.ut = local_A[0][6];
-              u5.ut = local_A[0][5];
-              u4.ut = local_A[0][4];
-              u3.ut = local_A[0][3];
-              u2.ut = local_A[0][2];
-              u1.ut = local_A[0][1];
-              u0.ut = local_A[0][0];
-              fifo_data =
-                  (tapa::u<32>(u7.ui), tapa::u<32>(u6.ui), tapa::u<32>(u5.ui),
-                   tapa::u<32>(u4.ui), tapa::u<32>(u3.ui), tapa::u<32>(u2.ui),
-                   tapa::u<32>(u1.ui), tapa::u<32>(u0.ui));
+              } u[8];
+              for (int p = 0; p < 8; ++p) {
+                u[p].ut = local_A[0][p];
+              }
+              for (int p = 0; p < 8; ++p) {
+                fifo_data(32 * p + 31, 32 * p) = tapa::u<32>(u[p].ui);
+              }
               fifo_A_out.write(fifo_data);
             }
           }
@@ -556,9 +544,9 @@ void C_drain_IO_L3_out(tapa::mmap<C_t16> C,
       fifo_data = fifo_C_drain_local_in.read();
       mem_data_split[p] = fifo_data;
     }
-    mem_data = (mem_data_split[7], mem_data_split[6], mem_data_split[5],
-                mem_data_split[4], mem_data_split[3], mem_data_split[2],
-                mem_data_split[1], mem_data_split[0]);
+    for (int p = 0; p < 8; ++p) {
+      mem_data(32 * p + 31, 32 * p) = mem_data_split[p];
+    }
     C[i] = mem_data;
   }
 }
