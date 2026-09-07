@@ -20037,7 +20037,9 @@ void U_drain_IO_L1_out_intra_trans(
         } u;
         u.ut = in_data;
         data_split[split_idx] = tapa::u<32>(u.ui);
-        out_data = (data_split[3], data_split[2], data_split[1], data_split[0]);
+        for (int n = 0; n < 4; ++n) {
+          out_data(32 * n + 31, 32 * n) = data_split[n];
+        }
         local_U[0][(-p0 + c2) / 4] = out_data;
       }
     }
@@ -26377,7 +26379,9 @@ void U_drain_IO_L3_out(tapa::mmap<U_t16> U,
         in_data = fifo_U_drain_local_in.read();
         int split_idx = (33 * c0 / 4 + c3) % 4;
         data_split[split_idx] = in_data;
-        out_data = (data_split[3], data_split[2], data_split[1], data_split[0]);
+        for (int n = 0; n < 4; ++n) {
+          out_data(32 * n + 31, 32 * n) = data_split[n];
+        }
         if (c3 % 4 == 4 - 1 || c3 == 7) {
           U[(c0 * 32 + (c0 + 4 * c3)) / 16] = out_data;
         }
