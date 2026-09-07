@@ -410,7 +410,8 @@ fn hash_app(work_dir: &Path, app_name: &str) -> Result<AppHashes> {
             } else {
                 format!("{prefix}/{name}")
             };
-            cpp.insert(key, hash_file(&entry, app_name)?);
+            let key = normalize_tree_key(&key);
+            cpp.insert(key, hash_cpp_file(&entry, app_name)?);
         }
     }
     if cpp.is_empty() {
@@ -492,12 +493,47 @@ fn sorted_entries(dir: &Path, ctx: &str) -> Result<Vec<PathBuf>> {
     Ok(entries)
 }
 
-/// Raw sha256 of a file — used for the rewritten C++, which is our own
-/// producer's output and must stay byte-accountable.
-fn hash_file(path: &Path, ctx: &str) -> Result<String> {
+/// Normalize one rewritten-tree key: the `_external/<digest8>` bucket digest
+/// is sha256 over the source's ABSOLUTE path, so it differs across checkout
+/// locations for the same sources. Collapse it; the bucket basename (the
+/// real file) stays.
+fn normalize_tree_key(key: &str) -> String {
+    const TAG: &str = "_external/";
+    let Some(start) = key.find(TAG) else {
+        return key.to_string();
+    };
+    let digest_start = start + TAG.len();
+    let Some(slash) = key[digest_start..].find('/') else {
+        return key.to_string();
+    };
+    let digest_end = digest_start + slash;
+    if key[digest_start..digest_end]
+        .chars()
+        .all(|c| c.is_ascii_hexdigit())
+    {
+        format!("{}{}{}", &key[..digest_start], "BUCKET", &key[digest_end..])
+    } else {
+        key.to_string()
+    }
+}
+
+/// The rewritten C++ tree is our own producer's output and stays
+/// byte-accountable — but it legitimately embeds (a) `#line` directives
+/// naming user sources by ABSOLUTE path and (b) `_external` bucket digests
+/// derived from absolute paths, so raw bytes differ across checkout
+/// locations for identical input. Erase exactly those two environmental
+/// components before hashing; every other byte is drift-detected. The
+/// workspace root is the tool's cwd (the documented invocation).
+fn hash_cpp_file(path: &Path, ctx: &str) -> Result<String> {
     let bytes = fs::read(path)
         .map_err(|error| format!("{ctx}: failed to read {}: {error}", path.display()))?;
-    Ok(sha256_hex(&bytes))
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|error| format!("{ctx}: {} is not UTF-8 C++: {error}", path.display()))?;
+    let workspace =
+        env::current_dir().map_err(|error| format!("{ctx}: failed to read cwd: {error}"))?;
+    let root = format!("{}/", workspace.display());
+    let normalized = normalize_tree_key(&text.replace(&root, "~/"));
+    Ok(sha256_hex(normalized.as_bytes()))
 }
 
 /// Canonical sha256 of one verilog file: contents normalized and line
