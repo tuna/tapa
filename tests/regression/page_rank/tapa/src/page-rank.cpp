@@ -599,8 +599,9 @@ update_phases:
             // number of updates already written to current partition, not
             // including the current update
             Eid update_idx;
-            // Statement-scoped latency bound (old: latency min = 1 max = 1).
-            [[tapa::latency(1, 1)]] if (last_pid != pid) {
+            // Statement-scoped latency bound (old: latency min = 1 max = 1),
+            // on the then-branch only, as the pragma inside those braces was.
+            if (last_pid != pid) [[tapa::latency(1, 1)]] {
               update_idx = num_updates[pid / kNumPes];
               if (last_pid != Pid(-1)) {
                 num_updates[last_pid / kNumPes] =
