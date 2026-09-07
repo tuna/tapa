@@ -2,8 +2,8 @@
     "apps": {
         "async_mmap": {
             "cpp": {
-                "rewritten/async_mmap.cpp": "549fa8957561b97c9dc9e586b34e6b07061b04f16ba8c77ec04a1e156b5834e5",
-                "rewritten/async_mmap.h": "3540c98750176da72ea0ed969f8d2c0b7e3b0e8306ce9166424d9f6fef731b58"
+                "rewritten/async_mmap.cpp": "62d36e9b88bc881a614c2658d68213d417f3baa43c6b40c0101ad009c371e6fa",
+                "rewritten/async_mmap.h": "4ba9b45f5c8f83d5276e96241ffc746b49091e69593c57e32012df0e4e45b0fe"
             },
             "verilog": {
                 "AsyncReader/AsyncReader.v": "17ae596172c482b5f8a4bd2ce747ba7e01e825213ca7013310e812ab93ed99ff",
@@ -19,9 +19,9 @@
         },
         "bandwidth": {
             "cpp": {
-                "rewritten/bandwidth.cpp": "f552acb2d0dfecf9a81c15c362698105326116c68ac5e638ee1acf1ca265ddbc",
-                "rewritten/bandwidth.h": "98a9c44f1c8a859a5bf2caf34441768d3dbb1c47fa9bc1edcba4961563a16c5b",
-                "rewritten/lfsr.h": "944f4bd8bcfe89f6a588362e3b27c24a7dd2f190ef589a3ed905685c7e63a561"
+                "rewritten/bandwidth.cpp": "e958ebf309565fa6e8d0e24bc0297831ea14ad265100fcb2a58a5c56d5958775",
+                "rewritten/bandwidth.h": "9208a7e575ecfaecb1b1bfdb4a98648f38bdde33b2d64aff2f1c383b863a1acf",
+                "rewritten/lfsr.h": "e3643d033b97d72f73285b8173145db5f8481591bd5c228845c53d1da97c494b"
             },
             "verilog": {
                 "Bandwidth/Bandwidth.v": "7499345fbd57998920b12cdab315a341e3ad00d9c7856d955375e781e0748401",
@@ -33,8 +33,8 @@
         },
         "cannon": {
             "cpp": {
-                "rewritten/cannon.cpp": "3958ae6248dd4bf840866a73e2b64f57ae0953e275b73a3b485fe94f35042fa1",
-                "rewritten/cannon.h": "ed017f6ff875312ec127385936852fc7e27a4d8ed52563533a18367dfd4d9bc5"
+                "rewritten/cannon.cpp": "1dac325ca7942474e1a39e56d62ca5e15ab30fb9f18f159808507897bf39bcfe",
+                "rewritten/cannon.h": "bce213aaaac57ec26c2909d3af0ea94f8e6a50d2aa8d8b5ee7e28310cf99f335"
             },
             "verilog": {
                 "Cannon/Cannon.v": "06b601e17c86ef687c1c635d6b80f518d5c7e9287cb9d4a34a1eb6f49821b268",
@@ -63,8 +63,8 @@
         },
         "gemv": {
             "cpp": {
-                "rewritten/gemv.cpp": "d454040b54e9922760346495cc0ff0ec97e3c5174f508a9a019e3bb155e54f8c",
-                "rewritten/gemv.h": "46de0e6ec0f6bf699cec494466786fa175e727095b6eefc92b8d5c6b92ffffcf"
+                "rewritten/gemv.cpp": "d837c42c3a3e7519a6aac95efa4f12e3fb3e75f3b82483fd808ebfe733ea422e",
+                "rewritten/gemv.h": "bdb6288cb290364d370ffc17bf7a5c5b726622a97f4d29bc10ab5a3c5f54ca0b"
             },
             "verilog": {
                 "Gemv/Gemv.v": "900d3a156eae8bcdc75fa31da4c175b9f7ba100d27d49a6912369b44a1e2ed62",
@@ -85,8 +85,8 @@
         },
         "graph": {
             "cpp": {
-                "rewritten/graph.cpp": "b3d7f4d7b27ef43139e00003d0558bbd089252984101bb4f609dd80813038da3",
-                "rewritten/graph.h": "e214c90784da3b67b08d67a4fd490a03bf6c4d1739c1e26163da4121fc185c11"
+                "rewritten/graph.cpp": "16754590a81a216541db52421989b1adfc2e1ffd570b2f7ada85695a7875fed5",
+                "rewritten/graph.h": "564593e681024f43c76d2733a75fdec1355869d9826b78db92eb5e78958aa75d"
             },
             "verilog": {
                 "Control/Control.v": "abe32cfcbfb1ec8112def0465f18be453ea23e4bf35df82b9d8aa10d828daf72",
@@ -127,7 +127,7 @@
         },
         "ignore": {
             "cpp": {
-                "rewritten/ignore.cpp": "ad605429d0c7ce391ffb77a20c52b27b51bef72b8542c2359599d476d374e732"
+                "rewritten/ignore.cpp": "174d7ac368268ff4fa8dd7ecb051a7ee5c0e9e097694b6eec137c4546ebcf3ff"
             },
             "verilog": {
                 "IgnoreTop/IgnoreTop.v": "c63161c8eb4cb2dd7b5880f5788894b14ec2bfd5832818d02c2466c19d0cbc3e",
@@ -144,8 +144,8 @@
         },
         "jacobi": {
             "cpp": {
-                "rewritten/jacobi.cpp": "42f41ff6b62b2553322832990e8ccd8b0e58d6fb7c46cb894955554c1ce2a695",
-                "rewritten/jacobi.h": "e17a78cdb83235960987f0a21d576f4e4a7e137d0f1daf8b115ac12f31ea4da9"
+                "rewritten/jacobi.cpp": "bcad2a72aad7cc906df31a0dee0577de83f0a8e6869a91bc86a86a276800f58b",
+                "rewritten/jacobi.h": "d200b2002fbec0db5aa1f2e9952cf7d7ad285794c6151e16827634468e22aebf"
             },
             "verilog": {
                 "Jacobi/Jacobi.v": "a0b113e6fe6b82d9a23b3102446b5ba29ba512e8a93ed3bd9f4cebf10a60bd2c",
@@ -195,8 +195,8 @@
         },
         "network": {
             "cpp": {
-                "rewritten/network.cpp": "fe7a442e655d23287583d88313f975cd64d82d6ac4f2430be83628120eaf43a5",
-                "rewritten/network.h": "3997ebc3956b32e40cb2b7fe473bbe7b1b4b6869126d110537a4ec90c1bc66a0"
+                "rewritten/network.cpp": "1f152e72659a9e937867424e4b897ff5a885196251dd2787bed7b32c77e34c09",
+                "rewritten/network.h": "02ee259ecc0db46a469bab4dc94ade942a70bd6cddac79b3f9d34005f0fd7a75"
             },
             "verilog": {
                 "Consume/Consume.v": "b7b6d8f51eef0ad592a1f4934c6b53db8db68f88e97c4b004ae07df560fc8a0a",
@@ -217,7 +217,7 @@
         },
         "templated": {
             "cpp": {
-                "rewritten/templated.cpp": "6967da42046210b2446102b9872aae5c8523a0dab3313ece0b49487dba1adf91"
+                "rewritten/templated.cpp": "bd7f2a1747c8035978c4c8f12787b2a6a291fdaabc9a5570aa6ca652f4cdb1b4"
             },
             "verilog": {
                 "Mmap2Stream/Mmap2Stream.v": "e881b1805ecfd976ad01ce7a9360c6b73e7f3f7467e3af953609c51a19fa6308",
@@ -237,8 +237,8 @@
         },
         "vadd": {
             "cpp": {
-                "rewritten/vadd.cpp": "b9eccf7070b59bdd3b8767ce3e171f8301ffde3a00895b709c4b794617c66636",
-                "rewritten/vadd.h": "2def229f5c7b205247312d447bffd489cc8bcb5080818f5b989f573ebba84cb2"
+                "rewritten/vadd.cpp": "ca7f9b16572e491f021986cc17241599fae3e79f676d954f46517ba7e305e087",
+                "rewritten/vadd.h": "020dff5938248804e011bbe20ec346561e41e546fbdf60006b1abe04f5935430"
             },
             "verilog": {
                 "Add/Add.v": "46bd0f972017af9093026c37dd7d352eaabba99b040084ba60315d022f5f9468",

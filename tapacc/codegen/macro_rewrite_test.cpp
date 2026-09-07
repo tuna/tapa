@@ -140,6 +140,7 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
   // signature.
   EXPECT_TRUE(Contains(file,
                        "#ifdef TAPA_TASK_DEF_MacroTask\n"
+                       "\n"
                        "#line 75 \"/proj/src/body.cpp\"\n"
                        "void MacroTask(tapa::istream<float>& q, "
                        "tapa::mmap<float> c,\n"

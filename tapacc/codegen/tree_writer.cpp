@@ -275,23 +275,24 @@ bool TreeFileBuffer::ResnapAfterEdit(clang::SourceLocation begin,
       std::min(end_offset, static_cast<unsigned>(original.size())));
   if (rest.empty()) return true;  // nothing follows the edit
   unsigned marker_offset = end_offset;
-  bool needs_newline =
-      text.empty() ? (begin_offset > 0 && original[begin_offset - 1] != '\n')
-                   : !text.ends_with('\n');
   if (rest.front() == '\n') {
-    // The edit ends exactly at a line boundary: the unchanged newline
-    // already terminates the last written line, so pin the NEXT line from
-    // its own start, without introducing a blank one.
+    // The edit ends exactly at a line boundary: pin the NEXT line from its
+    // own start (the unchanged newline already terminates the last written
+    // line).
     if (rest.size() == 1) return true;  // only the final newline follows
     marker_offset = end_offset + 1;
-    needs_newline = false;
   }
   const clang::SourceLocation at =
       sm_.getLocForStartOfFile(file_).getLocWithOffset(marker_offset);
   std::string marker;
   llvm::raw_string_ostream os(marker);
-  os << (needs_newline ? "\n" : "") << "#line " << sm_.getSpellingLineNumber(at)
-     << " \"" << abs_path_ << "\"\n";
+  // The marker always starts its own line, unconditionally: another edit
+  // recorded at the same offset (a helper's inline attribute, a guard edge)
+  // can be emitted ahead of it, and a `#line` directive glued to prior
+  // text is a syntax error. A leading blank line is legal and harmless;
+  // pins are absolute.
+  os << (begin_offset > 0 ? "\n" : "") << "#line "
+     << sm_.getSpellingLineNumber(at) << " \"" << abs_path_ << "\"\n";
   // InsertTextAfter, not Before: an edit at the same offset (a pure
   // insertion's own marker) must land after the inserted text, and
   // RewriteBuffer maps equal offsets through that flag.

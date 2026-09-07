@@ -330,8 +330,51 @@ TEST(TreeFileBuffer, MultiLineReplacementResnapsWithLineMarker) {
             "  one = 1;\n"
             "  one += 1;\n"
             "}\n"
+            "\n"
             "#line 5 \"/src/main.cpp\"\n"
             "int two;\n");
+}
+
+TEST(TreeFileBuffer, ForeignInsertionAtMarkerOffsetDoesNotGlueTheMarker) {
+  // A guard edge and a helper's inline attribute can land at the same
+  // offset; the `#line` re-snap must still start its own line. This is the
+  // lu_decompose gluing bug: ` __attribute__((noinline)) #line 480 "..."`
+  // was emitted as one line, which no compiler parses.
+  auto ast = clang::tooling::buildASTFromCodeWithArgs(
+      kLinesCode, std::vector<std::string>{"-std=c++17"}, "main.cpp");
+  ASSERT_NE(ast, nullptr);
+  clang::SourceManager& sm = ast->getSourceManager();
+  clang::Rewriter rewriter(sm, ast->getLangOpts());
+  TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
+
+  const std::string body = "void f() {\n  one = 1;\n}";
+  const size_t offset = std::string(kLinesCode).find(body);
+  ASSERT_NE(offset, std::string::npos);
+  const clang::SourceLocation begin =
+      sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(offset);
+  const clang::SourceLocation last_token =
+      begin.getLocWithOffset(body.size() - 1);
+  ASSERT_TRUE(buffer.InsertGuard(clang::SourceRange(begin, last_token),
+                                 "#ifdef TAPA_TASK_DEF_F\n",
+                                 "#else\nvoid f();\n#endif\n"));
+  // The foreign insertion: an attribute at the next declaration's begin —
+  // the exact offset the guard's closing marker also targets.
+  const clang::SourceLocation helper = begin.getLocWithOffset(body.size() + 2);
+  rewriter.InsertTextBefore(helper, " __attribute__((noinline)) ");
+
+  const std::string rendered = buffer.Render();
+  // No line may contain non-directive text ahead of `#line`.
+  size_t pos = 0;
+  while ((pos = rendered.find("#line", pos)) != std::string::npos) {
+    const size_t line_start = rendered.rfind('\n', pos);
+    const std::string before = rendered.substr(
+        line_start == std::string::npos ? 0 : line_start + 1,
+        pos - (line_start == std::string::npos ? 0 : line_start + 1));
+    EXPECT_TRUE(before.empty()) << "marker glued to preceding text: " << before;
+    ++pos;
+  }
+  // The attribute survives, before its own declaration.
+  EXPECT_NE(rendered.find("__attribute__((noinline))"), std::string::npos);
 }
 
 TEST(TreeSession, DeclEditSinkResnapsInsideTheFile) {
@@ -356,6 +399,7 @@ TEST(TreeSession, DeclEditSinkResnapsInsideTheFile) {
             "int one;\n"
             "void f() {\n"
             "  int inserted;\n"
+            "\n"
             "#line 3 \"main.cpp\"\n"
             "  one = 1;\n"
             "}\n"
@@ -388,6 +432,7 @@ TEST(TreeFileBuffer, GuardWrappingResnapsBothHalves) {
   EXPECT_EQ(buffer.Render(),
             "int one;\n"
             "#ifdef TAPA_TASK_DEF_F\n"
+            "\n"
             "#line 2 \"/src/main.cpp\"\n"
             "void f() {\n"
             "  one = 1;\n"
@@ -395,6 +440,7 @@ TEST(TreeFileBuffer, GuardWrappingResnapsBothHalves) {
             "#else\n"
             "void f();\n"
             "#endif\n"
+            "\n"
             "\n"
             "#line 5 \"/src/main.cpp\"\n"
             "int two;\n");
@@ -427,6 +473,7 @@ TEST(TreeFileBuffer, LaterEditEarlierInTheFileStillResnaps) {
             "  one = 1;\n"
             "  one += 1;\n"
             "}\n"
+            "\n"
             "#line 5 \"/src/main.cpp\"\n"
             "int two;\n");
 }
