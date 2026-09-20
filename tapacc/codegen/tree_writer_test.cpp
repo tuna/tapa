@@ -542,6 +542,25 @@ TEST(TreeWriter, UnchangedBytesAreNotRewritten) {
             "#include <syshdr.h>\nint main() { return kept() + moved(); }\n");
 }
 
+// A reused out_root cannot keep files an earlier run wrote: the mirror is
+// exactly this run's closure, stale sources and emptied buckets included.
+TEST(TreeWriter, StaleFilesFromAnEarlierRunArePruned) {
+  const std::string root = TempRoot("prune");
+  ASSERT_TRUE(RunComposition(root).ok);
+  {
+    std::error_code ec;
+    llvm::sys::fs::create_directories(root + "/_external/deadbeef");
+    llvm::raw_fd_ostream(root + "/gone.cpp", ec) << "stale\n";
+    llvm::raw_fd_ostream(root + "/_external/deadbeef/old.h", ec) << "stale\n";
+    ASSERT_FALSE(ec) << ec.message();
+  }
+  ASSERT_TRUE(RunComposition(root).ok);
+  const std::map<std::string, std::string> files = ReadTree(root);
+  EXPECT_EQ(files.size(), 3u) << "main + keep.h + one bucketed header";
+  EXPECT_EQ(files.find("gone.cpp"), files.end());
+  EXPECT_EQ(files.find("_external"), files.end());
+}
+
 // ── (f) determinism ───────────────────────────────────────────────────────
 
 TEST(TreeWriter, IdenticalInputsProduceIdenticalTrees) {

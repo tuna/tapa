@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cassert>
+#include <set>
 #include <utility>
 
 #include "clang/AST/ASTContext.h"
@@ -485,13 +486,58 @@ std::vector<std::string> TreeWriter::ExternalBuckets() const {
   return {buckets.begin(), buckets.end()};
 }
 
+// Post-order prune of one directory: unregistered files are removed, and
+// a directory left empty by that pruning goes with them (an orphaned
+// `_external` bucket, a source subtree that no longer exists). rmdir's
+// not-empty failure is the ordinary "keep this directory" case; the tree
+// root itself is never a candidate. Symlinks are never followed -- a link
+// is a file the mirror may own, not a doorway to files outside it.
+bool PruneDirectory(const std::string& dir, const std::string& prefix,
+                    const std::set<std::string>& keys, std::string* error) {
+  std::error_code ec;
+  llvm::sys::fs::directory_iterator it(dir, ec);
+  if (ec) {
+    if (ec == std::errc::no_such_file_or_directory) return true;
+    *error = "cannot scan '" + dir + "': " + ec.message();
+    return false;
+  }
+  for (; it != llvm::sys::fs::directory_iterator(); it = it.increment(ec)) {
+    if (ec) break;
+    const std::string path = it->path();
+    const std::string name = llvm::sys::path::filename(path).str();
+    llvm::sys::fs::file_status status;
+    if ((ec = llvm::sys::fs::status(path, status, /*follow=*/false))) break;
+    if (status.type() == llvm::sys::fs::file_type::directory_file) {
+      if (!PruneDirectory(path, prefix + name + "/", keys, error)) {
+        return false;
+      }
+      ec = llvm::sys::fs::remove(path);
+      if (ec == std::errc::directory_not_empty) ec = std::error_code();
+    } else if (keys.count(prefix + name) == 0) {
+      ec = llvm::sys::fs::remove(path);
+    }
+    if (ec) break;
+  }
+  if (ec) {
+    *error = "cannot prune '" + dir + "': " + ec.message();
+    return false;
+  }
+  return true;
+}
+
 bool TreeWriter::Write(std::string* error) {
   TreeLayout layout(TreeLayout::SrcRoot(main_files_));
+  std::set<std::string> keys;
   for (const auto& [path, bytes] : rendered_) {
     (void)bytes;  // registration is about the paths
     std::string key;
     if (!layout.Register(path, &key, error)) return false;
+    keys.insert(std::move(key));
   }
+  // The mirror is a pure function of this run's inputs: files an earlier
+  // run wrote under a different file set or layout disappear, so a reused
+  // work directory cannot accumulate orphans.
+  if (!PruneDirectory(out_root_, "", keys, error)) return false;
 
   // Materialize in a fixed order so identical inputs visit the same paths
   // the same way every run; unchanged bytes are skipped.
