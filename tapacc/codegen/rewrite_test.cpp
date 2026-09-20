@@ -86,8 +86,7 @@ constexpr char kAttrs[] = R"cpp(
   inline float DeclFirst(int x) { return x + 1; }
   inline int Second(int);
   int Second(int x) { return x + 2; }
-  // Function-level pipeline: accepted on declarations for legacy
-  // compatibility, so it must lower rather than leak its text.
+  // Function-level pipeline lowers into the body it is written on.
   [[tapa::pipeline(2, "flp")]] float FnPipelined(float x) { return x + 8; }
   inline float Scale(float x) { return x * 2; }
   float Mix(float a, float b) { return a + b; }
@@ -267,6 +266,23 @@ TEST(Rewrite, OutOfRangePositionalIntIsRejected) {
       "Top", TempRoot("oor"), {"-std=c++17"});
   EXPECT_FALSE(run.ok);
   EXPECT_FALSE(run.diags.empty()) << "a factor below -1 must be diagnosed";
+}
+
+// A declaration has no body to lower a function-level pipeline into;
+// the rewrite rejects it where it is written instead of letting the raw
+// text reach the vendor.
+TEST(Rewrite, PipelineOnDeclarationIsRejected) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/pipedecl.cpp", R"cpp(
+                   [[tapa::pipeline(2)]] void Task(tapa::ostream<float>& out);
+                   void Task(tapa::ostream<float>& out) { out.write(1.f); }
+                   void Top(tapa::ostream<float>& out) { tapa::task().invoke(Task, out); }
+                 )cpp"}},
+      "Top", TempRoot("pipedecl"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_EQ(run.diags.size(), 1u) << run.json;
+  EXPECT_TRUE(Contains(run.diags.front(), "on a function declaration"))
+      << run.diags.front();
 }
 
 TEST(Rewrite, LowerTaskGetsFifoPragmas) {

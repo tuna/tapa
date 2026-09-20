@@ -90,19 +90,14 @@ constexpr bool IsTapaAttr(clang::attr::Kind kind) {
   }
 }
 
-// TapaPipeline is accepted on declarations for legacy compatibility, and
-// TapaTarget belongs on functions. Neither is a variable pragma.
+// TapaPipeline belongs on functions and statements, TapaTarget on
+// functions. Neither is a variable pragma.
 constexpr bool IsTapaDeclAttr(clang::attr::Kind kind) {
   return IsTapaAttr(kind) && kind != clang::attr::TapaPipeline &&
          kind != clang::attr::TapaTarget;
 }
 
 // Lower a function-level [[tapa::pipeline]] into the function's body.
-//
-// The attribute is accepted on declarations for legacy compatibility (it is
-// how a vendor `#pragma HLS pipeline` written at function scope migrates),
-// but nothing lowered it: the pragma was never emitted and the raw
-// `[[tapa::pipeline(...)]]` text reached the vendor compiler verbatim.
 void LowerFuncAttrPragmas(const clang::FunctionDecl* func,
                           const Backend& backend, EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) return;
@@ -115,9 +110,9 @@ void LowerFuncAttrPragmas(const clang::FunctionDecl* func,
   }
 }
 
-// Drop a function-level [[tapa::pipeline]] without lowering it. A task that
-// is not the current one keeps only its signature, so there is no body to
-// carry the pragma — but the attribute text would still reach the vendor.
+// Drop a function-level [[tapa::pipeline]] without lowering it: a task's
+// stub branch keeps only its signature, so no body carries the pragma, but
+// the attribute text must not reach the vendor.
 void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
   for (const clang::Attr* attr : func->attrs()) {
     if (attr->getKind() == clang::attr::TapaPipeline) {
@@ -126,8 +121,25 @@ void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
   }
 }
 
+// On a definition: lower the pragma, then drop the attribute text. On a
+// declaration: there is no body to lower into and the text would reach the
+// vendor verbatim, so say where the attribute belongs instead.
 void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
                     EditSink& edits) {
+  if (!func->isThisDeclarationADefinition()) {
+    for (const clang::Attr* attr : func->attrs()) {
+      if (attr->getKind() != clang::attr::TapaPipeline) continue;
+      ReportCustomDiag(func->getASTContext(), clang::DiagnosticsEngine::Error,
+                       attr->getRange().getBegin(),
+                       "[[tapa::%0]] on a function declaration: the pragma "
+                       "lowers into the body, so put it on the definition")
+          .AddString(attr->getSpelling());
+      // The error already fails the run; dropping the text keeps the
+      // leaked-attribute scan from echoing the same site.
+      RemoveLoweredAttr(edits, attr->getRange());
+    }
+    return;
+  }
   LowerFuncAttrPragmas(func, backend, edits);
   RemoveFuncAttrs(func, edits);
 }
@@ -533,6 +545,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
       edits.Describe("declaration of task '" + model.name + "'");
       backend.RewriteSignature(model, name == program.top, edits);
       backend.RewriteTaskFunc(model, name == program.top, edits);
+      LowerFuncAttrs(model.def, backend, edits);
       continue;
     }
     guard_definition(model, model.def, name == program.top, backend,
@@ -546,7 +559,10 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   for (const clang::FunctionDecl* func : program.file_funcs) {
     const auto task = program.tasks.find(func->getNameAsString());
     if (task != program.tasks.end() && !task->second.is_template_spec) {
-      if (!func->isThisDeclarationADefinition()) RemoveInline(func, edits);
+      if (!func->isThisDeclarationADefinition()) {
+        RemoveInline(func, edits);
+        LowerFuncAttrs(func, shared, edits);
+      }
       continue;
     }
 
@@ -574,9 +590,9 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     } else {
       edits.Describe("helper function '" + func->getNameAsString() + "'");
       shared.RewriteHelperFunc(func, edits);
+      LowerFuncAttrs(func, shared, edits);
       if (func->isThisDeclarationADefinition()) {
         LowerParamAttrs(func, shared, edits);
-        LowerFuncAttrs(func, shared, edits);
         LowerAttrs(func->getBody(), ctx, shared, edits,
                    /*in_block=*/false);
       }
