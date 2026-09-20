@@ -31,15 +31,7 @@ pub const FILE_NAME: &str = "tapa.json";
 /// mismatch must surface as a clear "re-run analyze" error, not as a
 /// confusing field-level parse failure. Purely *additive* fields carried with
 /// `#[serde(default, skip_serializing_if = "Option::is_none")]` are
-/// backward-compatible — old files parse unchanged and new files omit the
-/// field until it is populated — so they do not require a bump (the cosim
-/// port metadata on [`crate::port::Port`] landed that way).
-///
-/// v2 added the optional [`WorkState::floorplan`] contract; v3 made routed
-/// channel identities variant-specific; v4 changed the nested [`TaskGraph`]
-/// wire form, where an invoke-site constant became a typed
-/// [`crate::instance::ArgSource::Literal`] instead of a Verilog-syntax
-/// string, and the graph gained its own `schema_version`.
+/// backward-compatible and do not require a bump.
 pub const VERSION: u32 = 4;
 
 /// Everything the pipeline persists between steps.

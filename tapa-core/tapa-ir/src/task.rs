@@ -31,17 +31,17 @@ pub enum TaskLevel {
 pub struct Task {
     /// Task level: `"lower"` (leaf) or `"upper"` (composite).
     pub level: TaskLevel,
-    /// This task's rewritten translation units, as paths relative to
-    /// the work dir's `rewritten/` source tree (schema v3). The text
-    /// of each file is `tapacc`'s rewrite output, written there at
-    /// analyze time.
+    /// The rewritten translation units this task compiles, as paths
+    /// relative to the work dir's `rewritten/` source tree: the same
+    /// list for every task, with the guard define selecting each
+    /// task's variant. `tapacc` writes the tree at analyze time.
     pub srcs: Vec<String>,
     /// Include directories for this task's sources, relative to the
     /// same tree; an empty string is the tree root.
     pub include_dirs: Vec<String>,
-    /// The task's variant guard macro(s), e.g. `TAPA_TASK_DEF_<key>`.
-    /// Empty under the current producer, which emits one self-contained
-    /// source per task instead of guard-selected variants.
+    /// The task's variant guard macro(s), e.g. `TAPA_TASK_DEF_<key>`;
+    /// the mirrored tree compiles once per task with exactly its define
+    /// set.
     pub defines: Vec<String>,
     /// Human-readable task name emitted by `tapacc` (e.g. the demangled
     /// template specialization). Required: `tapacc` emits it unconditionally
