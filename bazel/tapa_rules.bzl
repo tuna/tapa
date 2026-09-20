@@ -165,10 +165,10 @@ def _tapa_xo_impl(ctx):
 
     # Default shell env so `--action_env=NAME=VALUE` reaches `tapa`: with the
     # Starlark default (no shell env) the action's environment is empty and
-    # flags like the campaign's TAPA_ANALYZE_TREE are silently ignored, which
-    # makes a flag-on build a cache hit of the flag-off action. Under
-    # --incompatible_strict_action_env only PATH plus explicitly set
-    # --action_env values are inherited, so the key stays deterministic.
+    # the variable is silently ignored, which makes a flag-on build a cache
+    # hit of the flag-off action. Under --incompatible_strict_action_env only
+    # PATH plus explicitly set --action_env values are inherited, so the
+    # action key stays deterministic.
     ctx.actions.run(
         outputs = outputs,
         inputs = inputs,

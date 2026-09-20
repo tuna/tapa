@@ -69,7 +69,7 @@ namespace {
 
 using namespace tapa::cc;
 
-llvm::cl::OptionCategory g_category("tapacc-ng options");
+llvm::cl::OptionCategory g_category("tapacc options");
 
 llvm::cl::opt<std::string> g_top("top", llvm::cl::Required,
                                  llvm::cl::desc("Top-level task name"),
