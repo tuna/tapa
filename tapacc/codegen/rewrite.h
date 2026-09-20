@@ -24,7 +24,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
                       TreeSession& session);
 
 // Reports any lowered attribute text left in one final emitted file.
-void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef label,
+void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
                        clang::ASTContext& ctx);
 
 }  // namespace tapa::cc

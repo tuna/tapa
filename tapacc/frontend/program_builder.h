@@ -196,10 +196,6 @@ class ProgramBuilder {
   void FillOwnedTasks(int tu, Program& view, clang::ASTContext& ctx);
   int RegisterTu(const std::string& file);
   int TuOf(const std::string& file) const;
-  // The shared file name of one TU, and the merge-time check that TU
-  // basenames stay distinct so those names cannot collide.
-  std::string SharedSourceName(int tu) const;
-  bool CheckSharedFileNames();
   void Fail(std::string message);
   std::string ScannedTus() const;
   const DefSighting& FirstSighting(const std::string& key) const;

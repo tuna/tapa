@@ -10,7 +10,7 @@
 namespace tapa::cc {
 
 EditSink::EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter)
-    : ctx_(&ctx), rewriter_(rewriter) {}
+    : ctx_(ctx), rewriter_(rewriter) {}
 
 void EditSink::TrackFile(clang::FileID file, Resnap resnap) {
   resnaps_[file] = std::move(resnap);
@@ -30,7 +30,7 @@ bool EditSink::CanRewrite(clang::CharSourceRange range) {
 bool EditSink::Mirrored(clang::SourceLocation loc) {
   clang::SourceManager& sm = rewriter_.getSourceMgr();
   if (resnaps_.count(sm.getFileID(loc)) != 0) return true;
-  ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error, loc,
+  ReportCustomDiag(ctx_, clang::DiagnosticsEngine::Error, loc,
                    "cannot rewrite %0 in non-mirrored file '%1'")
       << construct_ << sm.getFilename(loc);
   return false;
@@ -40,7 +40,7 @@ bool EditSink::Mirrored(clang::SourceLocation loc) {
 // impossible cases each get one precise diagnostic.
 ExpansionSplice* EditSink::MacroSide(clang::SourceLocation loc) {
   if (splices_ == nullptr) {
-    ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error, loc,
+    ReportCustomDiag(ctx_, clang::DiagnosticsEngine::Error, loc,
                      "cannot rewrite %0 inside a macro expansion: this run "
                      "recorded no token stream to expand it through")
         << construct_;
@@ -61,7 +61,7 @@ ExpansionSplice* EditSink::MacroSide(clang::SourceLocation loc) {
 ExpansionSplice* EditSink::MacroHome(clang::SourceLocation begin,
                                      clang::SourceLocation end) {
   if (begin.isMacroID() != end.isMacroID()) {
-    ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error,
+    ReportCustomDiag(ctx_, clang::DiagnosticsEngine::Error,
                      begin.isMacroID() ? begin : end,
                      "cannot rewrite %0: its range spans from user source "
                      "into a macro expansion")
@@ -72,7 +72,6 @@ ExpansionSplice* EditSink::MacroHome(clang::SourceLocation begin,
 }
 
 bool EditSink::CanEdit(clang::SourceLocation begin, clang::SourceLocation end) {
-  if (ctx_ == nullptr) return true;
   // Each end needs a home (a mirrored file or an invocation's splice); the
   // edit then anchors at one end or the other. A task whose body is spelled
   // by a macro is exactly this shape: file signature, expansion-owned end.
@@ -92,7 +91,7 @@ bool EditSink::CanEdit(clang::SourceLocation begin, clang::SourceLocation end) {
 
 void EditSink::ReportSpliceReject(clang::SourceLocation loc,
                                   llvm::StringRef why) {
-  ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error, loc,
+  ReportCustomDiag(ctx_, clang::DiagnosticsEngine::Error, loc,
                    "cannot rewrite %0 inside a macro expansion: %1")
       << construct_ << why.str();
 }
@@ -111,7 +110,7 @@ bool EditSink::ViaSplice(clang::SourceLocation begin, clang::SourceLocation end,
 }
 
 ExpansionSplice* EditSink::MacroSpliceFor(clang::SourceLocation loc) {
-  if (ctx_ == nullptr || !loc.isMacroID()) return nullptr;
+  if (!loc.isMacroID()) return nullptr;
   return MacroHome(loc, loc);
 }
 
@@ -125,10 +124,10 @@ bool EditSink::DropSpliceTokens(ExpansionSplice* splice, size_t first,
 
 bool EditSink::Finish(clang::SourceLocation begin, unsigned length,
                       llvm::StringRef text, bool rejected) {
-  if (rejected || ctx_ == nullptr) return rejected;
+  if (rejected) return rejected;
   const clang::FileID file = rewriter_.getSourceMgr().getFileID(begin);
   if (resnaps_.at(file)(begin, length, text)) return false;
-  ReportCustomDiag(*ctx_, clang::DiagnosticsEngine::Error, begin,
+  ReportCustomDiag(ctx_, clang::DiagnosticsEngine::Error, begin,
                    "cannot maintain line fidelity while rewriting %0")
       << construct_;
   return true;
@@ -146,7 +145,6 @@ unsigned EditSink::OriginalLength(clang::CharSourceRange range) const {
 }
 
 bool EditSink::ReplaceText(clang::SourceRange range, llvm::StringRef text) {
-  if (ctx_ == nullptr) return rewriter_.ReplaceText(range, text);
   if (range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
     return ViaSplice(range.getBegin(), range.getEnd(),
                      [&](ExpansionSplice* splice, std::string* why) {
@@ -163,7 +161,6 @@ bool EditSink::ReplaceText(clang::SourceRange range, llvm::StringRef text) {
 
 bool EditSink::ReplaceText(clang::SourceLocation start, unsigned length,
                            llvm::StringRef text) {
-  if (ctx_ == nullptr) return rewriter_.ReplaceText(start, length, text);
   const clang::SourceLocation end =
       length == 0 ? start : start.getLocWithOffset(length - 1);
   if (start.isMacroID() || end.isMacroID()) {
@@ -179,7 +176,6 @@ bool EditSink::ReplaceText(clang::SourceLocation start, unsigned length,
 
 bool EditSink::InsertTextBefore(clang::SourceLocation loc,
                                 llvm::StringRef text) {
-  if (ctx_ == nullptr) return rewriter_.InsertTextBefore(loc, text);
   if (loc.isMacroID()) {
     return ViaSplice(loc, loc, [&](ExpansionSplice* splice, std::string* why) {
       return splice->InsertBefore(loc, text, why);
@@ -191,7 +187,6 @@ bool EditSink::InsertTextBefore(clang::SourceLocation loc,
 
 bool EditSink::InsertTextAfter(clang::SourceLocation loc,
                                llvm::StringRef text) {
-  if (ctx_ == nullptr) return rewriter_.InsertTextAfter(loc, text);
   if (loc.isMacroID()) {
     // The Rewriter's InsertTextAfter inserts before the character at the
     // location (ordering same-offset insertions after it); at a token
@@ -206,7 +201,6 @@ bool EditSink::InsertTextAfter(clang::SourceLocation loc,
 
 bool EditSink::InsertTextAfterToken(clang::SourceLocation loc,
                                     llvm::StringRef text) {
-  if (ctx_ == nullptr) return rewriter_.InsertTextAfterToken(loc, text);
   if (loc.isMacroID()) {
     return ViaSplice(loc, loc, [&](ExpansionSplice* splice, std::string* why) {
       return splice->InsertAfter(loc, text, why);
@@ -220,7 +214,6 @@ bool EditSink::InsertTextAfterToken(clang::SourceLocation loc,
 }
 
 bool EditSink::RemoveText(clang::SourceLocation start, unsigned length) {
-  if (ctx_ == nullptr) return rewriter_.RemoveText(start, length);
   const clang::SourceLocation end =
       length == 0 ? start : start.getLocWithOffset(length - 1);
   if (start.isMacroID() || end.isMacroID()) {
@@ -234,7 +227,6 @@ bool EditSink::RemoveText(clang::SourceLocation start, unsigned length) {
 }
 
 bool EditSink::RemoveText(clang::SourceRange range) {
-  if (ctx_ == nullptr) return rewriter_.RemoveText(range);
   if (range.getBegin().isMacroID() || range.getEnd().isMacroID()) {
     return ViaSplice(range.getBegin(), range.getEnd(),
                      [&](ExpansionSplice* splice, std::string* why) {

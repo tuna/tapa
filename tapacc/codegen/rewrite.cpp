@@ -352,12 +352,14 @@ std::string BlankCommentsAndStrings(llvm::StringRef code) {
   return out;
 }
 
-void ReportLeakedAttrsImpl(llvm::StringRef code, llvm::StringRef task,
-                           clang::ASTContext& ctx) {
+}  // namespace
+
+void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
+                       clang::ASTContext& ctx) {
   const std::string scannable = BlankCommentsAndStrings(code);
   code = scannable;
-  // One leaked attribute would error identically in every task's compile of
-  // the mirrored tree; report once per unique spelling per process.
+  // The same file renders in every TU that sights it, so the same leak
+  // reaches this scan once per TU; report it once per file and spelling.
   static std::set<std::string> reported;
   constexpr llvm::StringLiteral kMarker("[[tapa::");
   for (size_t pos = code.find(kMarker); pos != llvm::StringRef::npos;
@@ -368,21 +370,14 @@ void ReportLeakedAttrsImpl(llvm::StringRef code, llvm::StringRef task,
     const llvm::StringRef name =
         end == llvm::StringRef::npos ? rest : rest.substr(0, end);
     if (name == "target") continue;
-    if (!reported.insert(name.str()).second) continue;
+    if (!reported.insert((file + ":" + name).str()).second) continue;
     const unsigned line = code.substr(0, pos).count('\n') + 1;
     ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, {},
                      "[[tapa::%0]] was not lowered and would reach the vendor "
-                     "verbatim in the generated code for task '%1' (line %2); "
+                     "verbatim in the mirrored file '%1' (line %2); "
                      "it is on a subject no pragma is emitted for")
-        << name << task << line;
+        << name << file << line;
   }
-}
-
-}  // namespace
-
-void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef label,
-                       clang::ASTContext& ctx) {
-  ReportLeakedAttrsImpl(code, label, ctx);
 }
 
 // The primary-template pattern of a template-specialization task's definition

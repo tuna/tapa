@@ -24,6 +24,12 @@ namespace tapa::cc {
 // diagnostic. A macro-owned edit never reaches the Rewriter: it composes
 // into token slots on the outermost spelled invocation owning it
 // (MacroSplices) and the invocation is spliced once at session end.
+//
+// Return-value convention, stated once: the mutation methods return true
+// when the edit was REJECTED (the clang::Rewriter convention), while
+// CanRewrite returns true when a range can anchor an edit. TreeSession's
+// guard helpers invert back to true-on-success, as their callers read
+// them.
 class EditSink {
  public:
   using Resnap =
@@ -31,7 +37,7 @@ class EditSink {
 
   // Rejected edits report through `ctx`; call TrackFile for every mirrored
   // FileID before applying rewrite rules.
-  EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter);
+  explicit EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter);
 
   void TrackFile(clang::FileID file, Resnap resnap);
   // Installs the splice queue for macro-owned edits (requires a recorded
@@ -85,7 +91,7 @@ class EditSink {
               llvm::StringRef text, bool rejected);
   unsigned OriginalLength(clang::CharSourceRange range) const;
 
-  clang::ASTContext* ctx_ = nullptr;
+  clang::ASTContext& ctx_;
   clang::Rewriter& rewriter_;
   MacroSplices* splices_ = nullptr;
   std::map<clang::FileID, Resnap> resnaps_;

@@ -64,13 +64,12 @@ ExpansionSplice::ExpansionSplice(const clang::SourceManager& sm,
 // invocation: there is no honest slot for it.
 std::optional<size_t> ExpansionSplice::IndexAtOrAfter(
     clang::SourceLocation loc) const {
-  for (size_t i = 0; i < tokens_.size(); ++i) {
-    if (tokens_[i].location() == loc) return i;
-  }
   if (tokens_.empty() ||
       sm_.isBeforeInTranslationUnit(loc, tokens_.front().location())) {
     return std::nullopt;
   }
+  // The tokens are in translation-unit order with distinct locations, so
+  // the lower bound is also the exact match when one exists.
   const auto* it = std::lower_bound(
       tokens_.begin(), tokens_.end(), loc,
       [&](const clang::syntax::Token& t, clang::SourceLocation l) {
