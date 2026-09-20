@@ -1,32 +1,26 @@
 {
     "capabilities": [
         {
-            "expect": "pass",
             "name": "sanity_vadd_analyze",
-            "note": "positive control, never flips: single-TU analyze of the vadd app"
+            "note": "positive control: single-TU analyze of the vadd app"
         },
         {
-            "expect": "pass",
             "name": "multi_tu_analyze",
             "note": "multi-TU merge: both TUs analyzed as one program"
         },
         {
-            "expect": "pass",
             "name": "macro_invoke_seen",
             "note": "the graph sees through the user macro wrapping a task invocation"
         },
         {
-            "expect": "pass",
             "name": "synthesis_branch_preserved",
             "note": "#ifdef arms survive in the mirror for the downstream consumer"
         },
         {
-            "expect": "pass",
             "name": "header_not_inlined",
             "note": "the shared header mirrors once instead of being inlined per task"
         },
         {
-            "expect": "pass",
             "name": "line_directive_present",
             "note": "guard edits re-snap with #line so diagnostics cite user source"
         }

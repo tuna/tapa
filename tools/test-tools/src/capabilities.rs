@@ -1,13 +1,8 @@
-//! `mf-capabilities`: expectations-manifest runner for the multi-file
-//! frontend campaign.
-//!
-//! Bazel has no xfail, so "this capability is expected to fail on the
-//! current pipeline" is pinned by a committed manifest instead:
-//! `tests/apps/multi-file/testdata/capabilities.json`. Every entry names a
-//! probe of the pipeline against the multi-file app and the outcome it
-//! must have. The runner passes only when reality matches the manifest
-//! exactly, so a capability that regresses fails the test with the
-//! manifest naming the contract that broke.
+//! `mf-capabilities`: end-to-end contract test for the multi-file
+//! frontend. `tests/apps/multi-file/testdata/capabilities.json` names one
+//! probe per entry; every probe drives `tapa analyze` (the multi-file
+//! app, plus a vadd positive control) and must pass, so a regression
+//! fails the test with the manifest naming the contract that broke.
 
 use serde::Deserialize;
 use serde_json::{Map, Value as JsonValue};
@@ -37,25 +32,8 @@ struct Manifest {
 #[derive(Deserialize)]
 struct Entry {
     name: String,
-    expect: Expectation,
     /// One line: the contract this entry pins.
     note: String,
-}
-
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-enum Expectation {
-    Pass,
-    Xfail,
-}
-
-impl Expectation {
-    const fn as_str(self) -> &'static str {
-        match self {
-            Self::Pass => "pass",
-            Self::Xfail => "xfail",
-        }
-    }
 }
 
 /// What the current pipeline actually did with a capability.
@@ -122,55 +100,32 @@ pub fn mf_capabilities() -> Result<()> {
 
     print_table(&rows);
 
-    let mut mismatches = Vec::new();
+    let mut failures = Vec::new();
     for (entry, actual) in &rows {
-        let mismatch = match (entry.expect, actual) {
-            (Expectation::Pass, ProbeOutcome::Pass)
-            | (Expectation::Xfail, ProbeOutcome::Fail(_)) => None,
-            (Expectation::Pass, ProbeOutcome::Fail(reason)) => {
-                Some(format!("expected pass but failed: {reason}"))
-            }
-            (Expectation::Xfail, ProbeOutcome::Pass) => Some(format!(
-                "unexpected pass: this capability now works; \
-                 flip it to \"pass\" in {MANIFEST}"
-            )),
-        };
-        if let Some(mismatch) = mismatch {
-            mismatches.push(format!("  {}: {}", entry.name, mismatch));
+        if let ProbeOutcome::Fail(reason) = actual {
+            failures.push(format!("  {}: {reason}", entry.name));
         }
     }
-    if mismatches.is_empty() {
+    if failures.is_empty() {
         return Ok(());
     }
     Err(format!(
-        "capability expectations mismatch:\n{}\nreality must match {} exactly",
-        mismatches.join("\n"),
-        MANIFEST
+        "capability contracts failed:\n{}\nsee the notes in {MANIFEST}",
+        failures.join("\n"),
     ))
 }
 
 fn print_table(rows: &[(&Entry, ProbeOutcome)]) {
     let mut table = String::new();
-    writeln!(
-        table,
-        "{:<27} {:<7} {:<7} note",
-        "capability", "expect", "actual"
-    )
-    .expect("write to String cannot fail");
+    writeln!(table, "{:<27} {:<7} note", "capability", "actual")
+        .expect("write to String cannot fail");
     for (entry, actual) in rows {
         let actual = match actual {
             ProbeOutcome::Pass => "pass".to_string(),
-            ProbeOutcome::Fail(reason) => format!("xfail ({reason})"),
+            ProbeOutcome::Fail(reason) => format!("fail ({reason})"),
         };
-        writeln!(
-            table,
-            "{:<27} {:<7} {:<7} {}",
-            entry.name,
-            entry.expect.as_str(),
-            actual,
-            entry.note
-        )
-        .expect("write to String cannot fail");
+        writeln!(table, "{:<27} {:<7} {}", entry.name, actual, entry.note)
+            .expect("write to String cannot fail");
     }
     println!("{table}");
 }
