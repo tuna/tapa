@@ -396,7 +396,9 @@ void TreeSession::FlushMacroSplices() {
 
 TreeWriter::TreeWriter(std::string out_root,
                        std::vector<std::string> main_files)
-    : out_root_(std::move(out_root)), main_files_(std::move(main_files)) {}
+    : out_root_(std::move(out_root)),
+      main_files_(std::move(main_files)),
+      layout_(TreeLayout::SrcRoot(main_files_)) {}
 
 bool TreeWriter::AddTu(clang::ASTContext& ctx,
                        std::vector<IncludeDirective> log, std::string* error) {
@@ -407,8 +409,6 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
 bool TreeWriter::AddTu(clang::ASTContext& ctx,
                        std::vector<IncludeDirective> log, TreeSession& session,
                        std::string* error) {
-  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
-
   // Include-line rewriting: a quoted include of an out-of-root mirror
   // moves to its `_external` spelling (the tree root is on the include
   // path, so it resolves); in-root targets and angle directives keep
@@ -416,7 +416,7 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
   // the caller's decl rewrites.
   for (const IncludeDirective& record : log) {
     if (record.angled || record.resolved.empty() || record.from_system_search ||
-        layout.InRoot(record.resolved)) {
+        layout_.InRoot(record.resolved)) {
       continue;
     }
     TreeFileBuffer* const buffer = session.BufferForPath(record.writing_file);
@@ -463,22 +463,20 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
 }
 
 std::vector<std::string> TreeWriter::MainFileKeys() const {
-  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
   std::vector<std::string> keys;
   keys.reserve(main_files_.size());
   for (const std::string& path : main_files_) {
-    keys.push_back(layout.InRoot(path) ? layout.InRootKey(path)
-                                       : TreeLayout::ExternalKey(path));
+    keys.push_back(layout_.InRoot(path) ? layout_.InRootKey(path)
+                                        : TreeLayout::ExternalKey(path));
   }
   return keys;
 }
 
 std::vector<std::string> TreeWriter::ExternalBuckets() const {
-  const TreeLayout layout(TreeLayout::SrcRoot(main_files_));
   std::set<std::string> buckets;
   for (const auto& [path, bytes] : rendered_) {
     (void)bytes;
-    if (layout.InRoot(path)) continue;
+    if (layout_.InRoot(path)) continue;
     buckets.insert(llvm::sys::path::parent_path(TreeLayout::ExternalKey(path),
                                                 llvm::sys::path::Style::native)
                        .str());
@@ -526,12 +524,11 @@ bool PruneDirectory(const std::string& dir, const std::string& prefix,
 }
 
 bool TreeWriter::Write(std::string* error) {
-  TreeLayout layout(TreeLayout::SrcRoot(main_files_));
   std::set<std::string> keys;
   for (const auto& [path, bytes] : rendered_) {
     (void)bytes;  // registration is about the paths
     std::string key;
-    if (!layout.Register(path, &key, error)) return false;
+    if (!layout_.Register(path, &key, error)) return false;
     keys.insert(std::move(key));
   }
   // The mirror is a pure function of this run's inputs: files an earlier
@@ -542,7 +539,7 @@ bool TreeWriter::Write(std::string* error) {
   // Materialize in a fixed order so identical inputs visit the same paths
   // the same way every run; unchanged bytes are skipped.
   for (const auto& [path, content] : rendered_) {
-    const std::string key = *layout.KeyOf(path);
+    const std::string key = *layout_.KeyOf(path);
     llvm::SmallString<256> out(out_root_);
     llvm::sys::path::append(out, key);
     if (const auto existing = llvm::MemoryBuffer::getFile(out)) {

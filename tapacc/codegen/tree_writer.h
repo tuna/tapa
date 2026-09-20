@@ -25,7 +25,7 @@ class SourceManager;
 
 namespace tapa::cc {
 
-// The rewritten-tree layer of the multi-file frontend (plan §3.3): mirrors
+// The rewritten-tree layer of the frontend: mirrors
 // the user's sources under a work directory so HLS compiles real files at
 // real relative locations, rewriting include lines only where the mirror
 // moved a file and emitting `#line` markers so diagnostics keep pointing
@@ -246,6 +246,7 @@ class TreeWriter {
  private:
   std::string out_root_;
   std::vector<std::string> main_files_;
+  TreeLayout layout_;
   // Canonical path -> final bytes, in first-sighting order across TUs.
   std::map<std::string, std::string> rendered_;
   // Canonical path -> the main file of the TU that rendered it first, for

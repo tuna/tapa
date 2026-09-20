@@ -191,6 +191,8 @@ class ProgramBuilder {
 
   TuIndex IndexTuImpl(clang::ASTContext& ctx,
                       const std::set<clang::FileID>* files) const;
+  std::map<std::string, const clang::FunctionDecl*> VisibleDecls(
+      clang::ASTContext& ctx, const std::set<clang::FileID>* files) const;
   std::set<clang::FileID> TreeFiles(
       clang::ASTContext& ctx, const std::vector<IncludeDirective>& log) const;
   void FillOwnedTasks(int tu, Program& view, clang::ASTContext& ctx);

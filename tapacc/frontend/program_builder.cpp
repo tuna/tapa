@@ -230,6 +230,47 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   return sighting;
 }
 
+// The TU's visible declarations: identity key -> a decl of that function
+// visible in this TU, a definition outranking a bare declaration. A
+// template specialization is never RAV-visited, so it enters visibility
+// through the invoke that instantiated it -- the invoke chain of every
+// upper-shaped definition is walked for exactly that. This is all the
+// rewrite pass resolves tasks through; the index pass needs the full
+// sighting and edge index on top (IndexTuImpl).
+std::map<std::string, const clang::FunctionDecl*> ProgramBuilder::VisibleDecls(
+    clang::ASTContext& ctx, const std::set<clang::FileID>* files) const {
+  std::map<std::string, const clang::FunctionDecl*> visible;
+  const auto mangler = CreateMangleContext(ctx);
+  MainFileFuncs collector(ctx, files);
+  // TraverseDecl mutates nothing but is non-const in the API.
+  collector.TraverseDecl(ctx.getTranslationUnitDecl());
+  auto record = [&](const clang::FunctionDecl* func) {
+    auto [it, inserted] = visible.try_emplace(KeyOf(*mangler, func), func);
+    if (!inserted && !it->second->isThisDeclarationADefinition() &&
+        func->isThisDeclarationADefinition()) {
+      it->second = func;
+    }
+  };
+  std::vector<const clang::FunctionDecl*> uppers;
+  for (const clang::FunctionDecl* func : collector.TakeFuncs()) {
+    record(func);
+    if (func->isThisDeclarationADefinition() &&
+        LevelOf(func) == TaskLevel::kUpper) {
+      uppers.push_back(func);
+    }
+  }
+  for (const clang::FunctionDecl* upper : uppers) {
+    const clang::Expr* task_obj = GetTapaTaskObject(upper->getBody());
+    for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
+      const clang::FunctionDecl* callee = InvokeCallee(invoke);
+      if (callee != nullptr && callee->isFunctionTemplateSpecialization()) {
+        record(callee);
+      }
+    }
+  }
+  return visible;
+}
+
 ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
     clang::ASTContext& ctx, const std::set<clang::FileID>* files) const {
   TuIndex index;
@@ -546,7 +587,8 @@ bool ProgramBuilder::MergeAndDiscover() {
 Program ProgramBuilder::TuView(clang::ASTContext& ctx,
                                const std::vector<IncludeDirective>& log) {
   const std::set<clang::FileID> files = TreeFiles(ctx, log);
-  TuIndex index = IndexTuImpl(ctx, &files);
+  const std::map<std::string, const clang::FunctionDecl*> visible =
+      VisibleDecls(ctx, &files);
   Program view;
   view.top = top_;
   view.file_funcs = CollectFileFuncs(ctx, &files);
@@ -560,12 +602,11 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx,
     // defining that pattern must carry the same task guard in every TU
     // that includes it.
     const clang::FunctionDecl* def = nullptr;
-    if (auto visible_it = index.visible.find(key);
-        visible_it != index.visible.end()) {
+    if (auto visible_it = visible.find(key); visible_it != visible.end()) {
       def = visible_it->second;
     } else if (task.model.is_template_spec && !task.primary_key.empty()) {
-      if (auto primary_it = index.visible.find(task.primary_key);
-          primary_it != index.visible.end()) {
+      if (auto primary_it = visible.find(task.primary_key);
+          primary_it != visible.end()) {
         def = primary_it->second;
       }
     }
@@ -582,8 +623,8 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx,
     // it, or the header holding that declaration would render differently
     // than in the TU that owns the definition.
     if (task.invoker_key) {
-      if (auto invoker_it = index.visible.find(*task.invoker_key);
-          invoker_it != index.visible.end() &&
+      if (auto invoker_it = visible.find(*task.invoker_key);
+          invoker_it != visible.end() &&
           invoker_it->second->isThisDeclarationADefinition()) {
         model.invoker = invoker_it->second;
       }
