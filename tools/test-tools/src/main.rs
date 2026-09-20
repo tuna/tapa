@@ -2,7 +2,6 @@ mod analyze;
 mod capabilities;
 mod common;
 mod package_layout;
-mod parity;
 mod reports;
 mod shared_mmap;
 mod zip_diff;
@@ -47,12 +46,11 @@ fn run(args: &[OsString]) -> Result<()> {
             let tar = arg_str(args, 1, "check-package-layout <tar>")?;
             package_layout::check_package_layout(&common::workspace_path(tar))
         }
-        "parity" => parity::parity(&args[1..]),
         _ => Err(usage()),
     }
 }
 
 fn usage() -> String {
-    "usage: tapa-test-tools <analyze-smoke|mf-capabilities|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout|parity> ..."
+    "usage: tapa-test-tools <analyze-smoke|mf-capabilities|check-xo-reports|zip-diff|check-shared-mmap-pragmas|check-package-layout> ..."
         .to_string()
 }
