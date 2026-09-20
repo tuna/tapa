@@ -255,7 +255,8 @@ enum Work {
 /// glues a `-cflags` token ending in the exact string `include` to
 /// whatever follows it (losing both), so that flag must close the
 /// string. Manifest include dirs must therefore not end in `include`
-/// either once MF3 starts emitting them.
+/// either: the external-bucket dirs the manifest emits would hit the same
+/// glue.
 fn task_cflags(user: &[String], tree_root: &Path, task: &Task, tail: &[String]) -> Vec<String> {
     let mut flags = user.to_vec();
     flags.push(format!("-I{}", tree_root.display()));
@@ -403,7 +404,7 @@ mod tests {
         }
     }
 
-    /// The manifest→cflags contract MF3 fills in: user cflags, then
+    /// The manifest→cflags contract: user cflags, then
     /// tree root, one `-I` per include dir (empty = root, skipped),
     /// one `-D` per guard, then the shared tail — whose closing
     /// `-I<extra-runtime-include>` must remain the final token

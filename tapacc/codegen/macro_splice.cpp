@@ -36,7 +36,7 @@ clang::CharSourceRange OutermostInvocation(const clang::SourceManager& sm,
 // The expanded tokens of one outermost invocation, straight from the token
 // buffer's own mapping: it records only outermost expansions, so macros used
 // inside a macro body or in an argument fold into the outer one -- exactly
-// the semantics §3.5 asks for.
+// the semantics selective expansion asks for.
 static llvm::ArrayRef<clang::syntax::Token> ExpansionOf(
     const clang::syntax::TokenBuffer& tokens, const clang::SourceManager& sm,
     const clang::CharSourceRange& invocation) {

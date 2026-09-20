@@ -1,4 +1,4 @@
-// Production-path tests for selective macro expansion (plan §3.5): the
+// Production-path tests for selective macro expansion: the
 // full pipeline -- index pass, merge, rewrite pass with the token stream
 // recorded, guarded mirror materialization -- over constructs a rewrite
 // anchors inside a macro expansion. Each fixture asserts the exact rendered
@@ -111,7 +111,7 @@ void LoopTask(tapa::istream<float>& q, tapa::mmap<float> c,
   EXPECT_FALSE(Contains(file, "f . flush ( )"));
 }
 
-// The MacroOwnedEditIsAHardError shape from MF3, now rewriting through the
+// A task body spelled by a macro, rewriting through the
 // splice: a task whose BODY is spelled by a macro still gets its guard,
 // its interface preamble inside the expansion, and its signature stub.
 TEST(MacroRewrite, TaskBodyInAMacroRewritesThroughSplice) {

@@ -20,7 +20,7 @@ class SourceManager;
 
 namespace tapa::cc {
 
-// Selective macro expansion (plan §3.5, route 1): a rewrite edit anchored
+// Selective macro expansion: a rewrite edit anchored
 // inside a macro expansion is composed into token slots on the OUTERMOST
 // spelled invocation that owns it; at session end that invocation's spelled
 // range is replaced once by the rendered expansion, so invocations holding

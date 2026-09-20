@@ -713,7 +713,7 @@ TEST(TreeWriter, TwoTusShareTheTreeAndTheirHeaders) {
                 "int B() { return b() + a() + moved(); }\n");
 }
 
-// ── per-TU byte-identity tripwire (plan §3.4) ─────────────────────────────
+// ── per-TU byte-identity tripwire ─────────────────────────────────────────
 
 // Two TUs, one shared in-root header defining a helper. The src root is
 // /proj/src, so the header mirrors at "shared.h" and both TUs include it.

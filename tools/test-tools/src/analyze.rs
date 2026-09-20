@@ -224,7 +224,7 @@ fn validate_task(task: &JsonValue, task_name: &str, work_dir: &Path, app_name: &
     // Per-task synthesis policy. Named `synth` since the flow target moved
     // to the graph root: one fact, one field.
     require_key(task, "synth", &ctx)?;
-    // Per-task source manifest (schema v3): every src names a file the
+    // Per-task source manifest: every src names a file the
     // analyze step actually wrote under the rewritten tree.
     let srcs = task
         .get("srcs")

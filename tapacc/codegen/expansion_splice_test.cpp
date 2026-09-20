@@ -1,5 +1,5 @@
-// API-level pins for macro_splice.h (selective macro expansion, plan §3.5
-// route 1): the recorded token stream maps every edit anchored in an
+// API-level pins for macro_splice.h (selective macro expansion): the
+// recorded token stream maps every edit anchored in an
 // expansion to its OUTERMOST spelled invocation, edits compose into token
 // slots deterministically, and rendering is a pure function of the recorded
 // spellings. The production rewrite path over these APIs lives in
@@ -340,7 +340,7 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
 
 // The render is a pure function of the recorded spellings: the same header
 // seen from two parses (two translation units) with no differing defines
-// renders byte-identically, which is what the §3.4 byte-identical-header
+// renders byte-identically, which is what the shared-header byte-identity
 // tripwire needs to hold.
 TEST(ExpansionSplice, RenderIsIdenticalAcrossParsesOfOneHeader) {
   const auto render = [](const std::vector<std::string>& args) {

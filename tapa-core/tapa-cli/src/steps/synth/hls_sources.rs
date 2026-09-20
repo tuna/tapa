@@ -1,11 +1,11 @@
 //! Manifest staging for per-task HLS C++ sources.
 //!
-//! Schema v3 replaced the inline per-task `code` string with a file
-//! manifest: `srcs` paths relative to the work dir's `rewritten/` tree,
-//! which `tapa analyze` (via `tapacc -emit-dir`) writes. This module is
-//! the one place that verifies those files exist and resolves them to
-//! absolute paths, for every synth consumer — the HLS jobs and the
-//! post-synth utilization pass.
+//! Per-task HLS C++ sources come from the task-graph manifest: `srcs`
+//! paths relative to the work dir's `rewritten/` tree, which `tapa
+//! analyze` (via `tapacc -emit-dir`) writes. This module is the one
+//! place that verifies those files exist and resolves them to absolute
+//! paths, for every synth consumer — the HLS jobs and the post-synth
+//! utilization pass.
 
 use std::collections::BTreeMap;
 use std::path::Path;
