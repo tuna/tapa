@@ -33,10 +33,10 @@ test_tool_test(
         "//tests/apps/network:network.cpp",
         "//tests/apps/network:network.h",
         # multi-file
-        "//tests/apps/multi-file:a.cpp",
-        "//tests/apps/multi-file:b.cpp",
-        "//tests/apps/multi-file:multi-file.h",
+        "//tests/functional/multi-file:a.cpp",
+        "//tests/functional/multi-file:b.cpp",
+        "//tests/functional/multi-file:multi-file.h",
         # out-of-root helper header reached via -I
-        "//tests/apps/multi-file-ext:helper.h",
+        "//tests/functional/multi-file-ext:helper.h",
     ],
 )

@@ -18,7 +18,6 @@ This directory contains multiple small example TAPA designs:
 | `graph` | Graph traversal with a large per-task local buffer |
 | `ignore` | `[[tapa::target("ignore")]]` for custom-RTL replacement |
 | `jacobi` | Stencil computation with end-of-transmission (`close()`) |
-| `multi-file` | Multi-TU kernels, cross-TU invocation, template task in a header, macro-wrapped invoke — the multi-file frontend spec |
 | `network` | Packet switching with `peek` and detached tasks |
 | `templated` | Templated leaf tasks |
 
@@ -29,16 +28,6 @@ To run the examples, build TAPA from source and follow the instructions below.
 cd tapa/tests/apps/vadd
 tapa g++ -- vadd.cpp vadd-host.cpp -o vadd
 ./vadd
-```
-
-The `multi-file` app keeps one shared header outside its own directory (it
-exercises out-of-root includes), so its host build adds that directory to the
-include path:
-
-```bash
-cd tapa/tests/apps/multi-file
-tapa g++ -- a.cpp b.cpp multi-file-host.cpp -I../multi-file-ext -o multi-file
-./multi-file 1000
 ```
 
 Each example is also wired up as a Bazel target, so you can run one directly:

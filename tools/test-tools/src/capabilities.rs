@@ -1,5 +1,5 @@
 //! `mf-capabilities`: end-to-end contract test for the multi-file
-//! frontend. `tests/apps/multi-file/testdata/capabilities.json` names one
+//! frontend. `tests/functional/multi-file/testdata/capabilities.json` names one
 //! probe per entry; every probe drives `tapa analyze` (the multi-file
 //! app, plus a vadd positive control) and must pass, so a regression
 //! fails the test with the manifest naming the contract that broke.
@@ -15,14 +15,14 @@ use tempfile::TempDir;
 use crate::common::{read_json, require_file, workspace_path, Result};
 
 /// Manifest location, relative to the workspace root.
-const MANIFEST: &str = "tests/apps/multi-file/testdata/capabilities.json";
+const MANIFEST: &str = "tests/functional/multi-file/testdata/capabilities.json";
 /// Positive-control app analyzed by `sanity_vadd_analyze`.
 const VADD_SOURCE: &str = "tests/apps/vadd/vadd.cpp";
 /// The multi-file app under test.
-const APP_A: &str = "tests/apps/multi-file/a.cpp";
-const APP_B: &str = "tests/apps/multi-file/b.cpp";
+const APP_A: &str = "tests/functional/multi-file/a.cpp";
+const APP_B: &str = "tests/functional/multi-file/b.cpp";
 /// Include dir outside the app dir, reached via `-I`.
-const APP_EXT_INCLUDE: &str = "tests/apps/multi-file-ext";
+const APP_EXT_INCLUDE: &str = "tests/functional/multi-file-ext";
 
 #[derive(Deserialize)]
 struct Manifest {

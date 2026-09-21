@@ -209,6 +209,7 @@ def tapa_functional_test(
         kernel_srcs = None,
         kernel_hdrs = None,
         kernel_includes = [],
+        host_deps = [],
         sim_args = [],
         macos_sim_args = ["1000"],
         sim_size = "medium",
@@ -225,6 +226,8 @@ def tapa_functional_test(
         name: Test name.
         host_srcs: `srcs` of the `<name>-host` cc_binary, typically
             `glob(["*.cpp"])`.
+        host_deps: Extra `deps` of the `<name>-host` cc_binary, e.g. a
+            cc_library providing an include dir outside the test package.
         top_name: Kernel top function name.
         kernel_srcs: `srcs` of the tapa_xo target; defaults to the shared
             `vadd.cpp` sample.
@@ -290,7 +293,7 @@ def tapa_functional_test(
     cc_binary(
         name = "%s-host" % name,
         srcs = host_srcs,
-        deps = _HOST_DEPS,
+        deps = _HOST_DEPS + host_deps,
     )
 
     if kernel_srcs == None:

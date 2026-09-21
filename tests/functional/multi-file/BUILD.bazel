@@ -1,0 +1,74 @@
+"""The multi-file functional test: the spec of the multi-file frontend.
+
+The kernel spans two translation units; a.cpp owns the top, Produce, and
+the ScaleValue helper, b.cpp owns Consume, and the shared header defines
+the Combine<float> template task. helper.h is reached via -I from
+tests/functional/multi-file-ext, one directory outside this package.
+"""
+
+load("//bazel:test_rules.bzl", "tapa_functional_test")
+load("//bazel:test_tool_rules.bzl", "test_tool_test")
+
+exports_files(
+    [
+        ".",
+        "a.cpp",
+        "b.cpp",
+        "multi-file-host.cpp",
+        "multi-file.h",
+        "testdata/capabilities.json",
+    ],
+    visibility = [
+        # The analyze-smoke and mf-capabilities tools drive these kernel
+        # sources through the real pipeline.
+        "//tapa-core:__pkg__",
+        "//tests/apps:__pkg__",
+        "//tests/functional:__subpackages__",
+    ],
+)
+
+tapa_functional_test(
+    name = "multi-file",
+    host_deps = ["//tests/functional/multi-file-ext:helper"],
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    kernel_hdrs = [
+        "multi-file.h",
+        "//tests/functional/multi-file-ext:helper.h",
+    ],
+    kernel_includes = [
+        ".",
+        "//tests/functional/multi-file-ext:.",
+    ],
+    kernel_srcs = [
+        "a.cpp",
+        "b.cpp",
+    ],
+    sim_args = ["1000"],
+    top_name = "MultiFileTop",
+)
+
+# The frontend's end-to-end contract probe: runs `mf-capabilities`
+# (tools/test-tools) against this kernel and the committed
+# testdata/capabilities.json.
+test_tool_test(
+    name = "multi_file_capabilities",
+    size = "large",
+    command = "mf-capabilities",
+    data = [
+        "//tapa-core:tapa",
+        "//tapa-lib:include",
+        # the multi-file kernel under test
+        "a.cpp",
+        "b.cpp",
+        "multi-file.h",
+        "testdata/capabilities.json",
+        # out-of-root header reached via -I
+        "//tests/functional/multi-file-ext:helper.h",
+        # positive-control probe (sanity_vadd_analyze)
+        "//tests/apps/vadd:vadd.cpp",
+        "//tests/apps/vadd:vadd.h",
+    ],
+)

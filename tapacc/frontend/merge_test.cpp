@@ -387,7 +387,7 @@ TEST(Merge, SingleTuTemplateSpecialization) {
 
 // The composition under test: a shared header declaring every task and
 // defining a template task, TU A owning the top and the helper TU B calls,
-// TU B owning one leaf. Mirrors the shape of tests/apps/multi-file.
+// TU B owning one leaf. Mirrors the shape of the multi-file functional test.
 constexpr char kSharedHeader[] = R"cpp(
   void LeafA(tapa::istream<float>& in, tapa::ostream<float>& out);
   void LeafB(tapa::istream<float>& in, tapa::ostream<float>& out);

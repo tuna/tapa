@@ -1,4 +1,4 @@
-"""Out-of-root helper header for the multi-file app."""
+"""Out-of-root helper header for the multi-file functional test."""
 
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
@@ -12,7 +12,6 @@ exports_files(
     visibility = [
         "//tapa-core:__pkg__",
         "//tests/apps:__pkg__",
-        "//tests/apps:__subpackages__",
         "//tests/functional:__subpackages__",
     ],
 )
@@ -21,5 +20,5 @@ cc_library(
     name = "helper",
     hdrs = ["helper.h"],
     includes = ["."],
-    visibility = ["//tests/apps:__subpackages__"],
+    visibility = ["//tests/functional:__subpackages__"],
 )

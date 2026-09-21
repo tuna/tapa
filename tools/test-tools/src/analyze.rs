@@ -83,7 +83,10 @@ const ANALYZE_APPS: &[AnalyzeApp] = &[
     },
     AnalyzeApp {
         name: "multi-file",
-        sources: &["tests/apps/multi-file/a.cpp", "tests/apps/multi-file/b.cpp"],
+        sources: &[
+            "tests/functional/multi-file/a.cpp",
+            "tests/functional/multi-file/b.cpp",
+        ],
         top: "MultiFileTop",
         // The last key is the Combine<float> instantiation; tapacc keys
         // template tasks by their mangled name.
@@ -94,7 +97,7 @@ const ANALYZE_APPS: &[AnalyzeApp] = &[
             "tapa_mangled_Z7CombineIfEvRN4tapa7istreamIT_EES4_RNS0_7ostreamIS2_EEm",
         ],
         requires_vendor: false,
-        extra_cflags: &["-Itests/apps/multi-file-ext"],
+        extra_cflags: &["-Itests/functional/multi-file-ext"],
     },
 ];
 
