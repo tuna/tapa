@@ -280,7 +280,8 @@ TEST(TreeWriter, MirrorsTheTreeAndRewritesOnlyMovedIncludes) {
   // The quoted include kept its in-root spelling; the moved one points at
   // its bucket; the angle include is untouched.
   EXPECT_EQ(files.at("main.cpp"),
-            "#include \"keep.h\"\n#include \"" + bucket +
+            "#line 1 \"/w/src/main.cpp\"\n#include \"keep.h\"\n#include \"" +
+                bucket +
                 "/move.h\"\n#include <syshdr.h>\nint main() { return kept() + "
                 "moved(); }\n");
 }
@@ -325,6 +326,7 @@ TEST(TreeFileBuffer, MultiLineReplacementResnapsWithLineMarker) {
   // Exact bytes: the marker names the original file and the original line
   // of the text following the edit.
   EXPECT_EQ(buffer.Render(),
+            "#line 1 \"/src/main.cpp\"\n"
             "int one;\n"
             "void f() {\n"
             "  one = 1;\n"
@@ -396,6 +398,7 @@ TEST(TreeSession, DeclEditSinkResnapsInsideTheFile) {
   TreeFileBuffer* const buffer = session.BufferForPath("main.cpp");
   ASSERT_NE(buffer, nullptr);
   EXPECT_EQ(buffer->Render(),
+            "#line 1 \"main.cpp\"\n"
             "int one;\n"
             "void f() {\n"
             "  int inserted;\n"
@@ -430,6 +433,7 @@ TEST(TreeFileBuffer, GuardWrappingResnapsBothHalves) {
   // followed it then reads as a blank line before the marker (still
   // logically line 4), and `int two;` re-snaps to its original line 5.
   EXPECT_EQ(buffer.Render(),
+            "#line 1 \"/src/main.cpp\"\n"
             "int one;\n"
             "#ifdef TAPA_TASK_DEF_F\n"
             "\n"
@@ -466,6 +470,7 @@ TEST(TreeFileBuffer, LaterEditEarlierInTheFileStillResnaps) {
   ASSERT_TRUE(
       buffer.ReplaceWithLineResnap(RangeOf(sm, 0, 8), "int one;\nint one_b;"));
   EXPECT_EQ(buffer.Render(),
+            "#line 1 \"/src/main.cpp\"\n"
             "int one;\n"
             "int one_b;\n"
             "#line 2 \"/src/main.cpp\"\n"
@@ -491,6 +496,7 @@ TEST(TreeFileBuffer, LineCountPreservingEditsEmitNoMarker) {
   ASSERT_TRUE(buffer.ReplaceWithLineResnap(RangeOf(sm, offset, 7), "one = 2"));
   EXPECT_TRUE(buffer.had_edits());
   EXPECT_EQ(buffer.Render(),
+            "#line 1 \"/src/main.cpp\"\n"
             "int one;\n"
             "void f() {\n"
             "  one = 2;\n"
@@ -538,6 +544,7 @@ TEST(TreeWriter, UnchangedBytesAreNotRewritten) {
   const RunResult restore = RunComposition(root);
   EXPECT_TRUE(restore.ok) << restore.error;
   EXPECT_EQ(ReadFile(root + "/main.cpp"),
+            "#line 1 \"/w/src/main.cpp\"\n"
             "#include \"keep.h\"\n#include \"_external/4dc19a3d/move.h\"\n"
             "#include <syshdr.h>\nint main() { return kept() + moved(); }\n");
 }
@@ -702,10 +709,14 @@ TEST(TreeWriter, TwoTusShareTheTreeAndTheirHeaders) {
   ASSERT_NE(tree.find(bucket), tree.end());
   // Both TUs reference the bucket; in-root spellings keep resolving in
   // the mirror, so they are untouched.
-  EXPECT_EQ(tree.at("a.cpp"), "#include \"a_helper.h\"\n#include \"" + bucket +
-                                  "\"\n"
-                                  "int A() { return a() + moved(); }\n");
+  EXPECT_EQ(tree.at("a.cpp"),
+            "#line 1 \"/proj/src/a.cpp\"\n"
+            "#include \"a_helper.h\"\n#include \"" +
+                bucket +
+                "\"\n"
+                "int A() { return a() + moved(); }\n");
   EXPECT_EQ(tree.at("sub/b.cpp"),
+            "#line 1 \"/proj/src/sub/b.cpp\"\n"
             "#include \"b_helper.h\"\n#include \"a_helper.h\"\n"
             "#include \"" +
                 bucket +
@@ -773,7 +784,9 @@ TEST(TreeWriter, IdenticalHeaderRewritesMergeSilently) {
   ASSERT_TRUE(writer.Write(&error)) << error;
   const std::map<std::string, std::string> tree = ReadTree(root);
   ASSERT_EQ(tree.size(), 3u);
-  EXPECT_EQ(tree.at("shared.h"), "int shared_renamed() { return 7; }\n");
+  EXPECT_EQ(tree.at("shared.h"),
+            "#line 1 \"/proj/src/shared.h\"\n"
+            "int shared_renamed() { return 7; }\n");
 }
 
 }  // namespace

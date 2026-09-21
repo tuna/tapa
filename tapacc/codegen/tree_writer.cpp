@@ -302,8 +302,14 @@ bool TreeFileBuffer::ResnapAfterEdit(clang::SourceLocation begin,
 }
 
 std::string TreeFileBuffer::Render() {
+  // Untouched files are byte-identical copies of the original. An edited
+  // file opens by adopting the original's identity (`#line 1 "<abs>"`), so
+  // diagnostics and `__FILE__` cite the user's source, not the mirror --
+  // without it, the region before the first edit's marker would keep the
+  // mirror's path (its line numbers coincide only because nothing shifted
+  // above the first edit yet).
   if (!had_edits_) return sm_.getBufferData(file_).str();
-  std::string out;
+  std::string out = "#line 1 \"" + abs_path_ + "\"\n";
   llvm::raw_string_ostream os(out);
   rewriter_.getEditBuffer(file_).write(os);
   return out;
