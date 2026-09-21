@@ -182,7 +182,8 @@ bool EditSink::InsertTextBefore(clang::SourceLocation loc,
     });
   }
   if (!CanEdit(loc, loc)) return true;
-  return Finish(loc, 0, text, rewriter_.InsertTextBefore(loc, text));
+  const std::string composed = ComposeInsertion(loc, text);
+  return Finish(loc, 0, composed, rewriter_.InsertTextBefore(loc, composed));
 }
 
 bool EditSink::InsertTextAfter(clang::SourceLocation loc,
@@ -196,7 +197,8 @@ bool EditSink::InsertTextAfter(clang::SourceLocation loc,
     });
   }
   if (!CanEdit(loc, loc)) return true;
-  return Finish(loc, 0, text, rewriter_.InsertTextAfter(loc, text));
+  const std::string composed = ComposeInsertion(loc, text);
+  return Finish(loc, 0, composed, rewriter_.InsertTextAfter(loc, composed));
 }
 
 bool EditSink::InsertTextAfterToken(clang::SourceLocation loc,
@@ -209,8 +211,16 @@ bool EditSink::InsertTextAfterToken(clang::SourceLocation loc,
   if (!CanEdit(loc, loc)) return true;
   const clang::SourceLocation after = clang::Lexer::getLocForEndOfToken(
       loc, 0, rewriter_.getSourceMgr(), rewriter_.getLangOpts());
-  const bool rejected = rewriter_.InsertTextAfterToken(loc, text);
-  return rejected ? true : Finish(after, 0, text, false);
+  const std::string composed = ComposeInsertion(after, text);
+  const bool rejected = rewriter_.InsertTextAfterToken(loc, composed);
+  return rejected ? true : Finish(after, 0, composed, false);
+}
+
+// One home for the insertion composition: absent a lead (tests that build
+// an EditSink without a session), the text passes through unchanged.
+std::string EditSink::ComposeInsertion(clang::SourceLocation loc,
+                                       llvm::StringRef text) const {
+  return lead_ ? lead_(loc, text) : text.str();
 }
 
 bool EditSink::RemoveText(clang::SourceLocation start, unsigned length) {

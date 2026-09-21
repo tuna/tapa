@@ -34,12 +34,19 @@ class EditSink {
  public:
   using Resnap =
       std::function<bool(clang::SourceLocation, unsigned, llvm::StringRef)>;
+  // Maps an insertion anchor and its text to the bytes actually inserted.
+  using Lead =
+      std::function<std::string(clang::SourceLocation, llvm::StringRef)>;
 
   // Rejected edits report through `ctx`; call TrackFile for every mirrored
   // FileID before applying rewrite rules.
   explicit EditSink(clang::ASTContext& ctx, clang::Rewriter& rewriter);
 
   void TrackFile(clang::FileID file, Resnap resnap);
+  // Installs the composition every pure insertion passes through (the
+  // session's buffers prefix multi-line tool text with its synthetic
+  // `tapa:` line identity; see TreeFileBuffer::SyntheticLead).
+  void ComposeInsertions(Lead compose) { lead_ = std::move(compose); }
   // Installs the splice queue for macro-owned edits (requires a recorded
   // token stream).
   void RouteMacroEdits(MacroSplices* splices) { splices_ = splices; }
@@ -82,6 +89,8 @@ class EditSink {
   ExpansionSplice* MacroHome(clang::SourceLocation begin,
                              clang::SourceLocation end);
   void ReportSpliceReject(clang::SourceLocation loc, llvm::StringRef why);
+  std::string ComposeInsertion(clang::SourceLocation loc,
+                               llvm::StringRef text) const;
   // Routes one macro-owned edit through MacroHome; reports and returns
   // true (rejected) when the splice cannot compose it.
   template <typename F>
@@ -95,6 +104,7 @@ class EditSink {
   clang::Rewriter& rewriter_;
   MacroSplices* splices_ = nullptr;
   std::map<clang::FileID, Resnap> resnaps_;
+  Lead lead_;
   std::string construct_ = "source construct";
 };
 

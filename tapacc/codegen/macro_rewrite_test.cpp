@@ -185,11 +185,12 @@ void AttrTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   const std::string& file = run.files.at("attr.cpp");
   // The brackets went with the attribute (an empty `[[]]` would not
   // compile), and the loop keeps its braces: the loop body's `{` is user
-  // source, so its pragma is an ordinary file edit.
-  EXPECT_TRUE(Contains(file,
-                       "for ( unsigned long long i = 0 ; i < n ; ++ i ) "
-                       "{\n"
-                       "#pragma HLS pipeline II = 1\n"))
+  // source, so its pragma is an ordinary file edit whose synthetic lead
+  // line sits between the `{` and the pragma.
+  ASSERT_NE(file.find("for ( unsigned long long i = 0 ; i < n ; ++ i ) {"),
+            std::string::npos);
+  EXPECT_GT(file.find("#pragma HLS pipeline II = 1"),
+            file.find("for ( unsigned long long i = 0 ; i < n ; ++ i ) {"))
       << file;
   // The brackets went with the attribute (an empty `[[]]` would not
   // compile); the task body's only `for` is the spliced one, and only the

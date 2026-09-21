@@ -155,9 +155,11 @@ constexpr char kAttrs[] = R"cpp(
 TEST(Rewrite, StmtAttrsLowerToPragmas) {
   const std::string code = Rewrite("attrs", kAttrs, "Top");
   // An `if` region takes the pragma INSIDE its braces: before the `if`
-  // would hand the constraint to the enclosing region instead.
-  EXPECT_TRUE(
-      Contains(code, "if (n > 0) {\n#pragma HLS latency min = 1 max = 1"));
+  // would hand the constraint to the enclosing region instead. The
+  // pragma's synthetic lead line sits between the `{` and the pragma.
+  ASSERT_NE(code.find("if (n > 0) {"), std::string::npos);
+  EXPECT_GT(code.find("#pragma HLS latency min = 1 max = 1"),
+            code.find("if (n > 0) {"));
   EXPECT_TRUE(Contains(code, "HLS pipeline off"));
   // The function-level form lowers into the body; leaving the raw
   // attribute would hand `[[tapa::pipeline]]` to the vendor compiler.

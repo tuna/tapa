@@ -245,16 +245,29 @@ bool TreeFileBuffer::InsertGuardClosing(clang::SourceRange range,
   return after_last_token.isFileID() && ApplyEdit(after_last_token, 0, closing);
 }
 
+std::string TreeFileBuffer::SyntheticLead(clang::SourceLocation begin,
+                                          llvm::StringRef text) const {
+  if (!begin.isFileID() || text.empty() || !text.contains('\n')) {
+    return text.str();
+  }
+  // The leading newline keeps the marker on its own line whatever precedes
+  // the anchor; the trailing one ends it.
+  return "\n#line " + std::to_string(sm_.getSpellingLineNumber(begin)) +
+         " \"tapa:" + abs_path_ + "\"\n" + text.str();
+}
+
 bool TreeFileBuffer::ApplyEdit(clang::SourceLocation begin, unsigned length,
                                llvm::StringRef text) {
   if (!begin.isFileID() || sm_.getFileID(begin) != file_) return false;
+  const std::string composed =
+      length == 0 ? SyntheticLead(begin, text) : text.str();
   // Insertions go through InsertTextAfter, not ReplaceText(len 0): a
   // replace records its delta at an offset the marker's own mapping then
   // excludes, which would place the marker before the inserted text.
   const bool rejected = length == 0
-                            ? rewriter_.InsertTextAfter(begin, text)
-                            : rewriter_.ReplaceText(begin, length, text);
-  return !rejected && ResnapAfterEdit(begin, length, text);
+                            ? rewriter_.InsertTextAfter(begin, composed)
+                            : rewriter_.ReplaceText(begin, length, composed);
+  return !rejected && ResnapAfterEdit(begin, length, composed);
 }
 
 bool TreeFileBuffer::ResnapAfterEdit(clang::SourceLocation begin,
@@ -328,6 +341,13 @@ TreeSession::TreeSession(clang::ASTContext& ctx,
     splices_.emplace(*tokens, sm);
     edits_.RouteMacroEdits(&*splices_);
   }
+  // Insertions routed through EditSink compose with the same synthetic
+  // identity TreeFileBuffer::ApplyEdit applies to its own.
+  edits_.ComposeInsertions([this](clang::SourceLocation loc,
+                                  llvm::StringRef text) {
+    const TreeFileBuffer* const buffer = BufferForLocation(loc);
+    return buffer == nullptr ? text.str() : buffer->SyntheticLead(loc, text);
+  });
   for (const auto& [path, file] : MirrorFiles(ctx, main_files, log)) {
     auto buffer = std::make_unique<TreeFileBuffer>(sm, rewriter_, file, path);
     TreeFileBuffer* const ptr = buffer.get();

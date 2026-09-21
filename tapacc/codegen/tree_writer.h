@@ -147,6 +147,18 @@ class TreeFileBuffer {
   bool ResnapAfterEdit(clang::SourceLocation begin, unsigned length,
                        llvm::StringRef text);
 
+  // The composed form of a pure insertion: text TAPA inserts (guards,
+  // interface preambles, stubs, wrappers) carries lines the original file
+  // does not have, so a multi-line insertion is prefixed with a marker
+  // adopting the synthetic identity `tapa:<original path>` at the anchor's
+  // original line. Diagnostics inside the inserted span then name the file
+  // and construct it belongs to while saying the text is TAPA's; the
+  // trailing re-snap restores the original identity for the text that
+  // follows. Insertions without a newline (an attribute prefix decorating
+  // one original line) pass through unchanged.
+  std::string SyntheticLead(clang::SourceLocation begin,
+                            llvm::StringRef text) const;
+
   // The whole file: original bytes when unedited, else the rewritten text.
   std::string Render();
 
