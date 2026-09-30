@@ -8,7 +8,7 @@ use tapa_protocol::{
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port, MutableModule};
-use tapa_rtl::port::Direction;
+use tapa_rtl::port::{Direction, Port};
 
 use crate::error::CodegenError;
 use crate::passes::children;
@@ -31,7 +31,20 @@ pub fn add_m_axi_ports_with_id_width(
     addr_width: u32,
     id_width: u32,
 ) {
+    for port in build_m_axi_ports(name, data_width, addr_width, id_width) {
+        let _ = module.add_port(port);
+    }
+}
+
+/// The ordered AXI declarations shared by generated fabric and custom RTL shells.
+pub(crate) fn build_m_axi_ports(
+    name: &str,
+    data_width: u32,
+    addr_width: u32,
+    id_width: u32,
+) -> Vec<Port> {
     let prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(name));
+    let mut ports = Vec::new();
 
     for &channel in M_AXI_CHANNEL_ORDER {
         let Some(&subports) = M_AXI_PORTS.get(channel) else {
@@ -52,9 +65,10 @@ pub fn add_m_axi_ports_with_id_width(
                 simple_port(&port_name, direction)
             };
 
-            let _ = module.add_port(port);
+            ports.push(port);
         }
     }
+    ports
 }
 
 /// Determine if an AXI crossbar is needed for an mmap connection:

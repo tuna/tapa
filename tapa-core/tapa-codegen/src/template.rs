@@ -3,9 +3,9 @@
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Task;
 use tapa_protocol::{
-    axi_subport_width, stream_data_wire_width, stream_peek_port_name, stream_port_name, PortDir,
-    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY,
-    HANDSHAKE_RST_N, HANDSHAKE_START, M_AXI_CHANNEL_ORDER, M_AXI_PORTS, M_AXI_PREFIX,
+    stream_data_wire_width, stream_peek_port_name, stream_port_name, AXI_ADDR_WIDTH, AXI_ID_WIDTH,
+    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
+    HANDSHAKE_START,
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
@@ -20,24 +20,12 @@ fn port_with_width(name: impl Into<String>, direction: Direction, width: u32) ->
 }
 
 fn add_m_axi_ports(ports: &mut Vec<Port>, name: &str, data_width: u32) {
-    let prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(name));
-    for &channel in M_AXI_CHANNEL_ORDER {
-        let Some(&subports) = M_AXI_PORTS.get(channel) else {
-            continue;
-        };
-        for &(subport, direction) in subports {
-            let direction = match direction {
-                PortDir::Input => Direction::Input,
-                PortDir::Output => Direction::Output,
-            };
-            let width = axi_subport_width(subport, data_width, AXI_ADDR_WIDTH, AXI_ID_WIDTH);
-            ports.push(port_with_width(
-                format!("{prefix}_{channel}{subport}"),
-                direction,
-                width,
-            ));
-        }
-    }
+    ports.extend(crate::m_axi::build_m_axi_ports(
+        name,
+        data_width,
+        AXI_ADDR_WIDTH,
+        AXI_ID_WIDTH,
+    ));
 }
 
 fn stream_names(name: &str, cat: ArgCategory, chan_count: Option<u32>) -> Vec<String> {
