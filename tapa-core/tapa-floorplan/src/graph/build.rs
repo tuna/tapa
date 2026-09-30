@@ -577,12 +577,15 @@ pub(super) fn index_fifo_arg_widths(
 ) -> BTreeMap<String, FifoArgWidths> {
     let mut index = BTreeMap::<String, FifoArgWidths>::new();
     for (def_name, instances) in &top.tasks {
+        let Some(definition) = flat.tasks.get(def_name) else {
+            continue;
+        };
         for inst in instances {
             for (port_name, arg) in &inst.args {
                 if !arg.cat.is_stream() {
                     continue;
                 }
-                let Some(width) = port_width(flat, def_name, port_name) else {
+                let Some(port) = definition.port(port_name) else {
                     continue;
                 };
                 // Streams always bind to a named FIFO, never to a constant.
@@ -598,7 +601,7 @@ pub(super) fn index_fifo_arg_widths(
                 // A well-formed graph binds one instance per side; the first
                 // binding wins deterministically if malformed.
                 if side.is_none() {
-                    *side = Some(width);
+                    *side = Some(port.width);
                 }
             }
         }
@@ -657,30 +660,6 @@ pub(super) fn resolve_fifo_data_width(
     payload
         .checked_add(1)
         .ok_or_else(|| GraphError::UnresolvedFifoWidth(fifo_name.to_string()))
-}
-
-/// The bit width of `port_name` on task `def_name`.
-///
-/// For a `tapa::istreams`/`ostreams`/`mmaps` argument the instance names one
-/// channel (e.g. `fifo_B_in[2]`) but the task definition declares a single
-/// base port (`fifo_B_in`, `cat = istreams`). Fall back to the base name by
-/// stripping any trailing `[N]` index when the exact channel name is absent.
-fn port_width(flat: &TaskGraph, def_name: &str, port_name: &str) -> Option<u32> {
-    let ports = &flat.tasks.get(def_name)?.ports;
-    find_port(ports, port_name).map(|p| p.width)
-}
-
-/// Find a port by name, trying the exact channel name first then the base
-/// (index-stripped) name for array-channel ports.
-pub(super) fn find_port<'a>(ports: &'a [tapa_ir::Port], name: &str) -> Option<&'a tapa_ir::Port> {
-    ports.iter().find(|p| p.name == name).or_else(|| {
-        let base = name.split('[').next().unwrap_or(name);
-        if base.is_empty() || base == name {
-            None
-        } else {
-            ports.iter().find(|p| p.name == base)
-        }
-    })
 }
 
 #[cfg(test)]

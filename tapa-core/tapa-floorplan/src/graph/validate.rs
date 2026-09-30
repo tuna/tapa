@@ -11,7 +11,6 @@ use tapa_ir::{
     TaskGraph,
 };
 
-use super::build::find_port;
 use crate::graph::floor_graph::{
     CoLocatedInstance, ControlInterface, ExpectedMemoryEndpoint, GraphError, MemoryInterface,
     Vertex, CONTROL_S_AXI_INSTANCE,
@@ -307,7 +306,7 @@ pub(super) fn expected_memory_interfaces(
                             ),
                         })?;
 
-                let child = find_port(&task.ports, child_port).ok_or_else(|| {
+                let child = task.port(child_port).ok_or_else(|| {
                     GraphError::UnsupportedMemoryInterface {
                         port: parent_port.to_owned(),
                         detail: format!(
@@ -315,7 +314,7 @@ pub(super) fn expected_memory_interfaces(
                         ),
                     }
                 })?;
-                let parent = find_port(&top.ports, parent_port).ok_or_else(|| {
+                let parent = top.port(parent_port).ok_or_else(|| {
                     GraphError::UnsupportedMemoryInterface {
                         port: parent_port.to_owned(),
                         detail: "top-level mmap port metadata is missing".to_string(),

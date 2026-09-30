@@ -97,7 +97,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   and the Rust toolchain agree on, and the typed `FloorplanResult` that
   connects the two engines. `Port::kernel_arg_names` owns ordered kernel
   argument expansion for packaging and simulation; target adapters retain
-  protocol selection and synthesized RTL interface overrides.
+  protocol selection and synthesized RTL interface overrides. `Task::port`
+  resolves exact channel declarations before array bases for both engines;
+  codegen borrows FIFO metadata directly while mutating its separate RTL table.
 - **tapa-rtl** — the only place Verilog text is parsed, mutated, or
   emitted (tree-sitter + nom). Other crates never manipulate Verilog
   source as text.

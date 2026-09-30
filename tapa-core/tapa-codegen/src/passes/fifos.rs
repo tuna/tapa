@@ -118,62 +118,6 @@ fn build_internal_fifo_instance(
     }
 }
 
-/// Generate wire assignments for an external FIFO passthrough.
-///
-/// For an external FIFO (no depth), creates assigns connecting the
-/// FIFO's internal signal names (`fifo_name + suffix`) to the parent
-/// module's port names (`fifo_name + suffix`). The internal and external
-/// names are the same — the parent module already has these as ports.
-///
-/// Directionality is respected:
-/// - Input suffixes (`_dout`, `_empty_n`, `_full_n`): these are driven by
-///   the external side (the parent port drives the internal wire)
-/// - Output suffixes (`_read`, `_din`, `_write`): these are driven by
-///   the internal side (the child instance drives the port)
-///
-/// For external FIFOs, no assigns are needed when names match —
-/// the child instance portargs connect directly to the parent ports.
-/// This function returns assigns only when the FIFO internal name
-/// differs from the parent port name (e.g., renamed FIFOs).
-pub fn build_external_fifo_assigns(
-    internal_name: &str,
-    external_name: &str,
-    is_consumed: bool,
-) -> Vec<ContinuousAssign> {
-    let internal_name = sanitize_array_name(internal_name);
-    let external_name = sanitize_array_name(external_name);
-    if internal_name == external_name {
-        return Vec::new(); // Names match, no assigns needed
-    }
-
-    let suffixes: &[&str] = if is_consumed {
-        ISTREAM_SUFFIXES
-    } else {
-        OSTREAM_SUFFIXES
-    };
-
-    suffixes
-        .iter()
-        .map(|suffix| {
-            let is_input_dir = STREAM_PORT_DIRECTION
-                .get(suffix)
-                .is_some_and(|&d| d == "input");
-
-            if is_input_dir {
-                ContinuousAssign::new(
-                    Expr::ident(format!("{internal_name}{suffix}")),
-                    Expr::ident(format!("{external_name}{suffix}")),
-                )
-            } else {
-                ContinuousAssign::new(
-                    Expr::ident(format!("{external_name}{suffix}")),
-                    Expr::ident(format!("{internal_name}{suffix}")),
-                )
-            }
-        })
-        .collect()
-}
-
 /// Build an AXIS-to-stream or stream-to-AXIS adapter instance.
 ///
 /// `is_input`: true for `axis_to_stream_adapter`, false for `stream_to_axis_adapter`.
@@ -227,22 +171,17 @@ pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> M
         .with_ports(ports)
 }
 
-/// Producer endpoint for a FIFO in the parent task.
-#[derive(Clone, Debug)]
-struct FifoProducer {
-    task_name: String,
-    port_name: Option<String>,
+/// Borrowed FIFO producer metadata; absent topology permits the RTL fallback.
+struct FifoProducer<'a> {
+    task_name: &'a str,
+    task: Option<&'a tapa_ir::Task>,
+    port_name: Option<&'a str>,
 }
-
-/// FIFO entry: (name, depth, `is_consumed`, `producer_endpoint`).
-type FifoEntry = (String, Option<u32>, bool, Option<FifoProducer>);
-/// FIFO connection entry: (name, depth, `has_consumer`, `has_producer`, `producer_endpoint`).
-type FifoConnEntry = (String, Option<u32>, bool, bool, Option<FifoProducer>);
 
 /// Instantiate FIFOs for a task.
 ///
 /// Internal FIFOs (with depth) get a `fifo` module instance.
-/// External FIFOs (no depth) get wire assignments connecting to external ports.
+/// External FIFOs (no depth) need no storage instance.
 /// FIFO width is resolved from the producer child's attached RTL module ports.
 pub fn instantiate_fifos(
     design: DesignView<'_>,
@@ -251,29 +190,20 @@ pub fn instantiate_fifos(
 ) -> Result<(), CodegenError> {
     let task = &design.design().tasks[task_name];
 
-    // Collect FIFO info before mutating
-    let fifo_entries: Vec<FifoEntry> = task
-        .fifos
-        .iter()
-        .map(|(name, fifo)| {
-            let is_consumed = fifo.consumed_by.is_some();
-            let producer = fifo_producer_for(task, name, fifo.produced_by.as_ref());
-            (name.clone(), fifo.depth, is_consumed, producer)
-        })
-        .collect();
-
-    for (fifo_name, depth, is_consumed, producer) in fifo_entries {
-        if let Some(depth) = depth {
+    for (fifo_name, fifo) in &task.fifos {
+        let producer =
+            fifo_producer_for(design.design(), task, fifo_name, fifo.produced_by.as_ref());
+        if let Some(depth) = fifo.depth {
             // Buffered internal FIFOs must have a producer to size the buffer.
             let producer = producer
                 .as_ref()
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
-            let width = resolve_fifo_width(design, modules, producer, &fifo_name)?;
+            let width = resolve_fifo_width(modules, producer, fifo_name)?;
             // A floorplanned cross-slot stream becomes a named Head/Body/Tail
             // pipeline; everything else stays a plain FIFO.
-            let crossing_level = stream_crossing_body_level(design.floorplan(), &fifo_name);
+            let crossing_level = stream_crossing_body_level(design.floorplan(), fifo_name);
             let inst = build_internal_fifo_instance(
-                &fifo_name,
+                fifo_name,
                 Expr::ident(HANDSHAKE_RST),
                 Expr::int(u64::from(width)),
                 depth,
@@ -283,44 +213,34 @@ pub fn instantiate_fifos(
             if let Some(mm) = modules.get_mut(task_name) {
                 mm.add_instance(inst);
             }
-        } else {
-            // External FIFO: wire assigns if internal/external names differ
-            let assigns = build_external_fifo_assigns(&fifo_name, &fifo_name, is_consumed);
-            if let Some(mm) = modules.get_mut(task_name) {
-                for assign in assigns {
-                    mm.add_assign(assign);
-                }
-            }
         }
     }
+
     Ok(())
 }
 
-#[allow(
-    clippy::single_option_map,
-    reason = "keeping the Option in the signature lets both callers avoid inline duplication"
-)]
-fn fifo_producer_for(
-    task: &tapa_ir::Task,
+fn fifo_producer_for<'a>(
+    design: &'a tapa_ir::Design,
+    task: &'a tapa_ir::Task,
     fifo_name: &str,
-    endpoint: Option<&tapa_ir::interconnect::EndpointRef>,
-) -> Option<FifoProducer> {
-    endpoint.map(|ep| {
-        let port_name = task
-            .tasks
-            .get(&ep.0)
-            .and_then(|instances| instances.get(ep.1 as usize))
-            .and_then(|instance| {
-                instance
-                    .args
-                    .iter()
-                    .find(|(_, arg)| arg.name() == Some(fifo_name))
-                    .map(|(port_name, _)| port_name.clone())
-            });
-        FifoProducer {
-            task_name: ep.0.clone(),
-            port_name,
-        }
+    endpoint: Option<&'a tapa_ir::interconnect::EndpointRef>,
+) -> Option<FifoProducer<'a>> {
+    let ep = endpoint?;
+    let port_name = task
+        .tasks
+        .get(&ep.0)
+        .and_then(|instances| instances.get(ep.1 as usize))
+        .and_then(|instance| {
+            instance
+                .args
+                .iter()
+                .find(|(_, arg)| arg.name() == Some(fifo_name))
+                .map(|(port_name, _)| port_name.as_str())
+        });
+    Some(FifoProducer {
+        task_name: &ep.0,
+        task: design.tasks.get(&ep.0),
+        port_name,
     })
 }
 
@@ -331,14 +251,13 @@ fn fifo_producer_for(
 /// when neither yields a width, which for a well-formed program only happens
 /// if the producer task, its instance, or its bound stream port is missing.
 fn resolve_fifo_width(
-    design: DesignView<'_>,
     modules: &ModuleTable<'_>,
-    producer: &FifoProducer,
+    producer: &FifoProducer<'_>,
     fifo_name: &str,
 ) -> Result<u32, CodegenError> {
     // Check attached RTL module for producer port width
-    if let Some(mm) = modules.get(producer.task_name.as_str()) {
-        if let Some(port_name) = producer.port_name.as_deref() {
+    if let Some(mm) = modules.get(producer.task_name) {
+        if let Some(port_name) = producer.port_name {
             for suffix in ["_din", "_dout"] {
                 if let Some(port) = mm.inner.get_port_of(port_name, suffix) {
                     if let Some(width) = port.bit_width() {
@@ -362,14 +281,11 @@ fn resolve_fifo_width(
         }
     }
     // Otherwise use the topology port definitions for the producer task.
-    if let Some(task) = design.design().tasks.get(producer.task_name.as_str()) {
-        if let Some(port_name) = producer.port_name.as_deref() {
-            let logical_port_name =
-                tapa_rtl::module::match_array_name(port_name).map_or(port_name, |(base, _)| base);
+    if let Some(task) = producer.task {
+        if let Some(port_name) = producer.port_name {
             if let Some(port) = task
-                .ports
-                .iter()
-                .find(|port| port.name == logical_port_name && port.cat.is_output_stream())
+                .port(port_name)
+                .filter(|port| port.cat.is_output_stream())
             {
                 return Ok(tapa_protocol::stream_data_wire_width(port.width));
             }
@@ -404,34 +320,18 @@ pub fn connect_fifos(
     let design_data = design.design();
     let task = &design_data.tasks[task_name];
 
-    // Collect FIFO connection info with producer endpoint for width resolution
-    let fifo_entries: Vec<FifoConnEntry> = task
-        .fifos
-        .iter()
-        .map(|(name, fifo)| {
-            let has_consumer = fifo.consumed_by.is_some();
-            let has_producer = fifo.produced_by.is_some();
-            let producer = fifo_producer_for(task, name, fifo.produced_by.as_ref());
-            (
-                name.clone(),
-                fifo.depth,
-                has_consumer,
-                has_producer,
-                producer,
-            )
-        })
-        .collect();
-
-    for (fifo_name, depth, has_consumer, has_producer, producer) in &fifo_entries {
+    for (fifo_name, fifo) in &task.fifos {
+        let has_consumer = fifo.consumed_by.is_some();
+        let producer = fifo_producer_for(design_data, task, fifo_name, fifo.produced_by.as_ref());
         let sanitized_fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
-        if depth.is_some() && *has_consumer && *has_producer {
+        if fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
             // Internal FIFO: declare wires for both read and write sides.
             // A produced+consumed internal FIFO always has a producer endpoint.
             let producer = producer
                 .as_ref()
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
-            let width = resolve_fifo_width(design, modules, producer, fifo_name)?;
+            let width = resolve_fifo_width(modules, producer, fifo_name)?;
             if let Some(mm) = modules.get_mut(task_name) {
                 // Declare wires for both read and write sides; the data
                 // suffixes (`_dout`/`_din`) carry the FIFO width.
@@ -445,23 +345,19 @@ pub fn connect_fifos(
                     let _ = mm.add_signal(sig);
                 }
             }
-        } else if depth.is_none() {
+        } else if fifo.depth.is_none() {
             // External FIFO: parent module ports exist, just need to ensure
             // wires exist for child instance connections. The stream port with
             // this FIFO's name carries the payload width; a plural stream FIFO
             // like `data[0]` maps to the base port `data`.
-            let logical_fifo_name = tapa_rtl::module::match_array_name(fifo_name)
-                .map_or(fifo_name.as_str(), |(base, _)| base);
             let stream_width = task
-                .ports
-                .iter()
-                .find(|p| p.name == *fifo_name || p.name == logical_fifo_name)
+                .port(fifo_name)
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
             let is_vitis_top_axis = task_name == design_data.top
                 && crate::top_stream_needs_axis_adapter(design_data.target);
             if let Some(mm) = modules.get_mut(task_name) {
-                let suffixes: &[&str] = if *has_consumer {
+                let suffixes: &[&str] = if has_consumer {
                     ISTREAM_SUFFIXES
                 } else {
                     OSTREAM_SUFFIXES
@@ -507,7 +403,7 @@ pub fn connect_fifos(
             // Check if this should be an AXIS adapter
             if is_vitis_top_axis {
                 // Instantiate AXIS adapter
-                let is_input = *has_consumer;
+                let is_input = has_consumer;
                 let adapter = build_axis_adapter(fifo_name, stream_width, is_input);
                 if let Some(mm) = modules.get_mut(task_name) {
                     mm.add_instance(adapter);
@@ -540,23 +436,15 @@ mod tests {
     use super::*;
     use crate::rtl_state::TopologyWithRtl;
     use std::collections::BTreeMap;
-    use tapa_ir::Design;
     use tapa_rtl::mutation::MutableModule;
 
     /// Resolve a FIFO width through the same views the pass receives.
-    /// Fixtures are never floorplanned, so the design view wraps `None`.
     fn fifo_width(
-        design: &Design,
         module_map: &mut BTreeMap<String, MutableModule>,
-        producer: &FifoProducer,
+        producer: &FifoProducer<'_>,
         fifo_name: &str,
     ) -> Result<u32, CodegenError> {
-        resolve_fifo_width(
-            DesignView::new(design, None),
-            &ModuleTable::new(module_map),
-            producer,
-            fifo_name,
-        )
+        resolve_fifo_width(&ModuleTable::new(module_map), producer, fifo_name)
     }
 
     #[test]
@@ -667,22 +555,6 @@ mod tests {
     }
 
     #[test]
-    fn external_fifo_assigns_when_renamed() {
-        let assigns = build_external_fifo_assigns("int_fifo", "ext_fifo", true);
-        assert_eq!(assigns.len(), ISTREAM_SUFFIXES.len());
-        // Input dir (_dout): assign int_fifo_dout = ext_fifo_dout
-        let text = assigns[0].to_string();
-        assert!(text.contains("int_fifo"), "got: {text}");
-        assert!(text.contains("ext_fifo"), "got: {text}");
-    }
-
-    #[test]
-    fn external_fifo_no_assigns_when_same_name() {
-        let assigns = build_external_fifo_assigns("fifo_0", "fifo_0", true);
-        assert!(assigns.is_empty(), "same name should produce no assigns");
-    }
-
-    #[test]
     fn axis_input_adapter() {
         let inst = build_axis_adapter("data_in", 32, true);
         assert_eq!(inst.module_name, "axis_to_stream_adapter");
@@ -765,7 +637,8 @@ mod tests {
                     "synth": "hls",
                     "ports": [
                         {"cat": "ostream", "name": "narrow", "type": "uint8_t", "width": 8},
-                        {"cat": "ostreams", "name": "wide", "type": "uint32_t", "width": 32}
+                        {"cat": "ostreams", "name": "wide", "type": "uint64_t", "width": 64},
+                        {"cat": "ostream", "name": "wide[0]", "type": "uint32_t", "width": 32}
                     ],
                     "tasks": {},
                     "fifos": {}
@@ -776,38 +649,40 @@ mod tests {
 
         let top = &state.design.tasks["top"];
         let narrow = fifo_producer_for(
+            &state.design,
             top,
             "narrow_fifo",
             top.fifos["narrow_fifo"].produced_by.as_ref(),
         )
         .unwrap();
         let wide = fifo_producer_for(
+            &state.design,
             top,
             "wide_fifo",
             top.fifos["wide_fifo"].produced_by.as_ref(),
         )
         .unwrap();
         assert_eq!(
-            fifo_width(&state.design, &mut state.module_map, &narrow, "narrow_fifo").unwrap(),
+            fifo_width(&mut state.module_map, &narrow, "narrow_fifo").unwrap(),
             9
         );
         assert_eq!(
-            fifo_width(&state.design, &mut state.module_map, &wide, "wide_fifo").unwrap(),
+            fifo_width(&mut state.module_map, &wide, "wide_fifo").unwrap(),
             33
         );
 
-        state
-            .attach_module(
-                "producer",
+        state.module_map.insert(
+            "producer".into(),
+            MutableModule::from_parsed(
                 tapa_rtl::VerilogModule::parse(
                     "module producer #(parameter WIDTH = 32) \
                      (output wire [WIDTH:0] wide_0_s_din); endmodule",
                 )
                 .unwrap(),
-            )
-            .unwrap();
+            ),
+        );
         assert_eq!(
-            fifo_width(&state.design, &mut state.module_map, &wide, "wide_fifo").unwrap(),
+            fifo_width(&mut state.module_map, &wide, "wide_fifo").unwrap(),
             33,
             "symbolic RTL width must fall back to the bound topology port"
         );
@@ -846,17 +721,16 @@ mod tests {
             }
         }));
         let mut state = TopologyWithRtl::new(program);
-        let producer = FifoProducer {
-            task_name: "producer".to_owned(),
-            port_name: Some("mem".to_owned()),
-        };
-        let err = fifo_width(
+        let top = &state.design.tasks["top"];
+        let producer = fifo_producer_for(
             &state.design,
-            &mut state.module_map,
-            &producer,
+            top,
             "orphan_fifo",
+            top.fifos["orphan_fifo"].produced_by.as_ref(),
         )
-        .expect_err("mmap-only producer has no stream width");
+        .unwrap();
+        let err = fifo_width(&mut state.module_map, &producer, "orphan_fifo")
+            .expect_err("mmap-only producer has no stream width");
         assert!(
             matches!(err, CodegenError::FifoWidthUnresolved(ref f) if f == "orphan_fifo"),
             "expected FifoWidthUnresolved(orphan_fifo), got {err:?}"

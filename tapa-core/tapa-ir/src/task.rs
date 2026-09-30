@@ -83,6 +83,23 @@ pub struct Task {
     pub total_area: Option<Area>,
 }
 
+impl Task {
+    /// Resolve an instance's port name to its declaration, preferring an exact
+    /// channel declaration over the base declaration of an array interface.
+    #[must_use]
+    pub fn port(&self, name: &str) -> Option<&Port> {
+        self.ports
+            .iter()
+            .find(|port| port.name == name)
+            .or_else(|| {
+                let (base, _) = name.split_once('[')?;
+                self.ports
+                    .iter()
+                    .find(|port| !base.is_empty() && port.name == base)
+            })
+    }
+}
+
 /// An all-default `Area` (`"self_area": {}`) is how older fixtures spelled
 /// "no data"; read it as `None` so consumers do not mistake it for a
 /// measured all-zero area (which would skip child derivation and report a

@@ -1834,6 +1834,8 @@ pub tapa_ir::task::Task::srcs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::task::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
 pub tapa_ir::task::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>
+impl tapa_ir::task::Task
+pub fn tapa_ir::task::Task::port(&self, &str) -> core::option::Option<&tapa_ir::port::Port>
 impl core::clone::Clone for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::clone(&self) -> tapa_ir::task::Task
 impl core::cmp::Eq for tapa_ir::task::Task
@@ -3876,6 +3878,8 @@ pub tapa_ir::Task::srcs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::synth: tapa_ir::synth_target::SynthTarget
 pub tapa_ir::Task::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, alloc::vec::Vec<tapa_ir::instance::TaskInstance>>
 pub tapa_ir::Task::total_area: core::option::Option<tapa_ir::floorplan::Area>
+impl tapa_ir::task::Task
+pub fn tapa_ir::task::Task::port(&self, &str) -> core::option::Option<&tapa_ir::port::Port>
 impl core::clone::Clone for tapa_ir::task::Task
 pub fn tapa_ir::task::Task::clone(&self) -> tapa_ir::task::Task
 impl core::cmp::Eq for tapa_ir::task::Task
