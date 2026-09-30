@@ -1,27 +1,7 @@
+use frt_shm::config::DpiConfig;
 use frt_shm::{MmapSegment, SharedMemoryQueue};
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::Mutex;
-
-#[derive(Debug, Deserialize)]
-pub struct BufferEntry {
-    pub path: String,
-    #[serde(default)]
-    pub base_addr: u64,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StreamEntry {
-    pub path: String,
-    /// Byte width of the DPI-side payload, always emitted by `frt-cosim`.
-    pub dpi_width_bytes: usize,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DpiConfig {
-    pub buffers: HashMap<String, BufferEntry>,
-    pub streams: HashMap<String, StreamEntry>,
-}
 
 pub struct DpiStream {
     pub inner: Mutex<DpiStreamInner>,

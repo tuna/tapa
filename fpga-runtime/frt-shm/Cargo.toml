@@ -8,3 +8,4 @@ workspace = true
 
 [dependencies]
 memmap2 = { workspace = true }
+serde = { workspace = true }

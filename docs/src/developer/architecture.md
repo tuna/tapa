@@ -37,6 +37,12 @@ agree on. The engines (`tapa-floorplan`, `tapa-codegen`) transform the IR
 into a floorplan and into RTL, `tapa-xilinx` drives the vendor tools, and
 `tapa-cli` orchestrates the steps and persists state in `tapa.json`.
 
+Within the runtime workspace, `frt-shm::config` owns the DPI configuration
+schema shared by the cosimulation writer and live DPI reader. Resume reads
+the JSON once and reopens only buffers; its compatibility reader deliberately
+accepts missing live-stream metadata and reports missing stream bindings
+together.
+
 ## Load-Bearing Contract Guards
 
 Several cross-component contracts are guarded in CI. These are the seams

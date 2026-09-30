@@ -1,5 +1,6 @@
 use crate::error::Result;
 use crate::metadata::{ArgKind, KernelSpec};
+use frt_shm::config::{BufferEntry, DpiConfig, StreamEntry};
 use frt_shm::{MmapSegment, SharedMemoryQueue};
 use std::collections::HashMap;
 
@@ -20,10 +21,9 @@ pub struct CosimContext {
 }
 
 impl CosimContext {
-    pub fn open_from_config(spec: &KernelSpec, config_json: &str) -> Result<Self> {
-        let config: serde_json::Value = serde_json::from_str(config_json)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
+    // Resume only reopens buffers. Its legacy input may omit live stream
+    // attachment metadata, so it deliberately accepts the parsed JSON view.
+    pub fn open_from_config(spec: &KernelSpec, config: &serde_json::Value) -> Result<Self> {
         let mut buffers = HashMap::new();
         let mut base_addresses = HashMap::new();
 
@@ -135,39 +135,40 @@ impl CosimContext {
     }
 
     pub fn dpi_config_json(&self) -> String {
-        let mut buf_map = serde_json::Map::new();
-        for (name, seg) in &self.buffers {
-            buf_map.insert(
-                name.clone(),
-                serde_json::json!({
-                    "path": seg.path().to_string_lossy(),
-                    "size_bytes": seg.len(),
-                    "base_addr": self.base_addresses.get(name).copied().unwrap_or(0),
-                }),
-            );
-        }
-
-        let mut stream_map = serde_json::Map::new();
-        for (name, q) in &self.streams {
-            let stream_path = self
-                .stream_path_overrides
-                .get(name)
-                .cloned()
-                .unwrap_or_else(|| q.path().to_string_lossy().to_string());
-            stream_map.insert(
-                name.clone(),
-                serde_json::json!({
-                    "path": stream_path,
-                    "dpi_width_bytes": q.width(),
-                }),
-            );
-        }
-
-        serde_json::json!({
-            "buffers": buf_map,
-            "streams": stream_map,
-        })
-        .to_string()
+        let config = DpiConfig {
+            buffers: self
+                .buffers
+                .iter()
+                .map(|(name, seg)| {
+                    (
+                        name.clone(),
+                        BufferEntry {
+                            base_addr: self.base_addresses.get(name).copied().unwrap_or(0),
+                            path: seg.path().to_string_lossy().into_owned(),
+                            size_bytes: Some(seg.len()),
+                        },
+                    )
+                })
+                .collect(),
+            streams: self
+                .streams
+                .iter()
+                .map(|(name, q)| {
+                    (
+                        name.clone(),
+                        StreamEntry {
+                            dpi_width_bytes: q.width(),
+                            path: self
+                                .stream_path_overrides
+                                .get(name)
+                                .cloned()
+                                .unwrap_or_else(|| q.path().to_string_lossy().into_owned()),
+                        },
+                    )
+                })
+                .collect(),
+        };
+        serde_json::to_string(&config).expect("DPI configuration is JSON serializable")
     }
 }
 
@@ -220,11 +221,19 @@ mod tests {
     fn dpi_config_json_is_valid() {
         let ctx = CosimContext::new(&make_spec()).expect("new");
         let json = ctx.dpi_config_json();
-        let v: serde_json::Value = serde_json::from_str(&json).expect("json");
-        assert!(v["buffers"]["a"]["path"].is_string());
-        assert!(v["buffers"]["a"]["size_bytes"].is_number());
-        assert!(v["streams"]["s"]["path"].is_string());
-        assert_eq!(v["streams"]["s"]["dpi_width_bytes"].as_u64(), Some(5));
+        let config: DpiConfig = serde_json::from_str(&json).expect("live DPI schema");
+        assert_eq!(
+            config.buffers["a"].path,
+            ctx.buffers["a"].path().to_string_lossy()
+        );
+        assert_eq!(
+            config.buffers["a"].size_bytes,
+            Some(PLACEHOLDER_BUFFER_BYTES)
+        );
+        assert_eq!(config.streams["s"].dpi_width_bytes, 5);
+        // The former Value-based writer sorted object keys, including fields.
+        let value: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(json, value.to_string(), "preserve deterministic wire bytes");
     }
 
     #[test]

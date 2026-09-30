@@ -305,7 +305,6 @@ name = "frt-dpi"
 version = "0.1.0"
 dependencies = [
  "frt-shm",
- "serde",
  "serde_json",
  "thiserror",
 ]
@@ -331,6 +330,7 @@ name = "frt-shm"
 version = "0.1.0"
 dependencies = [
  "memmap2",
+ "serde",
 ]
 
 [[package]]

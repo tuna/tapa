@@ -105,10 +105,10 @@ impl CosimDevice {
             let json = std::fs::read_to_string(&config_path).map_err(|e| {
                 FrtError::MetadataParse(format!("failed to read {}: {e}", config_path.display()))
             })?;
-            let ctx = CosimContext::open_from_config(&spec, &json)?;
             let config: serde_json::Value = serde_json::from_str(&json).map_err(|e| {
                 FrtError::MetadataParse(format!("failed to parse {}: {e}", config_path.display()))
             })?;
+            let ctx = CosimContext::open_from_config(&spec, &config)?;
             // Strict frontier: every declared stream arg must be recorded
             // in the resumed config (the only reference resume mode has).
             let resumed_streams = resumed_config_stream_names(&config);
