@@ -41,7 +41,9 @@ Within the runtime workspace, `frt-shm::config` owns the DPI configuration
 schema shared by the cosimulation writer and live DPI reader. Resume reads
 the JSON once and reopens only buffers; its compatibility reader deliberately
 accepts missing live-stream metadata and reports missing stream bindings
-together.
+together. Resume has an explicit pending state with zero compute time;
+polling marks execution complete and `finish` performs scheduled readback.
+Simulation failures belong to the finished state and are reported by `finish`.
 
 ## Load-Bearing Contract Guards
 

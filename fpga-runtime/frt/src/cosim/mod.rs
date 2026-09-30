@@ -9,7 +9,6 @@ use frt_cosim::runner::SimRunner;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Child;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 enum TbDir {
@@ -51,7 +50,9 @@ struct RunningSimulation {
 enum SimulationState {
     Idle,
     Running(RunningSimulation),
-    Finished,
+    /// Completed simulation data awaiting the normal poll/finish boundary.
+    Resuming,
+    Finished(Option<FrtError>),
 }
 
 pub struct CosimDevice {
@@ -69,7 +70,6 @@ pub struct CosimDevice {
     pending_buffers: HashMap<u32, BufferBinding>,
     simulation_state: SimulationState,
     readback_scheduled: bool,
-    pending_sim_error: Option<FrtError>,
     load_ns: u64,
     compute_ns: u64,
     store_ns: u64,
@@ -152,18 +152,10 @@ impl CosimDevice {
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
-            pending_sim_error: None,
             load_ns: 0,
             compute_ns: 0,
             store_ns: 0,
         })
-    }
-
-    fn spawn_noop_process() -> Result<Child> {
-        let mut cmd = Command::new("/bin/sh");
-        cmd.args(["-c", ":"]);
-        frt_cosim::runner::configure_sim_command(&mut cmd);
-        Ok(cmd.spawn()?)
     }
 
     fn copy_back_to_host(&mut self) -> Result<()> {
@@ -226,29 +218,36 @@ impl CosimDevice {
     fn poll_simulation(&mut self) -> Result<bool> {
         match &mut self.simulation_state {
             SimulationState::Idle => Ok(false),
-            SimulationState::Finished => Ok(true),
+            SimulationState::Finished(_) => Ok(true),
+            SimulationState::Resuming => {
+                self.complete_simulation(None);
+                Ok(true)
+            }
             SimulationState::Running(run) => {
                 let maybe_status = run.child.try_wait()?;
                 if let Some(status) = maybe_status {
-                    self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
-                    if !status.success() {
-                        self.pending_sim_error = Some(FrtError::SimFailed(status));
-                    }
-                    self.simulation_state = SimulationState::Finished;
+                    self.complete_simulation(
+                        (!status.success()).then_some(FrtError::SimFailed(status)),
+                    );
                     return Ok(true);
                 }
                 if let Some(timeout_secs) = self.timeout_seconds.filter(|timeout_secs| {
                     run.started_at.elapsed() >= std::time::Duration::from_secs(*timeout_secs)
                 }) {
                     terminate_running_simulation(run)?;
-                    self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
-                    self.pending_sim_error = Some(FrtError::CosimTimeout { timeout_secs });
-                    self.simulation_state = SimulationState::Finished;
+                    self.complete_simulation(Some(FrtError::CosimTimeout { timeout_secs }));
                     return Ok(true);
                 }
                 Ok(false)
             }
         }
+    }
+
+    fn complete_simulation(&mut self, error: Option<FrtError>) {
+        if let SimulationState::Running(run) = &self.simulation_state {
+            self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
+        }
+        self.simulation_state = SimulationState::Finished(error);
     }
 
     fn wait_simulation(&mut self) -> Result<()> {
@@ -262,11 +261,7 @@ impl CosimDevice {
         }
         if let SimulationState::Running(run) = &mut self.simulation_state {
             let status = run.child.wait()?;
-            self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
-            if !status.success() {
-                self.pending_sim_error = Some(FrtError::SimFailed(status));
-            }
-            self.simulation_state = SimulationState::Finished;
+            self.complete_simulation((!status.success()).then_some(FrtError::SimFailed(status)));
         }
         Ok(())
     }
@@ -695,7 +690,10 @@ impl Device for CosimDevice {
     }
 
     fn read_from_device(&mut self) -> Result<()> {
-        if matches!(self.simulation_state, SimulationState::Running(_)) {
+        if matches!(
+            self.simulation_state,
+            SimulationState::Running(_) | SimulationState::Resuming
+        ) {
             self.readback_scheduled = true;
             return Ok(());
         }
@@ -706,11 +704,7 @@ impl Device for CosimDevice {
 
     fn exec(&mut self) -> Result<()> {
         if self.resume_from_post_sim {
-            let child = Self::spawn_noop_process()?;
-            self.simulation_state = SimulationState::Running(RunningSimulation {
-                child,
-                started_at: Instant::now(),
-            });
+            self.simulation_state = SimulationState::Resuming;
             self.compute_ns = 0;
             return Ok(());
         }
@@ -720,7 +714,7 @@ impl Device for CosimDevice {
             let config_path = self.tb_dir.path().join("dpi_config.json");
             std::fs::write(&config_path, self.ctx.dpi_config_json())?;
             self.compute_ns = 0;
-            self.simulation_state = SimulationState::Finished;
+            self.simulation_state = SimulationState::Finished(None);
             return Ok(());
         }
         let child = self
@@ -735,11 +729,16 @@ impl Device for CosimDevice {
 
     fn finish(&mut self) -> Result<()> {
         self.wait_simulation()?;
-        if matches!(self.simulation_state, SimulationState::Idle) {
-            self.simulation_state = SimulationState::Finished;
+        if matches!(
+            self.simulation_state,
+            SimulationState::Idle | SimulationState::Resuming
+        ) {
+            self.complete_simulation(None);
         }
-        if let Some(err) = self.pending_sim_error.take() {
-            return Err(err);
+        if let SimulationState::Finished(error) = &mut self.simulation_state {
+            if let Some(err) = error.take() {
+                return Err(err);
+            }
         }
         if self.readback_scheduled {
             self.copy_back_to_host()?;
@@ -752,13 +751,12 @@ impl Device for CosimDevice {
         match &mut self.simulation_state {
             SimulationState::Running(run) => {
                 terminate_running_simulation(run)?;
-                self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
-                self.simulation_state = SimulationState::Finished;
+                self.complete_simulation(None);
             }
-            SimulationState::Idle => {
-                self.simulation_state = SimulationState::Finished;
+            SimulationState::Idle | SimulationState::Resuming => {
+                self.complete_simulation(None);
             }
-            SimulationState::Finished => {}
+            SimulationState::Finished(_) => {}
         }
         Ok(())
     }
@@ -849,7 +847,6 @@ mod tests {
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
-            pending_sim_error: None,
             load_ns: 0,
             compute_ns: 0,
             store_ns: 0,
@@ -988,6 +985,9 @@ mod tests {
         dev.read_from_device().expect("schedule readback");
         assert_eq!(host_word, 10);
         assert_eq!(dev.store_ns(), 0);
+        assert!(dev.is_finished().expect("resumed simulation is complete"));
+        assert_eq!(host_word, 10, "polling must not copy back a scheduled read");
+        assert_eq!(dev.compute_ns(), 0, "resume does not execute a simulator");
         dev.finish().expect("finish resume-from-post-sim");
         assert_eq!(host_word, 42);
         assert!(dev.store_ns() > 0);
