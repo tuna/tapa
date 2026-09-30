@@ -5,7 +5,7 @@
 //! emits bus parameters for every `m_axi` port.
 
 use std::collections::BTreeSet;
-use tapa_ir::{ArgCategory, Port};
+use tapa_ir::{ArgCategory, Port, Target};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_xilinx::{KernelXmlPort, PortCategory};
 
@@ -22,19 +22,18 @@ pub(super) fn build_kernel_xml_ports(
     let mut out = Vec::<KernelXmlPort>::new();
     for port in ports {
         let category = match port.cat {
-            ArgCategory::Scalar => Some(PortCategory::Scalar),
+            ArgCategory::Scalar => PortCategory::Scalar,
             ArgCategory::Mmap
             | ArgCategory::Immap
             | ArgCategory::Ommap
-            | ArgCategory::AsyncMmap => Some(PortCategory::MAxi),
-            ArgCategory::Istream | ArgCategory::Istreams => Some(PortCategory::IStream),
-            ArgCategory::Ostream | ArgCategory::Ostreams => Some(PortCategory::OStream),
+            | ArgCategory::AsyncMmap => PortCategory::MAxi,
+            ArgCategory::Istream | ArgCategory::Istreams => PortCategory::IStream,
+            ArgCategory::Ostream | ArgCategory::Ostreams => PortCategory::OStream,
         };
-        let Some(cat) = category else { continue };
         for name in projected_port_names(port, m_axi_bases) {
             out.push(KernelXmlPort {
                 name,
-                category: cat,
+                category,
                 width: port.width,
                 port: String::new(),
                 ctype: port.ctype.clone(),
@@ -67,12 +66,7 @@ pub(super) fn m_axi_param_block(
 
 fn projected_port_names(port: &Port, m_axi_bases: &BTreeSet<String>) -> Vec<String> {
     let base = sanitize_array_name(&port.name);
-    let chan_count = port.chan_count.unwrap_or(0);
-    let default_names: Vec<String> = if chan_count == 0 {
-        vec![base.clone()]
-    } else {
-        (0..chan_count).map(|i| format!("{base}_{i}")).collect()
-    };
+    let default_names = port.kernel_arg_names(Target::XilinxVitis);
     if !port.cat.is_mmap_like() {
         return default_names;
     }

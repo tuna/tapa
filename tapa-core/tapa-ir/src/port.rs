@@ -168,6 +168,40 @@ pub struct Port {
     pub mmap_addr_width: Option<u32>,
 }
 
+impl Port {
+    /// Kernel argument names in declaration order, before synthesized RTL overrides.
+    ///
+    /// HLS single streams bind to `ap_fifo` names ending in `_s`; plural streams
+    /// and hmaps expand into channels, including a one-channel hmap. Vitis
+    /// keeps the boundary name unless a nonzero channel count requests fan-out.
+    #[must_use]
+    pub fn kernel_arg_names(&self, target: crate::Target) -> Vec<String> {
+        use crate::Target::{XilinxHls, XilinxVitis};
+        let base = sanitize_array_name(&self.name);
+        let channels = match (target, self.cat) {
+            (XilinxHls, ArgCategory::Scalar) => None,
+            (XilinxHls, ArgCategory::Istream | ArgCategory::Ostream) => {
+                return vec![format!("{base}_s")];
+            }
+            (XilinxHls, ArgCategory::Istreams | ArgCategory::Ostreams) => {
+                Some(self.chan_count.unwrap_or(1))
+            }
+            (
+                XilinxHls,
+                ArgCategory::Mmap
+                | ArgCategory::AsyncMmap
+                | ArgCategory::Immap
+                | ArgCategory::Ommap,
+            ) => self.chan_count,
+            (XilinxVitis, _) => self.chan_count.filter(|count| *count > 0),
+        };
+        match channels {
+            Some(count) => (0..count).map(|i| format!("{base}_{i}")).collect(),
+            None => vec![base],
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

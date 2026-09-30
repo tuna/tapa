@@ -91,7 +91,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 - **tapa-ir** — vendor-neutral schema plus pure transforms. No I/O
   adapters, no tool logic. It owns the JSON wire format the C++ frontend
   and the Rust toolchain agree on, and the typed `FloorplanResult` that
-  connects the two engines.
+  connects the two engines. `Port::kernel_arg_names` owns ordered kernel
+  argument expansion for packaging and simulation; target adapters retain
+  protocol selection and synthesized RTL interface overrides.
 - **tapa-rtl** — the only place Verilog text is parsed, mutated, or
   emitted (tree-sitter + nom). Other crates never manipulate Verilog
   source as text.

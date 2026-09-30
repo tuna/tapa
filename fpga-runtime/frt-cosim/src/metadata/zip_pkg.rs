@@ -3,7 +3,7 @@ use super::{ArgKind, ArgSpec, KernelSpec, Mode, StreamDir, StreamProtocol};
 use crate::error::{CosimError, Result};
 use std::collections::HashMap;
 use tapa_ir::port::{sanitize_array_name, ArgCategory, Port};
-use tapa_ir::TaskGraph;
+use tapa_ir::{Target, TaskGraph};
 
 /// Legacy-archive fallback for [`tapa_ir::Port::stream_depth`]: archives
 /// written before the field existed carry no depth, and 16 is what those
@@ -26,111 +26,46 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
     })?;
 
     let mut args = Vec::new();
-    let mut next_id = 0u32;
     for port in &top_task.ports {
-        // The frontend spells an array interface's channels `name[i]`, but
-        // every RTL identifier collapses that to `name_i` -- and these names
-        // are what the testbench binds ports, buffers and offset registers
-        // by, so they have to be the RTL spelling, not the schema spelling.
-        let name = sanitize_array_name(&port.name);
-        let name = name.as_str();
         let width = port.width;
-        let chan_count = port.chan_count.unwrap_or(1);
-
-        match port.cat {
-            ArgCategory::Scalar => {
-                args.push(ArgSpec {
-                    name: name.to_owned(),
-                    id: next_id,
-                    kind: ArgKind::Scalar { width },
-                });
-                next_id += 1;
-            }
-            // `is_mmap_like` deliberately not used: it also covers `immap` /
-            // `ommap`, which this reader has never accepted (see below).
+        let kind = match port.cat {
+            ArgCategory::Scalar => ArgKind::Scalar { width },
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {
-                // `None` = pre-field archive; see LEGACY_MMAP_ADDR_WIDTH.
-                let kind = ArgKind::Mmap {
+                if port.chan_count == Some(0) {
+                    return Err(CosimError::Metadata(format!(
+                        "hmap channel count is 0 for argument '{}'",
+                        sanitize_array_name(&port.name)
+                    )));
+                }
+                ArgKind::Mmap {
                     data_width: width,
                     addr_width: port.mmap_addr_width.unwrap_or(LEGACY_MMAP_ADDR_WIDTH),
-                };
-                // `chan_count` is what makes an mmap port an `hmap`: the
-                // frontend fills it in for `hmap` and nothing else, so a plain
-                // mmap always leaves it unset (a `Some(1)` hmap is still an
-                // hmap). An `hmap<T, N, S>` is one host buffer that the host
-                // splits into N kernel m_axi arguments named `{name}_{i}` --
-                // the same fan-out `tapa pack` projects into `kernel.xml` and
-                // `tapa-codegen` wires to the AXI crossbar. Binding one
-                // argument here would bind the wrong ports *and* shift every
-                // later argument's id.
-                if let Some(hmap_chans) = port.chan_count {
-                    if hmap_chans == 0 {
-                        return Err(CosimError::Metadata(format!(
-                            "hmap channel count is 0 for argument '{name}'"
-                        )));
-                    }
-                    for i in 0..hmap_chans {
-                        args.push(ArgSpec {
-                            name: format!("{name}_{i}"),
-                            id: next_id,
-                            kind: kind.clone(),
-                        });
-                        next_id += 1;
-                    }
-                } else {
-                    args.push(ArgSpec {
-                        name: name.to_owned(),
-                        id: next_id,
-                        kind,
-                    });
-                    next_id += 1;
                 }
             }
-            ArgCategory::Istream | ArgCategory::Ostream => {
-                // `None` = pre-field archive; see LEGACY_STREAM_DEPTH.
-                args.push(ArgSpec {
-                    name: format!("{name}_s"),
-                    id: next_id,
-                    kind: ArgKind::Stream {
-                        width,
-                        depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
-                        dir: stream_dir(port),
-                        protocol: StreamProtocol::ApFifo,
-                    },
-                });
-                next_id += 1;
-            }
-            ArgCategory::Istreams | ArgCategory::Ostreams => {
-                for i in 0..chan_count {
-                    args.push(ArgSpec {
-                        name: format!("{name}_{i}"),
-                        id: next_id,
-                        kind: ArgKind::Stream {
-                            width,
-                            depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
-                            dir: stream_dir(port),
-                            protocol: StreamProtocol::ApFifo,
-                        },
-                    });
-                    next_id += 1;
-                }
-            }
-            // Read-only / write-only mmaps have never been wired up here.
-            // This arm is the backstop of the pack-time frontier in
-            // `tapa-core/tapa-cli/src/steps/pack/cosim_compat.rs`: fresh
-            // archives are rejected there, before they ship, so the error
-            // below fires only for pre-frontier or hand-built archives.
-            // Keep the cosim-consumable category set in sync with that
-            // file — a two-workspace seam the `gen_c_api` drift guard
-            // does not cover (it guards generated headers). Rejecting
-            // keeps that an explicit, loud limitation rather than silently
-            // binding them as plain mmaps.
+            ArgCategory::Istream
+            | ArgCategory::Ostream
+            | ArgCategory::Istreams
+            | ArgCategory::Ostreams => ArgKind::Stream {
+                width,
+                depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
+                dir: stream_dir(port),
+                protocol: StreamProtocol::ApFifo,
+            },
+            // The pack-time category check also rejects these; retain the
+            // runtime backstop for legacy or hand-built archives.
             ArgCategory::Immap | ArgCategory::Ommap => {
                 return Err(CosimError::Metadata(format!(
                     "unsupported port category '{}'",
                     port.cat.as_str()
                 )));
             }
+        };
+        for name in port.kernel_arg_names(Target::XilinxHls) {
+            args.push(ArgSpec {
+                name,
+                id: u32::try_from(args.len()).expect("kernel argument count fits u32"),
+                kind: kind.clone(),
+            });
         }
     }
 

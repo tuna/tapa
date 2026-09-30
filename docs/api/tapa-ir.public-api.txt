@@ -1606,6 +1606,8 @@ pub tapa_ir::port::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::port::Port::name: alloc::string::String
 pub tapa_ir::port::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::port::Port::width: u32
+impl tapa_ir::port::Port
+pub fn tapa_ir::port::Port::kernel_arg_names(&self, tapa_ir::target::Target) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::clone(&self) -> tapa_ir::port::Port
 impl core::cmp::Eq for tapa_ir::port::Port
@@ -3813,6 +3815,8 @@ pub tapa_ir::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::Port::name: alloc::string::String
 pub tapa_ir::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::Port::width: u32
+impl tapa_ir::port::Port
+pub fn tapa_ir::port::Port::kernel_arg_names(&self, tapa_ir::target::Target) -> alloc::vec::Vec<alloc::string::String>
 impl core::clone::Clone for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::clone(&self) -> tapa_ir::port::Port
 impl core::cmp::Eq for tapa_ir::port::Port
