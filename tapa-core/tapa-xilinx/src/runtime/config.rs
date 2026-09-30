@@ -71,7 +71,8 @@ pub struct RemoteConfig {
 }
 
 impl RemoteConfig {
-    fn normalize_paths(&mut self) {
+    /// Expand home-relative paths after configuration overrides.
+    pub fn normalize_paths(&mut self) {
         if let Some(p) = self.key_file.take() {
             self.key_file = Some(expand_tilde(&p));
         }
@@ -107,9 +108,18 @@ impl RemoteConfig {
             | serde_yaml::Value::Sequence(_)
             | serde_yaml::Value::Tagged(_) => value,
         };
+        Self::from_yaml_value(inner, path)
+    }
+
+    /// Decode a remote mapping already parsed by a configuration loader.
+    /// Applies the same defaults and path normalization as [`Self::from_yaml_str`].
+    pub fn from_yaml_value(
+        value: serde_yaml::Value,
+        path: impl AsRef<camino::Utf8Path>,
+    ) -> Result<Self> {
         let mut cfg: Self =
-            serde_yaml::from_value(inner).map_err(|source| XilinxError::Config {
-                path: path.clone(),
+            serde_yaml::from_value(value).map_err(|source| XilinxError::Config {
+                path: path.as_ref().to_path_buf(),
                 source,
             })?;
         cfg.normalize_paths();

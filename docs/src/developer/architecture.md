@@ -103,7 +103,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   caller.
 - **tapa-xilinx** — every external tool invocation, discovery, versioning,
   and transport (local and remote runners) lives here. No other crate
-  shells out to vendor tools.
+  shells out to vendor tools. It also owns remote configuration defaults
+  and path normalization; the CLI overlays host options on parsed YAML
+  before decoding the mapping directly into `RemoteConfig`.
 - **tapa-cli** — no domain logic. Orchestration, state persistence, the
   artifact registry, and UX only. Steps declare what they read and write
   over the artifact registry.

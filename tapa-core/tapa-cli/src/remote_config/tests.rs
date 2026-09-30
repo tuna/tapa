@@ -142,6 +142,10 @@ fn cli_remote_host_overrides_taparc() {
     assert_eq!(cfg.host, "cli-host.example.com");
     assert_eq!(cfg.user, "cli-user");
     assert_eq!(cfg.port, 2200);
+
+    // Host overrides precede field validation, including invalid file values.
+    std::fs::write(&p, "remote:\n  host: []\n  user: null\n  port: invalid\n").unwrap();
+    assert_eq!(build_remote_config(&globals).unwrap().unwrap(), cfg);
 }
 
 #[test]

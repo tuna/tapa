@@ -25,7 +25,6 @@
 //! The function is deliberately small — anything more complex belongs
 //! in `tapa-xilinx` (where the `RemoteConfig` schema lives).
 
-use camino::Utf8PathBuf;
 use std::path::{Path, PathBuf};
 
 use tapa_xilinx::{sync_remote_vendor_includes, RemoteConfig, SshMuxOptions, SshSession};
@@ -79,7 +78,7 @@ struct RemoteHostSpec {
 /// Returns `Ok(None)` when the file is absent or holds no `remote:`
 /// section. A present-but-broken file — unreadable, unparseable, or
 /// not a top-level mapping — is a hard error naming the path.
-fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Value>> {
+fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Mapping>> {
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -112,7 +111,7 @@ fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Value>> 
     };
     match map.get("remote").cloned() {
         None | Some(serde_yaml::Value::Null) => Ok(None),
-        Some(section @ serde_yaml::Value::Mapping(_)) => Ok(Some(section)),
+        Some(serde_yaml::Value::Mapping(section)) => Ok(Some(section)),
         Some(other) => Err(CliError::RemoteConfigParse {
             path: path.to_path_buf(),
             message: format!("expected `remote` to be a YAML mapping, got {other:?}"),
@@ -123,13 +122,10 @@ fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Value>> 
 /// Splice the CLI `--remote-host=user@host[:port]` triple into a YAML
 /// mapping (creating one if needed). The CLI value wins on every key.
 fn apply_remote_host_to_yaml(
-    base: Option<serde_yaml::Value>,
+    base: Option<serde_yaml::Mapping>,
     spec: &RemoteHostSpec,
 ) -> serde_yaml::Mapping {
-    let mut map = match base {
-        Some(serde_yaml::Value::Mapping(m)) => m,
-        _ => serde_yaml::Mapping::new(),
-    };
+    let mut map = base.unwrap_or_default();
     map.insert(
         serde_yaml::Value::String("host".into()),
         serde_yaml::Value::String(spec.host.clone()),
@@ -152,13 +148,13 @@ fn apply_remote_host_to_yaml(
 /// Apply non-host CLI overrides to the resolved remote configuration.
 fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
     if let Some(p) = globals.remote_key_file.as_deref() {
-        cfg.key_file = Some(crate::util::utf8(shellexpand::tilde(p).into_owned()));
+        cfg.key_file = Some(crate::util::utf8(p));
     }
     if let Some(s) = globals.remote_xilinx_settings.as_deref() {
         cfg.xilinx_settings = Some(s.to_string());
     }
     if let Some(d) = globals.remote_ssh_control_dir.as_deref() {
-        cfg.ssh_control_dir = Some(crate::util::utf8(shellexpand::tilde(d).into_owned()));
+        cfg.ssh_control_dir = Some(crate::util::utf8(d));
     }
     if let Some(p) = globals.remote_ssh_control_persist.as_deref() {
         cfg.ssh_control_persist = p.to_string();
@@ -166,6 +162,7 @@ fn apply_cli_overrides(cfg: &mut RemoteConfig, globals: &GlobalArgs) {
     if globals.remote_disable_ssh_mux {
         cfg.ssh_multiplex = false;
     }
+    cfg.normalize_paths();
 }
 
 /// Build the active `RemoteConfig` (or `None`) from `~/.taparc` plus
@@ -189,7 +186,7 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
     let map = match cli_spec.as_ref() {
         Some(spec) => apply_remote_host_to_yaml(file_remote, spec),
         None => match file_remote {
-            Some(serde_yaml::Value::Mapping(m)) => m,
+            Some(m) => m,
             _ => return Ok(None),
         },
     };
@@ -198,28 +195,15 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         return Ok(None);
     }
 
-    // Re-emit the spliced mapping under `remote:` so we can reuse the
-    // canonical `RemoteConfig::from_yaml_str` path-expansion + default
-    // logic that lives in `tapa-xilinx`.
-    let mut top = serde_yaml::Mapping::new();
-    top.insert(
-        serde_yaml::Value::String("remote".into()),
-        serde_yaml::Value::Mapping(map),
-    );
     let source_path = taparc.unwrap_or_else(|| PathBuf::from("<merged>"));
-    let yaml_text = serde_yaml::to_string(&serde_yaml::Value::Mapping(top)).map_err(|e| {
-        CliError::RemoteConfigParse {
-            path: source_path.clone(),
-            message: e.to_string(),
-        }
+    let mut cfg = RemoteConfig::from_yaml_value(
+        serde_yaml::Value::Mapping(map),
+        crate::util::utf8(&source_path),
+    )
+    .map_err(|e| CliError::RemoteConfigParse {
+        path: source_path,
+        message: e.to_string(),
     })?;
-    let mut cfg =
-        RemoteConfig::from_yaml_str(&yaml_text, Utf8PathBuf::from("<merged>")).map_err(|e| {
-            CliError::RemoteConfigParse {
-                path: source_path,
-                message: e.to_string(),
-            }
-        })?;
     apply_cli_overrides(&mut cfg, globals);
     Ok(Some(cfg))
 }
