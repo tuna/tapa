@@ -20,7 +20,6 @@
 
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
 pub use tapa_ir::work_state::{FlowSettings, WorkState, FILE_NAME, VERSION};
 
 use crate::error::{CliError, Result};
@@ -45,8 +44,17 @@ pub fn load(work_dir: &Path) -> Result<WorkState> {
         });
     }
     let text = fs_err::read_to_string(&path)?;
-    check_version(&text, &path)?;
-    Ok(WorkState::from_json(&text)?)
+    WorkState::from_json(&text).map_err(|error| match error {
+        tapa_ir::ParseError::WorkStateVersion { found, supported } => CliError::StaleWorkState {
+            path,
+            found: found.map_or_else(|| "unversioned".to_string(), |v| format!("v{v}")),
+            expected: supported,
+        },
+        other @ (tapa_ir::ParseError::Schema { .. }
+        | tapa_ir::ParseError::Json(_)
+        | tapa_ir::ParseError::UnsupportedSchemaVersion { .. }
+        | tapa_ir::ParseError::OutdatedSchemaVersion { .. }) => other.into(),
+    })
 }
 
 /// Serialize `state` to the exact bytes [`store`] writes.
@@ -66,33 +74,6 @@ pub fn to_bytes(state: &WorkState) -> Result<Vec<u8>> {
 /// swapped in atomically, so a reader never observes a half-written file.
 pub fn store(work_dir: &Path, state: &WorkState) -> Result<()> {
     write_bytes_atomic(work_dir, FILE_NAME, &to_bytes(state)?)
-}
-
-/// The `version` stamp alone, read without committing to the rest of the
-/// schema. Unknown fields are ignored (no `deny_unknown_fields`) precisely so
-/// this still parses when the surrounding shape is one this tapa cannot read.
-#[derive(Deserialize)]
-struct VersionProbe {
-    #[serde(default)]
-    version: Option<u32>,
-}
-
-/// Reject a work dir stamped with any version but [`VERSION`].
-///
-/// A payload that is not even a JSON object falls through to the full parse,
-/// which reports the real syntax error rather than a bogus version complaint.
-fn check_version(text: &str, path: &Path) -> Result<()> {
-    let Ok(probe) = serde_json::from_str::<VersionProbe>(text) else {
-        return Ok(());
-    };
-    match probe.version {
-        Some(VERSION) => Ok(()),
-        found => Err(CliError::StaleWorkState {
-            path: path.to_path_buf(),
-            found: found.map_or_else(|| "unversioned".to_string(), |v| format!("v{v}")),
-            expected: VERSION,
-        }),
-    }
 }
 
 #[cfg(test)]

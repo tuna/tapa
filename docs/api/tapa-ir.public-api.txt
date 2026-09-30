@@ -2393,6 +2393,9 @@ pub tapa_ir::ParseError::Schema::path: alloc::string::String
 pub tapa_ir::ParseError::UnsupportedSchemaVersion
 pub tapa_ir::ParseError::UnsupportedSchemaVersion::found: u32
 pub tapa_ir::ParseError::UnsupportedSchemaVersion::supported: u32
+pub tapa_ir::ParseError::WorkStateVersion
+pub tapa_ir::ParseError::WorkStateVersion::found: core::option::Option<u32>
+pub tapa_ir::ParseError::WorkStateVersion::supported: u32
 impl core::convert::From<core::io::error::Error> for tapa_ir::ParseError
 pub fn tapa_ir::ParseError::from(core::io::error::Error) -> Self
 impl core::convert::From<serde_json::error::Error> for tapa_ir::ParseError

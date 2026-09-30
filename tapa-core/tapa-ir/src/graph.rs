@@ -56,20 +56,25 @@ impl TaskGraph {
             path: e.path().to_string(),
             message: e.inner().to_string(),
         })?;
-        if graph.schema_version > SCHEMA_VERSION {
-            return Err(ParseError::UnsupportedSchemaVersion {
-                found: graph.schema_version,
-                supported: SCHEMA_VERSION,
-            });
-        }
-        if graph.schema_version < SCHEMA_VERSION {
-            return Err(ParseError::OutdatedSchemaVersion {
-                found: graph.schema_version,
-                supported: SCHEMA_VERSION,
-            });
-        }
-        graph.validate_literals()?;
+        graph.validate()?;
         Ok(graph)
+    }
+
+    /// Validate graph invariants at both frontend and persisted-state boundaries.
+    pub(crate) fn validate(&self) -> Result<(), ParseError> {
+        if self.schema_version > SCHEMA_VERSION {
+            return Err(ParseError::UnsupportedSchemaVersion {
+                found: self.schema_version,
+                supported: SCHEMA_VERSION,
+            });
+        }
+        if self.schema_version < SCHEMA_VERSION {
+            return Err(ParseError::OutdatedSchemaVersion {
+                found: self.schema_version,
+                supported: SCHEMA_VERSION,
+            });
+        }
+        self.validate_literals()
     }
 
     /// Reject invalid invoke-site constants at the boundary, so a malformed
@@ -155,6 +160,14 @@ mod tests {
         }"#;
         let err = TaskGraph::from_json(payload).expect_err("8'd300 must not parse");
         assert!(err.to_string().contains("invalid constant"), "{err}");
+        let state = format!(
+            r#"{{"version": {}, "graph": {payload}, "flow": {{}}}}"#,
+            crate::work_state::VERSION
+        );
+        let err = crate::WorkState::from_json(&state)
+            .expect_err("archiving a graph must not bypass literal validation");
+        assert!(err.to_string().contains("invalid constant"), "{err}");
+        assert!(err.to_string().contains("graph.tasks.T"), "{err}");
     }
 
     #[test]

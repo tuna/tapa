@@ -51,8 +51,9 @@ breaks one of them is a change that breaks the build — keep them green.
 
 - **Versioned work state.** The `tapa.json` state file is a versioned
   schema: `WorkState` in `tapa-core/tapa-ir/src/work_state.rs` carries a
-  `VERSION` constant (currently `VERSION = 3`), so old state is detected
-  instead of silently misparsed.
+  `VERSION` constant (currently `VERSION = 4`), so old state is detected
+  instead of silently misparsed. Both frontend and archived graphs pass
+  the same schema-version and invoke-literal validation in `tapa-ir`.
 - **Atomic state writes.** All work-directory files are written through a
   tempfile-then-rename dance in `tapa-core/tapa-cli/src/state/json.rs`, so
   readers never observe a partially written state file.

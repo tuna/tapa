@@ -72,11 +72,31 @@ impl WorkState {
     /// so any key the model does not know is an error rather than something
     /// silently carried along.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
+        // Probe only the stamp first: an incompatible graph may not deserialize.
+        #[derive(Deserialize)]
+        struct VersionProbe {
+            version: Option<u32>,
+        }
+        if let Ok(probe) = serde_json::from_str::<VersionProbe>(json) {
+            if probe.version != Some(VERSION) {
+                return Err(ParseError::WorkStateVersion {
+                    found: probe.version,
+                    supported: VERSION,
+                });
+            }
+        }
         let de = &mut serde_json::Deserializer::from_str(json);
-        serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
+        let state: Self = serde_path_to_error::deserialize(de).map_err(|e| ParseError::Schema {
             path: e.path().to_string(),
             message: e.inner().to_string(),
-        })
+        })?;
+        state.graph.validate().map_err(|mut error| {
+            if let ParseError::Schema { path, .. } = &mut error {
+                *path = format!("graph.{path}");
+            }
+            error
+        })?;
+        Ok(state)
     }
 }
 

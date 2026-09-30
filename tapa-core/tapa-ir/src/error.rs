@@ -6,6 +6,12 @@ pub enum ParseError {
     #[error("JSON parse error at {path}: {message}")]
     Schema { path: String, message: String },
 
+    #[error(
+        "work state version {found:?} does not match supported version {supported}; \
+         re-run tapa analyze with this installation"
+    )]
+    WorkStateVersion { found: Option<u32>, supported: u32 },
+
     #[error("JSON syntax error: {0}")]
     Json(#[from] serde_json::Error),
 
