@@ -44,8 +44,9 @@ accepts missing live-stream metadata and reports missing stream bindings
 together. Resume has an explicit pending state with zero compute time;
 polling marks execution complete and `finish` performs scheduled readback.
 Simulation failures belong to the finished state and are reported by `finish`.
-Kernel XML bodies use quick-xml Serde models; argument resolution runs after
-the complete port table is available, independent of XML child order.
+Kernel XML bodies use quick-xml Serde models for both grouped XO declarations
+and flat xclbin declarations. Argument resolution runs after the complete
+port table is available, independent of XML child order.
 
 ## Load-Bearing Contract Guards
 

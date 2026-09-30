@@ -92,8 +92,21 @@ struct Args {
 struct RawKernel {
     #[serde(rename = "@name")]
     name: String,
-    ports: Ports,
-    args: Args,
+    #[serde(rename = "$value")]
+    entries: Vec<KernelElement>,
+}
+
+/// XO metadata groups declarations; Vitis flattens them in xclbin metadata.
+/// Keeping one ordered sequence also handles mixed layouts without reordering args.
+#[derive(Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum KernelElement {
+    Port(PortInfo),
+    Ports(Ports),
+    Arg(RawArg),
+    Args(Args),
+    #[serde(other)]
+    Other,
 }
 
 fn optional_width<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<Option<u32>, D::Error> {
@@ -155,17 +168,24 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         .ok_or_else(|| {
             CosimError::Metadata("no kernel name found in kernel metadata XML".into())
         })?;
-    let ports = kernel
-        .ports
-        .entries
+    let mut ports = Vec::new();
+    let mut raw_args = Vec::new();
+    for entry in kernel.entries {
+        match entry {
+            KernelElement::Port(port) => ports.push(port),
+            KernelElement::Ports(group) => ports.extend(group.entries),
+            KernelElement::Arg(arg) => raw_args.push(arg),
+            KernelElement::Args(group) => raw_args.extend(group.entries),
+            KernelElement::Other => {}
+        }
+    }
+    let ports = ports
         .into_iter()
         .filter(|port| !port.name.is_empty())
         .map(|port| (port.name.clone(), port))
         .collect();
     // Resolve only after reading all ports: XML child order does not change the ABI.
-    let args = kernel
-        .args
-        .entries
+    let args = raw_args
         .into_iter()
         .map(|arg| resolve_arg(arg, &ports))
         .collect::<Result<_>>()?;
@@ -373,10 +393,11 @@ mod tests {
 <project>
   <platform name="xilinx_u250_gen3x16_xdma_3_1_202020_1">
     <device><core target="hw_em">
-      <kernel name="vadd"><args>
-        <arg name="a" addressQualifier="1" id="0" dataWidth="512" addrWidth="64"/>
-        <arg name="n" addressQualifier="0" id="1" dataWidth="32"/>
-      </args></kernel>
+      <kernel name="vadd">
+        <port name="m_axi_a" mode="master" dataWidth="512"/>
+        <arg name="a" addressQualifier="1" id="0" port="m_axi_a" size="0x8"/>
+        <arg name="n" addressQualifier="0" id="1" type="uint32_t" hostSize="0x4"/>
+      </kernel>
     </core></device>
   </platform>
 </project>"#,
