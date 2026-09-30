@@ -292,6 +292,7 @@ dependencies = [
  "libc",
  "quick-xml",
  "regex-lite",
+ "serde",
  "serde_json",
  "tapa-ir",
  "tempfile",

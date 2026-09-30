@@ -9,6 +9,7 @@ use super::{ArgKind, ArgSpec, StreamDir, StreamProtocol};
 use crate::error::{CosimError, Result};
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashMap;
 
 /// What the `<core target="...">` attribute says the binary was built for.
@@ -33,58 +34,101 @@ pub struct KernelXml {
 
 /// Port attributes an `<arg>` defers to: mmap and stream widths live on
 /// `<port>`, and a stream's direction is only stated there.
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct PortInfo {
+    #[serde(rename = "@name")]
+    name: String,
+    #[serde(rename = "@mode")]
     mode: String,
-    data_width: u32,
+    #[serde(rename = "@dataWidth", deserialize_with = "optional_width")]
+    data_width: Option<u32>,
 }
 
-/// Raw `<arg>` attributes, before they are resolved into an [`ArgKind`].
-#[derive(Default)]
+/// Raw attributes retain Vitis's distinct bit-width and byte-size units.
+#[derive(Default, Deserialize)]
+#[serde(default)]
 struct RawArg {
+    #[serde(rename = "@name")]
     name: String,
+    #[serde(rename = "@id", deserialize_with = "arg_id")]
     id: u32,
+    #[serde(rename = "@addressQualifier", deserialize_with = "arg_qualifier")]
     qualifier: u32,
+    #[serde(rename = "@port")]
     port: String,
-    /// `dataWidth` or `width` — a bit width when present.
+    #[serde(
+        rename = "@dataWidth",
+        alias = "@width",
+        deserialize_with = "optional_width"
+    )]
     data_width: Option<u32>,
+    #[serde(rename = "@addrWidth", deserialize_with = "optional_width")]
     addr_width: Option<u32>,
+    #[serde(rename = "@depth", deserialize_with = "stream_depth")]
     depth: Option<u32>,
-    /// `hostSize`, the generator's logical C width in bytes.
+    #[serde(rename = "@hostSize", deserialize_with = "optional_size")]
     host_size_bytes: Option<u32>,
-    /// `size`, the `s_axi` register footprint in bytes.
+    #[serde(rename = "@size", deserialize_with = "optional_size")]
     size_bytes: Option<u32>,
-    /// `type`, which may be a bare typedef name.
+    #[serde(rename = "@type")]
     c_type: String,
+}
+
+#[derive(Default, Deserialize)]
+struct Ports {
+    #[serde(rename = "port", default)]
+    entries: Vec<PortInfo>,
+}
+
+#[derive(Default, Deserialize)]
+struct Args {
+    #[serde(rename = "arg", default)]
+    entries: Vec<RawArg>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(default)]
+struct RawKernel {
+    #[serde(rename = "@name")]
+    name: String,
+    ports: Ports,
+    args: Args,
+}
+
+fn optional_width<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<Option<u32>, D::Error> {
+    Ok(String::deserialize(de)?.parse().ok())
+}
+
+fn optional_size<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<Option<u32>, D::Error> {
+    Ok(parse_size_bytes(&String::deserialize(de)?))
 }
 
 pub fn parse(xml: &str) -> Result<KernelXml> {
     let mut reader = Reader::from_str(xml);
     reader.config_mut().trim_text(true);
-    let mut top_name = String::new();
+    reader.config_mut().expand_empty_elements = true;
+    let mut kernel: Option<RawKernel> = None;
     let mut platform = String::new();
     let mut target = XclbinTarget::Flat;
-    let mut ports: HashMap<String, PortInfo> = HashMap::new();
-    let mut args = Vec::new();
-    let mut buf = Vec::new();
 
     loop {
-        match reader.read_event_into(&mut buf) {
-            Ok(Event::Start(e) | Event::Empty(e)) => match e.name().as_ref() {
+        let start = reader.buffer_position() as usize;
+        match reader.read_event() {
+            Ok(Event::Start(e)) => match e.name().as_ref() {
                 b"kernel" => {
-                    // A multi-kernel package has one <kernel> per kernel;
-                    // merging their args would alias registers across
-                    // kernels, so refuse rather than pick one silently.
-                    if !top_name.is_empty() {
+                    if kernel.is_some() {
                         return Err(CosimError::Metadata(
-                            "multiple <kernel> elements in kernel metadata XML;                              cosim packages must contain exactly one kernel"
-                                .into(),
+                            "multiple <kernel> elements in kernel metadata XML; cosim packages must contain exactly one kernel".into(),
                         ));
                     }
-                    for a in e.attributes().flatten() {
-                        if a.key.as_ref() == b"name" {
-                            top_name = String::from_utf8_lossy(&a.value).into_owned();
-                        }
-                    }
+                    reader
+                        .read_to_end(e.name())
+                        .map_err(|e| CosimError::Metadata(e.to_string()))?;
+                    kernel = Some(
+                        quick_xml::de::from_str(&xml[start..reader.buffer_position() as usize])
+                            .map_err(|e| CosimError::Metadata(e.to_string()))?,
+                    );
                 }
                 b"platform" => {
                     if platform.is_empty() {
@@ -98,47 +142,35 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
                         }
                     }
                 }
-                b"port" => {
-                    let mut name = String::new();
-                    let mut info = PortInfo {
-                        mode: String::new(),
-                        data_width: DEFAULT_DATA_WIDTH,
-                    };
-                    for a in e.attributes().flatten() {
-                        let v = String::from_utf8_lossy(&a.value).into_owned();
-                        match a.key.as_ref() {
-                            b"name" => name = v,
-                            b"mode" => info.mode = v,
-                            b"dataWidth" => {
-                                info.data_width = v.parse().unwrap_or(DEFAULT_DATA_WIDTH);
-                            }
-                            _ => {}
-                        }
-                    }
-                    if !name.is_empty() {
-                        ports.insert(name, info);
-                    }
-                }
-                // TAPA emits <ports> before <args>, so the port table is
-                // complete by the time an <arg> needs it.
-                b"arg" => args.push(resolve_arg(read_arg(&e)?, &ports)?),
                 _ => {}
             },
             Ok(Event::Eof) => break,
             Err(e) => return Err(CosimError::Metadata(e.to_string())),
             _ => {}
         }
-        buf.clear();
     }
 
-    if top_name.is_empty() {
-        return Err(CosimError::Metadata(
-            "no kernel name found in kernel metadata XML".into(),
-        ));
-    }
-
+    let kernel = kernel
+        .filter(|kernel| !kernel.name.is_empty())
+        .ok_or_else(|| {
+            CosimError::Metadata("no kernel name found in kernel metadata XML".into())
+        })?;
+    let ports = kernel
+        .ports
+        .entries
+        .into_iter()
+        .filter(|port| !port.name.is_empty())
+        .map(|port| (port.name.clone(), port))
+        .collect();
+    // Resolve only after reading all ports: XML child order does not change the ABI.
+    let args = kernel
+        .args
+        .entries
+        .into_iter()
+        .map(|arg| resolve_arg(arg, &ports))
+        .collect::<Result<_>>()?;
     Ok(KernelXml {
-        top_name,
+        top_name: kernel.name,
         platform,
         target,
         args,
@@ -176,41 +208,32 @@ fn parse_target(raw: &str) -> XclbinTarget {
     }
 }
 
-fn read_arg(e: &quick_xml::events::BytesStart) -> Result<RawArg> {
-    let mut arg = RawArg::default();
-    for a in e.attributes().flatten() {
-        let v = String::from_utf8_lossy(&a.value).into_owned();
-        match a.key.as_ref() {
-            b"name" => arg.name = v,
-            // A malformed id would silently alias another argument's slot;
-            // fail loudly instead.
-            b"id" => arg.id = parse_attr(&v, "id")?,
-            b"addressQualifier" => arg.qualifier = parse_attr(&v, "addressQualifier")?,
-            b"port" => arg.port = v,
-            b"dataWidth" | b"width" => arg.data_width = v.parse().ok(),
-            b"addrWidth" => arg.addr_width = v.parse().ok(),
-            // Stream queues take a modulo by the depth, so a zero or an
-            // unparsable value turns into a runtime panic further down.
-            b"depth" => {
-                arg.depth = Some(v.parse().ok().filter(|d| *d > 0).ok_or_else(|| {
-                    CosimError::Metadata(format!(
-                        "invalid stream depth {v:?} in kernel metadata XML (want an integer >= 1)"
-                    ))
-                })?);
-            }
-            b"hostSize" => arg.host_size_bytes = parse_size_bytes(&v),
-            b"size" => arg.size_bytes = parse_size_bytes(&v),
-            b"type" => arg.c_type = v,
-            _ => {}
-        }
-    }
-    Ok(arg)
-}
-
 fn parse_attr(value: &str, attr: &str) -> Result<u32> {
     value.parse().map_err(|_parse_err| {
         CosimError::Metadata(format!("malformed {attr} {value:?} in kernel metadata XML"))
     })
+}
+
+fn arg_id<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<u32, D::Error> {
+    parse_attr(&String::deserialize(de)?, "id").map_err(serde::de::Error::custom)
+}
+
+fn arg_qualifier<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<u32, D::Error> {
+    parse_attr(&String::deserialize(de)?, "addressQualifier").map_err(serde::de::Error::custom)
+}
+
+fn stream_depth<'de, D: Deserializer<'de>>(de: D) -> std::result::Result<Option<u32>, D::Error> {
+    let value = String::deserialize(de)?;
+    value
+        .parse::<u32>()
+        .ok()
+        .filter(|depth| *depth > 0)
+        .map(Some)
+        .ok_or_else(|| {
+            serde::de::Error::custom(format!(
+                "invalid stream depth {value:?} in kernel metadata XML (want an integer >= 1)"
+            ))
+        })
 }
 
 fn resolve_arg(arg: RawArg, ports: &HashMap<String, PortInfo>) -> Result<ArgSpec> {
@@ -223,14 +246,14 @@ fn resolve_arg(arg: RawArg, ports: &HashMap<String, PortInfo>) -> Result<ArgSpec
             // The width lives on the port (`m_axi_<name>`) when there is
             // one; `size` does not help here, being the 8-byte pointer.
             data_width: port
-                .map(|p| p.data_width)
+                .map(|p| p.data_width.unwrap_or(DEFAULT_DATA_WIDTH))
                 .or(arg.data_width)
                 .unwrap_or(DEFAULT_DATA_WIDTH),
             addr_width: arg.addr_width.unwrap_or(DEFAULT_ADDR_WIDTH),
         },
         4 => ArgKind::Stream {
             width: port
-                .map(|p| p.data_width)
+                .map(|p| p.data_width.unwrap_or(DEFAULT_DATA_WIDTH))
                 .or(arg.data_width)
                 .unwrap_or(DEFAULT_DATA_WIDTH),
             depth: arg.depth.unwrap_or(DEFAULT_STREAM_DEPTH),
@@ -399,16 +422,16 @@ mod tests {
         let parsed = parse(
             r#"<?xml version="1.0"?>
 <root><kernel name="top">
-  <ports>
-    <port name="m_axi_a" mode="master" dataWidth="512"/>
-    <port name="s" mode="read_only" dataWidth="128"/>
-    <port name="t" mode="write_only" dataWidth="64"/>
-  </ports>
   <args>
     <arg name="a" addressQualifier="1" id="0" port="m_axi_a" dataWidth="32"/>
-    <arg name="s" addressQualifier="4" id="1" port="s" depth="8"/>
+    <arg name="s" addressQualifier="4" id="1" port="s&amp;t" depth="8"/>
     <arg name="t" addressQualifier="4" id="2" port="t"/>
   </args>
+  <ports>
+    <port name="m_axi_a" mode="master" dataWidth="512"/>
+    <port name="s&amp;t" mode="read_only" dataWidth="128"/>
+    <port name="t" mode="write_only" dataWidth="64"/>
+  </ports>
 </kernel></root>"#,
         )
         .expect("parse");
