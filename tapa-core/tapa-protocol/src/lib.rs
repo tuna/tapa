@@ -82,9 +82,6 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
 
 pub const M_AXI_PREFIX: &str = "m_axi_";
 
-/// Canonical M-AXI channel emission order.
-pub const M_AXI_CHANNEL_ORDER: &[&str] = &["AR", "AW", "B", "R", "W"];
-
 // ── M-AXI default parameters ───────────────────────────────────────
 
 /// Default AXI address width in bits: the `m_axi` address bus width
@@ -104,44 +101,12 @@ pub const AXI_ID_WIDTH: u32 = 1;
 /// the same budget to issue tracking.
 pub const M_AXI_MAX_OUTSTANDING: u32 = 16;
 
-// ── M-AXI port widths ───────────────────────────────────────────────
-
-/// Default bit width for each M-AXI sub-port.  `0` means the width is
-/// parameterised (ADDR, DATA) or derived (STRB = DATA / 8).
-pub static M_AXI_PORT_WIDTHS: phf::Map<&'static str, u32> = phf::phf_map! {
-    "ADDR" => 0,
-    "BURST" => 2,
-    "CACHE" => 4,
-    "DATA" => 0,
-    "ID" => 1,
-    "LAST" => 1,
-    "LEN" => 8,
-    "LOCK" => 1,
-    "PROT" => 3,
-    "QOS" => 4,
-    "READY" => 1,
-    "RESP" => 2,
-    "SIZE" => 3,
-    "STRB" => 0,
-    "VALID" => 1,
-};
-
-/// Resolve the bit width of an M-AXI sub-port.
-///
-/// `data_width`, `addr_width`, `id_width` supply the parameterised
-/// widths (DATA/ADDR/ID). STRB is derived as `ceil(data_width / 8)`.
-/// All other sub-ports use their fixed default from [`M_AXI_PORT_WIDTHS`].
+/// Resolve a sub-port width from the emitted catalog; unknown names use one bit.
 #[must_use]
 pub fn axi_subport_width(subport: &str, data_width: u32, addr_width: u32, id_width: u32) -> u32 {
-    let default = M_AXI_PORT_WIDTHS.get(subport).copied().unwrap_or(1);
-    match subport {
-        "ADDR" => addr_width,
-        "DATA" => data_width,
-        "ID" => id_width,
-        "STRB" => data_width.div_ceil(8),
-        _ if default == 0 => 1,
-        _ => default,
-    }
+    m_axi_ports()
+        .find(|port| port.name == subport)
+        .map_or(1, |port| port.width(data_width, addr_width, id_width))
 }
 
 /// Extract the sub-port name from an M-AXI signal suffix:
@@ -166,179 +131,157 @@ pub enum PortDir {
     Output,
 }
 
-/// A single (sub-port name, direction) entry inside an AXI channel.
-pub type AxiPortEntry = (&'static str, PortDir);
+/// Width rule stored with each emitted port.
+#[derive(Debug, Clone, Copy)]
+enum AxiWidth {
+    Fixed(u32),
+    Address,
+    Data,
+    Id,
+    Strobe,
+}
 
-/// Address-channel ports shared by AR and AW channels.
-///
-/// This is the *emitted* vocabulary — the sub-ports TAPA's generated
-/// fabric declares and wires. `REGION` is deliberately absent: HLS
-/// children never produce it, so an emitted `REGION` port would be an
-/// undriven top-level output (see
-/// [`M_AXI_RECOGNITION_ONLY_SUFFIXES`]).
-pub const M_AXI_ADDR_PORTS: &[AxiPortEntry] = &[
-    ("ADDR", PortDir::Output),
-    ("BURST", PortDir::Output),
-    ("CACHE", PortDir::Output),
-    ("ID", PortDir::Output),
-    ("LEN", PortDir::Output),
-    ("LOCK", PortDir::Output),
-    ("PROT", PortDir::Output),
-    ("QOS", PortDir::Output),
-    ("READY", PortDir::Input),
-    ("SIZE", PortDir::Output),
-    ("VALID", PortDir::Output),
-];
+/// An emitted M-AXI port, including its width and compact-fabric membership.
+#[derive(Debug, Clone, Copy)]
+pub struct AxiPort {
+    pub name: &'static str,
+    pub suffix: &'static str,
+    pub direction: PortDir,
+    pub is_compact: bool,
+    width: AxiWidth,
+}
 
-/// All five M-AXI channels → their sub-port lists.
-pub static M_AXI_PORTS: phf::Map<&'static str, &'static [AxiPortEntry]> = phf::phf_map! {
-    "AR" => M_AXI_ADDR_PORTS,
-    "AW" => M_AXI_ADDR_PORTS,
-    "B" => &[
-        ("ID", PortDir::Input),
-        ("READY", PortDir::Output),
-        ("RESP", PortDir::Input),
-        ("VALID", PortDir::Input),
-    ],
-    "R" => &[
-        ("DATA", PortDir::Input),
-        ("ID", PortDir::Input),
-        ("LAST", PortDir::Input),
-        ("READY", PortDir::Output),
-        ("RESP", PortDir::Input),
-        ("VALID", PortDir::Input),
-    ],
-    "W" => &[
-        ("DATA", PortDir::Output),
-        ("LAST", PortDir::Output),
-        ("READY", PortDir::Input),
-        ("STRB", PortDir::Output),
-        ("VALID", PortDir::Output),
-    ],
-};
+impl AxiPort {
+    /// Resolve parameterized widths; STRB uses `ceil(data_width / 8)`.
+    #[must_use]
+    pub const fn width(&self, data_width: u32, addr_width: u32, id_width: u32) -> u32 {
+        match self.width {
+            AxiWidth::Fixed(width) => width,
+            AxiWidth::Address => addr_width,
+            AxiWidth::Data => data_width,
+            AxiWidth::Id => id_width,
+            AxiWidth::Strobe => data_width.div_ceil(8),
+        }
+    }
+}
 
-// ── M-AXI suffixes ──────────────────────────────────────────────────
-
-/// Compact suffix set (29 entries) — no optional address-channel attributes.
-pub const M_AXI_SUFFIXES_COMPACT: &[&str] = &[
-    "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE", "_ARVALID", "_AWADDR",
-    "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE", "_AWVALID", "_BID", "_BREADY", "_BRESP",
-    "_BVALID", "_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID", "_WDATA", "_WLAST",
-    "_WREADY", "_WSTRB", "_WVALID",
-];
-
-/// Optional address-channel attributes that packaged RTL may carry but
-/// TAPA's generated fabric never emits or wires.
-///
-/// They belong to the recognition vocabulary ([`M_AXI_SUFFIXES`]) so
-/// consumers that *read* port lists (e.g. the `kernel.xml` base
-/// projection at pack time) accept them, and to nothing else: HLS
-/// children never produce `REGION`, so emitting it would declare an
-/// undriven top-level port.
-pub const M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str] = &["_ARREGION", "_AWREGION"];
-
-/// Full suffix set (39 entries) — compact + 10 optional address-channel
-/// attributes, including the recognition-only pair.
-pub const M_AXI_SUFFIXES: &[&str] = &[
-    "_ARADDR",
-    "_ARBURST",
-    "_ARID",
-    "_ARLEN",
-    "_ARREADY",
-    "_ARSIZE",
-    "_ARVALID",
-    "_AWADDR",
-    "_AWBURST",
-    "_AWID",
-    "_AWLEN",
-    "_AWREADY",
-    "_AWSIZE",
-    "_AWVALID",
-    "_BID",
-    "_BREADY",
-    "_BRESP",
-    "_BVALID",
-    "_RDATA",
-    "_RID",
-    "_RLAST",
-    "_RREADY",
-    "_RRESP",
-    "_RVALID",
-    "_WDATA",
-    "_WLAST",
-    "_WREADY",
-    "_WSTRB",
-    "_WVALID",
-    "_ARLOCK",
-    "_ARPROT",
-    "_ARQOS",
-    "_ARCACHE",
-    "_ARREGION",
-    "_AWCACHE",
-    "_AWLOCK",
-    "_AWPROT",
-    "_AWQOS",
-    "_AWREGION",
-];
-
-/// Per-channel suffix groupings with valid/ready markers.
+/// An AXI channel in emission order, with its valid/ready markers.
 pub struct AxiChannelInfo {
-    pub ports: &'static [&'static str],
+    pub name: &'static str,
+    pub ports: &'static [AxiPort],
     pub valid: &'static str,
     pub ready: &'static str,
 }
 
-pub static M_AXI_SUFFIXES_BY_CHANNEL: phf::Map<&'static str, AxiChannelInfo> = phf::phf_map! {
-    "AR" => AxiChannelInfo {
-        ports: &[
-            "_ARADDR", "_ARBURST", "_ARID", "_ARLEN", "_ARREADY", "_ARSIZE",
-            "_ARVALID", "_ARLOCK", "_ARPROT", "_ARQOS", "_ARCACHE",
-        ],
-        valid: "_ARVALID",
-        ready: "_ARREADY",
-    },
-    "AW" => AxiChannelInfo {
-        ports: &[
-            "_AWADDR", "_AWBURST", "_AWID", "_AWLEN", "_AWREADY", "_AWSIZE",
-            "_AWVALID", "_AWLOCK", "_AWPROT", "_AWQOS", "_AWCACHE",
-        ],
-        valid: "_AWVALID",
-        ready: "_AWREADY",
-    },
-    "B" => AxiChannelInfo {
-        ports: &["_BID", "_BREADY", "_BRESP", "_BVALID"],
-        valid: "_BVALID",
-        ready: "_BREADY",
-    },
-    "R" => AxiChannelInfo {
-        ports: &["_RDATA", "_RID", "_RLAST", "_RREADY", "_RRESP", "_RVALID"],
-        valid: "_RVALID",
-        ready: "_RREADY",
-    },
-    "W" => AxiChannelInfo {
-        ports: &["_WDATA", "_WLAST", "_WREADY", "_WSTRB", "_WVALID"],
-        valid: "_WVALID",
-        ready: "_WREADY",
-    },
-};
+impl AxiChannelInfo {
+    pub fn compact_suffixes(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.ports
+            .iter()
+            .filter(|port| port.is_compact)
+            .map(|port| port.suffix)
+    }
+}
 
-// ── M-AXI port lookups ─────────────────────────────────────────────
+macro_rules! channel {
+    ($channel:literal, $(($name:ident, $direction:ident, $width:expr, $compact:literal)),+ $(,)?) => {
+        AxiChannelInfo {
+            name: $channel,
+            valid: concat!("_", $channel, "VALID"),
+            ready: concat!("_", $channel, "READY"),
+            ports: &[$(AxiPort {
+                name: stringify!($name),
+                suffix: concat!("_", $channel, stringify!($name)),
+                direction: PortDir::$direction,
+                width: $width,
+                is_compact: $compact,
+            }),+],
+        }
+    };
+}
 
-/// Master-side direction of a full M-AXI port suffix.
-///
-/// Suffixes look like `_ARADDR` or `_RREADY`; [`PortDir::Output`]
-/// means the M-AXI master drives the signal. Returns `None` when
-/// `suffix` does not name a port of any of the five M-AXI channels.
+macro_rules! address_channel {
+    ($channel:literal) => {
+        channel!(
+            $channel,
+            (ADDR, Output, AxiWidth::Address, true),
+            (BURST, Output, AxiWidth::Fixed(2), true),
+            (CACHE, Output, AxiWidth::Fixed(4), false),
+            (ID, Output, AxiWidth::Id, true),
+            (LEN, Output, AxiWidth::Fixed(8), true),
+            (LOCK, Output, AxiWidth::Fixed(1), false),
+            (PROT, Output, AxiWidth::Fixed(3), false),
+            (QOS, Output, AxiWidth::Fixed(4), false),
+            (READY, Input, AxiWidth::Fixed(1), true),
+            (SIZE, Output, AxiWidth::Fixed(3), true),
+            (VALID, Output, AxiWidth::Fixed(1), true),
+        )
+    };
+}
+
+/// Single emitted vocabulary, in canonical channel and sub-port order.
+/// REGION is deliberately absent: HLS children never drive it.
+pub const M_AXI_CHANNELS: &[AxiChannelInfo] = &[
+    address_channel!("AR"),
+    address_channel!("AW"),
+    channel!(
+        "B",
+        (ID, Input, AxiWidth::Id, true),
+        (READY, Output, AxiWidth::Fixed(1), true),
+        (RESP, Input, AxiWidth::Fixed(2), true),
+        (VALID, Input, AxiWidth::Fixed(1), true),
+    ),
+    channel!(
+        "R",
+        (DATA, Input, AxiWidth::Data, true),
+        (ID, Input, AxiWidth::Id, true),
+        (LAST, Input, AxiWidth::Fixed(1), true),
+        (READY, Output, AxiWidth::Fixed(1), true),
+        (RESP, Input, AxiWidth::Fixed(2), true),
+        (VALID, Input, AxiWidth::Fixed(1), true),
+    ),
+    channel!(
+        "W",
+        (DATA, Output, AxiWidth::Data, true),
+        (LAST, Output, AxiWidth::Fixed(1), true),
+        (READY, Input, AxiWidth::Fixed(1), true),
+        (STRB, Output, AxiWidth::Strobe, true),
+        (VALID, Output, AxiWidth::Fixed(1), true),
+    ),
+];
+
+/// Optional attributes accepted by packaging but never emitted or wired.
+pub const M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str] = &["_ARREGION", "_AWREGION"];
+
+#[must_use]
+pub fn m_axi_channel(name: &str) -> Option<&'static AxiChannelInfo> {
+    M_AXI_CHANNELS.iter().find(|channel| channel.name == name)
+}
+
+pub fn m_axi_ports() -> impl Iterator<Item = &'static AxiPort> {
+    M_AXI_CHANNELS.iter().flat_map(|channel| channel.ports)
+}
+
+/// Compact fabric ports in emission order, excluding optional attributes.
+pub fn m_axi_compact_suffixes() -> impl Iterator<Item = &'static str> {
+    M_AXI_CHANNELS
+        .iter()
+        .flat_map(AxiChannelInfo::compact_suffixes)
+}
+
+/// Full recognition vocabulary, including attributes the fabric never emits.
+pub fn m_axi_suffixes() -> impl Iterator<Item = &'static str> {
+    m_axi_ports()
+        .map(|port| port.suffix)
+        .chain(M_AXI_RECOGNITION_ONLY_SUFFIXES.iter().copied())
+}
+
+/// Master-side direction of an emitted suffix; unknown and recognition-only
+/// suffixes have no direction because the fabric must not emit them.
 #[must_use]
 pub fn m_axi_port_direction(suffix: &str) -> Option<PortDir> {
-    let suffix_without_underscore = suffix.strip_prefix('_')?;
-    let channel = M_AXI_CHANNEL_ORDER
-        .iter()
-        .find(|channel| suffix_without_underscore.starts_with(**channel))?;
-    let subport = axi_subport_from_suffix(suffix);
-    M_AXI_PORTS[*channel]
-        .iter()
-        .find_map(|(name, direction)| (*name == subport).then_some(*direction))
+    m_axi_ports()
+        .find(|port| port.suffix == suffix)
+        .map(|port| port.direction)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
@@ -365,82 +308,13 @@ mod tests {
         );
     }
 
-    /// The compact suffix set is the full set minus the optional
-    /// address-channel attributes — not an independently edited list.
-    #[test]
-    fn m_axi_compact_suffixes_are_a_subset_of_the_full_set() {
-        let full: BTreeSet<&str> = M_AXI_SUFFIXES.iter().copied().collect();
-        let compact: BTreeSet<&str> = M_AXI_SUFFIXES_COMPACT.iter().copied().collect();
-        assert!(
-            compact.is_subset(&full),
-            "compact has suffixes the full set lacks"
-        );
-
-        let optional: BTreeSet<&str> = full.difference(&compact).copied().collect();
-        assert!(
-            optional.iter().all(|s| s.ends_with("LOCK")
-                || s.ends_with("PROT")
-                || s.ends_with("QOS")
-                || s.ends_with("CACHE")
-                || s.ends_with("REGION")),
-            "only LOCK/PROT/QOS/CACHE/REGION are optional, got {optional:?}"
-        );
-    }
-
-    /// The by-channel grouping covers exactly the emitted suffix set —
-    /// the full recognition set minus the recognition-only attributes —
-    /// and each channel's valid/ready markers are among its own ports.
-    #[test]
-    fn m_axi_channels_cover_the_emitted_suffix_set() {
-        let mut grouped: Vec<&str> = M_AXI_SUFFIXES_BY_CHANNEL
-            .values()
-            .flat_map(|c| c.ports.iter().copied())
-            .collect();
-        let total = grouped.len();
-        grouped.sort_unstable();
-        grouped.dedup();
-        assert_eq!(total, grouped.len(), "a suffix appears in two channels");
-
-        let grouped: BTreeSet<&str> = grouped.into_iter().collect();
-        let emitted: BTreeSet<&str> = M_AXI_SUFFIXES
-            .iter()
-            .copied()
-            .filter(|s| !M_AXI_RECOGNITION_ONLY_SUFFIXES.contains(s))
-            .collect();
-        assert_eq!(grouped, emitted, "channels do not cover the emitted set");
-
-        for (name, channel) in &M_AXI_SUFFIXES_BY_CHANNEL {
-            assert!(
-                channel.ports.contains(&channel.valid),
-                "{name}: valid marker not among its ports"
-            );
-            assert!(
-                channel.ports.contains(&channel.ready),
-                "{name}: ready marker not among its ports"
-            );
-        }
-    }
-
-    /// Every M-AXI sub-port named in a channel has a declared width.
-    #[test]
-    fn m_axi_channel_ports_all_have_widths() {
-        for (channel, ports) in &M_AXI_PORTS {
-            for (port, _dir) in *ports {
-                assert!(
-                    M_AXI_PORT_WIDTHS.contains_key(port),
-                    "{channel}{port} has no declared width"
-                );
-            }
-        }
-    }
-
     /// The suffix lookup is table-driven and rejects unknown shapes.
     #[test]
     fn m_axi_suffix_lookups_track_the_channel_tables() {
         // Every emitted suffix resolves; the recognition-only pair is
         // deliberately absent from the direction tables — nothing may
         // emit (and so need to direct) a REGION port.
-        for &suffix in M_AXI_SUFFIXES {
+        for suffix in m_axi_suffixes() {
             let direction = m_axi_port_direction(suffix);
             if M_AXI_RECOGNITION_ONLY_SUFFIXES.contains(&suffix) {
                 assert!(direction.is_none(), "{suffix} must stay emission-free");
@@ -462,21 +336,5 @@ mod tests {
         // Unknown shapes are rejected.
         assert_eq!(m_axi_port_direction("_FOO"), None);
         assert_eq!(m_axi_port_direction("ARADDR"), None);
-    }
-
-    /// AR and AW are both address channels and must expose the same ports.
-    #[test]
-    fn m_axi_address_channels_are_symmetric() {
-        assert_eq!(
-            M_AXI_PORTS["AR"].len(),
-            M_AXI_PORTS["AW"].len(),
-            "AR and AW must carry the same address ports"
-        );
-        for ((ar_port, ar_dir), (aw_port, aw_dir)) in
-            M_AXI_PORTS["AR"].iter().zip(M_AXI_PORTS["AW"].iter())
-        {
-            assert_eq!(ar_port, aw_port, "address port mismatch");
-            assert_eq!(ar_dir, aw_dir, "address port direction mismatch");
-        }
     }
 }

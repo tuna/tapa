@@ -312,7 +312,7 @@ fn add_direct_mmap_portargs(
     if child_rtl_filter.is_none_or(|module| module.find_port(&offset_port).is_some()) {
         port_args.push(PortArg::new(offset_port, Expr::ident(offset_sig)));
     }
-    for suffix in tapa_protocol::M_AXI_SUFFIXES_COMPACT {
+    for suffix in tapa_protocol::m_axi_compact_suffixes() {
         let child_axi_port = format!("m_axi_{child_port}{suffix}");
         if child_rtl_filter.is_none_or(|module| module.find_port(&child_axi_port).is_some()) {
             let wire_name = format!("{m_axi_wire_prefix}{suffix}");

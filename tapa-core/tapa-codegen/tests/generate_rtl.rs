@@ -1026,8 +1026,8 @@ fn direct_axi_routes() -> Vec<tapa_ir::PipelineRoute> {
 
 fn compact_m_axi_child_module_src() -> String {
     use tapa_protocol::{
-        axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, PortDir, AXI_ADDR_WIDTH,
-        M_AXI_SUFFIXES_COMPACT,
+        axi_subport_from_suffix, axi_subport_width, m_axi_compact_suffixes, m_axi_port_direction,
+        PortDir, AXI_ADDR_WIDTH,
     };
 
     let mut ports = vec![
@@ -1039,7 +1039,7 @@ fn compact_m_axi_child_module_src() -> String {
         "output wire ap_ready".to_string(),
         "input wire [63:0] data_offset".to_string(),
     ];
-    for suffix in M_AXI_SUFFIXES_COMPACT {
+    for suffix in m_axi_compact_suffixes() {
         let output = matches!(m_axi_port_direction(suffix), Some(PortDir::Output));
         let direction = if output { "output" } else { "input" };
         let width = axi_subport_width(axi_subport_from_suffix(suffix), 32, AXI_ADDR_WIDTH, 3);

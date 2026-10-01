@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    AXI_ADDR_WIDTH, HANDSHAKE_CLK, ISTREAM_SUFFIXES, M_AXI_PORTS, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_COMPACT, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
+    m_axi_channel, m_axi_compact_suffixes, AXI_ADDR_WIDTH, HANDSHAKE_CLK, ISTREAM_SUFFIXES,
+    M_AXI_PREFIX, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -123,7 +123,7 @@ pub fn has_direct_m_axi_ports(child_rtl: &VerilogModule, child_port: &str) -> bo
     child_rtl
         .find_port(&format!("{child_port}_offset"))
         .is_some()
-        || M_AXI_SUFFIXES_COMPACT.iter().any(|suffix| {
+        || m_axi_compact_suffixes().any(|suffix| {
             child_rtl
                 .find_port(&format!("{M_AXI_PREFIX}{child_port}{suffix}"))
                 .is_some()
@@ -355,21 +355,17 @@ pub fn build_bridge_instance(
         } else {
             inactive_m_axi_prefix
         };
-        if let Some(subports) = M_AXI_PORTS.get(channel) {
-            for &(subport, _) in *subports {
-                let suffix = format!("_{channel}{subport}");
-                let is_compact = M_AXI_SUFFIXES_COMPACT.contains(&suffix.as_str());
+        if let Some(info) = m_axi_channel(channel) {
+            for port in info.ports {
+                let suffix = port.suffix;
                 let connect_optional = connect_optional_axi_ports
                     && (!channel_enabled || active_m_axi_prefix == inactive_m_axi_prefix);
-                let connection = if is_compact || connect_optional {
+                let connection = if port.is_compact || connect_optional {
                     Expr::ident(format!("{channel_prefix}{suffix}"))
                 } else {
                     Expr::lit("")
                 };
-                ports.push(PortArg::new(
-                    format!("m_axi_{channel}{subport}"),
-                    connection,
-                ));
+                ports.push(PortArg::new(format!("m_axi{suffix}"), connection));
             }
         }
     }

@@ -7,8 +7,8 @@ use tapa_ir::{
     axi_pipeline_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank, RoutedChannel,
 };
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PREFIX,
-    M_AXI_SUFFIXES_BY_CHANNEL, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, axi_subport_width, m_axi_channel, HANDSHAKE_CLK, HANDSHAKE_RST,
+    M_AXI_PREFIX,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
@@ -221,10 +221,9 @@ impl DirectAxiPipelinePlan {
 
             for (channel, _) in interface.channel_widths.enabled_channels() {
                 let channel_name = channel_rtl_name(channel);
-                for suffix in M_AXI_SUFFIXES_BY_CHANNEL[channel_name]
-                    .ports
-                    .iter()
-                    .filter(|suffix| M_AXI_SUFFIXES_COMPACT.contains(suffix))
+                for suffix in m_axi_channel(channel_name)
+                    .expect("known AXI channel")
+                    .compact_suffixes()
                 {
                     let width = axi_subport_width(
                         axi_subport_from_suffix(suffix),
@@ -364,16 +363,10 @@ fn build_channel_instance(
     top_prefix: &str,
 ) -> Result<ModuleInstance, CodegenError> {
     let channel_name = channel_rtl_name(channel);
-    let info = &M_AXI_SUFFIXES_BY_CHANNEL[channel_name];
+    let info = m_axi_channel(channel_name).expect("known AXI channel");
     let payload_suffixes = info
-        .ports
-        .iter()
-        .copied()
-        .filter(|suffix| {
-            M_AXI_SUFFIXES_COMPACT.contains(suffix)
-                && *suffix != info.valid
-                && *suffix != info.ready
-        })
+        .compact_suffixes()
+        .filter(|suffix| *suffix != info.valid && *suffix != info.ready)
         .collect::<Vec<_>>();
     let payload_width = payload_suffixes
         .iter()

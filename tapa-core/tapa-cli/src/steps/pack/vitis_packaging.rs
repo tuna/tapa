@@ -151,7 +151,7 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Res
 
 // The one M-AXI suffix vocabulary lives in tapa-protocol; a private
 // copy here once drifted from it (`_AWREGION`/`_ARREGION`).
-use tapa_protocol::M_AXI_SUFFIXES;
+use tapa_protocol::m_axi_suffixes;
 
 static TAPA_LIB_RUNFILES_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r#"(?:(?:\.\./)*/?)[^\s"<>\|,]*tapa\.runfiles/_main/tapa-lib/"#).unwrap()
@@ -184,13 +184,12 @@ fn top_rtl_m_axi_bases(
         // Every emitted M-AXI port has to be one the protocol crate knows:
         // an unrecognized one would drop out of the projection silently and
         // leave kernel.xml describing fewer interfaces than the RTL has.
-        let base = M_AXI_SUFFIXES
-            .iter()
+        let base = m_axi_suffixes()
             .find_map(|suffix| rest.strip_suffix(suffix))
             .ok_or_else(|| {
                 CliError::Codegen(format!(
                     "top RTL `{}` has M-AXI port `{}`, whose suffix is not in \
-                     tapa_protocol::M_AXI_SUFFIXES; add it there so every \
+                     tapa_protocol::m_axi_suffixes; add it there so every \
                      reader of the vocabulary agrees",
                     rtl_path.display(),
                     port.name,
@@ -579,7 +578,7 @@ mod tests {
         let err = top_rtl_m_axi_bases(dir.path(), "Top").expect_err("unknown suffix");
         let msg = err.to_string();
         assert!(msg.contains("m_axi_a_ARFUTURE"), "{msg}");
-        assert!(msg.contains("M_AXI_SUFFIXES"), "{msg}");
+        assert!(msg.contains("m_axi_suffixes"), "{msg}");
     }
 
     #[test]

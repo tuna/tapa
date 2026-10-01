@@ -93,6 +93,10 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
 
 ## Crate Charters
 
+- **tapa-protocol** — shared naming and handshake contracts. One ordered M-AXI
+  catalog owns emitted ports, widths, directions, and compact membership;
+  channel and suffix views derive from it. Packaging additionally recognizes
+  REGION attributes, which generated fabric never emits or wires.
 - **tapa-ir** — vendor-neutral schema plus pure transforms. No I/O
   adapters, no tool logic. It owns the JSON wire format the C++ frontend
   and the Rust toolchain agree on, and the typed `FloorplanResult` that

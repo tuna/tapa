@@ -8,8 +8,8 @@
 use tapa_ir::task::TaskLevel;
 use tapa_ir::{ArgCategory, AxiChannelWidths, AxiEndpoint, Design};
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, PortDir, AXI_ADDR_WIDTH, AXI_ID_WIDTH,
-    M_AXI_PREFIX, M_AXI_SUFFIXES_BY_CHANNEL, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, axi_subport_width, m_axi_channel, m_axi_compact_suffixes, PortDir,
+    AXI_ADDR_WIDTH, AXI_ID_WIDTH, M_AXI_PREFIX,
 };
 use tapa_rtl::expression::expression_source;
 use tapa_rtl::module::sanitize_array_name;
@@ -330,10 +330,9 @@ fn invalid_direct_mmap(interface: &str, reason: &str) -> CodegenError {
 
 fn direct_m_axi_channel_widths(data_width: u32, id_width: u32) -> AxiChannelWidths {
     let physical_width = |channel: &str| {
-        M_AXI_SUFFIXES_BY_CHANNEL[channel]
-            .ports
-            .iter()
-            .filter(|suffix| M_AXI_SUFFIXES_COMPACT.contains(suffix))
+        m_axi_channel(channel)
+            .expect("known AXI channel")
+            .compact_suffixes()
             .map(|suffix| {
                 axi_subport_width(
                     axi_subport_from_suffix(suffix),
@@ -360,7 +359,7 @@ fn validate_compact_m_axi_ports(
     rtl_prefix: &str,
     data_width: u32,
 ) -> Result<u32, CodegenError> {
-    for suffix in M_AXI_SUFFIXES_COMPACT {
+    for suffix in m_axi_compact_suffixes() {
         let port_name = format!("{rtl_prefix}{suffix}");
         let port = module.find_port(&port_name).ok_or_else(|| {
             invalid_direct_mmap(
@@ -430,7 +429,7 @@ fn validate_compact_m_axi_ports(
     // Literal or simply parameterized widths are cheap to verify. More complex
     // non-ID expressions remain topology-authoritative; only ID widths must be
     // resolved because they are not represented in the topology.
-    for suffix in M_AXI_SUFFIXES_COMPACT {
+    for suffix in m_axi_compact_suffixes() {
         let port_name = format!("{rtl_prefix}{suffix}");
         let port = module
             .find_port(&port_name)
@@ -544,13 +543,11 @@ mod tests {
     }
 
     fn compact_m_axi_module(data_width: u32, id_width: u32) -> VerilogModule {
-        let names = M_AXI_SUFFIXES_COMPACT
-            .iter()
+        let names = m_axi_compact_suffixes()
             .map(|suffix| format!("  m_axi_data{suffix}"))
             .collect::<Vec<_>>()
             .join(",\n");
-        let declarations = M_AXI_SUFFIXES_COMPACT
-            .iter()
+        let declarations = m_axi_compact_suffixes()
             .map(|suffix| {
                 let direction = match m_axi_port_direction(suffix).expect("known AXI suffix") {
                     Direction::Input => "input",

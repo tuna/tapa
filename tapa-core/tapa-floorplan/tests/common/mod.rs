@@ -19,9 +19,7 @@
 
 use tapa_floorplan::{ControlInterface, MemoryInterface, PlanInputs, PlanOptions};
 use tapa_ir::{AxiChannelWidths, AxiEndpoint, FlowSettings, MemoryBank, TaskGraph, WorkState};
-use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, M_AXI_SUFFIXES_BY_CHANNEL, M_AXI_SUFFIXES_COMPACT,
-};
+use tapa_protocol::{axi_subport_from_suffix, axi_subport_width, m_axi_channel};
 
 /// The golden case work state: `design.json` plus the flow settings the
 /// CLI's floorplan step would have on hand (part number + platform).
@@ -73,10 +71,9 @@ pub fn case_plan_inputs() -> PlanInputs {
 /// the shared protocol tables so these tests never depend on codegen).
 fn direct_mmap_channel_widths(data_width: u32, id_width: u32) -> AxiChannelWidths {
     let physical_width = |channel: &str| {
-        M_AXI_SUFFIXES_BY_CHANNEL[channel]
-            .ports
-            .iter()
-            .filter(|suffix| M_AXI_SUFFIXES_COMPACT.contains(suffix))
+        m_axi_channel(channel)
+            .expect("known AXI channel")
+            .compact_suffixes()
             .map(|suffix| {
                 axi_subport_width(axi_subport_from_suffix(suffix), data_width, 64, id_width)
             })

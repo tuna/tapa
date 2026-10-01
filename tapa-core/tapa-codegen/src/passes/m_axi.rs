@@ -1,9 +1,9 @@
 //! M-AXI port generation and parameterized AXI crossbar emission.
 
 use tapa_protocol::{
-    axi_subport_from_suffix, axi_subport_width, m_axi_port_direction, PortDir, AXI_ADDR_WIDTH,
-    AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_CHANNEL_ORDER, M_AXI_MAX_OUTSTANDING,
-    M_AXI_PORTS, M_AXI_PREFIX, M_AXI_SUFFIXES_COMPACT,
+    axi_subport_from_suffix, m_axi_compact_suffixes, m_axi_port_direction, m_axi_ports, PortDir,
+    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_MAX_OUTSTANDING,
+    M_AXI_PREFIX,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -46,27 +46,18 @@ pub(crate) fn build_m_axi_ports(
     let prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(name));
     let mut ports = Vec::new();
 
-    for &channel in M_AXI_CHANNEL_ORDER {
-        let Some(&subports) = M_AXI_PORTS.get(channel) else {
-            continue;
+    for entry in m_axi_ports() {
+        let port_name = format!("{prefix}{}", entry.suffix);
+        let direction = match entry.direction {
+            PortDir::Output => Direction::Output,
+            PortDir::Input => Direction::Input,
         };
-        for &(subport, dir) in subports {
-            let port_name = format!("{prefix}_{channel}{subport}");
-            let direction = match dir {
-                PortDir::Output => Direction::Output,
-                PortDir::Input => Direction::Input,
-            };
-
-            let width = axi_subport_width(subport, data_width, addr_width, id_width);
-
-            let port = if width > 1 {
-                wide_port(&port_name, direction, &(width - 1).to_string(), "0")
-            } else {
-                simple_port(&port_name, direction)
-            };
-
-            ports.push(port);
-        }
+        let width = entry.width(data_width, addr_width, id_width);
+        ports.push(if width > 1 {
+            wide_port(&port_name, direction, &(width - 1).to_string(), "0")
+        } else {
+            simple_port(&port_name, direction)
+        });
     }
     ports
 }
@@ -186,7 +177,7 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
         } else {
             format!("{M_AXI_PREFIX}{arg_name}")
         };
-        for suffix in M_AXI_SUFFIXES_COMPACT {
+        for suffix in m_axi_compact_suffixes() {
             let signal = if is_hmap && suffix.ends_with("ADDR") {
                 crossbar_master_addr_raw(&arg_name, channel_idx, suffix)
             } else {
@@ -202,7 +193,7 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
     // Downstream slave ports — wire to internal per-child signals.
     for slave_idx in 0..conn.slaves.len() {
         let s_wire_prefix = crossbar_slave_prefix(&arg_name, slave_idx);
-        for suffix in M_AXI_SUFFIXES_COMPACT {
+        for suffix in m_axi_compact_suffixes() {
             ports.push(PortArg::new(
                 format!("s{slave_idx:02}{suffix}"),
                 Expr::ident(format!("{s_wire_prefix}{suffix}")),
@@ -321,7 +312,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
 
     let mut ports: Vec<String> = vec!["input wire clk".to_string(), "input wire rst".to_string()];
     for ch_idx in 0..channels {
-        for suffix in M_AXI_SUFFIXES_COMPACT {
+        for suffix in m_axi_compact_suffixes() {
             let direction = if matches!(m_axi_port_direction(suffix), Some(PortDir::Output)) {
                 "output"
             } else {
@@ -335,7 +326,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
         }
     }
     for s_idx in 0..slaves {
-        for suffix in M_AXI_SUFFIXES_COMPACT {
+        for suffix in m_axi_compact_suffixes() {
             let direction = if matches!(m_axi_port_direction(suffix), Some(PortDir::Output)) {
                 "input"
             } else {
@@ -403,7 +394,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     for (name, value) in optional_addr_ports {
         axi_ports.push(format!(".s_axi_{name}({{{slaves}{{{value}}}}})"));
     }
-    for suffix in M_AXI_SUFFIXES_COMPACT {
+    for suffix in m_axi_compact_suffixes() {
         let signal = concat_ports("s", slaves, suffix);
         let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
         axi_ports.push(format!(".s_axi_{axi_suffix}({signal})"));
@@ -411,7 +402,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     for (name, _value) in optional_addr_ports {
         axi_ports.push(format!(".m_axi_{name}()"));
     }
-    for suffix in M_AXI_SUFFIXES_COMPACT {
+    for suffix in m_axi_compact_suffixes() {
         let signal = concat_ports("m", channels, suffix);
         let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
         axi_ports.push(format!(".m_axi_{axi_suffix}({signal})"));
@@ -627,7 +618,7 @@ pub(crate) fn add_m_axi_and_crossbars(
 
                 for slave_idx in 0..conn.slaves.len() {
                     let wire_prefix = crossbar_slave_prefix(&conn.arg_name, slave_idx);
-                    for suffix in tapa_protocol::M_AXI_SUFFIXES_COMPACT {
+                    for suffix in tapa_protocol::m_axi_compact_suffixes() {
                         let wire_name = format!("{wire_prefix}{suffix}");
                         // Resolve width from suffix name using protocol constants
                         let width = crossbar_slave_suffix_width(conn, suffix);
