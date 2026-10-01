@@ -1,4 +1,81 @@
 pub mod tapa_ir
+pub mod tapa_ir::bindings
+pub struct tapa_ir::bindings::FifoEndpoint<'a>
+pub tapa_ir::bindings::FifoEndpoint::binding: core::option::Option<tapa_ir::bindings::PortBinding<'a>>
+pub tapa_ir::bindings::FifoEndpoint::reference: &'a tapa_ir::interconnect::EndpointRef
+pub tapa_ir::bindings::FifoEndpoint::task: core::option::Option<&'a tapa_ir::task::Task>
+impl<'a> core::clone::Clone for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::clone(&self) -> tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::fmt::Debug for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Freeze for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Send for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Sync for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Unpin for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::UnsafeUnpin for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tapa_ir::bindings::FifoEndpoint<'a>
+impl<T, U> core::convert::Into<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::From<T>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::Into<T>
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Error = core::convert::Infallible
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::TryFrom<T>
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::bindings::FifoEndpoint<'a> where T: core::clone::Clone
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Owned = T
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::clone_into(&self, &mut T)
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::bindings::FifoEndpoint<'a> where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::bindings::FifoEndpoint<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::bindings::FifoEndpoint<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::bindings::FifoEndpoint<'a> where T: core::clone::Clone
+pub unsafe fn tapa_ir::bindings::FifoEndpoint<'a>::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::from(T) -> T
+pub struct tapa_ir::bindings::PortBinding<'a>
+pub tapa_ir::bindings::PortBinding::argument: &'a tapa_ir::instance::Arg
+pub tapa_ir::bindings::PortBinding::port: core::option::Option<&'a tapa_ir::port::Port>
+pub tapa_ir::bindings::PortBinding::port_name: &'a str
+impl<'a> core::clone::Clone for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::clone(&self) -> tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::fmt::Debug for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Freeze for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Send for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Sync for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Unpin for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::UnsafeUnpin for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tapa_ir::bindings::PortBinding<'a>
+impl<T, U> core::convert::Into<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::From<T>
+pub fn tapa_ir::bindings::PortBinding<'a>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::Into<T>
+pub type tapa_ir::bindings::PortBinding<'a>::Error = core::convert::Infallible
+pub fn tapa_ir::bindings::PortBinding<'a>::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::TryFrom<T>
+pub type tapa_ir::bindings::PortBinding<'a>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::bindings::PortBinding<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::bindings::PortBinding<'a> where T: core::clone::Clone
+pub type tapa_ir::bindings::PortBinding<'a>::Owned = T
+pub fn tapa_ir::bindings::PortBinding<'a>::clone_into(&self, &mut T)
+pub fn tapa_ir::bindings::PortBinding<'a>::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::bindings::PortBinding<'a> where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::bindings::PortBinding<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::bindings::PortBinding<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::bindings::PortBinding<'a> where T: core::clone::Clone
+pub unsafe fn tapa_ir::bindings::PortBinding<'a>::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::from(T) -> T
 pub mod tapa_ir::clock
 pub enum tapa_ir::clock::ClockPeriodError
 pub tapa_ir::clock::ClockPeriodError::NotANumber(alloc::string::String)
@@ -1159,6 +1236,9 @@ pub tapa_ir::graph::TaskGraph::schema_version: u32
 pub tapa_ir::graph::TaskGraph::target: tapa_ir::target::Target
 pub tapa_ir::graph::TaskGraph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::graph::TaskGraph::top: alloc::string::String
+impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
+pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
@@ -3171,6 +3251,9 @@ pub tapa_ir::Design::target: tapa_ir::target::Target
 pub tapa_ir::Design::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::Design::top: alloc::string::String
 impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
+pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
+impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
@@ -3316,6 +3399,44 @@ pub unsafe fn tapa_ir::interconnect::EndpointRef::clone_to_uninit(&self, *mut u8
 impl<T> core::convert::From<T> for tapa_ir::interconnect::EndpointRef
 pub fn tapa_ir::interconnect::EndpointRef::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::interconnect::EndpointRef where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::FifoEndpoint<'a>
+pub tapa_ir::FifoEndpoint::binding: core::option::Option<tapa_ir::bindings::PortBinding<'a>>
+pub tapa_ir::FifoEndpoint::reference: &'a tapa_ir::interconnect::EndpointRef
+pub tapa_ir::FifoEndpoint::task: core::option::Option<&'a tapa_ir::task::Task>
+impl<'a> core::clone::Clone for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::clone(&self) -> tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::fmt::Debug for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Freeze for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Send for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Sync for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::Unpin for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::marker::UnsafeUnpin for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tapa_ir::bindings::FifoEndpoint<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tapa_ir::bindings::FifoEndpoint<'a>
+impl<T, U> core::convert::Into<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::From<T>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::Into<T>
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Error = core::convert::Infallible
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::bindings::FifoEndpoint<'a> where U: core::convert::TryFrom<T>
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::bindings::FifoEndpoint<'a> where T: core::clone::Clone
+pub type tapa_ir::bindings::FifoEndpoint<'a>::Owned = T
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::clone_into(&self, &mut T)
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::bindings::FifoEndpoint<'a> where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::bindings::FifoEndpoint<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::bindings::FifoEndpoint<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::bindings::FifoEndpoint<'a> where T: core::clone::Clone
+pub unsafe fn tapa_ir::bindings::FifoEndpoint<'a>::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::bindings::FifoEndpoint<'a>
+pub fn tapa_ir::bindings::FifoEndpoint<'a>::from(T) -> T
 pub struct tapa_ir::FloorplanResult
 pub tapa_ir::FloorplanResult::device: alloc::string::String
 pub tapa_ir::FloorplanResult::grid: (u32, u32)
@@ -3427,6 +3548,9 @@ pub tapa_ir::Graph::schema_version: u32
 pub tapa_ir::Graph::target: tapa_ir::target::Target
 pub tapa_ir::Graph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::Graph::top: alloc::string::String
+impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
+pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
@@ -3865,6 +3989,44 @@ pub unsafe fn tapa_ir::port::Port::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::port::Port
 pub fn tapa_ir::port::Port::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::Port where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::PortBinding<'a>
+pub tapa_ir::PortBinding::argument: &'a tapa_ir::instance::Arg
+pub tapa_ir::PortBinding::port: core::option::Option<&'a tapa_ir::port::Port>
+pub tapa_ir::PortBinding::port_name: &'a str
+impl<'a> core::clone::Clone for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::clone(&self) -> tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::fmt::Debug for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<'a> core::marker::Copy for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Freeze for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Send for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Sync for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::Unpin for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::marker::UnsafeUnpin for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::panic::unwind_safe::RefUnwindSafe for tapa_ir::bindings::PortBinding<'a>
+impl<'a> core::panic::unwind_safe::UnwindSafe for tapa_ir::bindings::PortBinding<'a>
+impl<T, U> core::convert::Into<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::From<T>
+pub fn tapa_ir::bindings::PortBinding<'a>::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::Into<T>
+pub type tapa_ir::bindings::PortBinding<'a>::Error = core::convert::Infallible
+pub fn tapa_ir::bindings::PortBinding<'a>::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::bindings::PortBinding<'a> where U: core::convert::TryFrom<T>
+pub type tapa_ir::bindings::PortBinding<'a>::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::bindings::PortBinding<'a>::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::bindings::PortBinding<'a> where T: core::clone::Clone
+pub type tapa_ir::bindings::PortBinding<'a>::Owned = T
+pub fn tapa_ir::bindings::PortBinding<'a>::clone_into(&self, &mut T)
+pub fn tapa_ir::bindings::PortBinding<'a>::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::bindings::PortBinding<'a> where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::bindings::PortBinding<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::bindings::PortBinding<'a> where T: ?core::marker::Sized
+pub fn tapa_ir::bindings::PortBinding<'a>::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::bindings::PortBinding<'a> where T: core::clone::Clone
+pub unsafe fn tapa_ir::bindings::PortBinding<'a>::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::bindings::PortBinding<'a>
+pub fn tapa_ir::bindings::PortBinding<'a>::from(T) -> T
 pub struct tapa_ir::Task
 pub tapa_ir::Task::clock_period: core::option::Option<tapa_ir::clock::ClockPeriod>
 pub tapa_ir::Task::defines: alloc::vec::Vec<alloc::string::String>
@@ -3932,6 +4094,9 @@ pub tapa_ir::TaskGraph::schema_version: u32
 pub tapa_ir::TaskGraph::target: tapa_ir::target::Target
 pub tapa_ir::TaskGraph::tasks: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::task::Task>
 pub tapa_ir::TaskGraph::top: alloc::string::String
+impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
+pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>

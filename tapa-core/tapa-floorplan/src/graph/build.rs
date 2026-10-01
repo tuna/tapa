@@ -571,40 +571,26 @@ pub(super) struct FifoArgWidths {
 /// Gather every FIFO's producer/consumer port widths in one pass over the
 /// bound args. The producer is the authoritative side: codegen sizes the FIFO
 /// RTL from the producer's `_dout` port.
-pub(super) fn index_fifo_arg_widths(
-    flat: &TaskGraph,
-    top: &tapa_ir::Task,
-) -> BTreeMap<String, FifoArgWidths> {
-    let mut index = BTreeMap::<String, FifoArgWidths>::new();
-    for (def_name, instances) in &top.tasks {
-        let Some(definition) = flat.tasks.get(def_name) else {
+pub(super) fn index_fifo_arg_widths<'a>(
+    flat: &'a TaskGraph,
+    top: &'a tapa_ir::Task,
+) -> BTreeMap<&'a str, FifoArgWidths> {
+    let mut index = BTreeMap::<&str, FifoArgWidths>::new();
+    for binding in flat.bindings(top) {
+        if !binding.argument.cat.is_stream() {
+            continue;
+        }
+        let (Some(port), Some(fifo)) = (binding.port, binding.argument.name()) else {
             continue;
         };
-        for inst in instances {
-            for (port_name, arg) in &inst.args {
-                if !arg.cat.is_stream() {
-                    continue;
-                }
-                let Some(port) = definition.port(port_name) else {
-                    continue;
-                };
-                // Streams always bind to a named FIFO, never to a constant.
-                let Some(fifo) = arg.name() else {
-                    continue;
-                };
-                let entry = index.entry(fifo.to_owned()).or_default();
-                let side = if arg.cat.is_output_stream() {
-                    &mut entry.producer
-                } else {
-                    &mut entry.consumer
-                };
-                // A well-formed graph binds one instance per side; the first
-                // binding wins deterministically if malformed.
-                if side.is_none() {
-                    *side = Some(port.width);
-                }
-            }
-        }
+        let entry = index.entry(fifo).or_default();
+        let side = if binding.argument.cat.is_output_stream() {
+            &mut entry.producer
+        } else {
+            &mut entry.consumer
+        };
+        // Preserve the first binding on each side for incomplete topology.
+        side.get_or_insert(port.width);
     }
     index
 }
@@ -638,7 +624,7 @@ pub(super) fn resolve_fifo_endpoint(
 /// `tapa_protocol::stream_data_wire_width`), resolved from the producer's
 /// port and cross-checked against the consumer's when both are bound.
 pub(super) fn resolve_fifo_data_width(
-    index: &BTreeMap<String, FifoArgWidths>,
+    index: &BTreeMap<&str, FifoArgWidths>,
     fifo_name: &str,
 ) -> Result<u32, GraphError> {
     let widths = index.get(fifo_name).copied().unwrap_or_default();

@@ -100,7 +100,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   argument expansion for packaging and simulation; target adapters retain
   protocol selection and synthesized RTL interface overrides. `Task::port`
   resolves exact channel declarations before array bases for both engines;
-  codegen borrows FIFO metadata directly while mutating its separate RTL table.
+  borrowed binding views share child-port and FIFO endpoint resolution.
+  External ends stay distinct from declared references with incomplete metadata.
+  RTL signal widths remain the codegen backend's responsibility.
 - **tapa-rtl** — the only place Verilog text is parsed, mutated, or
   emitted (tree-sitter + nom). Other crates never manipulate Verilog
   source as text.

@@ -7,6 +7,7 @@
 //! the `.zip` archive, where `frt-cosim` — in a different Cargo workspace —
 //! parses it back with these same types.
 
+pub mod bindings;
 pub mod clock;
 pub mod connectivity;
 pub mod floorplan;
@@ -22,6 +23,7 @@ pub mod work_state;
 
 mod error;
 
+pub use bindings::{FifoEndpoint, PortBinding};
 pub use clock::{ClockPeriod, ClockPeriodError};
 pub use connectivity::{
     DuplicateMemoryEndpoint, MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind,

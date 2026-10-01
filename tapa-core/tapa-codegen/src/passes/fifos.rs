@@ -171,13 +171,6 @@ pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> M
         .with_ports(ports)
 }
 
-/// Borrowed FIFO producer metadata; absent topology permits the RTL fallback.
-struct FifoProducer<'a> {
-    task_name: &'a str,
-    task: Option<&'a tapa_ir::Task>,
-    port_name: Option<&'a str>,
-}
-
 /// Instantiate FIFOs for a task.
 ///
 /// Internal FIFOs (with depth) get a `fifo` module instance.
@@ -191,8 +184,9 @@ pub fn instantiate_fifos(
     let task = &design.design().tasks[task_name];
 
     for (fifo_name, fifo) in &task.fifos {
-        let producer =
-            fifo_producer_for(design.design(), task, fifo_name, fifo.produced_by.as_ref());
+        let producer = design
+            .design()
+            .fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
         if let Some(depth) = fifo.depth {
             // Buffered internal FIFOs must have a producer to size the buffer.
             let producer = producer
@@ -219,31 +213,6 @@ pub fn instantiate_fifos(
     Ok(())
 }
 
-fn fifo_producer_for<'a>(
-    design: &'a tapa_ir::Design,
-    task: &'a tapa_ir::Task,
-    fifo_name: &str,
-    endpoint: Option<&'a tapa_ir::interconnect::EndpointRef>,
-) -> Option<FifoProducer<'a>> {
-    let ep = endpoint?;
-    let port_name = task
-        .tasks
-        .get(&ep.0)
-        .and_then(|instances| instances.get(ep.1 as usize))
-        .and_then(|instance| {
-            instance
-                .args
-                .iter()
-                .find(|(_, arg)| arg.name() == Some(fifo_name))
-                .map(|(port_name, _)| port_name.as_str())
-        });
-    Some(FifoProducer {
-        task_name: &ep.0,
-        task: design.tasks.get(&ep.0),
-        port_name,
-    })
-}
-
 /// Resolve FIFO width from the producer child's attached RTL module.
 ///
 /// Looks for the producer's bound stream port on the parsed child RTL and uses
@@ -252,12 +221,13 @@ fn fifo_producer_for<'a>(
 /// if the producer task, its instance, or its bound stream port is missing.
 fn resolve_fifo_width(
     modules: &ModuleTable<'_>,
-    producer: &FifoProducer<'_>,
+    producer: &tapa_ir::FifoEndpoint<'_>,
     fifo_name: &str,
 ) -> Result<u32, CodegenError> {
     // Check attached RTL module for producer port width
-    if let Some(mm) = modules.get(producer.task_name) {
-        if let Some(port_name) = producer.port_name {
+    if let Some(mm) = modules.get(&producer.reference.0) {
+        if let Some(binding) = producer.binding {
+            let port_name = binding.port_name;
             for suffix in ["_din", "_dout"] {
                 if let Some(port) = mm.inner.get_port_of(port_name, suffix) {
                     if let Some(width) = port.bit_width() {
@@ -282,11 +252,8 @@ fn resolve_fifo_width(
     }
     // Otherwise use the topology port definitions for the producer task.
     if let Some(task) = producer.task {
-        if let Some(port_name) = producer.port_name {
-            if let Some(port) = task
-                .port(port_name)
-                .filter(|port| port.cat.is_output_stream())
-            {
+        if let Some(binding) = producer.binding {
+            if let Some(port) = binding.port.filter(|port| port.cat.is_output_stream()) {
                 return Ok(tapa_protocol::stream_data_wire_width(port.width));
             }
         }
@@ -322,7 +289,7 @@ pub fn connect_fifos(
 
     for (fifo_name, fifo) in &task.fifos {
         let has_consumer = fifo.consumed_by.is_some();
-        let producer = fifo_producer_for(design_data, task, fifo_name, fifo.produced_by.as_ref());
+        let producer = design_data.fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
         let sanitized_fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
         if fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
@@ -441,7 +408,7 @@ mod tests {
     /// Resolve a FIFO width through the same views the pass receives.
     fn fifo_width(
         module_map: &mut BTreeMap<String, MutableModule>,
-        producer: &FifoProducer<'_>,
+        producer: &tapa_ir::FifoEndpoint<'_>,
         fifo_name: &str,
     ) -> Result<u32, CodegenError> {
         resolve_fifo_width(&ModuleTable::new(module_map), producer, fifo_name)
@@ -647,21 +614,22 @@ mod tests {
         }));
         let mut state = TopologyWithRtl::new(program);
 
-        let top = &state.design.tasks["top"];
-        let narrow = fifo_producer_for(
-            &state.design,
-            top,
-            "narrow_fifo",
-            top.fifos["narrow_fifo"].produced_by.as_ref(),
-        )
-        .unwrap();
-        let wide = fifo_producer_for(
-            &state.design,
-            top,
-            "wide_fifo",
-            top.fifos["wide_fifo"].produced_by.as_ref(),
-        )
-        .unwrap();
+        let design = &state.design;
+        let top = &design.tasks["top"];
+        let narrow = design
+            .fifo_endpoint(
+                top,
+                "narrow_fifo",
+                top.fifos["narrow_fifo"].produced_by.as_ref(),
+            )
+            .unwrap();
+        let wide = design
+            .fifo_endpoint(
+                top,
+                "wide_fifo",
+                top.fifos["wide_fifo"].produced_by.as_ref(),
+            )
+            .unwrap();
         assert_eq!(
             fifo_width(&mut state.module_map, &narrow, "narrow_fifo").unwrap(),
             9
@@ -722,13 +690,14 @@ mod tests {
         }));
         let mut state = TopologyWithRtl::new(program);
         let top = &state.design.tasks["top"];
-        let producer = fifo_producer_for(
-            &state.design,
-            top,
-            "orphan_fifo",
-            top.fifos["orphan_fifo"].produced_by.as_ref(),
-        )
-        .unwrap();
+        let producer = state
+            .design
+            .fifo_endpoint(
+                top,
+                "orphan_fifo",
+                top.fifos["orphan_fifo"].produced_by.as_ref(),
+            )
+            .unwrap();
         let err = fifo_width(&mut state.module_map, &producer, "orphan_fifo")
             .expect_err("mmap-only producer has no stream width");
         assert!(
