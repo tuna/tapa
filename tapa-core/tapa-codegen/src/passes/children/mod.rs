@@ -6,5 +6,5 @@ mod fsm;
 mod instance;
 mod signals;
 
-pub use instance::ChildMmapBindings;
+pub use instance::{ChildMmapBinding, ChildMmapBindings};
 pub use signals::generate_child_signals;

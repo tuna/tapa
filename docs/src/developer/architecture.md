@@ -119,7 +119,8 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   `(Design, Option<FloorplanResult>, modules) → ArtifactManifest` whose
   manifest is the complete file set: generated RTL, template files, FSM
   files, and embedded assets. Packaging is then a copy operation for the
-  caller.
+  caller. Child mmap routes are direct, crossbar, or pipelined variants; only
+  crossbar bindings carry slave indices and paired child/wire ID widths.
 - **tapa-xilinx** — every external tool invocation, discovery, versioning,
   and transport (local and remote runners) lives here. Static Tcl, XML, and
   shell templates in the compiler crates use typed Askama contexts, checked

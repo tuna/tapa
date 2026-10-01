@@ -475,29 +475,33 @@ fn build_mmap_bindings(
         if arg.cat.is_direct_mmap() {
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
-            let mut binding = ChildMmapBinding::default();
-            if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
+            let binding = if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
                 plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
                     instance: inst.logical_inst_name.clone(),
                     port: child_port.clone(),
                     top_port: parent.to_owned(),
                 })
             }) {
-                binding.direct_wire_prefix = Some(prefix);
-            }
-            if let Some(&slave_idx) =
+                // The direct-interface catalog rejects shared mmaps and hmaps,
+                // so pipeline plans cannot overlap crossbar routes.
+                ChildMmapBinding::Pipelined {
+                    wire_prefix: prefix,
+                }
+            } else if let Some(&slave_index) =
                 stage
                     .mmap_slave_map
                     .get(&(parent.to_owned(), inst.child_name.to_owned(), idx))
             {
-                binding.slave_index = Some(slave_idx);
-                if let Some(conn) = stage.mmap_conns.get(parent) {
-                    binding.wire_id_width = Some(m_axi::crossbar_slave_id_width(conn));
-                    if let Some(slave) = conn.slaves.get(slave_idx) {
-                        binding.child_id_width = Some(slave.id_width);
-                    }
+                // This index was built from the same connection's slave list.
+                let conn = &stage.mmap_conns[parent];
+                ChildMmapBinding::Crossbar {
+                    slave_index,
+                    wire_id_width: m_axi::crossbar_slave_id_width(conn),
+                    child_id_width: conn.slaves[slave_index].id_width,
                 }
-            }
+            } else {
+                ChildMmapBinding::Direct
+            };
             mmap_bindings.insert(parent.to_owned(), binding);
         }
     }
@@ -549,8 +553,9 @@ fn add_async_mmap_bridges(
             continue;
         }
         let enabled = async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
-        let m_axi_wire_prefix = mmap_bindings.wire_prefix(parent);
-        let upstream_m_axi_prefix = mmap_bindings.upstream_wire_prefix(parent);
+        let binding = mmap_bindings.get(parent);
+        let m_axi_wire_prefix = binding.wire_prefix(parent);
+        let upstream_m_axi_prefix = binding.upstream_wire_prefix(parent);
         let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
         // Aggregation already derived the width with the same
         // parent-then-child port precedence.
@@ -558,7 +563,7 @@ fn add_async_mmap_bridges(
             .mmap_conns
             .get(parent)
             .map_or(64, |c| c.geometry.data_width());
-        let connect_optional_axi_ports = mmap_bindings.slave_index(parent).is_none();
+        let connect_optional_axi_ports = !matches!(binding, ChildMmapBinding::Crossbar { .. });
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
             async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
             mm.add_instance(async_mmap::build_bridge_instance(

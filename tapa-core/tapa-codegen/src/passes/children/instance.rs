@@ -16,33 +16,25 @@ use tapa_rtl::VerilogModule;
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
 
-/// Build a child task `ModuleInstance` with all port argument bindings.
-///
-/// Connects handshake signals (from `InstanceSignals`), scalar arguments,
-/// stream arguments (istream/ostream suffixes), and mmap offset arguments.
-///
-/// Mmap bindings describe how each child mmap argument reaches parent AXI wires.
-///
-/// One map keyed by argument name: the four pieces of a binding are always
-/// looked up together, so keeping them in one struct removes the drift risk
-/// of parallel maps. Every field is optional; a missing field and a missing
-/// entry mean the same thing to all accessors.
+/// Per-instance routing for child mmap arguments; absent entries are direct.
 #[derive(Debug, Default)]
 pub struct ChildMmapBindings {
     bindings: BTreeMap<String, ChildMmapBinding>,
 }
 
 /// How one child mmap argument reaches the parent AXI wires.
-#[derive(Debug, Default)]
-pub struct ChildMmapBinding {
-    /// Crossbar slave index when the argument routes through the crossbar.
-    pub slave_index: Option<usize>,
-    /// ID width of the parent-side (crossbar slave) AXI wires.
-    pub wire_id_width: Option<u32>,
-    /// ID width the child port presents.
-    pub child_id_width: Option<u32>,
-    /// Wire prefix when AXI pipelining bypasses the crossbar wires.
-    pub direct_wire_prefix: Option<String>,
+/// Only crossbar routes adapt IDs; pipeline routes apply only to direct mmaps.
+#[derive(Debug)]
+pub enum ChildMmapBinding {
+    Direct,
+    Crossbar {
+        slave_index: usize,
+        wire_id_width: u32,
+        child_id_width: u32,
+    },
+    Pipelined {
+        wire_prefix: String,
+    },
 }
 
 impl ChildMmapBindings {
@@ -50,33 +42,38 @@ impl ChildMmapBindings {
         self.bindings.insert(arg_name, binding);
     }
 
+    pub fn get(&self, arg_name: &str) -> &ChildMmapBinding {
+        self.bindings
+            .get(arg_name)
+            .unwrap_or(&ChildMmapBinding::Direct)
+    }
+}
+
+impl ChildMmapBinding {
     pub fn upstream_wire_prefix(&self, arg_name: &str) -> String {
-        mmap_wire_prefix(arg_name, self.slave_index(arg_name))
+        let slave_index = match self {
+            Self::Crossbar { slave_index, .. } => Some(*slave_index),
+            Self::Direct | Self::Pipelined { .. } => None,
+        };
+        mmap_wire_prefix(arg_name, slave_index)
     }
 
     pub fn wire_prefix(&self, arg_name: &str) -> String {
-        self.bindings
-            .get(arg_name)
-            .and_then(|binding| binding.direct_wire_prefix.clone())
-            .unwrap_or_else(|| self.upstream_wire_prefix(arg_name))
+        match self {
+            Self::Pipelined { wire_prefix } => wire_prefix.clone(),
+            Self::Direct | Self::Crossbar { .. } => self.upstream_wire_prefix(arg_name),
+        }
     }
 
-    pub fn slave_index(&self, arg_name: &str) -> Option<usize> {
-        self.bindings
-            .get(arg_name)
-            .and_then(|binding| binding.slave_index)
-    }
-
-    pub fn wire_id_width(&self, arg_name: &str) -> Option<u32> {
-        self.bindings
-            .get(arg_name)
-            .and_then(|binding| binding.wire_id_width)
-    }
-
-    pub fn child_id_width(&self, arg_name: &str) -> Option<u32> {
-        self.bindings
-            .get(arg_name)
-            .and_then(|binding| binding.child_id_width)
+    fn id_widths(&self) -> Option<(u32, u32)> {
+        match self {
+            Self::Crossbar {
+                wire_id_width,
+                child_id_width,
+                ..
+            } => Some((*wire_id_width, *child_id_width)),
+            Self::Direct | Self::Pipelined { .. } => None,
+        }
     }
 }
 
@@ -206,9 +203,8 @@ pub(super) fn build_child_instance_with_reset(
                 // Bind M-AXI channel ports:
                 // If crossbar exists (slave index present), bind to downstream wires
                 // Otherwise bind directly to upstream parent m_axi signals
-                let m_axi_wire_prefix = mmap_bindings.wire_prefix(parent);
-                let m_axi_wire_id_width = mmap_bindings.wire_id_width(parent);
-                let child_m_axi_id_width = mmap_bindings.child_id_width(parent);
+                let binding = mmap_bindings.get(parent);
+                let m_axi_wire_prefix = binding.wire_prefix(parent);
                 if matches!(arg.cat, ArgCategory::AsyncMmap) {
                     if child_has_direct_mmap_ports(child_rtl, child_port) {
                         let child_rtl_filter =
@@ -222,8 +218,7 @@ pub(super) fn build_child_instance_with_reset(
                             child_port,
                             &offset_sig,
                             &m_axi_wire_prefix,
-                            m_axi_wire_id_width,
-                            child_m_axi_id_width,
+                            binding.id_widths(),
                             child_rtl_filter,
                             child_rtl,
                         );
@@ -243,8 +238,7 @@ pub(super) fn build_child_instance_with_reset(
                         child_port,
                         &offset_sig,
                         &m_axi_wire_prefix,
-                        m_axi_wire_id_width,
-                        child_m_axi_id_width,
+                        binding.id_widths(),
                         None,
                         child_rtl,
                     );
@@ -294,21 +288,16 @@ fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &s
     child_rtl.is_some_and(|module| async_mmap::has_direct_m_axi_ports(module, child_port))
 }
 
-#[allow(
-    clippy::too_many_arguments,
-    reason = "mmap port arg wiring needs all 8 parameters"
-)]
 fn add_direct_mmap_portargs(
     port_args: &mut Vec<PortArg>,
     child_port: &str,
     offset_sig: &str,
     m_axi_wire_prefix: &str,
-    m_axi_wire_id_width: Option<u32>,
-    child_m_axi_id_width: Option<u32>,
+    id_widths: Option<(u32, u32)>,
     child_rtl_filter: Option<&VerilogModule>,
-    child_rtl_for_width: Option<&VerilogModule>,
+    child_rtl: Option<&VerilogModule>,
 ) {
-    let offset_port = direct_mmap_offset_port(child_rtl_for_width, child_port);
+    let offset_port = direct_mmap_offset_port(child_rtl, child_port);
     if child_rtl_filter.is_none_or(|module| module.find_port(&offset_port).is_some()) {
         port_args.push(PortArg::new(offset_port, Expr::ident(offset_sig)));
     }
@@ -318,41 +307,24 @@ fn add_direct_mmap_portargs(
             let wire_name = format!("{m_axi_wire_prefix}{suffix}");
             port_args.push(PortArg::new(
                 child_axi_port.as_str(),
-                direct_mmap_connection_expr(
-                    child_rtl_for_width,
-                    &child_axi_port,
-                    &wire_name,
-                    suffix,
-                    m_axi_wire_id_width,
-                    child_m_axi_id_width,
-                ),
+                direct_mmap_connection_expr(&wire_name, suffix, id_widths),
             ));
         }
     }
 }
 
 fn direct_mmap_connection_expr(
-    child_rtl: Option<&VerilogModule>,
-    child_axi_port: &str,
     wire_name: &str,
     suffix: &str,
-    m_axi_wire_id_width: Option<u32>,
-    child_m_axi_id_width: Option<u32>,
+    id_widths: Option<(u32, u32)>,
 ) -> Expr {
     let is_id = matches!(suffix, "_ARID" | "_AWID" | "_BID" | "_RID");
-    let Some(target_width) = m_axi_wire_id_width else {
+    let Some((target_width, child_width)) = id_widths else {
         return Expr::ident(wire_name);
     };
     if !is_id || target_width <= 1 {
         return Expr::ident(wire_name);
     }
-    let child_width = child_m_axi_id_width
-        .or_else(|| {
-            child_rtl
-                .and_then(|module| module.find_port(child_axi_port))
-                .and_then(tapa_rtl::port::Port::bit_width)
-        })
-        .unwrap_or(target_width);
     if child_width >= target_width {
         return Expr::ident(wire_name);
     }
