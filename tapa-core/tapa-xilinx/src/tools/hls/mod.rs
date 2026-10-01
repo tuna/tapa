@@ -5,6 +5,7 @@
 
 use std::time::Duration;
 
+use crate::ToolValue;
 use backon::{BlockingRetryable, ExponentialBuilder};
 use camino::Utf8PathBuf;
 use typed_builder::TypedBuilder;
@@ -114,7 +115,8 @@ fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
 /// run would. Relative paths are absolutized against the current
 /// working directory.
 /// Handles both fused (`-I/dir`) and split (`-I`, `/dir`) forms.
-fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
+fn kernel_flags(cflags: &[String]) -> (ToolValue, Vec<Utf8PathBuf>) {
+    let mut values: Vec<ToolValue> = cflags.iter().cloned().map(Into::into).collect();
     let mut out: Vec<Utf8PathBuf> = Vec::new();
     let mut i = 0;
     while i < cflags.len() {
@@ -138,6 +140,17 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
             continue;
         };
         if !dir_str.is_empty() {
+            let index = i + consumed - 1;
+            let text = &cflags[index];
+            let end = text.trim_end().len();
+            let start = end - dir_str.len();
+            values[index] = ToolValue::join(
+                [
+                    ToolValue::prefixed_path(&text[..start], dir_str),
+                    text[end..].into(),
+                ],
+                "",
+            );
             let p = crate::util::absolutize(&Utf8PathBuf::from(dir_str));
             if p.is_dir() {
                 out.push(p);
@@ -145,7 +158,7 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
         }
         i += consumed;
     }
-    out
+    (ToolValue::join(values, " "), out)
 }
 
 /// Kernel metadata passed through the
@@ -155,20 +168,19 @@ fn kernel_include_dirs(cflags: &[String]) -> Vec<Utf8PathBuf> {
 /// TCL body) lets the remote runner rewrite them through its
 /// rootfs-mirroring path-rewriter just like every other absolute
 /// local path.
-fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
-    let mut env: Vec<(String, String)> = Vec::new();
-    env.push(("TAPA_KERNEL_COUNT".into(), job.srcs.len().to_string()));
+fn kernel_env_entries(job: &HlsJob, cflags: &ToolValue) -> Vec<(String, ToolValue)> {
+    let mut env = Vec::new();
+    env.push((
+        "TAPA_KERNEL_COUNT".into(),
+        job.srcs.len().to_string().into(),
+    ));
     // One path/cflags pair per source file, sharing the job's cflags
     // string — the flags are identical across the task's files.
     // Vitis `add_files -cflags` receives the value as a Tcl string,
     // not a shell command — shell quoting is treated literally and
     // breaks flags like `-D__builtin_FILE()=__FILE__`.
-    let cflags = job.cflags.join(" ");
     for (index, src) in job.srcs.iter().enumerate() {
-        env.push((
-            format!("TAPA_KERNEL_PATH_{index}"),
-            src.as_str().to_string(),
-        ));
+        env.push((format!("TAPA_KERNEL_PATH_{index}"), ToolValue::path(src)));
         env.push((format!("TAPA_KERNEL_CFLAGS_{index}"), cflags.clone()));
     }
     env
@@ -234,15 +246,14 @@ fn run_hls_attempt(
     fs_err::write(&tcl_path, tcl.as_bytes())?;
     let mut inv = ToolInvocation::new("vitis_hls")
         .arg("-f")
-        .arg(tcl_path.as_str());
+        .arg(ToolValue::path(&tcl_path));
     inv.cwd = Some(stage_dir.to_path_buf());
     // Pin `HOME` to the per-run stage dir. Vitis HLS otherwise writes shared
     // `~/.Xilinx` state that pollutes the workspace and races under
     // sandboxed/parallel Bazel builds. Using `inv.env` (vs
     // `Command::env`) lets the remote runner's path rewriter remap
     // the value to its rootfs counterpart.
-    inv.env
-        .insert("HOME".into(), stage_dir.as_str().to_string());
+    inv.env.insert("HOME".into(), ToolValue::path(stage_dir));
     // Uploads: TCL, every source file's parent directory (the remote
     // runner dedupes), every `-I` / `-isystem` include directory
     // referenced by the cflags, plus any caller extras.
@@ -255,14 +266,15 @@ fn run_hls_attempt(
             _ => inv.uploads.push(src.clone()),
         }
     }
-    inv.uploads.extend(kernel_include_dirs(&job.cflags));
+    let (cflags, include_dirs) = kernel_flags(&job.cflags);
+    inv.uploads.extend(include_dirs);
     inv.uploads.extend(job.uploads.iter().cloned());
 
     // Kernel metadata via env entries — the `TAPA_*` prefix passes
     // the remote-env forwarding allowlist, and the remote runner's
     // path rewriter remaps absolute local paths in the values to
     // their rootfs counterparts.
-    for (k, v) in kernel_env_entries(job) {
+    for (k, v) in kernel_env_entries(job, &cflags) {
         inv.env.insert(k, v);
     }
 
@@ -557,20 +569,29 @@ mod tests {
             Utf8PathBuf::from("/abs/src/a.cpp"),
             Utf8PathBuf::from("/abs/src/sub/b.cpp"),
         ];
-        job.cflags = vec!["-I/abs/inc".into(), "-DFOO".into()];
-        let env = kernel_env_entries(&job);
+        job.cflags = vec!["-I/abs/inc".into(), "-DFOO=/abs/inc".into()];
+        let env = kernel_env_entries(&job, &kernel_flags(&job.cflags).0);
         let lookup = |key: &str| {
             env.iter()
                 .find(|(k, _)| k == key)
-                .map(|(_, v)| v.clone())
+                .map(|(_, v)| v.to_string())
                 .unwrap_or_default()
         };
+        let flags = &env
+            .iter()
+            .find(|(key, _)| key == "TAPA_KERNEL_CFLAGS_0")
+            .unwrap()
+            .1;
+        assert_eq!(
+            flags.render(|path| format!("/remote{path}")),
+            "-I/remote/abs/inc -DFOO=/abs/inc"
+        );
         // One count, one PATH/CFLAGS pair per src, shared cflags value.
         assert_eq!(lookup("TAPA_KERNEL_COUNT"), "2");
         assert_eq!(lookup("TAPA_KERNEL_PATH_0"), "/abs/src/a.cpp");
         assert_eq!(lookup("TAPA_KERNEL_PATH_1"), "/abs/src/sub/b.cpp");
-        assert_eq!(lookup("TAPA_KERNEL_CFLAGS_0"), "-I/abs/inc -DFOO");
-        assert_eq!(lookup("TAPA_KERNEL_CFLAGS_1"), "-I/abs/inc -DFOO");
+        assert_eq!(lookup("TAPA_KERNEL_CFLAGS_0"), "-I/abs/inc -DFOO=/abs/inc");
+        assert_eq!(lookup("TAPA_KERNEL_CFLAGS_1"), "-I/abs/inc -DFOO=/abs/inc");
     }
 
     #[test]
@@ -602,7 +623,7 @@ mod tests {
             "-isystem".into(),
             existing.as_str().into(),
         ];
-        let dirs = kernel_include_dirs(&cflags);
+        let dirs = kernel_flags(&cflags).1;
         // 4 absolute + 1 absolutized relative (if it exists under cwd)
         // The relative one won't exist, so still 4.
         assert_eq!(dirs.len(), 4);
@@ -651,21 +672,28 @@ mod tests {
         assert_eq!(inv.program, "vitis_hls");
         assert_eq!(inv.cwd.as_deref(), Some(stage_path.as_path()));
         assert_eq!(
-            inv.env.get("TAPA_KERNEL_COUNT").map(String::as_str),
+            inv.env
+                .get("TAPA_KERNEL_COUNT")
+                .map(ToString::to_string)
+                .as_deref(),
             Some("2")
         );
         assert_eq!(
-            inv.env.get("TAPA_KERNEL_PATH_0").map(Utf8PathBuf::from),
+            inv.env
+                .get("TAPA_KERNEL_PATH_0")
+                .map(|value| Utf8PathBuf::from(value.to_string())),
             Some(src_dir.join("k1.cpp"))
         );
         assert_eq!(
-            inv.env.get("TAPA_KERNEL_PATH_1").map(Utf8PathBuf::from),
+            inv.env
+                .get("TAPA_KERNEL_PATH_1")
+                .map(|value| Utf8PathBuf::from(value.to_string())),
             Some(src_dir.join("k2.cpp"))
         );
         assert!(
             inv.env
                 .get("TAPA_KERNEL_CFLAGS_1")
-                .is_some_and(|c| c.contains(&format!("-I{}", inc_dir.as_str()))),
+                .is_some_and(|c| c.to_string().contains(&format!("-I{}", inc_dir.as_str()))),
             "TAPA_KERNEL_CFLAGS_1 must carry the `-I<inc>` flag"
         );
         assert!(inv.uploads.contains(&src_dir), "src dir not uploaded");
@@ -822,11 +850,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         job.cflags = vec!["-I/tmp/inc".into(), "-DMSG=\"hello world\"".into()];
-        let env = kernel_env_entries(&job);
+        let env = kernel_env_entries(&job, &kernel_flags(&job.cflags).0);
         let cflags = env
             .iter()
             .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v.to_string())
             .unwrap();
         assert!(
             cflags.contains("-DMSG=\"hello world\""),
@@ -842,11 +870,11 @@ mod tests {
         // because Vitis `add_files -cflags` is a Tcl string, not a shell
         // command.  Quoting would be treated literally and break compilation.
         job.cflags = vec!["-I/path with spaces/include".into()];
-        let env = kernel_env_entries(&job);
+        let env = kernel_env_entries(&job, &kernel_flags(&job.cflags).0);
         let cflags = env
             .iter()
             .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v.to_string())
             .unwrap();
         assert!(
             cflags.contains("-I/path with spaces/include"),
@@ -860,11 +888,11 @@ mod tests {
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         // Split form: -I and path are separate arguments — joined raw.
         job.cflags = vec!["-I".into(), "/path with spaces/include".into()];
-        let env = kernel_env_entries(&job);
+        let env = kernel_env_entries(&job, &kernel_flags(&job.cflags).0);
         let cflags = env
             .iter()
             .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v.to_string())
             .unwrap();
         assert!(
             cflags.contains("-I /path with spaces/include"),
@@ -877,11 +905,11 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let mut job = fixture_job(&Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap());
         job.cflags = vec!["-DMSG='hello'".into()];
-        let env = kernel_env_entries(&job);
+        let env = kernel_env_entries(&job, &kernel_flags(&job.cflags).0);
         let cflags = env
             .iter()
             .find(|(k, _)| k == "TAPA_KERNEL_CFLAGS_0")
-            .map(|(_, v)| v.clone())
+            .map(|(_, v)| v.to_string())
             .unwrap();
         // Raw join — no shell escaping because Vitis Tcl does not shell-parse.
         assert!(

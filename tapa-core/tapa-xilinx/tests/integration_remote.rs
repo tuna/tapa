@@ -19,7 +19,9 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use tapa_xilinx::{RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner};
+use tapa_xilinx::{
+    RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner, ToolValue,
+};
 
 fn existing_control_sockets(dir: &Utf8PathBuf) -> Vec<Utf8PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -192,7 +194,9 @@ fn control_master_retry_branch_mid_transfer() {
     // Schedule the mux teardown concurrently with the transfer.
     let handle = schedule_mux_teardown(Arc::clone(&session), 50);
 
-    let mut inv = ToolInvocation::new("cat").arg(payload.join("chunk-0.bin").display().to_string());
+    let mut inv = ToolInvocation::new("cat").arg(ToolValue::path(
+        payload.join("chunk-0.bin").display().to_string(),
+    ));
     inv.cwd = Some(
         Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
             .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
@@ -252,8 +256,7 @@ fn control_master_restart_during_transfer() {
         // `payload/` tree, (b) rewritten cwd to the rootfs mirror,
         // and (c) downloaded the mirror back on return.
         let _ = inv; // silence unused-mut if the compiler complains
-        let mut inv =
-            ToolInvocation::new("cat").arg(src_dir.join("hello.txt").as_str().to_string());
+        let mut inv = ToolInvocation::new("cat").arg(ToolValue::path(src_dir.join("hello.txt")));
         inv.cwd = Some(
             Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
                 .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),

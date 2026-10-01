@@ -12,12 +12,13 @@ use std::time::Duration;
 use camino::Utf8PathBuf;
 
 use crate::error::{Result, XilinxError};
+use crate::ToolValue;
 
 #[derive(Debug, Clone, Default)]
 pub struct ToolInvocation {
     pub program: String,
-    pub args: Vec<String>,
-    pub env: HashMap<String, String>,
+    pub args: Vec<ToolValue>,
+    pub env: HashMap<String, ToolValue>,
     pub stdin: Option<Vec<u8>>,
     pub cwd: Option<Utf8PathBuf>,
     pub uploads: Vec<Utf8PathBuf>,
@@ -34,15 +35,19 @@ impl ToolInvocation {
     }
 
     #[must_use]
-    pub fn arg(mut self, arg: impl Into<String>) -> Self {
+    pub fn arg(mut self, arg: impl Into<ToolValue>) -> Self {
         self.args.push(arg.into());
         self
     }
 
     #[must_use]
-    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<ToolValue>) -> Self {
         self.env.insert(key.into(), value.into());
         self
+    }
+
+    pub fn local_args(&self) -> Vec<String> {
+        self.args.iter().map(ToString::to_string).collect()
     }
 
     #[must_use]
@@ -112,7 +117,7 @@ fn xilinx_settings_envs(program: &str) -> &'static [&'static str] {
 
 fn invocation_env_path(inv: &ToolInvocation, name: &str) -> Option<PathBuf> {
     if let Some(value) = inv.env.get(name) {
-        return (!value.trim().is_empty()).then(|| PathBuf::from(value));
+        return (!value.to_string().trim().is_empty()).then(|| PathBuf::from(value.to_string()));
     }
     std::env::var_os(name)
         .filter(|value| !value.is_empty())
@@ -167,7 +172,7 @@ pub(crate) fn unified_hls_args(args: &[String]) -> Vec<String> {
 fn local_command(inv: &ToolInvocation) -> std::process::Command {
     let Some(settings) = local_xilinx_settings(inv) else {
         let mut cmd = std::process::Command::new(&inv.program);
-        cmd.args(&inv.args);
+        cmd.args(inv.local_args());
         return cmd;
     };
 
@@ -179,9 +184,9 @@ fn local_command(inv: &ToolInvocation) -> std::process::Command {
     let unified = xilinx_tool_name(&inv.program) == "vitis_hls"
         && settings.parent().is_some_and(hls_needs_unified_rewrite);
     let (program, args) = if unified {
-        ("vitis-run".to_owned(), unified_hls_args(&inv.args))
+        ("vitis-run".to_owned(), unified_hls_args(&inv.local_args()))
     } else {
-        (inv.program.clone(), inv.args.clone())
+        (inv.program.clone(), inv.local_args())
     };
 
     // Keep the settings path and tool argv out of the shell program
@@ -215,7 +220,7 @@ impl ToolRunner for LocalToolRunner {
         // Inherit the parent's full env, then overlay `inv.env` so
         // per-invocation entries win.
         for (k, v) in &inv.env {
-            cmd.env(k, v);
+            cmd.env(k, v.to_string());
         }
         if let Some(cwd) = &inv.cwd {
             cmd.current_dir(cwd.as_str());
@@ -394,7 +399,7 @@ impl ToolRunner for MockToolRunner {
         self.calls.lock().unwrap().push(inv.clone());
         let mut responses = self.responses.lock().unwrap();
         let idx = responses.iter().position(|r| {
-            r.program == inv.program && r.args.as_ref().is_none_or(|args| args == &inv.args)
+            r.program == inv.program && r.args.as_ref().is_none_or(|args| *args == inv.local_args())
         });
         let Some(idx) = idx else {
             return Err(XilinxError::ToolFailure {
@@ -665,7 +670,7 @@ mod tests {
                 .env("XILINX_VITIS", "")
                 .env("XILINX_VIVADO", "");
             inv.env
-                .insert(root_env.to_string(), root.display().to_string());
+                .insert(root_env.to_string(), root.display().to_string().into());
 
             let out = LocalToolRunner::new()
                 .run(&inv)

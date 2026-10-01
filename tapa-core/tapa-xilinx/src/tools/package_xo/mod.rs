@@ -5,6 +5,7 @@
 //! and Vivado execution to `run_vivado`. Archive redaction for reproducible
 //! builds lives in the [`redact`] submodule.
 
+use crate::ToolValue;
 use camino::Utf8PathBuf;
 use typed_builder::TypedBuilder;
 use zip::write::SimpleFileOptions;
@@ -295,10 +296,10 @@ pub fn pack_xo_without_redaction(
     }
     let tmp_path = crate::util::utf8(tmp.path());
     let tclargs = [
-        tmp_path.as_str().to_string(),
-        inputs.hdl_dir.as_str().to_string(),
-        kernel_out_path.as_str().to_string(),
-        kernel_xml_path.as_str().to_string(),
+        ToolValue::path(&tmp_path),
+        ToolValue::path(&inputs.hdl_dir),
+        ToolValue::path(&kernel_out_path),
+        ToolValue::path(&kernel_xml_path),
     ];
 
     let mut job = VivadoJob::new(tcl);
@@ -386,8 +387,8 @@ mod tests {
         );
         // The Vivado invocation must have received the absolute form.
         let call = &runner.calls()[0];
-        let arg = call
-            .args
+        let args = call.local_args();
+        let arg = args
             .iter()
             .find(|a| a.ends_with("out.xo"))
             .expect("tclargs must mention out.xo");
@@ -439,8 +440,8 @@ mod tests {
         // Vivado invocation recorded with -tclargs and the xo path.
         let call = &runner.calls()[0];
         assert_eq!(call.program, "vivado");
-        assert!(call.args.iter().any(|a| a == "-tclargs"));
-        assert!(call.args.iter().any(|a| a == xo_path.as_str()));
+        assert!(call.local_args().iter().any(|a| a == "-tclargs"));
+        assert!(call.local_args().iter().any(|a| a == xo_path.as_str()));
         let mut z =
             zip::ZipArchive::new(std::io::Cursor::new(std::fs::read(&xo_path).unwrap())).unwrap();
         let mut body = String::new();

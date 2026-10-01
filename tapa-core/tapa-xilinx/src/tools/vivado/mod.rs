@@ -4,6 +4,7 @@ use camino::Utf8PathBuf;
 
 use crate::error::Result;
 use crate::runtime::process::{ToolInvocation, ToolRunner};
+use crate::ToolValue;
 
 #[derive(Debug, Clone)]
 pub struct VivadoJob {
@@ -11,9 +12,9 @@ pub struct VivadoJob {
     pub uploads: Vec<Utf8PathBuf>,
     pub downloads: Vec<Utf8PathBuf>,
     pub work_dir: Option<Utf8PathBuf>,
-    pub env: Vec<(String, String)>,
+    pub env: Vec<(String, ToolValue)>,
     /// Arguments forwarded to the TCL script after `-tclargs`.
-    pub tclargs: Vec<String>,
+    pub tclargs: Vec<ToolValue>,
 }
 
 impl VivadoJob {
@@ -41,7 +42,7 @@ pub(crate) fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> 
         .arg("-mode")
         .arg("batch")
         .arg("-source")
-        .arg(tcl_path.as_str())
+        .arg(ToolValue::path(tcl_path))
         .arg("-nojournal")
         .arg("-nolog");
     if !job.tclargs.is_empty() {
@@ -90,7 +91,7 @@ pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutp
         }
         (None, None) => unreachable!("scratch tempdir is allocated when work_dir is None"),
     };
-    inv.env.insert("HOME".into(), home_dir.as_str().to_string());
+    inv.env.insert("HOME".into(), ToolValue::path(home_dir));
     let out = runner.run(&inv)?;
     if out.exit_code != 0 {
         return Err(super::tool_failure("vivado", out));
@@ -115,9 +116,9 @@ mod tests {
         run_vivado(&runner, &job).unwrap();
         let call = &runner.calls()[0];
         assert_eq!(call.program, "vivado");
-        assert!(call.args.contains(&"-mode".to_string()));
-        assert!(call.args.contains(&"batch".to_string()));
-        assert!(call.args.contains(&"-source".to_string()));
+        assert!(call.local_args().contains(&"-mode".to_string()));
+        assert!(call.local_args().contains(&"batch".to_string()));
+        assert!(call.local_args().contains(&"-source".to_string()));
     }
 
     #[test]

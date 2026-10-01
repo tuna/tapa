@@ -263,7 +263,7 @@ mod tests {
             // correct `project/<task>/syn/` tree. Queue is still
             // consulted for the verilog body content, keyed on top.
             let inferred_top = inv.env.get("TAPA_KERNEL_PATH_0").and_then(|p| {
-                std::path::Path::new(p)
+                std::path::Path::new(&p.to_string())
                     .file_stem()
                     .and_then(|s| s.to_str())
                     .map(str::to_string)

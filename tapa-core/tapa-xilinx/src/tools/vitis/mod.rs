@@ -1,5 +1,7 @@
 //! Direct `v++ --link` orchestration and implementation timing extraction.
 
+use crate::ToolValue;
+
 use camino::{Utf8Path, Utf8PathBuf};
 use typed_builder::TypedBuilder;
 
@@ -246,13 +248,13 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--platform")
         .arg(job.platform.clone())
         .arg("--output")
-        .arg(resolved.output_xclbin.as_str())
+        .arg(ToolValue::path(&resolved.output_xclbin))
         .arg("--report_dir")
-        .arg(resolved.report_dir.as_str())
+        .arg(ToolValue::path(&resolved.report_dir))
         .arg("--log_dir")
-        .arg(resolved.log_dir.as_str())
+        .arg(ToolValue::path(&resolved.log_dir))
         .arg("--temp_dir")
-        .arg(resolved.temp_dir.as_str())
+        .arg(ToolValue::path(&resolved.temp_dir))
         .arg("--optimize")
         .arg("3")
         .arg("--kernel_frequency")
@@ -265,23 +267,24 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         inv = inv.arg(format!("--vivado.prop=run.impl_1.STEPS.{key}={value}"));
     }
     if let Some(config) = &resolved.connectivity_config {
-        inv = inv.arg("--config").arg(config.as_str());
+        inv = inv.arg("--config").arg(ToolValue::path(config));
     }
     if let Some(xdc) = &resolved.floorplan_xdc {
-        inv = inv.arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE={xdc}"
+        inv = inv.arg(ToolValue::prefixed_path(
+            "--vivado.prop=run.impl_1.STEPS.OPT_DESIGN.TCL.PRE=",
+            xdc,
         ));
     }
     inv = inv
-        .arg(format!(
-            "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.TCL.POST={}",
-            resolved.timing_hook
+        .arg(ToolValue::prefixed_path(
+            "--vivado.prop=run.impl_1.STEPS.POST_ROUTE_PHYS_OPT_DESIGN.TCL.POST=",
+            &resolved.timing_hook,
         ))
-        .arg(resolved.xo.as_str());
+        .arg(ToolValue::path(&resolved.xo));
 
     inv.cwd = Some(resolved.work_dir.clone());
     inv.env
-        .insert("HOME".into(), resolved.work_dir.as_str().to_string());
+        .insert("HOME".into(), ToolValue::path(&resolved.work_dir));
     inv.uploads.push(resolved.xo.clone());
     inv.uploads.push(resolved.timing_hook.clone());
     if let Some(xdc) = &resolved.floorplan_xdc {
@@ -467,7 +470,7 @@ ap_clk             -0.100       -1.000
             .join(FINAL_TIMING_HOOK_NAME);
         assert_eq!(call.program, "v++");
         assert_eq!(
-            call.args,
+            call.local_args(),
             vec![
                 "--link",
                 "--target",
@@ -511,11 +514,14 @@ ap_clk             -0.100       -1.000
                 fixture.job.xo.as_str(),
             ]
         );
-        assert!(!call.args.iter().any(|arg| arg.contains("WRITE_BITSTREAM")));
+        assert!(!call
+            .local_args()
+            .iter()
+            .any(|arg| arg.contains("WRITE_BITSTREAM")));
         assert_eq!(call.cwd.as_ref(), Some(&fixture.job.work_dir));
         assert_eq!(
-            call.env.get("HOME"),
-            Some(&fixture.job.work_dir.as_str().to_string())
+            call.env.get("HOME").map(ToString::to_string),
+            Some(fixture.job.work_dir.as_str().to_string())
         );
         assert_eq!(
             call.uploads,
@@ -544,9 +550,9 @@ ap_clk             -0.100       -1.000
         fixture.attach_success(&runner);
         run_vitis_link(&runner, &fixture.job).expect("link succeeds");
         let call = &runner.calls()[0];
-        assert!(!call.args.iter().any(|arg| arg == "--config"));
+        assert!(!call.local_args().iter().any(|arg| arg == "--config"));
         assert!(!call
-            .args
+            .local_args()
             .iter()
             .any(|arg| arg.contains("OPT_DESIGN.TCL.PRE")));
         assert_eq!(call.uploads.len(), 2);
@@ -558,7 +564,7 @@ ap_clk             -0.100       -1.000
         let runner = MockToolRunner::new();
         fixture.attach_success(&runner);
         run_vitis_link(&runner, &fixture.job).expect("link succeeds");
-        let args = &runner.calls()[0].args;
+        let args = &runner.calls()[0].local_args();
         let pos = args
             .iter()
             .position(|arg| *arg == "--vivado.synth.jobs")
@@ -571,7 +577,7 @@ ap_clk             -0.100       -1.000
         let runner = MockToolRunner::new();
         fixture.attach_success(&runner);
         run_vitis_link(&runner, &fixture.job).expect("link succeeds");
-        let args = &runner.calls()[0].args;
+        let args = &runner.calls()[0].local_args();
         let pos = args
             .iter()
             .position(|arg| *arg == "--vivado.synth.jobs")

@@ -196,7 +196,10 @@ fn run_one(
 
     let tcl = build_report_util_tcl(module_name, part_num);
     let mut job = VivadoJob::new(tcl);
-    job.tclargs = vec![abs_hdl.as_str().to_string(), abs_rpt.as_str().to_string()];
+    job.tclargs = vec![
+        tapa_xilinx::ToolValue::path(&abs_hdl),
+        tapa_xilinx::ToolValue::path(&abs_rpt),
+    ];
     job.uploads = vec![abs_hdl];
     if let Some(parent) = abs_rpt.parent() {
         job.downloads = vec![parent.to_path_buf()];
@@ -392,7 +395,8 @@ mod tests {
                 }
             }
 
-            let rpt_path = inv.args.last().ok_or_else(|| XilinxError::ToolFailure {
+            let args = inv.local_args();
+            let rpt_path = args.last().ok_or_else(|| XilinxError::ToolFailure {
                 program: inv.program.clone(),
                 code: -1,
                 stderr: "missing report path argument".to_string(),

@@ -3,8 +3,8 @@
 //!
 //! Each `RemoteToolRunner::run` call opens a per-invocation
 //! `<work_dir>/<session_id>` directory on the remote, mirrors the
-//! caller's `cwd` + uploads under `rootfs/`, rewrites every absolute
-//! local path in the command args / env / stdin to its
+//! caller's `cwd` + uploads under `rootfs/`, relocates explicitly typed local paths
+//! in command args and environment values to their
 //! session-scoped remote equivalent, executes the tool with the
 //! remote working directory pointed at the rewritten `cwd`, then
 //! tar-pipes each requested download path back from its rootfs
@@ -60,39 +60,6 @@ impl RemoteToolRunner {
     }
 }
 
-/// Rewrite every occurrence of a local absolute path in `text` to its
-/// session-scoped remote equivalent. Longest-match-first ensures a
-/// path that is a prefix of another (e.g. `/a/b` vs `/a/b/c`) is not
-/// double-replaced.
-fn rewrite_abs_paths(text: &str, local_paths: &[Utf8PathBuf], session_dir: &str) -> String {
-    if local_paths.is_empty() {
-        return text.to_string();
-    }
-    let mut sorted: Vec<&Utf8PathBuf> = local_paths.iter().collect();
-    sorted.sort_by_key(|p| std::cmp::Reverse(p.as_str().len()));
-    let mut out = String::with_capacity(text.len());
-    let mut cursor = 0usize;
-    let bytes = text.as_bytes();
-    'outer: while cursor < bytes.len() {
-        for p in &sorted {
-            let ps = p.as_str();
-            if ps.is_empty() {
-                continue;
-            }
-            if bytes[cursor..].starts_with(ps.as_bytes()) {
-                out.push_str(&local_to_remote_path(p, session_dir));
-                cursor += ps.len();
-                continue 'outer;
-            }
-        }
-        let rest = &text[cursor..];
-        let ch = rest.chars().next().unwrap();
-        out.push(ch);
-        cursor += ch.len_utf8();
-    }
-    out
-}
-
 /// Environment variables forwarded to the remote. Anything else is
 /// dropped unless the key begins with `TAPA_`.
 const REMOTE_ENV_ALLOWLIST: &[&str] = &["HOME", "LANG", "LC_ALL", "LC_CTYPE"];
@@ -103,13 +70,11 @@ fn is_forwardable_env(key: &str) -> bool {
 
 /// Everything [`RemoteToolRunner::run_once`] stages before the
 /// transport is touched: the freshly minted session directory, the
-/// deduped set of local paths the invocation references (the input to
-/// path rewriting), the existing paths worth uploading, and the
+/// existing paths worth uploading, and the
 /// absolutized cwd/downloads that mirror `ToolInvocation` positionally
 /// so the collect stage can map them back to the caller-facing paths.
 struct UploadPlan {
     session_dir: String,
-    referenced: Vec<Utf8PathBuf>,
     to_upload: Vec<Utf8PathBuf>,
     cwd_abs: Option<Utf8PathBuf>,
     downloads_abs: Vec<Utf8PathBuf>,
@@ -147,13 +112,16 @@ fn build_remote_script(
         if !is_forwardable_env(k) {
             continue;
         }
-        let rv = rewrite_abs_paths(v, &plan.referenced, &plan.session_dir);
+        let rv = v
+            .render(|path| local_to_remote_path(&crate::util::absolutize(path), &plan.session_dir));
         parts.push(format!("export {}={}", k, shell_quote(&rv)));
     }
     let rewritten_args: Vec<String> = inv
         .args
         .iter()
-        .map(|a| rewrite_abs_paths(a, &plan.referenced, &plan.session_dir))
+        .map(|a| {
+            a.render(|path| local_to_remote_path(&crate::util::absolutize(path), &plan.session_dir))
+        })
         .collect();
     let exec = std::iter::once(shell_quote(&inv.program))
         .chain(rewritten_args.iter().map(|a| shell_quote(a)))
@@ -190,8 +158,8 @@ fn build_remote_script(
 impl RemoteToolRunner {
     /// Opens a per-invocation session directory with a `rootfs/`
     /// subtree, mirrors the local `cwd` plus any extra uploads under
-    /// that rootfs, rewrites absolute local paths in the command
-    /// args / env / stdin to their session-relative remote
+    /// that rootfs, relocates typed local paths in command arguments
+    /// and environment values to their session-relative remote
     /// equivalents, executes the command with the remote working
     /// directory pointed at the rewritten cwd, and then tar-pipes
     /// each requested download path back from its rootfs
@@ -208,9 +176,7 @@ impl RemoteToolRunner {
     /// First stage of [`run_once`](Self::run_once): mint the session
     /// directory, then plan the upload -- absolutize the invocation's
     /// cwd / upload / download paths against the caller's working
-    /// directory, dedup them into the referenced set used for path
-    /// rewriting, and pick the existing paths for the transport to
-    /// upload.
+    /// directory and pick the existing paths for the transport to upload.
     fn prepare_upload(&self, inv: &ToolInvocation) -> UploadPlan {
         let session_dir = format!("{}/{}", self.session.config().work_dir, unique_session_id());
 
@@ -224,15 +190,6 @@ impl RemoteToolRunner {
         let cwd_abs: Option<Utf8PathBuf> = inv.cwd.as_ref().map(absolutize);
         let uploads_abs: Vec<Utf8PathBuf> = inv.uploads.iter().map(absolutize).collect();
         let downloads_abs: Vec<Utf8PathBuf> = inv.downloads.iter().map(absolutize).collect();
-
-        let mut referenced: Vec<Utf8PathBuf> = Vec::new();
-        if let Some(cwd) = cwd_abs.as_ref() {
-            referenced.push(cwd.clone());
-        }
-        referenced.extend(uploads_abs.iter().cloned());
-        referenced.extend(downloads_abs.iter().cloned());
-        let mut seen: std::collections::HashSet<Utf8PathBuf> = std::collections::HashSet::new();
-        referenced.retain(|p| seen.insert(p.clone()));
 
         let mut to_upload: Vec<Utf8PathBuf> = Vec::new();
         if let Some(cwd) = cwd_abs.as_ref() {
@@ -250,7 +207,6 @@ impl RemoteToolRunner {
 
         UploadPlan {
             session_dir,
-            referenced,
             to_upload,
             cwd_abs,
             downloads_abs,
@@ -370,6 +326,7 @@ mod tests {
 
     use super::*;
     use crate::runtime::process::ToolOutput;
+    use crate::ToolValue;
     use std::cell::Cell;
 
     #[test]
@@ -489,19 +446,14 @@ mod tests {
         // the `cd && exec` line.
         let plan = UploadPlan {
             session_dir: "/tmp/tapa-remote/tapa-1-2-3".to_string(),
-            referenced: vec![
-                Utf8PathBuf::from("/work/top"),
-                Utf8PathBuf::from("/work/top/run.tcl"),
-                Utf8PathBuf::from("/work/top/work.out"),
-            ],
             to_upload: vec![Utf8PathBuf::from("/work/top")],
             cwd_abs: Some(Utf8PathBuf::from("/work/top")),
             downloads_abs: vec![Utf8PathBuf::from("/work/top/work.out")],
         };
         let inv = ToolInvocation::new("vitis_hls")
             .arg("-f")
-            .arg("/work/top/run.tcl")
-            .env("TAPA_TCL", "/work/top/run.tcl")
+            .arg(ToolValue::path("/work/top/run.tcl"))
+            .env("TAPA_TCL", ToolValue::path("/work/top/run.tcl"))
             .env("AWS_SECRET_KEY", "s3cr3t");
         let script =
             build_remote_script(&plan, &inv, Some("/opt/Xilinx/Vitis/2023.2/settings64.sh"));
@@ -521,28 +473,35 @@ mod tests {
     }
 
     #[test]
-    fn build_script_rewrites_paths_longest_match_first() {
-        // A referenced path that prefixes another (`/opt/a` vs
-        // `/opt/a/b`) must not double- or mis-rewrite the longer one.
+    fn build_script_relocates_only_explicit_paths() {
         let plan = UploadPlan {
             session_dir: "/tmp/tapa-remote/tapa-9-9-9".to_string(),
-            referenced: vec![Utf8PathBuf::from("/opt/a"), Utf8PathBuf::from("/opt/a/b")],
             to_upload: vec![Utf8PathBuf::from("/opt/a")],
             cwd_abs: Some(Utf8PathBuf::from("/opt/a")),
             downloads_abs: vec![],
         };
         let inv = ToolInvocation::new("vivado")
             .arg("-source")
-            .arg("/opt/a/b/run.tcl")
-            .arg("-log")
-            .arg("/opt/a/vivado.log");
+            .arg(ToolValue::path("/opt/a/b/run.tcl"))
+            .arg(ToolValue::prefixed_path("-log=", "/opt/a/vivado.log"))
+            .arg("-DROOT=/opt/a/b")
+            .env(
+                "TAPA_CFLAGS",
+                ToolValue::join(
+                    [
+                        ToolValue::prefixed_path("-I", "/opt/a"),
+                        "-DROOT=/opt/a".into(),
+                    ],
+                    " ",
+                ),
+            );
         let script = build_remote_script(&plan, &inv, None);
-        assert_eq!(
-            script,
-            "bash -c 'cd /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a && \
-                exec vivado -source /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/b/run.tcl \
-                -log /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/vivado.log'"
-        );
+        let full_cmd =
+            "export TAPA_CFLAGS='-I/tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a -DROOT=/opt/a' ; \
+            cd /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a && \
+            exec vivado -source /tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/b/run.tcl \
+            '-log=/tmp/tapa-remote/tapa-9-9-9/rootfs/opt/a/vivado.log' '-DROOT=/opt/a/b'";
+        assert_eq!(script, format!("bash -c {}", shell_quote(full_cmd)));
     }
 
     #[test]
@@ -553,14 +512,13 @@ mod tests {
         // `transport`), so this test pins the assembled script text.
         let plan = UploadPlan {
             session_dir: "/tmp/tapa-remote/tapa-7-7-7".to_string(),
-            referenced: vec![Utf8PathBuf::from("/proj/hello world")],
             to_upload: vec![Utf8PathBuf::from("/proj/hello world")],
             cwd_abs: Some(Utf8PathBuf::from("/proj/hello world")),
             downloads_abs: vec![],
         };
         let inv = ToolInvocation::new("v++")
             .arg("--kernel")
-            .arg("/proj/hello world/kernel.cpp")
+            .arg(ToolValue::path("/proj/hello world/kernel.cpp"))
             .arg("--output")
             .arg("my kernel.xo");
         let script = build_remote_script(&plan, &inv, None);
@@ -577,7 +535,6 @@ mod tests {
         // no source line and empty download/env lists add no parts.
         let plan = UploadPlan {
             session_dir: "/tmp/tapa-remote/tapa-5-5-5".to_string(),
-            referenced: vec![],
             to_upload: vec![],
             cwd_abs: None,
             downloads_abs: vec![],

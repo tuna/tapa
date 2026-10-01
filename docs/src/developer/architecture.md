@@ -116,7 +116,10 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   shell templates in the compiler crates use typed Askama contexts, checked
   at compile time; template sources live in each crate’s `templates/` directory.
   No other crate shells out to vendor tools. It also owns remote configuration defaults
-  and path normalization; the CLI overlays host options on parsed YAML
+  and path normalization. `ToolValue` distinguishes literal command text from
+  local paths, including paths within flags and environment values; remote
+  execution relocates only those explicit paths into its staging tree.
+  The CLI overlays host options on parsed YAML
   before decoding the mapping directly into `RemoteConfig`.
 - **tapa-cli** — no domain logic. Orchestration, state persistence, the
   artifact registry, and UX only. Steps declare what they read and write

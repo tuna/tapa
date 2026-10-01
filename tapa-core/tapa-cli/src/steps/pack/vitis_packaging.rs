@@ -600,11 +600,11 @@ mod tests {
         let calls = runner.calls();
         assert_eq!(calls.len(), 1);
         assert!(calls[0]
-            .args
+            .local_args()
             .iter()
             .any(|arg| arg == rtl_dir.to_str().unwrap()));
         assert!(calls[0]
-            .args
+            .local_args()
             .iter()
             .any(|arg| arg == xo_path.to_str().unwrap()));
     }
