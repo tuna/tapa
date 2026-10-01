@@ -1599,6 +1599,88 @@ pub unsafe fn tapa_ir::interconnect::InterconnectDefinition::clone_to_uninit(&se
 impl<T> core::convert::From<T> for tapa_ir::interconnect::InterconnectDefinition
 pub fn tapa_ir::interconnect::InterconnectDefinition::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::interconnect::InterconnectDefinition where T: for<'de> serde_core::de::Deserialize<'de>
+pub mod tapa_ir::memory
+pub struct tapa_ir::memory::MemoryGeometry
+impl tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::channel_addr_width(self) -> core::option::Option<u32>
+pub fn tapa_ir::memory::MemoryGeometry::channel_count(self) -> u32
+pub const fn tapa_ir::memory::MemoryGeometry::channels(self) -> core::option::Option<(u32, u32)>
+pub const fn tapa_ir::memory::MemoryGeometry::data_width(self) -> u32
+pub const fn tapa_ir::memory::MemoryGeometry::is_hmap(self) -> bool
+pub fn tapa_ir::memory::MemoryGeometry::new(u32, core::option::Option<u32>, core::option::Option<u32>) -> core::result::Result<Self, tapa_ir::memory::MemoryGeometryError>
+impl core::clone::Clone for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::clone(&self) -> tapa_ir::memory::MemoryGeometry
+impl core::cmp::Eq for tapa_ir::memory::MemoryGeometry
+impl core::cmp::PartialEq for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::eq(&self, &tapa_ir::memory::MemoryGeometry) -> bool
+impl core::fmt::Debug for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::memory::MemoryGeometry
+impl core::marker::StructuralPartialEq for tapa_ir::memory::MemoryGeometry
+impl core::marker::Freeze for tapa_ir::memory::MemoryGeometry
+impl core::marker::Send for tapa_ir::memory::MemoryGeometry
+impl core::marker::Sync for tapa_ir::memory::MemoryGeometry
+impl core::marker::Unpin for tapa_ir::memory::MemoryGeometry
+impl core::marker::UnsafeUnpin for tapa_ir::memory::MemoryGeometry
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::memory::MemoryGeometry
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::memory::MemoryGeometry
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::memory::MemoryGeometry where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::memory::MemoryGeometry where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::From<T>
+pub fn tapa_ir::memory::MemoryGeometry::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::Into<T>
+pub type tapa_ir::memory::MemoryGeometry::Error = core::convert::Infallible
+pub fn tapa_ir::memory::MemoryGeometry::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::TryFrom<T>
+pub type tapa_ir::memory::MemoryGeometry::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::memory::MemoryGeometry::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::memory::MemoryGeometry where T: core::clone::Clone
+pub type tapa_ir::memory::MemoryGeometry::Owned = T
+pub fn tapa_ir::memory::MemoryGeometry::clone_into(&self, &mut T)
+pub fn tapa_ir::memory::MemoryGeometry::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::memory::MemoryGeometry where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::memory::MemoryGeometry where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::memory::MemoryGeometry where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::memory::MemoryGeometry where T: core::clone::Clone
+pub unsafe fn tapa_ir::memory::MemoryGeometry::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::from(T) -> T
+pub struct tapa_ir::memory::MemoryGeometryError(_)
+impl core::error::Error for tapa_ir::memory::MemoryGeometryError
+impl core::fmt::Debug for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Send for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Sync for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Unpin for tapa_ir::memory::MemoryGeometryError
+impl core::marker::UnsafeUnpin for tapa_ir::memory::MemoryGeometryError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::memory::MemoryGeometryError
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::memory::MemoryGeometryError
+impl<T, U> core::convert::Into<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::From<T>
+pub fn tapa_ir::memory::MemoryGeometryError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::Into<T>
+pub type tapa_ir::memory::MemoryGeometryError::Error = core::convert::Infallible
+pub fn tapa_ir::memory::MemoryGeometryError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::TryFrom<T>
+pub type tapa_ir::memory::MemoryGeometryError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::memory::MemoryGeometryError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::string::ToString for tapa_ir::memory::MemoryGeometryError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::memory::MemoryGeometryError where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::from(T) -> T
 pub mod tapa_ir::port
 pub enum tapa_ir::port::ArgCategory
 pub tapa_ir::port::ArgCategory::AsyncMmap
@@ -3881,6 +3963,87 @@ pub unsafe fn tapa_ir::connectivity::MemoryEndpoint::clone_to_uninit(&self, *mut
 impl<T> core::convert::From<T> for tapa_ir::connectivity::MemoryEndpoint
 pub fn tapa_ir::connectivity::MemoryEndpoint::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryEndpoint where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::MemoryGeometry
+impl tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::channel_addr_width(self) -> core::option::Option<u32>
+pub fn tapa_ir::memory::MemoryGeometry::channel_count(self) -> u32
+pub const fn tapa_ir::memory::MemoryGeometry::channels(self) -> core::option::Option<(u32, u32)>
+pub const fn tapa_ir::memory::MemoryGeometry::data_width(self) -> u32
+pub const fn tapa_ir::memory::MemoryGeometry::is_hmap(self) -> bool
+pub fn tapa_ir::memory::MemoryGeometry::new(u32, core::option::Option<u32>, core::option::Option<u32>) -> core::result::Result<Self, tapa_ir::memory::MemoryGeometryError>
+impl core::clone::Clone for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::clone(&self) -> tapa_ir::memory::MemoryGeometry
+impl core::cmp::Eq for tapa_ir::memory::MemoryGeometry
+impl core::cmp::PartialEq for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::eq(&self, &tapa_ir::memory::MemoryGeometry) -> bool
+impl core::fmt::Debug for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::memory::MemoryGeometry
+impl core::marker::StructuralPartialEq for tapa_ir::memory::MemoryGeometry
+impl core::marker::Freeze for tapa_ir::memory::MemoryGeometry
+impl core::marker::Send for tapa_ir::memory::MemoryGeometry
+impl core::marker::Sync for tapa_ir::memory::MemoryGeometry
+impl core::marker::Unpin for tapa_ir::memory::MemoryGeometry
+impl core::marker::UnsafeUnpin for tapa_ir::memory::MemoryGeometry
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::memory::MemoryGeometry
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::memory::MemoryGeometry
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::memory::MemoryGeometry where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::memory::MemoryGeometry where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::From<T>
+pub fn tapa_ir::memory::MemoryGeometry::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::Into<T>
+pub type tapa_ir::memory::MemoryGeometry::Error = core::convert::Infallible
+pub fn tapa_ir::memory::MemoryGeometry::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::memory::MemoryGeometry where U: core::convert::TryFrom<T>
+pub type tapa_ir::memory::MemoryGeometry::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::memory::MemoryGeometry::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::memory::MemoryGeometry where T: core::clone::Clone
+pub type tapa_ir::memory::MemoryGeometry::Owned = T
+pub fn tapa_ir::memory::MemoryGeometry::clone_into(&self, &mut T)
+pub fn tapa_ir::memory::MemoryGeometry::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::memory::MemoryGeometry where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::memory::MemoryGeometry where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::memory::MemoryGeometry where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometry::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::memory::MemoryGeometry where T: core::clone::Clone
+pub unsafe fn tapa_ir::memory::MemoryGeometry::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometry
+pub fn tapa_ir::memory::MemoryGeometry::from(T) -> T
+pub struct tapa_ir::MemoryGeometryError(_)
+impl core::error::Error for tapa_ir::memory::MemoryGeometryError
+impl core::fmt::Debug for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::fmt::Display for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Freeze for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Send for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Sync for tapa_ir::memory::MemoryGeometryError
+impl core::marker::Unpin for tapa_ir::memory::MemoryGeometryError
+impl core::marker::UnsafeUnpin for tapa_ir::memory::MemoryGeometryError
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::memory::MemoryGeometryError
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::memory::MemoryGeometryError
+impl<T, U> core::convert::Into<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::From<T>
+pub fn tapa_ir::memory::MemoryGeometryError::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::Into<T>
+pub type tapa_ir::memory::MemoryGeometryError::Error = core::convert::Infallible
+pub fn tapa_ir::memory::MemoryGeometryError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::TryFrom<T>
+pub type tapa_ir::memory::MemoryGeometryError::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::memory::MemoryGeometryError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::string::ToString for tapa_ir::memory::MemoryGeometryError where T: core::fmt::Display + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::to_string(&self) -> alloc::string::String
+impl<T> core::any::Any for tapa_ir::memory::MemoryGeometryError where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
+pub fn tapa_ir::memory::MemoryGeometryError::borrow_mut(&mut self) -> &mut T
+impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometryError
+pub fn tapa_ir::memory::MemoryGeometryError::from(T) -> T
 pub struct tapa_ir::PipelineRoute
 pub tapa_ir::PipelineRoute::channel: tapa_ir::floorplan::RoutedChannel
 pub tapa_ir::PipelineRoute::reg_regions: alloc::vec::Vec<alloc::string::String>

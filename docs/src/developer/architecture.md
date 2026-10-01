@@ -107,6 +107,9 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   borrowed binding views share child-port and FIFO endpoint resolution.
   External ends stay distinct from declared references with incomplete metadata.
   RTL signal widths remain the codegen backend's responsibility.
+  `MemoryGeometry` validates merged mmap widths and hmap channel shapes once;
+  plain and single-channel hmap layouts stay distinct without changing the
+  serialized port schema.
 - **tapa-rtl** — the only place Verilog text is parsed, mutated, or
   emitted (tree-sitter + nom). Other crates never manipulate Verilog
   source as text.

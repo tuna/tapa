@@ -11,7 +11,7 @@ pub mod direct;
 use std::collections::BTreeMap;
 
 use tapa_ir::task::TaskLevel;
-use tapa_ir::Port as IrPort;
+use tapa_ir::{MemoryGeometry, Port as IrPort};
 use tapa_protocol::{axi_subport_from_suffix, m_axi_compact_suffixes};
 use tapa_rtl::expression::{expression_as_u32, expression_source, Expression};
 use tapa_rtl::module::sanitize_array_name;
@@ -57,7 +57,7 @@ fn merge_mmap_port_metadata(
     child_task_name: &str,
     child_port_name: &str,
     child: Option<&IrPort>,
-) -> Result<(u32, Option<u32>, Option<u32>), CodegenError> {
+) -> Result<MemoryGeometry, CodegenError> {
     if let (Some(parent), Some(child)) = (parent, child) {
         if parent.width != child.width {
             return Err(CodegenError::InvalidMmapConnection(format!(
@@ -88,7 +88,11 @@ fn merge_mmap_port_metadata(
     let chan_size = parent
         .and_then(|port| port.chan_size)
         .or_else(|| child.and_then(|port| port.chan_size));
-    Ok((data_width, chan_count, chan_size))
+    MemoryGeometry::new(data_width, chan_count, chan_size).map_err(|err| {
+        CodegenError::InvalidMmapConnection(format!(
+            "mmap argument '{parent_task_name}.{parent_port_name}': {err}"
+        ))
+    })
 }
 
 /// One crossbar slave: a child port bound to a shared mmap argument.
@@ -117,13 +121,8 @@ pub struct MMapConnection {
     pub arg_name: String,
     /// The child ports sharing this argument, one crossbar slave each.
     pub slaves: Vec<MMapSlave>,
-    /// Channel count; `None` for a plain (non-hmap) mmap. `Some(1)`
-    /// is a single-channel hmap, which still gets a crossbar.
-    pub chan_count: Option<u32>,
-    /// Channel size in elements; `None` for a plain mmap.
-    pub chan_size: Option<u32>,
-    /// Data width in bits.
-    pub data_width: u32,
+    /// Validated data width and optional hmap channel shape.
+    pub geometry: MemoryGeometry,
 }
 
 impl MMapConnection {
@@ -147,7 +146,7 @@ impl MMapConnection {
     /// Upstream channel count; a plain mmap behaves as one channel.
     #[must_use]
     pub fn channel_count(&self) -> u32 {
-        self.chan_count.unwrap_or(1)
+        self.geometry.channel_count()
     }
 
     /// Sum of the per-slave aggregated thread counts.
@@ -208,7 +207,7 @@ impl TopologyWithRtl {
                     };
                     let parent_port = task.ports.iter().find(|p| p.name == *parent_arg_name);
 
-                    let (data_width, chan_count, chan_size) = merge_mmap_port_metadata(
+                    let geometry = merge_mmap_port_metadata(
                         task_name,
                         parent_arg_name,
                         parent_port,
@@ -221,23 +220,22 @@ impl TopologyWithRtl {
                         .or_insert_with(|| MMapConnection {
                             arg_name: parent_arg_name.to_owned(),
                             slaves: Vec::new(),
-                            chan_count,
-                            chan_size,
-                            data_width,
+                            geometry,
                         });
-                    if conn.data_width != data_width {
+                    if conn.geometry.data_width() != geometry.data_width() {
                         return Err(CodegenError::InvalidMmapConnection(format!(
                             "mmap argument '{task_name}.{parent_arg_name}' has conflicting data \
-                             widths: {} vs {data_width} at '{child_task_name}.{child_port_name}'",
-                            conn.data_width
+                             widths: {} vs {} at '{child_task_name}.{child_port_name}'",
+                            conn.geometry.data_width(),
+                            geometry.data_width()
                         )));
                     }
-                    if conn.chan_count != chan_count || conn.chan_size != chan_size {
+                    if conn.geometry.channels() != geometry.channels() {
                         return Err(CodegenError::InvalidMmapConnection(format!(
                             "mmap argument '{task_name}.{parent_arg_name}' has conflicting \
-                             channel shapes: ({:?}, {:?}) vs ({chan_count:?}, {chan_size:?}) \
-                             at '{child_task_name}.{child_port_name}'",
-                            conn.chan_count, conn.chan_size
+                             channel shapes: {:?} vs {:?} at '{child_task_name}.{child_port_name}'",
+                            conn.geometry.channels(),
+                            geometry.channels()
                         )));
                     }
                     #[allow(
@@ -262,7 +260,7 @@ impl TopologyWithRtl {
         for conn in connections.values() {
             let total_threads = conn.total_threads();
             if let [slave] = conn.slaves.as_slice() {
-                if conn.chan_count.is_some() && total_threads > 1 {
+                if conn.geometry.is_hmap() && total_threads > 1 {
                     return Err(CodegenError::InvalidMmapConnection(format!(
                         "hmap argument '{}' is driven only by '{}.{}', which \
                          internally shares the mmap ({total_threads} threads); \

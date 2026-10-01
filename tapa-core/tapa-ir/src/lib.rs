@@ -14,6 +14,7 @@ pub mod floorplan;
 pub mod graph;
 pub mod instance;
 pub mod interconnect;
+pub mod memory;
 pub mod port;
 pub mod synth_target;
 pub mod target;
@@ -38,6 +39,7 @@ pub use floorplan::{
 pub use graph::TaskGraph;
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
+pub use memory::{MemoryGeometry, MemoryGeometryError};
 pub use port::{ArgCategory, Port};
 pub use synth_target::SynthTarget;
 pub use target::Target;

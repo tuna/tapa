@@ -79,16 +79,6 @@ impl TopologyWithRtl {
             direct_mmap_child_instance(task, connection, &qualified_port)?;
         let child_category =
             validate_direct_child_mmap(&self.design, instance, slave, &qualified_port)?;
-        if connection.data_width == 0 || !connection.data_width.is_multiple_of(8) {
-            return Err(invalid_direct_mmap(
-                &qualified_port,
-                &format!(
-                    "has data width {}, expected a nonzero multiple of 8 bits",
-                    connection.data_width
-                ),
-            ));
-        }
-
         let module = self.module_map.get(&slave.task).ok_or_else(|| {
             invalid_direct_mmap(
                 &qualified_port,
@@ -100,7 +90,7 @@ impl TopologyWithRtl {
             child_category,
             slave,
             &qualified_port,
-            connection.data_width,
+            connection.geometry.data_width(),
             &connection.arg_name,
         )?;
 
@@ -112,7 +102,7 @@ impl TopologyWithRtl {
                 port: slave.port.clone(),
                 top_port: connection.arg_name.clone(),
             },
-            data_width: connection.data_width,
+            data_width: connection.geometry.data_width(),
             addr_width: AXI_ADDR_WIDTH,
             id_width,
             channel_widths,
@@ -180,7 +170,7 @@ fn validate_plain_parent_mmap(
     connection: &MMapConnection,
     interface: &str,
 ) -> Result<(), CodegenError> {
-    if connection.chan_count.is_some() || connection.chan_size.is_some() {
+    if connection.geometry.is_hmap() {
         return Err(invalid_direct_mmap(
             interface,
             "is an hmap; channelized memory interfaces are not supported",

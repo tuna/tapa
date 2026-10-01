@@ -66,7 +66,7 @@ pub(crate) fn build_m_axi_ports(
 /// multiple child ports share the argument, or the port is an hmap
 /// (any explicit channel count, including 1).
 pub fn needs_crossbar(conn: &MMapConnection) -> bool {
-    conn.thread_count() > 1 || conn.chan_count.is_some()
+    conn.thread_count() > 1 || conn.geometry.is_hmap()
 }
 
 /// Build crossbar module name: `axi_crossbar_{slaves}x{channels}`.
@@ -97,9 +97,12 @@ pub fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) 
 /// Build crossbar parameter arguments after validating the connection.
 pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>, CodegenError> {
     validate_mmap_connection(conn)?;
-    let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
+    let addr_width = conn.geometry.channel_addr_width().unwrap_or(AXI_ADDR_WIDTH);
     let mut params = vec![
-        ParamArg::new("DATA_WIDTH", Expr::int(u64::from(conn.data_width))),
+        ParamArg::new(
+            "DATA_WIDTH",
+            Expr::int(u64::from(conn.geometry.data_width())),
+        ),
         ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(AXI_ADDR_WIDTH))),
         ParamArg::new(
             "S_ID_WIDTH",
@@ -152,7 +155,7 @@ pub fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
     if matches!(suffix, "_ARID" | "_AWID" | "_BID" | "_RID") {
         crossbar_slave_id_width(conn)
     } else {
-        resolve_suffix_width(suffix, conn.data_width)
+        resolve_suffix_width(suffix, conn.geometry.data_width())
     }
 }
 
@@ -170,7 +173,7 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
 
     // Upstream master ports.
     let chan_count = conn.channel_count();
-    let is_hmap = conn.chan_count.is_some();
+    let is_hmap = conn.geometry.is_hmap();
     for channel_idx in 0..chan_count {
         let m_prefix = if is_hmap {
             format!("{M_AXI_PREFIX}{arg_name}_{channel_idx}")
@@ -206,31 +209,6 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
         .with_ports(ports))
 }
 
-/// Compute address width while reporting invalid channel geometry.
-pub fn try_get_addr_width(chan_size: Option<u32>, data_width: u32) -> Result<u32, CodegenError> {
-    if data_width == 0 || !data_width.is_multiple_of(8) {
-        return Err(CodegenError::InvalidMmapConnection(format!(
-            "M-AXI data width must be a nonzero multiple of 8 bits, got {data_width}"
-        )));
-    }
-    let Some(chan_size) = chan_size else {
-        return Ok(AXI_ADDR_WIDTH);
-    };
-    let bytes = u64::from(chan_size) * u64::from(data_width / 8);
-    if bytes == 0 {
-        return Err(CodegenError::InvalidMmapConnection(
-            "hmap channel size must be greater than zero".to_owned(),
-        ));
-    }
-    if !bytes.is_power_of_two() {
-        return Err(CodegenError::InvalidMmapConnection(format!(
-            "hmap channel byte size must be a power of two: \
-             chan_size={chan_size} * data_width={data_width} / 8 = {bytes} bytes"
-        )));
-    }
-    Ok(bytes.ilog2())
-}
-
 /// Resolve the width of an M-AXI suffix from the protocol port-width
 /// table.
 ///
@@ -248,28 +226,12 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 
 /// Validate an mmap connection before crossbar generation.
 pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
-    match (conn.chan_count, conn.chan_size) {
-        (Some(0), _) => {
-            return Err(CodegenError::InvalidMmapConnection(format!(
-                "hmap channel count is 0 for argument '{}'",
-                conn.arg_name
-            )));
-        }
-        (None, None) | (Some(_), Some(_)) => {}
-        _ => {
-            return Err(CodegenError::InvalidMmapConnection(format!(
-                "hmap argument '{}' must specify both chan_count and chan_size",
-                conn.arg_name
-            )));
-        }
-    }
     if conn.slaves.iter().any(|slave| slave.threads == 0) {
         return Err(CodegenError::InvalidMmapConnection(format!(
             "M-AXI slave thread count is 0 for argument '{}'",
             conn.arg_name
         )));
     }
-    try_get_addr_width(conn.chan_size, conn.data_width)?;
     if needs_crossbar(conn) && conn.slaves.is_empty() {
         return Err(CodegenError::InvalidMmapConnection(format!(
             "crossbar has no downstream connections for argument '{}'",
@@ -555,12 +517,12 @@ pub(crate) fn add_m_axi_and_crossbars(
 
     for conn in mmap_conns.values() {
         if let Some(mm) = modules.get_mut(task_name) {
-            if conn.chan_count.is_some() {
+            if conn.geometry.is_hmap() {
                 for channel_idx in 0..conn.channel_count() {
                     add_m_axi_ports_with_id_width(
                         mm,
                         &format!("{}_{}", conn.arg_name, channel_idx),
-                        conn.data_width,
+                        conn.geometry.data_width(),
                         AXI_ADDR_WIDTH,
                         conn.id_width(),
                     );
@@ -569,20 +531,25 @@ pub(crate) fn add_m_axi_and_crossbars(
                 add_m_axi_ports_with_id_width(
                     mm,
                     &conn.arg_name,
-                    conn.data_width,
+                    conn.geometry.data_width(),
                     AXI_ADDR_WIDTH,
                     conn.id_width(),
                 );
             } else {
-                add_m_axi_ports(mm, &conn.arg_name, conn.data_width, AXI_ADDR_WIDTH);
+                add_m_axi_ports(
+                    mm,
+                    &conn.arg_name,
+                    conn.geometry.data_width(),
+                    AXI_ADDR_WIDTH,
+                );
             }
         }
         if needs_crossbar(conn) {
             // Declare downstream m_axi_{arg}_{idx}_* wires in parent
             // Size each wire using protocol metadata for correct widths
             if let Some(mm) = modules.get_mut(task_name) {
-                if conn.chan_count.is_some() {
-                    let addr_width = try_get_addr_width(conn.chan_size, conn.data_width)?;
+                if conn.geometry.is_hmap() {
+                    let addr_width = conn.geometry.channel_addr_width().unwrap_or(AXI_ADDR_WIDTH);
                     for channel_idx in 0..conn.channel_count() {
                         let channel_prefix = format!(
                             "m_axi_{}_{}",
@@ -674,9 +641,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         assert!(needs_crossbar(&conn));
     }
@@ -686,9 +651,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         assert!(!needs_crossbar(&conn));
     }
@@ -700,9 +663,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1)],
-            chan_count: Some(1),
-            chan_size: Some(1024),
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, Some(1), Some(1024)).unwrap(),
         };
         assert!(needs_crossbar(&conn));
     }
@@ -712,9 +673,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave_w("leaf", 0, "d", 1, 2), slave("mid", 0, "data", 2)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
         let rendered: Vec<String> = params.iter().map(|p| format!("{p}")).collect();
@@ -733,9 +692,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_a", 1, "data", 1)],
-            chan_count: Some(2),
-            chan_size: Some(1024),
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, Some(2), Some(1024)).unwrap(),
         };
         assert!(needs_crossbar(&conn));
     }
@@ -745,9 +702,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 64,
+            geometry: tapa_ir::MemoryGeometry::new(64, None, None).unwrap(),
         };
         let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
         assert!(
@@ -766,9 +721,7 @@ mod tests {
                 slave("task_b", 0, "data", 1),
                 slave("task_c", 0, "data", 1),
             ],
-            chan_count: None,
-            chan_size: None,
-            data_width: 64,
+            geometry: tapa_ir::MemoryGeometry::new(64, None, None).unwrap(),
         };
         let text = try_build_crossbar_instance(&conn)
             .expect("valid crossbar instance")
@@ -786,17 +739,9 @@ mod tests {
                 slave("b", 0, "d", 1),
                 slave("c", 0, "d", 1),
             ],
-            chan_count: Some(2),
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, Some(2), Some(1024)).unwrap(),
         };
         assert_eq!(crossbar_module_name(&conn), "axi_crossbar_3x2");
-    }
-
-    #[test]
-    fn addr_width_rejects_non_power_of_two_channel_bytes() {
-        let err = try_get_addr_width(Some(3), 32).expect_err("12 bytes is not a power of two");
-        assert!(err.to_string().contains("power of two"), "got: {err}");
     }
 
     #[test]
@@ -816,9 +761,7 @@ mod tests {
                 slave_w("task_a", 0, "data", 1, 2),
                 slave("task_b", 0, "data", 1),
             ],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
 
         assert_eq!(crossbar_slave_suffix_width(&conn, "_ARID"), 2);
@@ -870,9 +813,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "chan[0]".into(),
             slaves: vec![slave("task_a", 0, "mem", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         let text = try_build_crossbar_instance(&conn)
             .expect("valid crossbar instance")
@@ -887,9 +828,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mat_a".into(),
             slaves: vec![slave("task_a", 0, "mem", 1), slave("task_a", 1, "mem", 1)],
-            chan_count: Some(2),
-            chan_size: Some(1024),
-            data_width: 512,
+            geometry: tapa_ir::MemoryGeometry::new(512, Some(2), Some(1024)).unwrap(),
         };
         let text = try_build_crossbar_instance(&conn)
             .expect("valid crossbar instance")
@@ -910,54 +849,11 @@ mod tests {
     }
 
     #[test]
-    fn validate_rejects_zero_data_width() {
-        let conn = MMapConnection {
-            arg_name: "mem".into(),
-            slaves: vec![slave("task_a", 0, "data", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 0,
-        };
-        validate_mmap_connection(&conn).unwrap_err();
-    }
-
-    #[test]
-    fn validate_rejects_incomplete_hmap_shape() {
-        let conn = MMapConnection {
-            arg_name: "mem".into(),
-            slaves: vec![slave("task_a", 0, "data", 1)],
-            chan_count: Some(2),
-            chan_size: None,
-            data_width: 32,
-        };
-        let err = validate_mmap_connection(&conn).expect_err("chan_size is required");
-        assert!(
-            err.to_string().contains("both chan_count and chan_size"),
-            "got: {err}"
-        );
-    }
-
-    #[test]
-    fn validate_rejects_zero_hmap_channels() {
-        let conn = MMapConnection {
-            arg_name: "mem".into(),
-            slaves: vec![slave("task_a", 0, "data", 1)],
-            chan_count: Some(0),
-            chan_size: Some(1024),
-            data_width: 32,
-        };
-        let err = validate_mmap_connection(&conn).expect_err("channel count must be nonzero");
-        assert!(err.to_string().contains("channel count is 0"), "got: {err}");
-    }
-
-    #[test]
     fn validate_rejects_zero_slave_threads() {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 0)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         let err = validate_mmap_connection(&conn).expect_err("thread count must be nonzero");
         assert!(err.to_string().contains("thread count is 0"), "got: {err}");
@@ -969,11 +865,13 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![],
-            chan_count: Some(1),
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, Some(1), Some(1024)).unwrap(),
         };
-        validate_mmap_connection(&conn).unwrap_err();
+        let err = validate_mmap_connection(&conn).unwrap_err();
+        assert!(
+            err.to_string().contains("no downstream connections"),
+            "{err}"
+        );
     }
 
     #[test]
@@ -981,9 +879,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
-            chan_count: None,
-            chan_size: None,
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
         let rtl = generate_crossbar_rtl(&conn);
         assert!(rtl.contains("module axi_crossbar_2x1"), "got:\n{rtl}");
@@ -1002,9 +898,7 @@ mod tests {
         let conn = MMapConnection {
             arg_name: "mem".into(),
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
-            chan_count: Some(2),
-            chan_size: Some(1024),
-            data_width: 32,
+            geometry: tapa_ir::MemoryGeometry::new(32, Some(2), Some(1024)).unwrap(),
         };
         let rtl = generate_crossbar_rtl(&conn);
         assert!(rtl.contains("parameter M01_BASE_ADDR = 0,"), "got:\n{rtl}");

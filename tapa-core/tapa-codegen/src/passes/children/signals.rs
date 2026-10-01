@@ -444,7 +444,7 @@ fn push_pipeline_portargs(
             let offset_source = stage.mmap_conns.get(parent).map_or_else(
                 || Expr::ident(format!("{arg_name}_offset")),
                 |conn| {
-                    if conn.chan_count.is_some() {
+                    if conn.geometry.is_hmap() {
                         Expr::lit("64'd0")
                     } else {
                         Expr::ident(format!("{arg_name}_offset"))
@@ -554,7 +554,10 @@ fn add_async_mmap_bridges(
         let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
         // Aggregation already derived the width with the same
         // parent-then-child port precedence.
-        let data_width = stage.mmap_conns.get(parent).map_or(64, |c| c.data_width);
+        let data_width = stage
+            .mmap_conns
+            .get(parent)
+            .map_or(64, |c| c.geometry.data_width());
         let connect_optional_axi_ports = mmap_bindings.slave_index(parent).is_none();
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
             async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);

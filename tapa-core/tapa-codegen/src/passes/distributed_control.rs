@@ -631,7 +631,7 @@ fn build_payload_fields(
             let source = mmap_connections.get(parent).map_or_else(
                 || Expr::ident(format!("{parent_name}_offset")),
                 |connection| {
-                    if connection.chan_count.is_some() {
+                    if connection.geometry.is_hmap() {
                         Expr::lit("64'd0")
                     } else {
                         Expr::ident(format!("{parent_name}_offset"))
