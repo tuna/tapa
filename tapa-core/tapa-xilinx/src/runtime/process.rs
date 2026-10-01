@@ -231,15 +231,7 @@ impl ToolRunner for LocalToolRunner {
         #[cfg(unix)]
         {
             use std::os::unix::process::CommandExt;
-            unsafe {
-                cmd.pre_exec(|| {
-                    nix::unistd::setpgid(
-                        nix::unistd::Pid::from_raw(0),
-                        nix::unistd::Pid::from_raw(0),
-                    )
-                    .map_err(std::io::Error::other)
-                });
-            }
+            cmd.process_group(0);
         }
 
         let mut child = cmd.spawn().map_err(|e| XilinxError::ToolFailure {
