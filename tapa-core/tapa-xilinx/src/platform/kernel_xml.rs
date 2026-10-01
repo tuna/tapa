@@ -46,19 +46,17 @@ fn xml_escape(s: &str) -> String {
     quick_xml::escape::escape(s).into_owned()
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 struct XmlPort {
     name: String,
     mode: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     range: Option<String>,
     data_width: u32,
     port_type: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     base: Option<String>,
 }
 
-#[derive(Debug, Clone, serde::Serialize)]
+#[derive(Debug, Clone)]
 struct XmlArg {
     name: String,
     addr_qualifier: u8,
@@ -68,7 +66,6 @@ struct XmlArg {
     offset: String,
     host_offset: String,
     host_size: String,
-    #[serde(rename = "type")]
     arg_type: String,
 }
 
@@ -78,6 +75,14 @@ struct XmlArg {
               splitting would fragment the element tree construction"
 )]
 pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
+    #[derive(askama::Template)]
+    #[template(path = "kernel.xml.j2", escape = "none")]
+    struct Template<'a> {
+        name: &'a str,
+        hw_ctrl_protocol: &'a str,
+        ports: &'a [XmlPort],
+        args: &'a [XmlArg],
+    }
     if args.ports.is_empty() {
         return Err(XilinxError::KernelXml(format!(
             "no ports supplied for kernel `{}`",
@@ -174,16 +179,12 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
         "ap_ctrl_none"
     };
 
-    crate::util::render_template(
-        "kernel_xml",
-        include_str!("templates/kernel.xml.j2"),
-        minijinja::context! {
-            name => args.top_name,
-            hw_ctrl_protocol,
-            ports,
-            args => xml_args,
-        },
-    )
+    askama::Template::render(&Template {
+        name: &args.top_name,
+        hw_ctrl_protocol,
+        ports: &ports,
+        args: &xml_args,
+    })
     .map_err(|e| XilinxError::KernelXml(e.to_string()))
 }
 

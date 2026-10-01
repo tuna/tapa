@@ -112,8 +112,10 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   files, and embedded assets. Packaging is then a copy operation for the
   caller.
 - **tapa-xilinx** — every external tool invocation, discovery, versioning,
-  and transport (local and remote runners) lives here. No other crate
-  shells out to vendor tools. It also owns remote configuration defaults
+  and transport (local and remote runners) lives here. Static Tcl, XML, and
+  shell templates in the compiler crates use typed Askama contexts, checked
+  at compile time; template sources live in each crate’s `templates/` directory.
+  No other crate shells out to vendor tools. It also owns remote configuration defaults
   and path normalization; the CLI overlays host options on parsed YAML
   before decoding the mapping directly into `RemoteConfig`.
 - **tapa-cli** — no domain logic. Orchestration, state persistence, the

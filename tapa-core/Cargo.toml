@@ -95,7 +95,7 @@ flate2 = "1"
 fs-err = "3"
 indexmap = { version = "2", features = ["serde"] }
 log = "0.4"
-minijinja = "2"
+askama = "0.16"
 nix = { version = "0.31", features = ["process", "signal"] }
 nom = "8"
 path-slash = "0.2"

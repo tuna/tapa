@@ -27,6 +27,16 @@ pub(super) fn render_vitis_script(
     floorplan_xdc: Option<&Path>,
     connectivity_ini: Option<&Path>,
 ) -> Result<String> {
+    #[derive(askama::Template)]
+    #[template(path = "vitis_script.sh.j2", escape = "none")]
+    struct Template<'a> {
+        top: &'a str,
+        xo: &'a str,
+        target_frequency: Option<&'a str>,
+        platform: Option<&'a str>,
+        floorplan_xdc: Option<&'a str>,
+        connectivity_ini: Option<&'a str>,
+    }
     let xo = absolutize_lexical(output_file).display().to_string();
     let floorplan_xdc = floorplan_xdc.map(|p| absolutize_lexical(p).display().to_string());
     let connectivity_ini = connectivity_ini.map(|p| absolutize_lexical(p).display().to_string());
@@ -42,21 +52,19 @@ pub(super) fn render_vitis_script(
         })
         .transpose()?;
 
-    Ok(format!(
+    let rendered = format!(
         "#!/bin/bash\n{}",
-        crate::util::render_template(
-            "vitis_script",
-            include_str!("templates/vitis_script.sh.j2"),
-            minijinja::context! {
-                top,
-                xo,
-                target_frequency,
-                platform,
-                floorplan_xdc,
-                connectivity_ini,
-            },
-        )
-    ))
+        askama::Template::render(&Template {
+            top,
+            xo: &xo,
+            target_frequency: target_frequency.as_deref(),
+            platform: platform.filter(|value| !value.is_empty()),
+            floorplan_xdc: floorplan_xdc.as_deref(),
+            connectivity_ini: connectivity_ini.as_deref(),
+        })
+        .expect("render succeeds")
+    );
+    Ok(rendered)
 }
 
 /// Write the script to `dest`, making it executable on Unix

@@ -28,18 +28,6 @@ pub fn utf8(p: impl AsRef<std::path::Path>) -> Utf8PathBuf {
     Utf8PathBuf::from(p.as_ref().to_string_lossy().into_owned())
 }
 
-/// Render a compile-time-known minijinja template. Template parse
-/// and render failures are programming errors (the templates are
-/// `include_str!` constants), so they panic rather than propagate.
-pub fn render_template(name: &str, src: &str, ctx: minijinja::Value) -> String {
-    let mut env = minijinja::Environment::new();
-    env.add_template(name, src).expect("template parses");
-    env.get_template(name)
-        .expect("template exists")
-        .render(ctx)
-        .expect("render succeeds")
-}
-
 /// Build a dedicated rayon pool of `workers` threads, run `f` inside
 /// it, and return the `Vec` `f` collects. Callers collect with
 /// indexed `par_iter().map().collect()`, so entry order is stable

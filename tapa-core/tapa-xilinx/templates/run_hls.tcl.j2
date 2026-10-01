@@ -11,7 +11,7 @@ set_part {{ part }}
 create_clock -period {{ clock }} -name default
 config_compile -name_max_length 253
 config_interface -m_axi_addr64
-{% if other %}{{ other }}{% endif %}
+{% if !other.is_empty() %}{{ other }}{% endif %}
 set_param hls.enable_hidden_option_error false
 {{ rtl }}
 config_rtl -enableFreeRunPipeline=false

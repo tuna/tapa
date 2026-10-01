@@ -70,20 +70,25 @@ fn render_bus_ifaces(
     m_axi: &[String],
     params: &[(String, Vec<(String, String)>)],
 ) -> Result<String> {
-    let param_map: std::collections::HashMap<String, Vec<(String, String)>> = params
+    #[derive(askama::Template)]
+    #[template(path = "bus_ifaces.tcl.j2", escape = "none")]
+    struct Template<'a> {
+        s_axi: &'a [String],
+        m_axi: &'a [String],
+        m_axi_prefix: &'a str,
+        params: &'a std::collections::HashMap<&'a str, &'a [(String, String)]>,
+    }
+    let param_map: std::collections::HashMap<&str, &[(String, String)]> = params
         .iter()
-        .map(|(n, kv)| (n.clone(), kv.clone()))
+        .map(|(n, kv)| (n.as_str(), kv.as_slice()))
         .collect();
-    crate::util::render_template(
-        "bus_ifaces",
-        include_str!("templates/bus_ifaces.tcl.j2"),
-        minijinja::context! {
-            s_axi,
-            m_axi,
-            m_axi_prefix => M_AXI_PREFIX,
-            params => param_map,
-        },
-    )
+    askama::Template::render(&Template {
+        s_axi,
+        m_axi,
+        m_axi_prefix: M_AXI_PREFIX,
+        params: &param_map,
+    })
+    .map_err(|e| XilinxError::Template(e.to_string()))
 }
 
 fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
@@ -101,21 +106,26 @@ fn format_package_xo_tcl(
     cpp_kernels: &str,
     part_num: &str,
 ) -> Result<String> {
+    #[derive(askama::Template)]
+    #[template(path = "package_xo.tcl.j2", escape = "none")]
+    struct Template<'a> {
+        top_name: &'a str,
+        bus_ifaces: &'a str,
+        cpp_kernels: &'a str,
+        part_arg: &'a str,
+    }
     let part_arg = if part_num.is_empty() {
         String::new()
     } else {
         format!(" -part {part_num}")
     };
-    crate::util::render_template(
-        "package_xo",
-        include_str!("templates/package_xo.tcl.j2"),
-        minijinja::context! {
-            top_name,
-            bus_ifaces,
-            cpp_kernels,
-            part_arg,
-        },
-    )
+    askama::Template::render(&Template {
+        top_name,
+        bus_ifaces,
+        cpp_kernels,
+        part_arg: &part_arg,
+    })
+    .map_err(|e| XilinxError::Template(e.to_string()))
 }
 
 /// Build the `.xo` for the given inputs using the provided runner.

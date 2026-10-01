@@ -175,6 +175,16 @@ fn kernel_env_entries(job: &HlsJob) -> Vec<(String, String)> {
 }
 
 pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
+    #[derive(askama::Template)]
+    #[template(path = "run_hls.tcl.j2", escape = "none")]
+    struct Template<'a> {
+        top: &'a str,
+        solution: &'a str,
+        part: &'a str,
+        clock: &'a str,
+        other: &'a str,
+        rtl: &'a str,
+    }
     if job.srcs.is_empty() {
         return Err(XilinxError::HlsReportParse(format!(
             "HLS job for task `{}` lists no source files",
@@ -192,18 +202,15 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
         format!("{}\n", job.other_configs)
     };
     let rtl = build_rtl_config(job.reset_low, job.auto_prefix);
-    crate::util::render_template(
-        "run_hls",
-        include_str!("templates/run_hls.tcl.j2"),
-        minijinja::context! {
-            top => job.top_name,
-            solution,
-            part => job.target_part,
-            clock => job.clock_period,
-            other,
-            rtl,
-        },
-    )
+    askama::Template::render(&Template {
+        top: &job.top_name,
+        solution,
+        part: &job.target_part,
+        clock: &job.clock_period,
+        other: &other,
+        rtl: &rtl,
+    })
+    .map_err(|e| XilinxError::Template(e.to_string()))
 }
 
 enum RetryError {

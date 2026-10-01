@@ -38,15 +38,19 @@ use super::resolve_worker_count;
 /// `{part_num}`, `{synth_args}`, and `{report_util_args}` before
 /// invocation; literal TCL braces are escaped in the template source.
 fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &str) -> String {
-    crate::util::render_template(
-        "report_util",
-        include_str!("templates/report_util.tcl.j2"),
-        minijinja::context! {
-            part_num,
-            synth_args,
-            report_util_args,
-        },
-    )
+    #[derive(askama::Template)]
+    #[template(path = "report_util.tcl.j2", escape = "none")]
+    struct Template<'a> {
+        part_num: &'a str,
+        synth_args: &'a str,
+        report_util_args: &'a str,
+    }
+    askama::Template::render(&Template {
+        part_num,
+        synth_args,
+        report_util_args,
+    })
+    .expect("render succeeds")
 }
 
 /// Drive per-task out-of-context Vivado synthesis against
