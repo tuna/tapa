@@ -319,3 +319,53 @@ fn control_master_restart_during_transfer() {
         "master must be re-established after retry"
     );
 }
+
+/// A failed local download must release the attempt's remote staging tree.
+#[test]
+#[ignore = "requires configured remote host"]
+fn download_failure_cleans_remote_session() {
+    let Some(mut cfg) = common::has_remote_config() else {
+        return;
+    };
+    let stage = tempfile::tempdir().expect("stage");
+    let suffix = stage.path().file_name().unwrap().to_str().unwrap();
+    cfg.work_dir = format!("{}/cleanup-{suffix}", cfg.work_dir);
+    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let runner = RemoteToolRunner::new(Arc::clone(&session));
+    let input = Utf8PathBuf::from_path_buf(stage.path().join("input")).unwrap();
+    std::fs::create_dir(&input).unwrap();
+    let output = Utf8PathBuf::from_path_buf(stage.path().join("output")).unwrap();
+    // The remote directory can be created, but unpacking it over a local
+    // regular file fails after the tool has already run successfully.
+    std::fs::write(&output, b"occupied").unwrap();
+    let mut inv = ToolInvocation::new("true");
+    inv.cwd = Some(input);
+    inv.downloads.push(output);
+    let result = runner.run(&inv);
+
+    let root = shlex::try_quote(&session.config().work_dir).unwrap();
+    let entries = session
+        .exec_cmd(&format!("find {root} -mindepth 1 -maxdepth 1 -print"))
+        .output()
+        .expect("inspect staging directory");
+    // Remove this test's own root even when the assertion below detects a leak.
+    let cleanup = session
+        .exec_cmd(&format!("rm -rf {root}"))
+        .status()
+        .unwrap();
+    assert!(cleanup.success());
+    assert!(
+        matches!(result, Err(tapa_xilinx::XilinxError::RemoteTransfer(_))),
+        "{result:?}"
+    );
+    assert!(
+        entries.status.success(),
+        "{}",
+        String::from_utf8_lossy(&entries.stderr)
+    );
+    assert!(
+        entries.stdout.is_empty(),
+        "leaked staging directories: {}",
+        String::from_utf8_lossy(&entries.stdout)
+    );
+}

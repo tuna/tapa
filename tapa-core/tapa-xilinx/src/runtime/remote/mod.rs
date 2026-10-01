@@ -10,7 +10,9 @@
 //! tar-pipes each requested download path back from its rootfs
 //! counterpart. On a transient mux failure `run_with_mux_retry`
 //! tears the master down, re-establishes the control socket, and
-//! retries the in-flight command once.
+//! retries the in-flight command once. Each attempt owns a cleanup guard,
+//! including when upload, execution, or download fails. Cleanup is best-effort
+//! and never replaces the original error.
 
 mod transport;
 
@@ -30,6 +32,17 @@ use crate::runtime::ssh::{classify_ssh_error, SshErrorKind, SshSession};
 
 pub struct RemoteToolRunner {
     session: Arc<SshSession>,
+}
+
+struct SessionCleanup<'a> {
+    session: &'a SshSession,
+    directory: &'a str,
+}
+
+impl Drop for SessionCleanup<'_> {
+    fn drop(&mut self) {
+        cleanup_session(self.session, self.directory);
+    }
 }
 
 impl RemoteToolRunner {
@@ -167,6 +180,10 @@ impl RemoteToolRunner {
     fn run_once(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
         self.session.ensure_established()?;
         let plan = self.prepare_upload(inv);
+        let _cleanup = SessionCleanup {
+            session: &self.session,
+            directory: &plan.session_dir,
+        };
         upload_batch(&self.session, &plan.session_dir, &plan.to_upload)?;
         let wrapped =
             build_remote_script(&plan, inv, self.session.config().xilinx_settings.as_deref());
@@ -215,11 +232,9 @@ impl RemoteToolRunner {
 
     /// Final stage of [`run_once`](Self::run_once): execute the
     /// wrapped remote script through the transport and collect the
-    /// results -- stream `inv.stdin` when present, tear the session
-    /// down before surfacing a transient mux failure as a classified
-    /// error, otherwise tar-pipe every requested download path back
-    /// (regardless of exit code, so failure logs survive) and remove
-    /// the session directory.
+    /// results -- stream `inv.stdin` when present, classify transient mux
+    /// failures, and otherwise download requested artifacts regardless of
+    /// exit code so failure logs survive. The attempt guard owns cleanup.
     fn exec_and_collect(
         &self,
         inv: &ToolInvocation,
@@ -251,7 +266,6 @@ impl RemoteToolRunner {
             && !stderr.is_empty()
             && classify_ssh_error(&stderr) == SshErrorKind::TransientMux
         {
-            cleanup_session(&self.session, &plan.session_dir);
             return Err(self.classify_remote_failure(&stderr));
         }
 
@@ -263,8 +277,6 @@ impl RemoteToolRunner {
             // may be relative — keeping the caller-facing contract.
             download_tree(&self.session, &remote_src, raw.as_std_path())?;
         }
-
-        cleanup_session(&self.session, &plan.session_dir);
 
         Ok(ToolOutput {
             exit_code: code,

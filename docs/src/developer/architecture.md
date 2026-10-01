@@ -118,7 +118,8 @@ in `tapa-ir` and `tapa-protocol`, never by sharing implementation.
   No other crate shells out to vendor tools. It also owns remote configuration defaults
   and path normalization. `ToolValue` distinguishes literal command text from
   local paths, including paths within flags and environment values; remote
-  execution relocates only those explicit paths into its staging tree.
+  execution relocates only those explicit paths into its staging tree. Each
+  remote attempt owns cleanup of that tree, including failed transfers.
   The CLI overlays host options on parsed YAML
   before decoding the mapping directly into `RemoteConfig`.
 - **tapa-cli** — no domain logic. Orchestration, state persistence, the
