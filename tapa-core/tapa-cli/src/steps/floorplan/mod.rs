@@ -395,6 +395,10 @@ fn publish_implementation_winner(
     Ok(())
 }
 
+#[allow(
+    clippy::too_many_lines,
+    reason = "the floorplan step keeps planning, optional DSE, and publication in one transaction"
+)]
 pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let options = PlanOptions {
         usage_limit: args.usage_limit,
@@ -423,13 +427,6 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let implementation_target = (args.run_impl || args.dse)
         .then(|| implementation::validate_target(&state, args.vivado_threads))
         .transpose()?;
-    let connectivity = read_connectivity(args.connectivity.as_deref())?;
-    if let Some(input) = &connectivity {
-        log::debug!(
-            "parsed {} memory-bank binding(s) from connectivity input",
-            input.bindings.len(),
-        );
-    }
 
     // Derive placement and controller ownership together. Parse RTL interfaces
     // before solving and reuse them directly for code generation below.
@@ -441,6 +438,29 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let interfaces = rtl_state
         .direct_mmap_interfaces(&projection.flat.top)
         .map_err(|error| CliError::Floorplan(error.to_string()))?;
+    let connectivity = if state.flow.platform.as_deref() == Some("slash_v80_service") {
+        args.connectivity
+            .as_ref()
+            .map(|path| {
+                let bytes = fs_err::read(path)?;
+                let text = std::str::from_utf8(&bytes)
+                    .map_err(|error| CliError::InvalidArg(error.to_string()))?;
+                let ports = interfaces
+                    .iter()
+                    .map(|i| i.endpoint.top_port.as_str())
+                    .collect::<Vec<_>>();
+                let bindings = tapa_xilinx::connectivity::parse_slash_config(
+                    text,
+                    &projection.flat.top,
+                    &ports,
+                )
+                .map_err(CliError::InvalidArg)?;
+                Ok::<_, CliError>(ConnectivityInput { bytes, bindings })
+            })
+            .transpose()?
+    } else {
+        read_connectivity(args.connectivity.as_deref())?
+    };
     let mut inputs = memory_plan_inputs(&projection.flat.top, &interfaces, connectivity.as_ref())?;
     inputs.projection = Some(projection.clone());
     inputs.control = rtl_state

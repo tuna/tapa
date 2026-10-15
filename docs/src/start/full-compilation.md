@@ -83,6 +83,28 @@ packages — see [Fast Hardware Simulation](../howto/fast-cosim.md) before
 reaching for it.
 ```
 
+## V80 service-shell path
+
+The Vitis `v++` and XRT stages below are for U-series Alveo cards. V80 uses
+SLASH and VRT, so keep floorplanning in TAPA's explicit pipeline and use
+`tapa link` for the final `.vbin`:
+
+```bash
+tapa -w work analyze --top Callipepla --input callipepla.cpp
+tapa -w work synth --platform slash_v80_service --clock-period 10
+tapa -w work floorplan --connectivity callipepla.cfg \
+  --partition-strategy multi-level --pp-scheme double
+tapa -w work pack --output callipepla.xo --connectivity callipepla.cfg
+tapa -w work link --xo callipepla.xo --connectivity callipepla.cfg \
+  --output callipepla.vbin --clock-hz 100000000 \
+  --floorplan-xdc work/floorplan.xdc
+```
+
+This runs HLS, TAPA's SLR placement and crossing-pipeline insertion, then
+SLASH/Vivado implementation. `tapa link` rejects an image that misses the
+requested clock. Run the resulting `.vbin` through VRT; the [board guide](../howto/build-and-run.md)
+shows the VRT host flags.
+
 ## Stage 3 — Link to xclbin
 
 Use Vitis `v++` to link the `.xo` into a hardware bitstream. This step does

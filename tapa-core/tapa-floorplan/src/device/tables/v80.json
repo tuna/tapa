@@ -1,0 +1,159 @@
+{
+    "cols": 1,
+    "is_versal": true,
+    "key": "v80",
+    "part_num": "xcv80-lsva4737-2MHP-e-S",
+    "platform_name": "slash_v80_service",
+    "rows": 3,
+    "slots": [
+        {
+            "area": {
+                "bram_18k": 0,
+                "dsp": 0,
+                "ff": 0,
+                "lut": 0,
+                "uram": 0
+            },
+            "centroid_x": 0,
+            "centroid_y": 0,
+            "pblock_ranges": [
+                "CLOCKREGION_X0Y0:CLOCKREGION_X0Y0"
+            ],
+            "tags": [],
+            "wire_cap": {
+                "north": 18870
+            },
+            "x": 0,
+            "y": 0
+        },
+        {
+            "area": {
+                "bram_18k": 408,
+                "dsp": 752,
+                "ff": 259520,
+                "lut": 129760,
+                "uram": 216
+            },
+            "centroid_x": 0,
+            "centroid_y": 150,
+            "pblock_ranges": [
+                "-add {SLICE_X244Y575:SLICE_X351Y619 SLICE_X84Y575:SLICE_X163Y619 SLICE_X244Y574:SLICE_X323Y574}",
+                "-add {BUFG_FABRIC_X4Y144:BUFG_FABRIC_X4Y239 BUFG_FABRIC_X3Y168:BUFG_FABRIC_X3Y239 BUFG_FABRIC_X0Y144:BUFG_FABRIC_X2Y239}",
+                "-add {BUFG_PS_X2Y48:BUFG_PS_X2Y59}",
+                "-add {DSP58_CPLX_X8Y287:DSP58_CPLX_X11Y309 DSP58_CPLX_X0Y287:DSP58_CPLX_X3Y309}",
+                "-add {DSP_X16Y287:DSP_X23Y309 DSP_X0Y287:DSP_X7Y309}",
+                "-add {IRI_QUAD_X29Y2508:IRI_QUAD_X229Y2891 IRI_QUAD_X65Y2328:IRI_QUAD_X83Y2507 IRI_QUAD_X33Y2328:IRI_QUAD_X48Y2507 IRI_QUAD_X65Y2324:IRI_QUAD_X80Y2327}",
+                "-add {NOC_NMU512_X3Y12:NOC_NMU512_X3Y12 NOC_NMU512_X0Y12:NOC_NMU512_X1Y12}",
+                "-add {NOC_NPS_VNOC_X3Y24:NOC_NPS_VNOC_X3Y25 NOC_NPS_VNOC_X0Y24:NOC_NPS_VNOC_X1Y25}",
+                "-add {NOC_NSU512_X3Y12:NOC_NSU512_X3Y12 NOC_NSU512_X0Y12:NOC_NSU512_X1Y12}",
+                "-add {CLOCKREGION_X4Y7:CLOCKREGION_X5Y7}"
+            ],
+            "tags": [
+                "DDR[0]",
+                "DDR[1]",
+                "DDR[2]",
+                "DDR[3]",
+                "S_AXI_CONTROL"
+            ],
+            "wire_cap": {
+                "north": 18870,
+                "south": 18870
+            },
+            "x": 0,
+            "y": 1
+        },
+        {
+            "area": {
+                "bram_18k": 1950,
+                "dsp": 3120,
+                "ff": 1415616,
+                "lut": 707808,
+                "uram": 328
+            },
+            "centroid_x": 0,
+            "centroid_y": 300,
+            "pblock_ranges": [
+                "-add {SLICE_X28Y716:SLICE_X351Y879 SLICE_X48Y620:SLICE_X351Y715}",
+                "-add {DSP58_CPLX_X0Y310:DSP58_CPLX_X11Y439}",
+                "-add {DSP_X0Y310:DSP_X23Y439}",
+                "-add {IRI_QUAD_X18Y2892:IRI_QUAD_X229Y3547}",
+                "-add {NOC_NMU512_X0Y13:NOC_NMU512_X3Y17}",
+                "-add {NOC_NPS_VNOC_X0Y26:NOC_NPS_VNOC_X3Y36}",
+                "-add {NOC_NSU512_X0Y13:NOC_NSU512_X3Y18}"
+            ],
+            "tags": [
+                "HBM",
+                "HBM[0]",
+                "HBM[1]",
+                "HBM[2]",
+                "HBM[3]",
+                "HBM[4]",
+                "HBM[5]",
+                "HBM[6]",
+                "HBM[7]",
+                "HBM[8]",
+                "HBM[9]",
+                "HBM[10]",
+                "HBM[11]",
+                "HBM[12]",
+                "HBM[13]",
+                "HBM[14]",
+                "HBM[15]",
+                "HBM[16]",
+                "HBM[17]",
+                "HBM[18]",
+                "HBM[19]",
+                "HBM[20]",
+                "HBM[21]",
+                "HBM[22]",
+                "HBM[23]",
+                "HBM[24]",
+                "HBM[25]",
+                "HBM[26]",
+                "HBM[27]",
+                "HBM[28]",
+                "HBM[29]",
+                "HBM[30]",
+                "HBM[31]",
+                "HBM[32]",
+                "HBM[33]",
+                "HBM[34]",
+                "HBM[35]",
+                "HBM[36]",
+                "HBM[37]",
+                "HBM[38]",
+                "HBM[39]",
+                "HBM[40]",
+                "HBM[41]",
+                "HBM[42]",
+                "HBM[43]",
+                "HBM[44]",
+                "HBM[45]",
+                "HBM[46]",
+                "HBM[47]",
+                "HBM[48]",
+                "HBM[49]",
+                "HBM[50]",
+                "HBM[51]",
+                "HBM[52]",
+                "HBM[53]",
+                "HBM[54]",
+                "HBM[55]",
+                "HBM[56]",
+                "HBM[57]",
+                "HBM[58]",
+                "HBM[59]",
+                "HBM[60]",
+                "HBM[61]",
+                "HBM[62]",
+                "HBM[63]"
+            ],
+            "wire_cap": {
+                "south": 18870
+            },
+            "x": 0,
+            "y": 2
+        }
+    ],
+    "user_pblock_name": "pblock_slash"
+}

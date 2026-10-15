@@ -197,12 +197,17 @@ Floorplanning needs a device table describing the slot grid and where each memor
 | Alveo U55C | `xcu55c-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, no DDR | `xilinx_u55c_gen3x16_xdma_3_202210_1` |
 | Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR | `xilinx_u250_gen3x16_xdma_4_1_202210_1` |
 | Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` | `xilinx_u280_gen3x16_xdma_1_202211_1` |
+| Alveo V80 (SLASH service shell) | `xcv80-lsva4737-2MHP-e-S` | `HBM[0]`–`HBM[63]`, `DDR[0]`–`DDR[3]` | `slash_v80_service` |
 | VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller | `xilinx_vck190_base_202410_1` |
 
 Floorplanning also accepts other part strings in these same device families;
 an unknown family is rejected with `no floorplan device table matches ...`.
 The other steps (`analyze`, `synth`, `pack`) work on parts supported by Vitis
 HLS; only floorplanning has this restricted device table.
+
+Following TAPA's coarse-grained floorplan model (TRETS 2023, Section 4.1), this table uses one slot per physical SLR in a 1-column by 3-row grid. Its logic and DSP `area` values represent the capacity exposed to the SLASH reconfigurable module after applying `pblock_slash`; BRAM/URAM site counts are retained as inventory only and are not floorplan limits on V80. Vivado decides BRAM/URAM placement inside the SLASH shell. SLR0 has no TAPA RM placement region in the current shell. HBM ports are anchored to SLR2, while DDR and control ports are anchored to SLR1. The V80 XDC retains the SLR/NOC and logic/DSP ranges, omits explicit BRAM/URAM site ranges, and clips generated slot ranges to `pblock_slash`. The two SLR boundaries each have an 18,870-SLL capacity in the routed shell report.
+
+The 64 `HBM[n]` tags name SLASH AXI endpoints (`HBM_AXI_00`–`HBM_AXI_63`); they are not a claim that V80 has 64 HBM pseudo-channels. AVED describes 32 pseudo-channels, while the exact endpoint-to-pseudo-channel pairing is a property of the installed SLASH service shell. AVED places the HBM_NMUs across the top of SLR2. The RM-side HBM terminal is therefore anchored in SLR2. The service-shell DDR and control terminals are anchored in the usable SLR1 RM slot; this keeps them out of static SLR0 and avoids an unnecessary SLR1-to-SLR2 hop. This table models the RM-side slot anchor and SLR crossing budget; it does not model HNoC/VNoC/NPS routes, NoC bandwidth, or per-bank NoC locality. Vivado/SLASH implements and times those hard-NoC paths.
 
 ### Synthesizing with `--platform`, not `--part-num`
 
@@ -247,15 +252,15 @@ sp=Bandwidth.chan[0]:DDR[0]
 sp=Bandwidth.chan[1]:DDR[1]
 ```
 
-The same file is what `tapa pack --connectivity` forwards to `v++ --link` as a `--config`, so one file serves both steps.
+The same `sp=` file feeds floorplanning and hardware linking. U-series devices pass it to `v++ --link`; V80 passes it through TAPA's SLASH adapter.
 
 ### Optional flags (implementation / DSE)
 
-These run the floorplanned design through `v++ --link` to measure Fmax. On top of the `--platform` synthesis that external-memory floorplanning already requires, they need a `xilinx-vitis` target and a platform `v++` still accepts, and they run Vivado/Vitis on the tool host.
+These run the floorplanned design through the device's implementation backend to measure Fmax. U-series devices use `v++ --link`; V80 uses SLASH to build the service-shell `.vbin`. They require a `xilinx-vitis` TAPA target, the exact platform used at synthesis, and Vivado plus either Vitis or SLASH on the tool host.
 
 | Flag | Description |
 |------|-------------|
-| `--run-impl` | Plan one candidate at `--usage-limit`, package the XO, and run one `v++ --link` to measure its Fmax. |
+| `--run-impl` | Plan one candidate at `--usage-limit`, package the XO, and implement it with Vitis or SLASH to measure its Fmax. |
 | `--dse` | Design-space exploration: sweep exact logic-utilization caps across `--dse-min`…`--dse-max` and keep the highest-frequency implementation. |
 | `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (defaults `0.55` / `0.9` / `0.03`; require `--dse`). The sweep starts at `--dse-max` and steps down. |
 | `--dse-jobs N` | Max candidate package/link jobs to run concurrently (default `1`; requires `--dse`). |

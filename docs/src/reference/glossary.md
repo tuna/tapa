@@ -36,7 +36,7 @@ Vitis hardware emulation from an `hw_emu.xclbin`. See also: *fast cosim*.
 
 **DSE** (design-space exploration)
 
-The `tapa floorplan --dse` mode. Instead of producing one floorplan, it sweeps a range of per-slot logic-utilization caps, runs `v++ --link` on each candidate, and keeps the one with the highest achieved frequency. Results land in `floorplan-metrics.json` (the winner) and `dse/candidates.json` (every candidate).
+The `tapa floorplan --dse` mode. Instead of producing one floorplan, it sweeps a range of per-slot logic-utilization caps, implements each candidate with Vitis `v++ --link` or V80 SLASH, and keeps the one with the highest achieved frequency. Results land in `floorplan-metrics.json` (the winner) and `dse/candidates.json` (every candidate).
 
 ---
 

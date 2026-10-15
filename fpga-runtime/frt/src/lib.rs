@@ -4,6 +4,7 @@ pub mod error;
 pub mod ffi;
 pub mod instance;
 mod shm_ffi;
+pub mod vrt;
 pub mod xrt;
 
 pub use error::{FrtError, Result};

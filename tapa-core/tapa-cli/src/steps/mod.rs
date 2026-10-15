@@ -29,6 +29,7 @@ pub mod aiesim;
 pub mod analyze;
 pub mod floorplan;
 pub mod gcc;
+pub mod link;
 pub mod meta;
 pub mod pack;
 pub mod synth;

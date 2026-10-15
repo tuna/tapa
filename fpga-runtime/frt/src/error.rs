@@ -2,6 +2,8 @@ use std::path::PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum FrtError {
+    #[error("VRT error: {0}")]
+    Vrt(String),
     #[error("no device found for {path}")]
     NoDevice { path: PathBuf },
     #[error("xclbin/xo metadata parse error: {0}")]

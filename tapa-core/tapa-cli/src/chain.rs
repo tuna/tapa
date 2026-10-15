@@ -18,7 +18,7 @@ use tapa_ir::WorkState;
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
-use crate::steps::{aiesim, analyze, floorplan, gcc, meta, pack, synth, version};
+use crate::steps::{aiesim, analyze, floorplan, gcc, link, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
 use crate::update;
 
@@ -101,6 +101,13 @@ pub struct ChainTail {
 )]
 #[derive(Debug, Subcommand)]
 pub enum Step {
+    /// Link a TAPA XO into a V80 hardware VBIN using SLASH.
+    Link {
+        #[command(flatten)]
+        args: link::LinkArgs,
+        #[command(flatten)]
+        chain_tail: ChainTail,
+    },
     /// Analyze TAPA program and store the program description.
     Analyze {
         #[command(flatten)]
@@ -253,6 +260,7 @@ impl Step {
     fn chain_tail_mut(&mut self) -> Option<&mut Vec<String>> {
         match self {
             Self::Analyze { chain_tail, .. }
+            | Self::Link { chain_tail, .. }
             | Self::Synth { chain_tail, .. }
             | Self::Floorplan { chain_tail, .. }
             | Self::Pack { chain_tail, .. }
@@ -270,6 +278,7 @@ impl Step {
     /// after the whole chain has been parsed and validated.
     fn run_one(self, ctx: &mut CliContext) -> Result<()> {
         match self {
+            Self::Link { args, .. } => link::run(&args, ctx),
             Self::Analyze { args, .. } => run_pipeline_step(PipelineStep::Analyze(&args), ctx),
             Self::Synth { args, .. } => run_pipeline_step(PipelineStep::Synth(&args), ctx),
             Self::Floorplan { args, .. } => run_pipeline_step(PipelineStep::Floorplan(&args), ctx),

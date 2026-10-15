@@ -17,6 +17,7 @@ const TABLES: &[(&str, &str)] = &[
     ("u280", include_str!("tables/u280.json")),
     ("u55c", include_str!("tables/u55c.json")),
     ("vck190", include_str!("tables/vck190.json")),
+    ("v80", include_str!("tables/v80.json")),
 ];
 
 /// Why [`select_device`] could not return a device.

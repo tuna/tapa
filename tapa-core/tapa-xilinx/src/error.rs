@@ -2,6 +2,8 @@ use camino::Utf8PathBuf;
 
 #[derive(Debug, thiserror::Error)]
 pub enum XilinxError {
+    #[error("SLASH link error: {0}")]
+    SlashLink(String),
     #[error("malformed .taparc config at {path}: {source}")]
     Config {
         path: Utf8PathBuf,

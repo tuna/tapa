@@ -419,6 +419,12 @@ fn realized_utilization(
             ))
         })?;
         for resource in Resource::ALL {
+            if !device.constrains_resource(resource) {
+                // Hard-block inventory is reported, but not used as a V80
+                // floorplan gate; Vivado remains the physical authority.
+                // 硬块库存仍记录，但不作为 V80 floorplan 门槛；物理结果以 Vivado 为准。
+                continue;
+            }
             let used = resource.amount(usage);
             let available = resource.amount(&slot.area);
             if available == 0 {

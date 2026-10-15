@@ -28,6 +28,9 @@ DEFINE_bool(cosim_resume_from_post_sim, false,
 DEFINE_string(xocl_bdf, "",
               "if not empty, use the specified PCIe Bus:Device:Function for "
               "XRT device selection");
+DEFINE_string(vrt_bdf, "", "V80 board BDF for VRT execution");
+DEFINE_string(vrt_kernel, "", "kernel instance name in the SLASH VBIN");
+DEFINE_string(vrt_library, "", "path to the optional libfrt_vrt.so adapter");
 
 namespace tapa {
 namespace internal {
@@ -69,6 +72,9 @@ const char* SimulatorFlag() {
 // Forwarded unconditionally: every one of these is read only by the cosim
 // backend, so no forwarding decision has to know the execution mode.
 void ForwardFlagsToEnv() {
+  SetEnvIf("FRT_VRT_BDF", FLAGS_vrt_bdf);
+  SetEnvIf("FRT_VRT_KERNEL", FLAGS_vrt_kernel);
+  SetEnvIf("FRT_VRT_LIBRARY", FLAGS_vrt_library);
   SetEnvIf("FRT_XOCL_BDF", FLAGS_xocl_bdf);
   SetBoolEnvIf("FRT_XSIM_START_GUI", FLAGS_xsim_start_gui);
   SetBoolEnvIf("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform);

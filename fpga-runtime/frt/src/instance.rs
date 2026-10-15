@@ -17,6 +17,8 @@ pub enum Simulator {
 /// sniffed them again to pick a constructor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExecutionMode {
+    /// A SLASH `.vbin` on a V80 through VRT.
+    Vrt,
     /// An `.xclbin` on real hardware or an XRT emulator.
     Hardware,
     /// An `.xo`/`.zip` package driven by a simulator.
@@ -26,6 +28,7 @@ pub enum ExecutionMode {
 impl ExecutionMode {
     pub fn of(path: &Path) -> Result<Self> {
         match path.extension().and_then(|e| e.to_str()) {
+            Some("vbin") => Ok(Self::Vrt),
             Some("xclbin") => Ok(Self::Hardware),
             Some("xo" | "zip") => Ok(Self::Cosim),
             _ => Err(FrtError::NoDevice {
@@ -45,6 +48,7 @@ impl Instance {
     pub fn open(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
         let path = path.as_ref();
         let device: Box<dyn Device> = match ExecutionMode::of(path)? {
+            ExecutionMode::Vrt => Box::new(crate::vrt::VrtDevice::open(path)?),
             ExecutionMode::Hardware => Box::new(XrtDevice::open(path)?),
             ExecutionMode::Cosim => Box::new(CosimDevice::open(path, sim)?),
         };

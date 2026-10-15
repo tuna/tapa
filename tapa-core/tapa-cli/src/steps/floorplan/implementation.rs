@@ -9,9 +9,7 @@ use tapa_floorplan::device::select::select_device;
 use tapa_floorplan::ExactDseResourceCaps;
 use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{FloorplanResult, Target, WorkState};
-use tapa_xilinx::{
-    run_vitis_link, target_frequency_mhz, ToolRunner, VitisLinkJob, VitisLinkOutput,
-};
+use tapa_xilinx::{run_vitis_link, target_frequency_mhz, KernelTiming, ToolRunner, VitisLinkJob};
 
 use crate::error::{CliError, Result};
 use crate::state::json;
@@ -22,6 +20,7 @@ use super::{FLOORPLAN_CONNECTIVITY, FLOORPLAN_XDC};
 
 pub(super) const IMPLEMENTATION_TIMING_REPORT: &str = "floorplan-timing.rpt";
 pub(super) const IMPLEMENTATION_METRICS: &str = "floorplan-metrics.json";
+pub(super) const IMPLEMENTATION_BITSTREAM: &str = "floorplan.vbin";
 
 const CANDIDATE_ROOT: &str = "dse";
 const CANDIDATE_DIAGNOSTICS: &str = "candidates.json";
@@ -121,6 +120,7 @@ pub(super) struct ImplementationTarget {
     platform: String,
     target_mhz: u32,
     vivado_threads: u32,
+    slash: bool,
 }
 
 impl ImplementationTarget {
@@ -146,20 +146,19 @@ pub(super) fn validate_target(
         )
     })?;
     let device = select_device(part_num).map_err(|error| CliError::Floorplan(error.to_string()))?;
-    if device.is_versal {
-        return Err(CliError::InvalidArg(format!(
-            "implementation from `tapa floorplan` is not supported for Versal device `{}`",
-            device.key,
-        )));
-    }
-
     let platform = state.flow.platform.as_deref().ok_or_else(|| {
         CliError::InvalidArg(
             "implementation requires synthesis with `--platform <installed-platform-name>`"
                 .to_string(),
         )
     })?;
-    if !is_logical_platform_name(platform) {
+    let slash = device.is_versal;
+    if slash && platform != "slash_v80_service" {
+        return Err(CliError::InvalidArg(format!(
+            "Versal implementation requires the SLASH service-shell platform `slash_v80_service`, got `{platform}`",
+        )));
+    }
+    if !slash && !is_logical_platform_name(platform) {
         return Err(CliError::InvalidArg(format!(
             "implementation platform `{platform}` must be an installed platform name, not a path",
         )));
@@ -178,6 +177,7 @@ pub(super) fn validate_target(
         platform: platform.to_string(),
         target_mhz,
         vivado_threads,
+        slash,
     })
 }
 
@@ -303,7 +303,7 @@ fn implement_one(
         target,
         &candidate,
     ) {
-        Ok(output) if output.timing.fmax_mhz.is_finite() => {
+        Ok(output) if output.timing.fmax_mhz.is_finite() && output.timing.wns_ns >= 0.0 => {
             CandidateOutcome::Success(ImplementationWinner { candidate, output })
         }
         Ok(output) => CandidateOutcome::Failure {
@@ -346,7 +346,7 @@ fn try_implement_one(
     connectivity: Option<&[u8]>,
     target: &ImplementationTarget,
     candidate: &PlannedCandidate,
-) -> Result<VitisLinkOutput> {
+) -> Result<ImplementationOutput> {
     let paths = CandidatePaths::new(work_dir, candidate.index, &projection.flat.top);
     paths.recreate()?;
 
@@ -375,6 +375,39 @@ fn try_implement_one(
     );
     let xo = package_prepared_vitis_rtl(runner, &candidate_state, &paths.rtl, &paths.xo, None)?;
 
+    if target.slash {
+        log::info!(
+            "floorplan candidate_{:03} [3/3]: running SLASH service-shell implementation",
+            candidate.index,
+        );
+        let _config = connectivity.ok_or_else(|| {
+            CliError::InvalidArg(
+                "V80 SLASH implementation requires floorplan connectivity".to_string(),
+            )
+        })?;
+        let result = tapa_xilinx::tools::slash::link(
+            runner,
+            &tapa_xilinx::tools::slash::SlashLinkJob {
+                xo: crate::util::utf8(xo),
+                config: crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY)),
+                output: crate::util::utf8(paths.vbin.clone()),
+                work_dir: crate::util::utf8(paths.link.clone()),
+                slashkit: "slashkit".to_string(),
+                vivado: "vivado".to_string(),
+                jobs: target.vivado_threads,
+                clock_hz: u64::from(target.target_mhz) * 1_000_000,
+                floorplan_xdc: Some(crate::util::utf8(paths.constraints.join(FLOORPLAN_XDC))),
+            },
+        )?;
+        return Ok(ImplementationOutput {
+            bitstream: crate::util::utf8(paths.vbin.clone()),
+            timing_report: result.timing_report,
+            timing: result.timing,
+            stdout: result.stdout,
+            stderr: result.stderr,
+        });
+    }
+
     log::info!(
         "floorplan candidate_{:03} [3/3]: running Vitis implementation",
         candidate.index,
@@ -398,7 +431,23 @@ fn try_implement_one(
             connectivity.map(|_| crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY))),
         )
         .build();
-    Ok(run_vitis_link(runner, &job)?)
+    let output = run_vitis_link(runner, &job)?;
+    Ok(ImplementationOutput {
+        bitstream: crate::util::utf8(paths.xclbin.clone()),
+        timing_report: output.timing_report,
+        timing: output.timing,
+        stdout: output.stdout,
+        stderr: output.stderr,
+    })
+}
+
+#[derive(Debug)]
+struct ImplementationOutput {
+    bitstream: camino::Utf8PathBuf,
+    timing_report: camino::Utf8PathBuf,
+    timing: KernelTiming,
+    stdout: String,
+    stderr: String,
 }
 
 #[derive(Debug)]
@@ -414,7 +463,7 @@ enum CandidateOutcome {
 #[derive(Debug)]
 pub(super) struct ImplementationWinner {
     candidate: PlannedCandidate,
-    output: VitisLinkOutput,
+    output: ImplementationOutput,
 }
 
 impl ImplementationWinner {
@@ -427,6 +476,12 @@ impl ImplementationWinner {
             &self.output.timing_report,
             &work_dir.join(IMPLEMENTATION_TIMING_REPORT),
         )?;
+        let bitstream_name = if self.output.bitstream.extension() == Some("xclbin") {
+            "floorplan.xclbin"
+        } else {
+            IMPLEMENTATION_BITSTREAM
+        };
+        atomic_copy(&self.output.bitstream, &work_dir.join(bitstream_name))?;
         let metrics = WinnerMetrics {
             candidate_index: self.candidate.index,
             caps: self.candidate.caps,
@@ -664,6 +719,7 @@ struct CandidatePaths {
     link: PathBuf,
     artifacts: PathBuf,
     xclbin: PathBuf,
+    vbin: PathBuf,
     reports: PathBuf,
     logs: PathBuf,
     temp: PathBuf,
@@ -680,6 +736,7 @@ impl CandidatePaths {
         Self {
             xo: package.join(format!("{top}.xo")),
             xclbin: artifacts.join(format!("{top}.xclbin")),
+            vbin: artifacts.join(format!("{top}.vbin")),
             reports: artifacts.join("reports"),
             logs: artifacts.join("logs"),
             temp: link.join("vitis.tmp"),
@@ -777,7 +834,8 @@ mod tests {
                 realized_max_utilization: 0.8,
                 floorplan: floorplan(),
             },
-            output: VitisLinkOutput {
+            output: ImplementationOutput {
+                bitstream: format!("candidate_{index:03}.xclbin").into(),
                 timing_report: format!("candidate_{index:03}.rpt").into(),
                 timing: tapa_xilinx::KernelTiming {
                     reported_target_period_ns: 3.0,
@@ -918,12 +976,15 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let source_timing = dir.path().join("candidate.rpt");
         fs_err::write(&source_timing, "timing").expect("write timing");
+        let source_bitstream = dir.path().join("candidate.xclbin");
+        fs_err::write(&source_bitstream, "bitstream").expect("write bitstream");
         let CandidateOutcome::Success(mut winner) = success(0, 350.0) else {
             unreachable!("success helper returns a winner")
         };
         winner.candidate.caps = CandidateCaps::relaxing(0.7);
         winner.candidate.realized_max_utilization = 0.82;
         winner.output.timing_report = crate::util::utf8(source_timing);
+        winner.output.bitstream = crate::util::utf8(source_bitstream);
 
         winner
             .publish_artifacts(dir.path(), 300)

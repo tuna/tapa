@@ -166,7 +166,7 @@ tapa compile --top VecAdd --part-num xcu250-figd2104-2L-e \
 
 ---
 
-## Note about v++ link
+## Hardware implementation
 
 ```admonish note
 For the `xilinx-vitis` target, the `v++ --link` step that produces `.xclbin`

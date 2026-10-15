@@ -212,6 +212,18 @@ pub enum DeviceValidationError {
 }
 
 impl Device {
+    /// Whether the floorplanner should enforce this resource class.
+    /// 是否由 floorplanner 对该资源类别施加容量约束。
+    ///
+    /// V80's SLASH pblock is intentionally modeled only by its logic/DSP
+    /// fabric and NOC/SLR anchors. Vivado owns BRAM/URAM legality there.
+    /// V80 的 SLASH pblock 只用于逻辑/DSP 资源与 NOC/SLR 锚点建模；
+    /// BRAM/URAM 的实际合法性由 Vivado 在 shell 内决定。
+    #[must_use]
+    pub fn constrains_resource(&self, resource: Resource) -> bool {
+        !(self.key == "v80" && matches!(resource, Resource::Bram18k | Resource::Uram))
+    }
+
     /// Validate the table values interpolated into implementation Tcl and the
     /// structural grid invariants the planner relies on.
     pub fn validate(&self) -> Result<(), DeviceValidationError> {

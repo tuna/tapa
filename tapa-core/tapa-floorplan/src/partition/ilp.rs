@@ -219,7 +219,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
 fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {
     let by_resource: BTreeMap<_, _> = Resource::ALL
         .into_iter()
-        .filter(|resource| !resource.is_logic())
+        .filter(|resource| device.constrains_resource(*resource) && !resource.is_logic())
         .map(|resource| (resource, block_limit))
         .collect();
     let max_resource_limits = row_regions(device)
@@ -640,7 +640,13 @@ fn attempt_placement(
             log::info!("placement infeasible at usage limit {usage_limit:.2}");
             Ok(Rung::Infeasible(IlpError::Infeasible {
                 limit: config.retry_ceiling,
-                demand: describe_demand(graph, areas, config.retry_ceiling, &config.constraints),
+                demand: describe_demand(
+                    device,
+                    graph,
+                    areas,
+                    config.retry_ceiling,
+                    &config.constraints,
+                ),
             }))
         }
         LpStatus::NotSolved | LpStatus::Unbounded => Err(IlpError::NoIncumbent(solution.status)),
@@ -658,6 +664,7 @@ fn attempt_placement(
 /// explanation; if none is, the binding constraint is the wire-capacity cuts or
 /// per-slot packing, and the message says so instead of inventing a cause.
 fn describe_demand(
+    device: &Device,
     graph: &FloorGraph,
     areas: &RegionAreas,
     usage_limit: f64,
@@ -665,6 +672,9 @@ fn describe_demand(
 ) -> String {
     let mut worst: Option<(Resource, u64, u64)> = None;
     for resource in Resource::ALL {
+        if !device.constrains_resource(resource) {
+            continue;
+        }
         let demand: u64 = graph
             .vertices()
             .iter()
@@ -745,7 +755,7 @@ fn candidate_domains(
             );
             // A zero-area vertex fits even on a slot whose derated area
             // scaled to zero (0 <= 0); only the fitting check decides.
-            if !area_fits(vertex.area, available) {
+            if !area_fits_on_device(device, vertex.area, available) {
                 continue;
             }
             candidates.push(region);
@@ -935,6 +945,13 @@ fn area_fits(required: Area, available: Area) -> bool {
         .all(|resource| resource.amount(&required) <= resource.amount(&available))
 }
 
+fn area_fits_on_device(device: &Device, required: Area, available: Area) -> bool {
+    Resource::ALL
+        .into_iter()
+        .filter(|resource| device.constrains_resource(*resource))
+        .all(|resource| resource.amount(&required) <= resource.amount(&available))
+}
+
 /// An area as a short `LUT=… FF=…` line for an error message, listing only the
 /// resources that are non-zero so an all-zero area reads as "nothing".
 fn describe_area(area: Area) -> String {
@@ -1015,6 +1032,7 @@ impl FloorplanModel {
         let y = add_edge_vars(&mut lp, graph, domains);
         add_coupling(&mut lp, graph, domains, &x, &y);
         add_resource_constraints(
+            device,
             &mut lp,
             graph,
             areas,
@@ -1244,6 +1262,7 @@ fn add_coupling(
     reason = "resource rows need the vertex areas, the crossing registers, and the limits that bound both"
 )]
 fn add_resource_constraints(
+    device: &Device,
     lp: &mut LpModel,
     graph: &FloorGraph,
     areas: &RegionAreas,
@@ -1259,6 +1278,11 @@ fn add_resource_constraints(
             .get(&region)
             .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
         for resource in Resource::ALL {
+            if !device.constrains_resource(resource) {
+                // V80 BRAM/URAM legality is delegated to Vivado.
+                // V80 的 BRAM/URAM 合法放置交由 Vivado 决定。
+                continue;
+            }
             let mut terms = SparseRow::new();
             for (vi, vertex) in graph.vertices().iter().enumerate() {
                 if let Some(ci) = domains[vi]

@@ -87,6 +87,7 @@ Subcommands (chainable, processed left-to-right):
   floorplan                     Coarse-grained floorplan the synthesized design.
   pack                          Pack the generated RTL into a Xilinx `.xo`.
   compile                       analyze + synth + pack in one invocation.
+  link                          Link a TAPA XO into a V80 VBIN using SLASH.
   g++                           Invoke g++ with TAPA include / link flags.
   update                        Update TAPA to the latest release.
   version                       Print TAPA version.

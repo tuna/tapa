@@ -1,6 +1,7 @@
 //! Vitis `.ini` connectivity parser adapter.
 
 use std::collections::BTreeMap;
+use std::fmt::Write as _;
 
 use tapa_ir::{MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind};
 
@@ -90,6 +91,71 @@ pub fn parse_vitis_config(input: &str) -> Result<MemoryBindings, ConnectivityPar
     }
 
     Ok(MemoryBindings::try_from_bindings(bindings).expect("parser deduplicates memory endpoints"))
+}
+
+/// Resolve a single-kernel SLASH configuration to TAPA's logical top ports.
+/// The exact port mapping comes from the compiled interfaces; array names are
+/// never reconstructed by guessing which underscores used to be brackets.
+pub fn parse_slash_config(
+    input: &str,
+    top: &str,
+    ports: &[&str],
+) -> Result<MemoryBindings, String> {
+    let mut in_connectivity = false;
+    let mut instance = None;
+    let mut entries = Vec::new();
+    for original in input.lines() {
+        let line = strip_comment(original).trim();
+        if line.starts_with('[') {
+            in_connectivity = line == "[connectivity]";
+            continue;
+        }
+        if !in_connectivity || line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("invalid SLASH entry `{line}`"));
+        };
+        match key.trim() {
+            "nk" => {
+                let fields: Vec<_> = value.trim().split(':').collect();
+                if instance.is_some()
+                    || fields.len() != 3
+                    || fields[0] != top
+                    || fields[1] != "1"
+                    || !is_identifier(fields[2])
+                {
+                    return Err(format!("expected one SLASH `nk={top}:1:<instance>`"));
+                }
+                instance = Some(fields[2]);
+            }
+            "sp" => entries.push(value.trim()),
+            _ => {}
+        }
+    }
+    let instance = instance.ok_or_else(|| format!("missing SLASH `nk={top}:1:<instance>`"))?;
+    let mut normalized = String::from("[connectivity]\n");
+    for entry in entries {
+        let (endpoint, target) = entry
+            .split_once(':')
+            .ok_or_else(|| format!("invalid SLASH sp `{entry}`"))?;
+        let physical = endpoint
+            .trim()
+            .strip_prefix(&format!("{instance}."))
+            .ok_or_else(|| format!("unknown kernel instance in `{entry}`"))?;
+        let logical = ports
+            .iter()
+            .find(|port| format!("m_axi_{}", tapa_ir::port::sanitize_array_name(port)) == physical)
+            .ok_or_else(|| format!("SLASH port `{physical}` is not a compiled top interface"))?;
+        let (kind, index) = target
+            .trim()
+            .strip_prefix("HBM")
+            .map(|v| ("HBM", v))
+            .or_else(|| target.trim().strip_prefix("DDR").map(|v| ("DDR", v)))
+            .ok_or_else(|| format!("unsupported SLASH memory `{target}`"))?;
+        writeln!(normalized, "sp={top}.{logical}:{kind}[{index}]").expect("write String");
+    }
+    parse_vitis_config(&normalized).map_err(|error| error.to_string())
 }
 
 fn strip_comment(line: &str) -> &str {

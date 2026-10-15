@@ -114,7 +114,7 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
     // reject an unknown one; a stray -cosim_simulator flag must not break
     // a bitstream run.
     let simulator = match ExecutionMode::of(path).map_err(|e| e.to_string())? {
-        ExecutionMode::Hardware => Simulator::Xsim { legacy: false },
+        ExecutionMode::Hardware | ExecutionMode::Vrt => Simulator::Xsim { legacy: false },
         ExecutionMode::Cosim => parse_simulator(sim)?,
     };
     Instance::open(path, &simulator).map_err(|e| e.to_string())

@@ -15,6 +15,8 @@ use tapa_ir::{
 
 use crate::device::model::{Coor, Device};
 
+const BATCHED_CELL_MATCH_THRESHOLD: usize = 16;
+
 /// Why a [`FloorplanResult`] could not be rendered as XDC constraints.
 #[derive(Debug, thiserror::Error)]
 pub enum XdcError {
@@ -300,32 +302,109 @@ fn add_region_pblock(
         ));
     }
     add_slot_ranges(lines, region, &slot_ranges);
-    for cell_match in matches {
-        // `-quiet` suppresses Vivado's version-specific empty-query
-        // diagnostic; the explicit check below is the stable DRC.
-        lines.push(format!(
-            "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
-            cell_match.pattern
-        ));
-        lines.push(format!(
+    if matches.len() >= BATCHED_CELL_MATCH_THRESHOLD {
+        add_batched_cell_matches(lines, region, matches);
+    } else {
+        for cell_match in matches {
+            // `-quiet` suppresses Vivado's version-specific empty-query
+            // diagnostic; the explicit check below is the stable DRC.
+            lines.push(format!(
+                "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
+                cell_match.pattern
+            ));
+            lines.push(format!(
             "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not \
              found\" }}",
             tcl_double_quote_escape(&cell_match.description),
         ));
-        if cell_match.user_sll_reg {
-            lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
-            lines.push(format!(
+            if cell_match.user_sll_reg {
+                lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
+                lines.push(format!(
                 "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential \
                  cells in `{}` were not found\" }}",
                 tcl_double_quote_escape(&cell_match.description),
             ));
-            lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
+                lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
+            }
+            lines.push(format!("add_cells_to_pblock {region} $cells"));
         }
-        lines.push(format!("add_cells_to_pblock {region} $cells"));
     }
     if let Some(parent) = &device.user_pblock_name {
         add_parent_clip(lines, region, parent);
     }
+}
+
+/// Search a large slot's hierarchy once, then validate each expected pattern
+/// against the returned cell names. Vivado's hierarchical cell query is
+/// expensive on a large Versal shell; repeating it hundreds of times can keep
+/// placement in the Tcl hook for an hour.
+fn add_batched_cell_matches(lines: &mut Vec<String>, region: &str, matches: &[CellMatch]) {
+    let patterns = matches
+        .iter()
+        .map(|cell_match| cell_match.pattern.as_str())
+        .collect::<Vec<_>>();
+    append_batched_cell_query(lines, "cells", &patterns);
+    lines.push(
+        "if {![llength $cells]} { error \"TAPA floorplan ERROR: no expected cells were found\" }"
+            .to_string(),
+    );
+    lines.push("set cell_names [get_property NAME $cells]".to_string());
+    lines.push(format!(
+        "set expected_patterns [list {}]",
+        tcl_pattern_list(&patterns)
+    ));
+    lines.extend([
+        "foreach pattern $expected_patterns {".to_string(),
+        "  if {[lsearch -regexp $cell_names $pattern] < 0} {".to_string(),
+        "    error \"TAPA floorplan ERROR: expected cell matching `$pattern` was not found\""
+            .to_string(),
+        "  }".to_string(),
+        "}".to_string(),
+        format!("add_cells_to_pblock {region} $cells"),
+    ]);
+
+    let sll_patterns = matches
+        .iter()
+        .filter(|cell_match| cell_match.user_sll_reg)
+        .map(|cell_match| cell_match.pattern.as_str())
+        .collect::<Vec<_>>();
+    if sll_patterns.is_empty() {
+        return;
+    }
+
+    append_batched_cell_query(lines, "sll_cells", &sll_patterns);
+    lines.push("if {![llength $sll_cells]} { error \"TAPA floorplan ERROR: no expected SLL pipeline cells were found\" }".to_string());
+    lines.push("set sll_regs [filter $sll_cells {IS_SEQUENTIAL == 1}]".to_string());
+    lines.push("if {![llength $sll_regs]} { error \"TAPA floorplan ERROR: expected sequential pipeline cells were not found\" }".to_string());
+    lines.push("set sll_reg_names [get_property NAME $sll_regs]".to_string());
+    lines.push(format!(
+        "set expected_sll_patterns [list {}]",
+        tcl_pattern_list(&sll_patterns)
+    ));
+    lines.extend([
+        "foreach pattern $expected_sll_patterns {".to_string(),
+        "  if {[lsearch -regexp $sll_reg_names $pattern] < 0} {".to_string(),
+        "    error \"TAPA floorplan ERROR: expected sequential cells matching `$pattern` were not found\""
+            .to_string(),
+        "  }".to_string(),
+        "}".to_string(),
+        "set_property USER_SLL_REG TRUE $sll_regs".to_string(),
+    ]);
+}
+
+fn append_batched_cell_query(lines: &mut Vec<String>, variable: &str, patterns: &[&str]) {
+    lines.push(format!(
+        "set {variable} [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"({})\"}}]",
+        patterns.join("|")
+    ));
+}
+
+fn tcl_pattern_list(patterns: &[&str]) -> String {
+    patterns
+        .iter()
+        .map(|pattern| braced(pattern))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// Body stages immediately before and after each vertical (SLR) transition.

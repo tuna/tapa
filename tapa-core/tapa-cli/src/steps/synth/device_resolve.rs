@@ -21,6 +21,18 @@ pub(super) fn resolve_device_info(args: &SynthArgs) -> Result<DeviceInfo> {
     let clock_override = clock_override_owned.as_deref();
 
     if let Some(platform) = args.platform.as_deref() {
+        if platform == "slash_v80_service" {
+            let part = "xcv80-lsva4737-2MHP-e-S";
+            if part_override.is_some_and(|value| value != part) {
+                return Err(CliError::InvalidArg(format!(
+                    "{platform} requires part {part}"
+                )));
+            }
+            return Ok(DeviceInfo {
+                part_num: part.to_string(),
+                clock_period: clock_override.unwrap_or("10").to_string(),
+            });
+        }
         let resolved = resolve_platform_dir(platform).ok_or_else(|| {
             CliError::InvalidArg(format!(
                 "cannot find the specified platform `{platform}`; are you sure it has \
