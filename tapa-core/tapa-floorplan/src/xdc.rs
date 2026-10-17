@@ -1,6 +1,5 @@
-//! Pblock XDC emission: turn a [`FloorplanResult`] plus its [`Device`] into the
-//! `create_pblock`/`resize_pblock`/`add_cells_to_pblock` constraints Vivado
-//! applies during implementation.
+//! Implementation XDC emission: turn a [`FloorplanResult`] plus its [`Device`]
+//! into the placement and timing constraints Vivado applies during implementation.
 //!
 //! Cells are matched with hierarchical wildcards so they still resolve once
 //! `v++` places the kernel below a platform prefix and synthesis flattens names.
@@ -63,7 +62,7 @@ pub enum XdcError {
     },
 }
 
-/// Render the floorplan as XDC pblock constraints, terminated by a newline.
+/// Render the floorplan as XDC constraints, terminated by a newline.
 ///
 /// The result is validated first: it must belong to `device`, every region
 /// and route stage must be a valid in-device rectangle, every route must have
@@ -75,7 +74,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
 
     // A crossing FIFO is split into independently constrained Head/Body/Tail
     // hierarchy below. Constraining its monolithic parent as well would force
-    // every stage back into the FIFO vertex's old placement pblock.
+    // every stage back into the FIFO vertex's old placement region.
     let routed_streams: BTreeSet<&str> = result
         .routes
         .iter()
@@ -85,7 +84,7 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
         })
         .collect();
 
-    // Group cell matches by physical region so each pblock is created once.
+    // Group cell matches by physical region so each placement constraint is emitted once.
     let mut by_region: BTreeMap<String, Vec<CellMatch>> = BTreeMap::new();
     for (instance, region) in &result.regions {
         if routed_streams.contains(instance.as_str()) {
@@ -159,7 +158,11 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
 
     let mut lines: Vec<String> = Vec::new();
     for (region, matches) in &by_region {
-        add_region_pblock(&mut lines, region, matches, device);
+        if device.key == "v80" {
+            add_region_slr_assignment(&mut lines, region, matches);
+        } else {
+            add_region_pblock(&mut lines, region, matches, device);
+        }
     }
 
     // Reset-distribution timing cuts. The active-high reset net fans out from
@@ -192,6 +195,16 @@ fn validate_result(result: &FloorplanResult, device: &Device) -> Result<(), XdcE
     }
     for region in result.regions.values() {
         validate_region_rectangle(device, region)?;
+        if device.key == "v80" {
+            let coor = Coor::from_region_or_slot_name(region).expect("validated region");
+            if coor.width() != 1 || coor.height() != 1 {
+                return Err(XdcError::InvalidRegion {
+                    region: region.clone(),
+                    detail: "V80 SLR-only placement requires one atomic SLR per instance"
+                        .to_string(),
+                });
+            }
+        }
     }
     for route in &result.routes {
         if route.route.is_empty() {
@@ -259,7 +272,7 @@ fn validate_region_rectangle(device: &Device, region: &str) -> Result<(), XdcErr
 
 /// XDC lines that relax reset-distribution out of setup timing.
 ///
-/// These are emitted verbatim after the pblock constraints. They are plain Tcl
+/// These are emitted verbatim after the placement constraints. They are plain Tcl
 /// (no design-specific interpolation) so they are easy to audit and disable.
 fn reset_timing_constraints() -> [String; 2] {
     [
@@ -282,6 +295,27 @@ struct CellMatch {
     user_sll_reg: bool,
 }
 
+#[derive(Clone, Copy)]
+enum CellPlacement<'a> {
+    Pblock(&'a str),
+    Slr(u32),
+}
+
+impl CellPlacement<'_> {
+    fn hierarchical_cells_only(self) -> bool {
+        matches!(self, Self::Slr(_))
+    }
+
+    fn emit(self, lines: &mut Vec<String>) {
+        match self {
+            Self::Pblock(name) => lines.push(format!("add_cells_to_pblock {name} $cells")),
+            Self::Slr(slr) => {
+                lines.push(format!("set_property USER_SLR_ASSIGNMENT SLR{slr} $cells"));
+            }
+        }
+    }
+}
+
 fn add_region_pblock(
     lines: &mut Vec<String>,
     region: &str,
@@ -302,48 +336,95 @@ fn add_region_pblock(
         ));
     }
     add_slot_ranges(lines, region, &slot_ranges);
-    if matches.len() >= BATCHED_CELL_MATCH_THRESHOLD {
-        add_batched_cell_matches(lines, region, matches);
-    } else {
-        for cell_match in matches {
-            // `-quiet` suppresses Vivado's version-specific empty-query
-            // diagnostic; the explicit check below is the stable DRC.
-            lines.push(format!(
-                "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
-                cell_match.pattern
-            ));
-            lines.push(format!(
-            "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not \
-             found\" }}",
-            tcl_double_quote_escape(&cell_match.description),
-        ));
-            if cell_match.user_sll_reg {
-                lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
-                lines.push(format!(
-                "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential \
-                 cells in `{}` were not found\" }}",
-                tcl_double_quote_escape(&cell_match.description),
-            ));
-                lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
-            }
-            lines.push(format!("add_cells_to_pblock {region} $cells"));
-        }
-    }
+    add_cell_matches(lines, matches, CellPlacement::Pblock(region));
     if let Some(parent) = &device.user_pblock_name {
         add_parent_clip(lines, region, parent);
     }
+}
+
+/// Assign V80 task and pipeline hierarchies to an SLR without creating a
+/// slot `PBlock`, which would restrict the RM's usable resource capacity.
+fn add_region_slr_assignment(lines: &mut Vec<String>, region: &str, matches: &[CellMatch]) {
+    let coor = Coor::from_region_or_slot_name(region).expect("validated region");
+    debug_assert_eq!(coor.width(), 1, "V80 placement regions cover one SLR");
+    debug_assert_eq!(coor.height(), 1, "V80 placement regions cover one SLR");
+    add_cell_matches(lines, matches, CellPlacement::Slr(coor.dl_y));
+}
+
+fn add_cell_matches(lines: &mut Vec<String>, matches: &[CellMatch], placement: CellPlacement<'_>) {
+    if matches.len() >= BATCHED_CELL_MATCH_THRESHOLD {
+        add_batched_cell_matches(lines, matches, placement);
+        return;
+    }
+
+    for cell_match in matches {
+        // `USER_SLR_ASSIGNMENT` is a hierarchy property in Vivado. Keep the
+        // broader query for PBlocks and filter to hierarchy cells for V80.
+        let hierarchy_filter = if placement.hierarchical_cells_only() {
+            " && IS_PRIMITIVE == 0"
+        } else {
+            ""
+        };
+        lines.push(format!(
+            "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"{hierarchy_filter}}}]",
+            cell_match.pattern
+        ));
+        lines.push(format!(
+            "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not found\" }}",
+            tcl_double_quote_escape(&cell_match.description),
+        ));
+        if cell_match.user_sll_reg {
+            if placement.hierarchical_cells_only() {
+                add_single_sll_register_match(lines, cell_match);
+            } else {
+                lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
+                lines.push(format!(
+                    "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential cells in `{}` were not found\" }}",
+                    tcl_double_quote_escape(&cell_match.description),
+                ));
+                lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
+            }
+        }
+        placement.emit(lines);
+    }
+}
+
+fn add_single_sll_register_match(lines: &mut Vec<String>, cell_match: &CellMatch) {
+    lines.push(format!(
+        "set sll_cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"}}]",
+        cell_match.pattern
+    ));
+    lines.push(format!(
+        "if {{![llength $sll_cells]}} {{ error \"TAPA floorplan ERROR: expected pipeline cells in `{}` were not found\" }}",
+        tcl_double_quote_escape(&cell_match.description),
+    ));
+    lines.push("set sll_regs [filter $sll_cells {IS_SEQUENTIAL == 1}]".to_string());
+    lines.push(format!(
+        "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential cells in `{}` were not found\" }}",
+        tcl_double_quote_escape(&cell_match.description),
+    ));
+    lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
 }
 
 /// Search a large slot's hierarchy once, then validate each expected pattern
 /// against the returned cell names. Vivado's hierarchical cell query is
 /// expensive on a large Versal shell; repeating it hundreds of times can keep
 /// placement in the Tcl hook for an hour.
-fn add_batched_cell_matches(lines: &mut Vec<String>, region: &str, matches: &[CellMatch]) {
+fn add_batched_cell_matches(
+    lines: &mut Vec<String>,
+    matches: &[CellMatch],
+    placement: CellPlacement<'_>,
+) {
     let patterns = matches
         .iter()
         .map(|cell_match| cell_match.pattern.as_str())
         .collect::<Vec<_>>();
-    append_batched_cell_query(lines, "cells", &patterns);
+    append_batched_cell_query(
+        lines,
+        "cells",
+        &patterns,
+        placement.hierarchical_cells_only(),
+    );
     lines.push(
         "if {![llength $cells]} { error \"TAPA floorplan ERROR: no expected cells were found\" }"
             .to_string(),
@@ -360,8 +441,8 @@ fn add_batched_cell_matches(lines: &mut Vec<String>, region: &str, matches: &[Ce
             .to_string(),
         "  }".to_string(),
         "}".to_string(),
-        format!("add_cells_to_pblock {region} $cells"),
     ]);
+    placement.emit(lines);
 
     let sll_patterns = matches
         .iter()
@@ -372,7 +453,7 @@ fn add_batched_cell_matches(lines: &mut Vec<String>, region: &str, matches: &[Ce
         return;
     }
 
-    append_batched_cell_query(lines, "sll_cells", &sll_patterns);
+    append_batched_cell_query(lines, "sll_cells", &sll_patterns, false);
     lines.push("if {![llength $sll_cells]} { error \"TAPA floorplan ERROR: no expected SLL pipeline cells were found\" }".to_string());
     lines.push("set sll_regs [filter $sll_cells {IS_SEQUENTIAL == 1}]".to_string());
     lines.push("if {![llength $sll_regs]} { error \"TAPA floorplan ERROR: expected sequential pipeline cells were not found\" }".to_string());
@@ -392,9 +473,19 @@ fn add_batched_cell_matches(lines: &mut Vec<String>, region: &str, matches: &[Ce
     ]);
 }
 
-fn append_batched_cell_query(lines: &mut Vec<String>, variable: &str, patterns: &[&str]) {
+fn append_batched_cell_query(
+    lines: &mut Vec<String>,
+    variable: &str,
+    patterns: &[&str],
+    hierarchical_only: bool,
+) {
+    let hierarchy_filter = if hierarchical_only {
+        " && IS_PRIMITIVE == 0"
+    } else {
+        ""
+    };
     lines.push(format!(
-        "set {variable} [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"({})\"}}]",
+        "set {variable} [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"({})\"{hierarchy_filter}}}]",
         patterns.join("|")
     ));
 }
@@ -747,6 +838,144 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
 ";
         let device = select_device("u280").expect("u280");
         assert_eq!(emit_xdc(&result, &device).expect("render"), expected);
+    }
+
+    #[test]
+    fn v80_assigns_hierarchies_to_slrs_without_slot_pblocks() {
+        let result = FloorplanResult {
+            device: "v80".to_string(),
+            grid: (1, 3),
+            regions: Map::from([("Worker_0".to_string(), "SLOT_X0Y2_TO_SLOT_X0Y2".to_string())]),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        let device = select_device("v80").expect("v80");
+
+        let xdc = emit_xdc(&result, &device).expect("render V80 constraints");
+
+        assert!(xdc.contains("IS_PRIMITIVE == 0"));
+        assert!(xdc.contains("set_property USER_SLR_ASSIGNMENT SLR2 $cells"));
+        assert!(!xdc.contains("create_pblock"));
+        assert!(!xdc.contains("resize_pblock"));
+        assert!(!xdc.contains("add_cells_to_pblock"));
+        assert!(!xdc.contains("pblock_slash"));
+    }
+
+    #[test]
+    fn v80_crossing_pipeline_stages_keep_slr_and_sll_constraints() {
+        let result = FloorplanResult {
+            device: "v80".to_string(),
+            grid: (1, 3),
+            regions: Map::new(),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "crossing_fifo".to_string(),
+                },
+                route: vec![
+                    "SLOT_X0Y0".to_string(),
+                    "SLOT_X0Y1".to_string(),
+                    "SLOT_X0Y2".to_string(),
+                ],
+                scheme: PipelineScheme::Double,
+                reg_regions: vec![
+                    "SLOT_X0Y0".to_string(),
+                    "SLOT_X0Y1".to_string(),
+                    "SLOT_X0Y2".to_string(),
+                ],
+            }],
+            slot_usage: Map::new(),
+        };
+        let device = select_device("v80").expect("v80");
+
+        let xdc = emit_xdc(&result, &device).expect("render V80 crossing constraints");
+
+        for slr in 0..3 {
+            assert!(
+                xdc.contains(&format!("set_property USER_SLR_ASSIGNMENT SLR{slr} $cells")),
+                "{xdc}"
+            );
+        }
+        assert!(xdc.contains("set_property USER_SLL_REG TRUE $sll_regs"));
+        assert!(!xdc.contains("create_pblock"));
+        assert!(!xdc.contains("resize_pblock"));
+    }
+
+    #[test]
+    fn v80_rejects_a_task_region_that_spans_slrs() {
+        let result = FloorplanResult {
+            device: "v80".to_string(),
+            grid: (1, 3),
+            regions: Map::from([("Worker_0".to_string(), "SLOT_X0Y1_TO_SLOT_X0Y2".to_string())]),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        let device = select_device("v80").expect("v80");
+
+        let error = emit_xdc(&result, &device).expect_err("one task cannot span multiple SLRs");
+
+        assert!(error.to_string().contains("one atomic SLR per instance"));
+    }
+
+    #[test]
+    fn large_pblocks_batch_hierarchy_queries_and_keep_missing_cell_checks() {
+        let result = FloorplanResult {
+            device: "u250".to_string(),
+            grid: (2, 4),
+            regions: (0..40)
+                .map(|index| {
+                    (
+                        format!("Worker_{index}"),
+                        "SLOT_X0Y0_TO_SLOT_X0Y0".to_string(),
+                    )
+                })
+                .collect::<Map<_, _>>(),
+            routes: Vec::new(),
+            slot_usage: Map::new(),
+        };
+        let device = select_device("u250").expect("u250");
+
+        let xdc = emit_xdc(&result, &device).expect("render");
+        let section = pblock_section(&xdc, "SLOT_X0Y0_TO_SLOT_X0Y0");
+
+        assert_eq!(section.matches("set cells [get_cells ").count(), 1);
+        assert!(section.contains(&cell_name_regex("Worker_39")));
+        assert!(section.contains("set expected_patterns [list "));
+        assert!(section.contains("lsearch -regexp $cell_names $pattern"));
+        assert!(section.contains("expected cell matching `$pattern` was not found"));
+    }
+
+    #[test]
+    fn batched_sll_matches_are_marked_after_sequential_cell_validation() {
+        let matches = (0..20)
+            .map(|index| CellMatch {
+                pattern: format!("^(.*/)?fifo_{index}/TAPA_HS_BODY\\[0\\](/.*)?$"),
+                description: format!("fifo_{index} Body 0"),
+                user_sll_reg: true,
+            })
+            .collect::<Vec<_>>();
+        let mut lines = Vec::new();
+
+        add_batched_cell_matches(
+            &mut lines,
+            &matches,
+            CellPlacement::Pblock("SLOT_X0Y1_TO_SLOT_X0Y1"),
+        );
+
+        let xdc = lines.join("\n");
+        assert_eq!(
+            xdc.matches("get_cells -quiet -hierarchical -regexp")
+                .count(),
+            2
+        );
+        assert!(xdc.contains("set sll_regs [filter $sll_cells {IS_SEQUENTIAL == 1}]"));
+        assert!(xdc.contains("lsearch -regexp $sll_reg_names $pattern"));
+        let validate = xdc
+            .find("lsearch -regexp $sll_reg_names $pattern")
+            .expect("sequential matches validated");
+        let mark = xdc
+            .find("set_property USER_SLL_REG TRUE $sll_regs")
+            .expect("SLL cells marked");
+        assert!(validate < mark, "{xdc}");
     }
 
     #[test]

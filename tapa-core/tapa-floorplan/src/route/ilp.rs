@@ -752,6 +752,7 @@ mod tests {
             cols: 2,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots,
         }
     }
@@ -884,6 +885,7 @@ mod tests {
             cols: 3,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots,
         }
     }

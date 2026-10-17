@@ -19,7 +19,7 @@
 //! - `plan` — planner options and the prepare/solve/finish orchestration,
 //!   including the exact-cap DSE policy; `error` maps subsystem failures into
 //!   the public error enums.
-//! - `xdc` — pblock/anchor XDC emission from a `FloorplanResult`.
+//! - `xdc` — placement and timing XDC emission from a `FloorplanResult`.
 
 pub mod device;
 pub mod dse;

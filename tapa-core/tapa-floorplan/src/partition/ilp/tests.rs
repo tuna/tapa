@@ -410,6 +410,7 @@ fn one_slot_device_with_area(area: Area) -> Device {
         cols: 1,
         is_versal: false,
         user_pblock_name: None,
+        anchors: Vec::new(),
         slots: vec![Slot {
             x: 0,
             y: 0,
@@ -448,6 +449,7 @@ fn two_slot_golden_device() -> Device {
         cols: 1,
         is_versal: false,
         user_pblock_name: None,
+        anchors: Vec::new(),
         slots: vec![slot(0, 0), slot(1, 150)],
     }
 }
@@ -848,6 +850,7 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
         cols: 2,
         is_versal: false,
         user_pblock_name: None,
+        anchors: Vec::new(),
         slots: vec![
             slot(0, 0, 50),
             slot(1, 0, 50),
@@ -1210,6 +1213,7 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         cols: 3,
         is_versal: false,
         user_pblock_name: None,
+        anchors: Vec::new(),
         slots: vec![mk_slot(0, 0), mk_slot(1, 1), mk_slot(2, 4)],
     };
     let graph = vadd_floor_graph();

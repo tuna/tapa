@@ -1,4 +1,420 @@
 {
+    "anchors": [
+        {
+            "site": "NOC_NMU_HBM2E_X2Y0",
+            "tag": "HBM[0]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X3Y0",
+            "tag": "HBM[1]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X1Y0",
+            "tag": "HBM[2]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X0Y0",
+            "tag": "HBM[3]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X4Y0",
+            "tag": "HBM[4]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X5Y0",
+            "tag": "HBM[5]",
+            "x_offset_quarters": -180,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X6Y0",
+            "tag": "HBM[6]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X7Y0",
+            "tag": "HBM[7]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X10Y0",
+            "tag": "HBM[8]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X11Y0",
+            "tag": "HBM[9]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X8Y0",
+            "tag": "HBM[10]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X9Y0",
+            "tag": "HBM[11]",
+            "x_offset_quarters": -140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X12Y0",
+            "tag": "HBM[12]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X13Y0",
+            "tag": "HBM[13]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X15Y0",
+            "tag": "HBM[14]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X14Y0",
+            "tag": "HBM[15]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X19Y0",
+            "tag": "HBM[16]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X18Y0",
+            "tag": "HBM[17]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X17Y0",
+            "tag": "HBM[18]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X16Y0",
+            "tag": "HBM[19]",
+            "x_offset_quarters": -100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X20Y0",
+            "tag": "HBM[20]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X21Y0",
+            "tag": "HBM[21]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X22Y0",
+            "tag": "HBM[22]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X23Y0",
+            "tag": "HBM[23]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X27Y0",
+            "tag": "HBM[24]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X26Y0",
+            "tag": "HBM[25]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X24Y0",
+            "tag": "HBM[26]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X25Y0",
+            "tag": "HBM[27]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X29Y0",
+            "tag": "HBM[28]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X28Y0",
+            "tag": "HBM[29]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X31Y0",
+            "tag": "HBM[30]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X30Y0",
+            "tag": "HBM[31]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X35Y0",
+            "tag": "HBM[32]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X34Y0",
+            "tag": "HBM[33]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X33Y0",
+            "tag": "HBM[34]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X32Y0",
+            "tag": "HBM[35]",
+            "x_offset_quarters": -20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X37Y0",
+            "tag": "HBM[36]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X36Y0",
+            "tag": "HBM[37]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X39Y0",
+            "tag": "HBM[38]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X38Y0",
+            "tag": "HBM[39]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X43Y0",
+            "tag": "HBM[40]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X42Y0",
+            "tag": "HBM[41]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X41Y0",
+            "tag": "HBM[42]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X40Y0",
+            "tag": "HBM[43]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X44Y0",
+            "tag": "HBM[44]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X45Y0",
+            "tag": "HBM[45]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X47Y0",
+            "tag": "HBM[46]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X46Y0",
+            "tag": "HBM[47]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X51Y0",
+            "tag": "HBM[48]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X50Y0",
+            "tag": "HBM[49]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X48Y0",
+            "tag": "HBM[50]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X49Y0",
+            "tag": "HBM[51]",
+            "x_offset_quarters": 60,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X52Y0",
+            "tag": "HBM[52]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X53Y0",
+            "tag": "HBM[53]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X55Y0",
+            "tag": "HBM[54]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X54Y0",
+            "tag": "HBM[55]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X58Y0",
+            "tag": "HBM[56]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X59Y0",
+            "tag": "HBM[57]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X57Y0",
+            "tag": "HBM[58]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X56Y0",
+            "tag": "HBM[59]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X61Y0",
+            "tag": "HBM[60]",
+            "x_offset_quarters": 140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X60Y0",
+            "tag": "HBM[61]",
+            "x_offset_quarters": 140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X63Y0",
+            "tag": "HBM[62]",
+            "x_offset_quarters": 140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU_HBM2E_X62Y0",
+            "tag": "HBM[63]",
+            "x_offset_quarters": 140,
+            "y_offset_quarters": 225
+        },
+        {
+            "site": "NOC_NMU512_X3Y15",
+            "tag": "DDR[0]",
+            "x_offset_quarters": 100,
+            "y_offset_quarters": -75
+        },
+        {
+            "site": "NOC_NMU512_X2Y12",
+            "tag": "DDR[1]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 200
+        },
+        {
+            "site": "NOC_NMU512_X2Y17",
+            "tag": "DDR[2]",
+            "x_offset_quarters": 20,
+            "y_offset_quarters": 75
+        },
+        {
+            "site": "NOC_NMU512_X1Y17",
+            "tag": "DDR[3]",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": 75
+        },
+        {
+            "site": "NOC_NSU512_X1Y15",
+            "tag": "S_AXI_CONTROL",
+            "x_offset_quarters": -60,
+            "y_offset_quarters": -75
+        }
+    ],
     "cols": 1,
     "is_versal": true,
     "key": "v80",
@@ -37,23 +453,10 @@
             "centroid_x": 0,
             "centroid_y": 150,
             "pblock_ranges": [
-                "-add {SLICE_X244Y575:SLICE_X351Y619 SLICE_X84Y575:SLICE_X163Y619 SLICE_X244Y574:SLICE_X323Y574}",
-                "-add {BUFG_FABRIC_X4Y144:BUFG_FABRIC_X4Y239 BUFG_FABRIC_X3Y168:BUFG_FABRIC_X3Y239 BUFG_FABRIC_X0Y144:BUFG_FABRIC_X2Y239}",
-                "-add {BUFG_PS_X2Y48:BUFG_PS_X2Y59}",
-                "-add {DSP58_CPLX_X8Y287:DSP58_CPLX_X11Y309 DSP58_CPLX_X0Y287:DSP58_CPLX_X3Y309}",
-                "-add {DSP_X16Y287:DSP_X23Y309 DSP_X0Y287:DSP_X7Y309}",
-                "-add {IRI_QUAD_X29Y2508:IRI_QUAD_X229Y2891 IRI_QUAD_X65Y2328:IRI_QUAD_X83Y2507 IRI_QUAD_X33Y2328:IRI_QUAD_X48Y2507 IRI_QUAD_X65Y2324:IRI_QUAD_X80Y2327}",
-                "-add {NOC_NMU512_X3Y12:NOC_NMU512_X3Y12 NOC_NMU512_X0Y12:NOC_NMU512_X1Y12}",
-                "-add {NOC_NPS_VNOC_X3Y24:NOC_NPS_VNOC_X3Y25 NOC_NPS_VNOC_X0Y24:NOC_NPS_VNOC_X1Y25}",
-                "-add {NOC_NSU512_X3Y12:NOC_NSU512_X3Y12 NOC_NSU512_X0Y12:NOC_NSU512_X1Y12}",
-                "-add {CLOCKREGION_X4Y7:CLOCKREGION_X5Y7}"
+                "CLOCKREGION_X0Y5:CLOCKREGION_X9Y7"
             ],
             "tags": [
-                "DDR[0]",
-                "DDR[1]",
-                "DDR[2]",
-                "DDR[3]",
-                "S_AXI_CONTROL"
+                "DDR[1]"
             ],
             "wire_cap": {
                 "north": 18870,
@@ -73,15 +476,13 @@
             "centroid_x": 0,
             "centroid_y": 300,
             "pblock_ranges": [
-                "-add {SLICE_X28Y716:SLICE_X351Y879 SLICE_X48Y620:SLICE_X351Y715}",
-                "-add {DSP58_CPLX_X0Y310:DSP58_CPLX_X11Y439}",
-                "-add {DSP_X0Y310:DSP_X23Y439}",
-                "-add {IRI_QUAD_X18Y2892:IRI_QUAD_X229Y3547}",
-                "-add {NOC_NMU512_X0Y13:NOC_NMU512_X3Y17}",
-                "-add {NOC_NPS_VNOC_X0Y26:NOC_NPS_VNOC_X3Y36}",
-                "-add {NOC_NSU512_X0Y13:NOC_NSU512_X3Y18}"
+                "CLOCKREGION_X0Y8:CLOCKREGION_X9Y10",
+                "CLOCKREGION_X0Y11:CLOCKREGION_X8Y11"
             ],
             "tags": [
+                "DDR[0]",
+                "DDR[2]",
+                "DDR[3]",
                 "HBM",
                 "HBM[0]",
                 "HBM[1]",
@@ -146,7 +547,8 @@
                 "HBM[60]",
                 "HBM[61]",
                 "HBM[62]",
-                "HBM[63]"
+                "HBM[63]",
+                "S_AXI_CONTROL"
             ],
             "wire_cap": {
                 "south": 18870

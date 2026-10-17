@@ -218,6 +218,7 @@ mod tests {
             cols: 2,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             // Each physical cell-pair boundary is governed by the *smaller* of
             // its two facing declarations: min(100, 1) + min(1, 100), derated.
             // Summing each region's full side first (min(101, 101) = 101)
@@ -260,6 +261,7 @@ mod tests {
             cols: 3,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots: vec![
                 mk_slot(0, 0, 10, 0),
                 mk_slot(1, 0, 10, 0),
@@ -311,6 +313,7 @@ mod tests {
             cols: 2,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots: vec![
                 mk_slot(0, 0, 10, 0),
                 mk_slot(1, 0, WIRE_CAPACITY_INF, 0),
@@ -354,6 +357,7 @@ mod tests {
             cols: 2,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots: vec![
                 mk_slot(0, 0, 60_000_000, 0),
                 mk_slot(1, 0, 60_000_000, 0),

@@ -7,7 +7,8 @@
 //!   destination candidate regions;
 //! * endpoint-coupling, resource, and guillotine-cut constraints; and
 //! * width-weighted, vertically penalized centroid distance as the sole
-//!   variable objective cost.
+//!   variable objective cost, refined by physical coordinates for tagged
+//!   terminals when the device table provides them.
 //!
 //! After a successful solve, the achieved objective is pinned and a unique
 //! stable candidate ranking is minimized, so equal-cost optima resolve
@@ -1386,8 +1387,8 @@ fn add_cut_constraints(
     }
 }
 
-/// Width-weighted adjusted centroid distance plus the formulation's constant
-/// one.
+/// Width-weighted adjusted distance between physical terminals and region
+/// centroids, plus the formulation's constant one.
 fn add_objective(
     lp: &mut LpModel,
     graph: &FloorGraph,
@@ -1399,16 +1400,24 @@ fn add_objective(
     let centroids: std::collections::BTreeMap<Coor, (i64, i64)> = domains
         .iter()
         .flatten()
-        .map(|region| centroid_twice(device, region).map(|centroid| (*region, centroid)))
+        .map(|region| centroid_quarters(device, region).map(|centroid| (*region, centroid)))
         .collect::<Result<_, _>>()?;
     let mut objective = SparseRow::new();
     for term in y_terms(graph, domains) {
-        let src_centroid = centroids[term.src];
-        let dst_centroid = centroids[term.dst];
-        let distance_twice = (src_centroid.0 - dst_centroid.0).abs()
-            + VERTICAL_DIST_PENALTY * (src_centroid.1 - dst_centroid.1).abs();
-        if distance_twice != 0 {
-            let coefficient = f64::from(term.edge.width) * distance_twice.as_f64() / 2.0;
+        let src_location = vertex_location_quarters(
+            device,
+            &graph.vertices()[term.edge.src],
+            centroids[term.src],
+        );
+        let dst_location = vertex_location_quarters(
+            device,
+            &graph.vertices()[term.edge.dst],
+            centroids[term.dst],
+        );
+        let distance_quarters = (src_location.0 - dst_location.0).abs()
+            + VERTICAL_DIST_PENALTY * (src_location.1 - dst_location.1).abs();
+        if distance_quarters != 0 {
+            let coefficient = f64::from(term.edge.width) * distance_quarters.as_f64() / 4.0;
             objective.push(coefficient, term.var(y));
         }
     }
@@ -1416,16 +1425,29 @@ fn add_objective(
     Ok(())
 }
 
-/// Twice the exact midpoint, so half-integer rectangular centroids remain
-/// exact until the final LP coefficient conversion.
-fn centroid_twice(device: &Device, region: &Coor) -> Result<(i64, i64), IlpError> {
+/// A tagged terminal uses its measured physical anchor; ordinary vertices use
+/// the candidate region's centroid.
+fn vertex_location_quarters(device: &Device, vertex: &Vertex, centroid: (i64, i64)) -> (i64, i64) {
+    vertex
+        .required_tag
+        .as_deref()
+        .and_then(|tag| device.anchor_position_quarters(tag))
+        .unwrap_or(centroid)
+}
+
+/// Four times the exact midpoint, preserving quarter-unit physical anchor
+/// offsets until the final LP coefficient conversion.
+fn centroid_quarters(device: &Device, region: &Coor) -> Result<(i64, i64), IlpError> {
     let dl = device
         .slot(region.dl_x, region.dl_y)
         .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
     let ur = device
         .slot(region.ur_x, region.ur_y)
         .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
-    Ok((dl.centroid_x + ur.centroid_x, dl.centroid_y + ur.centroid_y))
+    Ok((
+        2 * (dl.centroid_x + ur.centroid_x),
+        2 * (dl.centroid_y + ur.centroid_y),
+    ))
 }
 
 #[cfg(test)]

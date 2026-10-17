@@ -90,12 +90,26 @@ pub fn plan_with_inputs(
     options: &PlanOptions,
     inputs: &PlanInputs,
 ) -> Result<FloorplanResult, PlanError> {
-    plan_with_retry_ceiling(
-        state,
-        options,
-        inputs,
-        options.usage_limit.max(MAX_USAGE_LIMIT),
-    )
+    let retry_ceiling = v80_retry_ceiling(state, options);
+    plan_with_retry_ceiling(state, options, inputs, retry_ceiling)
+}
+
+/// V80's SLASH service-shell pblock has a discrete URAM constraint: the
+/// Callipepla kernel needs sixteen 32-URAM task instances, while the two
+/// usable SLR slots expose 216 and 328 URAM sites.  The aggregate 512 sites
+/// fit, but a 0.95 derating leaves only 205 and 311 sites, which cannot hold
+/// seven and nine instances.  V80 therefore uses the exact shell capacity;
+/// the table still contains the physical counts and Vivado remains the final
+/// placement/timing authority.
+fn v80_retry_ceiling(state: &WorkState, options: &PlanOptions) -> f64 {
+    let default_ceiling = options.usage_limit.max(MAX_USAGE_LIMIT);
+    state
+        .flow
+        .part_num
+        .as_deref()
+        .and_then(|part| select_device(part).ok())
+        .filter(|device| device.key == "v80")
+        .map_or(default_ceiling, |_| 1.0)
 }
 
 fn plan_with_retry_ceiling(

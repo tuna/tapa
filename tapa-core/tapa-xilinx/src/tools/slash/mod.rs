@@ -267,3 +267,37 @@ fn parse_timing(report: &str, clock_hz: u64) -> Result<KernelTiming> {
         fmax_mhz: 1000.0 / achieved_period,
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{pre_synth_hook, resolve_executable};
+    use camino::Utf8PathBuf;
+
+    #[test]
+    fn v80_pre_synth_hook_reassigns_the_real_kernel_control_segment() {
+        let hook = pre_synth_hook(&Utf8PathBuf::from("/tmp/floorplan.xdc"));
+        assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
+        assert!(!hook.contains("STEPS.OPT_DESIGN.TCL.PRE"));
+        assert!(hook.contains("get_bd_cells -hier -filter {VLNV =~ \"tapa:xrtl:*\"}"));
+        assert!(hook.contains("get_property RANGE $tapa_control_seg"));
+        assert!(
+            hook.contains("assign_bd_address -offset 0x020200010000 -range $tapa_control_range")
+        );
+        assert!(hook.contains("get_bd_addr_segs -quiet -of_objects $tapa_control_space"));
+        assert!(hook.contains("SEG_[get_property NAME $tapa_kernel_cell]_reg0"));
+        assert!(hook.contains("get_property OFFSET [lindex $tapa_mapped_segments 0]"));
+        assert!(hook.contains("if {$tapa_actual_offset != 0x020200010000}"));
+    }
+
+    #[test]
+    fn resolves_absolute_executable() {
+        let resolved = resolve_executable("/bin/sh").expect("shell must exist");
+        assert_eq!(resolved, "/bin/sh");
+    }
+
+    #[test]
+    fn rejects_missing_executable() {
+        let error = resolve_executable("tapa-slash-missing-tool").expect_err("must fail");
+        assert!(error.to_string().contains("not an executable file"));
+    }
+}

@@ -224,6 +224,172 @@ mod tests {
         }
     }
 
+    /// Capacities are from Vivado 2025.1 `report_utilization` on each child
+    /// pblock nested in `pblock_slash`; crossing budgets and RM NoC anchor
+    /// sites are from the routed DCP. HBM port sites are from the generated
+    /// SLASH static NoC configuration. Clock-region ranges keep all site
+    /// classes available to the RM while the parent pblock clips the shell
+    /// footprint. SLR0 has fabric, but `pblock_slash` does not cover it, so its
+    /// available slot capacity is zero.
+    ///
+    /// Anchor offsets use the center of each site's Vivado `CLOCK_REGION`.
+    /// Across the modeled ten CR columns, X offset is `40 * CR_X - 180`
+    /// quarter-units. SLR1 rows Y5-Y7 map to -200, 0, and +200; SLR2 rows
+    /// Y8-Y11 map to -225, -75, +75, and +225.
+    #[test]
+    fn v80_models_slash_service_shell_slr_resources() {
+        let device = select_device("v80").expect("v80 resolves");
+        assert!(device.is_versal);
+        assert_eq!((device.cols, device.rows), (1, 3));
+        assert_eq!(device.platform_name.as_deref(), Some("slash_v80_service"));
+        assert_eq!(device.user_pblock_name.as_deref(), Some("pblock_slash"));
+
+        let slr0 = device.slot(0, 0).expect("SLR0 slot");
+        assert_eq!(slr0.area, tapa_ir::Area::default());
+        assert!(slr0.tags.is_empty());
+        assert_eq!(slr0.wire_cap.north, 18_870);
+        assert_eq!(slr0.pblock_ranges, ["CLOCKREGION_X0Y0:CLOCKREGION_X0Y0"]);
+
+        let slr1 = device.slot(0, 1).expect("SLR1 slot");
+        assert_eq!(slr1.area.lut, 129_760);
+        assert_eq!(slr1.area.ff, 259_520);
+        assert_eq!(slr1.area.dsp, 752);
+        assert_eq!(slr1.area.bram_18k, 408);
+        // The SLASH RM pblock exposes 216 URAM288 sites in SLR1:
+        // X1Y156:X7Y179 (168), X6Y144:X7Y155 (24), and
+        // X2Y144:X3Y155 (24).
+        assert_eq!(slr1.area.uram, 216);
+        // BRAM/URAM remain inventory data, not TAPA capacity constraints.
+        // BRAM/URAM 保留为库存数据，不作为 TAPA 容量约束。
+        assert!(!device.constrains_resource(tapa_ir::Resource::Bram18k));
+        assert!(!device.constrains_resource(tapa_ir::Resource::Uram));
+        assert!(device.constrains_resource(tapa_ir::Resource::Lut));
+        assert_eq!(slr1.wire_cap.south, 18_870);
+        assert_eq!(slr1.wire_cap.north, 18_870);
+        assert_eq!(slr1.pblock_ranges, ["CLOCKREGION_X0Y5:CLOCKREGION_X9Y7"]);
+
+        let slr2 = device.slot(0, 2).expect("SLR2 slot");
+        assert_eq!(slr2.area.lut, 707_808);
+        assert_eq!(slr2.area.ff, 1_415_616);
+        assert_eq!(slr2.area.dsp, 3_120);
+        assert_eq!(slr2.area.bram_18k, 1_950);
+        // SLR2 is restricted by the service shell to X0Y180:X7Y220:
+        // 8 columns * 41 rows = 328 URAM288 sites.
+        assert_eq!(slr2.area.uram, 328);
+        assert_eq!(slr2.wire_cap.south, 18_870);
+        assert_eq!(
+            slr2.pblock_ranges,
+            [
+                "CLOCKREGION_X0Y8:CLOCKREGION_X9Y10",
+                "CLOCKREGION_X0Y11:CLOCKREGION_X8Y11"
+            ]
+        );
+    }
+
+    #[test]
+    fn v80_places_rm_ports_on_their_routed_slrs() {
+        let device = select_device("v80").expect("v80 resolves");
+        for index in 0..64 {
+            let tag = format!("HBM[{index}]");
+            let slots = device.slots_with_tag(&tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify one SLASH endpoint");
+            assert_eq!((slots[0].x, slots[0].y), (0, 2), "{tag}");
+        }
+        // The routed RM places DDR NoC NMUs on both usable SLRs: DDR[1] is
+        // SLR1, while DDR[0], DDR[2], and DDR[3] are SLR2. The control NSU is
+        // also in SLR2. These tags must follow the RM-side NoC sites, not the
+        // external DDR controllers or an assumed nearest SLR.
+        for (tag, expected_y) in [
+            ("DDR[0]", 2),
+            ("DDR[1]", 1),
+            ("DDR[2]", 2),
+            ("DDR[3]", 2),
+            ("S_AXI_CONTROL", 2),
+        ] {
+            let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
+            assert_eq!(slots.len(), 1, "{tag} must identify one SLASH RM endpoint");
+            assert_eq!((slots[0].x, slots[0].y), (0, expected_y), "{tag}");
+        }
+        assert_eq!(
+            device.slots_with_tag("CLK_RST").count(),
+            0,
+            "SLASH has no unique RM-side SLR anchor for its distributed clock/reset",
+        );
+    }
+
+    #[test]
+    fn v80_models_hbm_physical_anchors() {
+        let device = select_device("v80").expect("v80 resolves");
+        assert_eq!(device.anchors.len(), 69, "64 HBM, four DDR, and control");
+        let hbm_anchors = device
+            .anchors
+            .iter()
+            .filter(|anchor| anchor.tag.starts_with("HBM["))
+            .collect::<Vec<_>>();
+        assert_eq!(hbm_anchors.len(), 64);
+        for anchor in hbm_anchors {
+            let site_x = anchor
+                .site
+                .strip_prefix("NOC_NMU_HBM2E_X")
+                .and_then(|site| site.strip_suffix("Y0"))
+                .and_then(|x| x.parse::<u32>().ok())
+                .unwrap_or_else(|| panic!("invalid HBM site for {}: {}", anchor.tag, anchor.site));
+            let clock_region_x = match site_x {
+                0..=5 => 0,
+                6..=11 => 1,
+                12..=19 => 2,
+                20..=27 => 3,
+                28..=35 => 4,
+                36..=43 => 5,
+                44..=51 => 6,
+                52..=59 => 7,
+                60..=63 => 8,
+                _ => panic!("HBM site outside V80 NoC columns: {}", anchor.site),
+            };
+            assert_eq!(
+                anchor.x_offset_quarters,
+                40 * i64::from(clock_region_x) - 180,
+                "{} is placed in CLOCK_REGION_X{clock_region_x}Y11",
+                anchor.tag,
+            );
+            assert_eq!(anchor.y_offset_quarters, 225, "{} is in Y11", anchor.tag);
+        }
+        assert_eq!(
+            device.anchor_position_quarters("HBM[0]"),
+            Some((-180, 1425)),
+            "HBM[0] uses its configured HBM2E NMU in the top SLR2 clock region",
+        );
+        assert_eq!(
+            device.anchor_position_quarters("HBM[63]"),
+            Some((140, 1425)),
+            "HBM[63] uses the rightmost configured HBM2E NMU",
+        );
+    }
+
+    #[test]
+    fn v80_models_ddr_and_control_physical_anchors() {
+        let device = select_device("v80").expect("v80 resolves");
+        for (tag, expected_site, expected_position) in [
+            ("DDR[0]", "NOC_NMU512_X3Y15", Some((100, 1125))),
+            ("DDR[1]", "NOC_NMU512_X2Y12", Some((20, 800))),
+            ("DDR[2]", "NOC_NMU512_X2Y17", Some((20, 1275))),
+            ("DDR[3]", "NOC_NMU512_X1Y17", Some((-60, 1275))),
+            ("S_AXI_CONTROL", "NOC_NSU512_X1Y15", Some((-60, 1125))),
+        ] {
+            let anchor = device
+                .anchors
+                .iter()
+                .find(|anchor| anchor.tag == tag)
+                .unwrap_or_else(|| panic!("missing anchor {tag}"));
+            assert_eq!(anchor.site, expected_site, "{tag}");
+            assert_eq!(
+                device.anchor_position_quarters(tag),
+                expected_position,
+                "{tag} uses its routed RM NoC site",
+            );
+        }
+    }
+
     /// `xcu55c` shares `xcu280`'s die and package, so the grid is the same
     /// 3 SLRs × 2 columns over CR X0-X7 / Y0-Y11, and the 32
     /// `BLI_HBM_AXI_INTF` sites all sit in CR row Y0 — X0-X15 under CR

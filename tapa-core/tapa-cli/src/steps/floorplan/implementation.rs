@@ -835,7 +835,7 @@ mod tests {
                 floorplan: floorplan(),
             },
             output: ImplementationOutput {
-                bitstream: format!("candidate_{index:03}.xclbin").into(),
+                bitstream: format!("candidate_{index:03}.vbin").into(),
                 timing_report: format!("candidate_{index:03}.rpt").into(),
                 timing: tapa_xilinx::KernelTiming {
                     reported_target_period_ns: 3.0,
@@ -976,8 +976,8 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let source_timing = dir.path().join("candidate.rpt");
         fs_err::write(&source_timing, "timing").expect("write timing");
-        let source_bitstream = dir.path().join("candidate.xclbin");
-        fs_err::write(&source_bitstream, "bitstream").expect("write bitstream");
+        let source_bitstream = dir.path().join("candidate.vbin");
+        fs_err::write(&source_bitstream, "vbin").expect("write bitstream");
         let CandidateOutcome::Success(mut winner) = success(0, 350.0) else {
             unreachable!("success helper returns a winner")
         };
@@ -1054,7 +1054,18 @@ mod tests {
         state.flow.clock_period = Some(ClockPeriod::ZERO);
         validate_target(&state, 2).expect_err("invalid clock must fail");
         state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
+
+        state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
+        state.flow.platform = Some("slash_v80_service".to_string());
+        let target = validate_target(&state, 2).expect("V80 uses the SLASH implementation path");
+        assert_eq!(target.platform, "slash_v80_service");
+        assert_eq!(target.target_mhz, 300);
+
         state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
-        validate_target(&state, 2).expect_err("Versal must fail early");
+        state.flow.platform = Some("xilinx_vck190_base_202410_1".to_string());
+        let error = validate_target(&state, 2).expect_err("unsupported Versal platform must fail");
+        assert!(error
+            .to_string()
+            .contains("requires the SLASH service-shell platform"));
     }
 }

@@ -99,6 +99,23 @@ impl Slot {
     }
 }
 
+/// Physical terminal location in the planner's quarter-unit metric.
+///
+/// The anchor remains tied to the slot carrying its tag; it refines wirelength
+/// cost without creating another placement region.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeviceAnchor {
+    /// Exact terminal tag consumed by the placement graph.
+    pub tag: String,
+    /// Vivado site used to establish the terminal's physical location.
+    pub site: String,
+    /// Horizontal offset from the tagged slot centroid, in quarter units.
+    pub x_offset_quarters: i64,
+    /// Vertical offset from the tagged slot centroid, in quarter units.
+    pub y_offset_quarters: i64,
+}
+
 /// A precollected FPGA device: its grid, per-slot resources, and geometry.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -114,7 +131,8 @@ pub struct Device {
     pub rows: u32,
     /// Number of grid columns.
     pub cols: u32,
-    /// Whether this is a Versal part (grid-only modeling, no NoC physics).
+    /// Whether this is a Versal part. Fixed NoC terminals may be anchored, but
+    /// the device model does not represent NoC topology or latency.
     #[serde(default)]
     pub is_versal: bool,
     /// User pblock name the floorplan XDC scopes cells under, if any.
@@ -122,6 +140,9 @@ pub struct Device {
     pub user_pblock_name: Option<String>,
     /// All slots, one per grid cell.
     pub slots: Vec<Slot>,
+    /// Optional physical terminal locations that refine the centroid wire cost.
+    #[serde(default)]
+    pub anchors: Vec<DeviceAnchor>,
 }
 
 /// A semantic error in a parsed device table.
@@ -209,16 +230,38 @@ pub enum DeviceValidationError {
         /// The tag anchoring logic to an empty slot.
         tag: String,
     },
+    /// A physical anchor does not refer to a unique tag on this device.
+    #[error("physical anchor `{tag}` must match exactly one slot tag (found {matches})")]
+    InvalidAnchorTag {
+        /// The terminal tag the physical site represents.
+        tag: String,
+        /// Number of matching slots.
+        matches: usize,
+    },
+    /// The physical site string is not a plain Vivado site identifier.
+    #[error("physical anchor `{tag}` has invalid site name `{site}`")]
+    InvalidAnchorSite {
+        /// The terminal tag the physical site represents.
+        tag: String,
+        /// The unsafe or malformed site string.
+        site: String,
+    },
+    /// The normalized anchor lies outside the tagged slot's geometric extent.
+    #[error("physical anchor `{tag}` lies outside its tagged slot")]
+    AnchorOutsideSlot {
+        /// The terminal tag the physical site represents.
+        tag: String,
+    },
 }
 
 impl Device {
     /// Whether the floorplanner should enforce this resource class.
     /// 是否由 floorplanner 对该资源类别施加容量约束。
     ///
-    /// V80's SLASH pblock is intentionally modeled only by its logic/DSP
-    /// fabric and NOC/SLR anchors. Vivado owns BRAM/URAM legality there.
-    /// V80 的 SLASH pblock 只用于逻辑/DSP 资源与 NOC/SLR 锚点建模；
-    /// BRAM/URAM 的实际合法性由 Vivado 在 shell 内决定。
+    /// V80's BRAM/URAM sites may appear in physical pblock ranges for Vivado
+    /// DFX legality, but they do not limit TAPA placement capacity.
+    /// V80 的 BRAM/URAM 站点可以列入 Vivado DFX 物理 pblock 范围，
+    /// 但不限制 TAPA 的 placement 容量预算。
     #[must_use]
     pub fn constrains_resource(&self, resource: Resource) -> bool {
         !(self.key == "v80" && matches!(resource, Resource::Bram18k | Resource::Uram))
@@ -227,54 +270,7 @@ impl Device {
     /// Validate the table values interpolated into implementation Tcl and the
     /// structural grid invariants the planner relies on.
     pub fn validate(&self) -> Result<(), DeviceValidationError> {
-        // The grid must be a complete rectangle: exactly one in-bounds slot
-        // per (x, y).
-        if self.rows == 0 || self.cols == 0 {
-            return Err(DeviceValidationError::EmptyGrid);
-        }
-        let mut seen = std::collections::BTreeSet::new();
-        for slot in &self.slots {
-            if slot.x >= self.cols || slot.y >= self.rows {
-                return Err(DeviceValidationError::SlotOutOfBounds {
-                    x: slot.x,
-                    y: slot.y,
-                    cols: self.cols,
-                    rows: self.rows,
-                });
-            }
-            if !seen.insert((slot.x, slot.y)) {
-                return Err(DeviceValidationError::DuplicateSlot {
-                    x: slot.x,
-                    y: slot.y,
-                });
-            }
-        }
-        let expected = usize::try_from(u64::from(self.rows) * u64::from(self.cols))
-            .expect("grid size fits usize");
-        if seen.len() != expected {
-            let (x, y) = (0..self.rows)
-                .flat_map(|y| (0..self.cols).map(move |x| (x, y)))
-                .find(|cell| !seen.contains(cell))
-                .expect("a shorter seen set implies a missing cell");
-            return Err(DeviceValidationError::MissingSlot { x, y });
-        }
-
-        // Centroids must follow the unit grid the placement objective prices
-        // distances in.
-        for slot in &self.slots {
-            let expected = (
-                UNIT_DIST_X * i64::from(slot.x),
-                UNIT_DIST_Y * i64::from(slot.y),
-            );
-            if (slot.centroid_x, slot.centroid_y) != expected {
-                return Err(DeviceValidationError::CentroidOffGrid {
-                    x: slot.x,
-                    y: slot.y,
-                    centroid_x: slot.centroid_x,
-                    centroid_y: slot.centroid_y,
-                });
-            }
-        }
+        self.validate_grid()?;
 
         // Exact bank anchors are platform-specific: a table that models them
         // must record its platform or the planner's platform check no-ops.
@@ -291,6 +287,8 @@ impl Device {
                 }
             }
         }
+
+        self.validate_anchors()?;
 
         // A tag is a placement anchor: the vertex that carries it can only go
         // in the slot the tag names. An empty slot therefore does not mean
@@ -345,6 +343,90 @@ impl Device {
         Ok(())
     }
 
+    fn validate_grid(&self) -> Result<(), DeviceValidationError> {
+        // The grid must be a complete rectangle: exactly one in-bounds slot
+        // per (x, y).
+        if self.rows == 0 || self.cols == 0 {
+            return Err(DeviceValidationError::EmptyGrid);
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for slot in &self.slots {
+            if slot.x >= self.cols || slot.y >= self.rows {
+                return Err(DeviceValidationError::SlotOutOfBounds {
+                    x: slot.x,
+                    y: slot.y,
+                    cols: self.cols,
+                    rows: self.rows,
+                });
+            }
+            if !seen.insert((slot.x, slot.y)) {
+                return Err(DeviceValidationError::DuplicateSlot {
+                    x: slot.x,
+                    y: slot.y,
+                });
+            }
+        }
+        let expected = usize::try_from(u64::from(self.rows) * u64::from(self.cols))
+            .expect("grid size fits usize");
+        if seen.len() != expected {
+            let (x, y) = (0..self.rows)
+                .flat_map(|y| (0..self.cols).map(move |x| (x, y)))
+                .find(|cell| !seen.contains(cell))
+                .expect("a shorter seen set implies a missing cell");
+            return Err(DeviceValidationError::MissingSlot { x, y });
+        }
+
+        // Centroids must follow the unit grid the placement objective prices
+        // distances in.
+        for slot in &self.slots {
+            let expected = (
+                UNIT_DIST_X * i64::from(slot.x),
+                UNIT_DIST_Y * i64::from(slot.y),
+            );
+            if (slot.centroid_x, slot.centroid_y) != expected {
+                return Err(DeviceValidationError::CentroidOffGrid {
+                    x: slot.x,
+                    y: slot.y,
+                    centroid_x: slot.centroid_x,
+                    centroid_y: slot.centroid_y,
+                });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_anchors(&self) -> Result<(), DeviceValidationError> {
+        let mut anchor_tags = std::collections::BTreeSet::new();
+        for anchor in &self.anchors {
+            let matches = self
+                .slots
+                .iter()
+                .filter(|slot| slot.tags.iter().any(|tag| tag == &anchor.tag))
+                .count();
+            if matches != 1 || !anchor_tags.insert(anchor.tag.as_str()) {
+                return Err(DeviceValidationError::InvalidAnchorTag {
+                    tag: anchor.tag.clone(),
+                    matches,
+                });
+            }
+            if !valid_site_name(&anchor.site) {
+                return Err(DeviceValidationError::InvalidAnchorSite {
+                    tag: anchor.tag.clone(),
+                    site: anchor.site.clone(),
+                });
+            }
+            if anchor.x_offset_quarters.unsigned_abs() > (2 * UNIT_DIST_X) as u64
+                || anchor.y_offset_quarters.unsigned_abs() > (2 * UNIT_DIST_Y) as u64
+            {
+                return Err(DeviceValidationError::AnchorOutsideSlot {
+                    tag: anchor.tag.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// The slot at grid `(x, y)`, if it exists.
     #[must_use]
     pub fn slot(&self, x: u32, y: u32) -> Option<&Slot> {
@@ -357,6 +439,18 @@ impl Device {
         self.slots
             .iter()
             .filter(move |slot| slot.tags.iter().any(|candidate| candidate == tag))
+    }
+
+    /// Physical anchor location in quarter units of the centroid metric.
+    /// Returns `None` when the tag has no explicit site anchor.
+    #[must_use]
+    pub fn anchor_position_quarters(&self, tag: &str) -> Option<(i64, i64)> {
+        let anchor = self.anchors.iter().find(|anchor| anchor.tag == tag)?;
+        let slot = self.slots_with_tag(tag).next()?;
+        Some((
+            slot.centroid_x * 4 + anchor.x_offset_quarters,
+            slot.centroid_y * 4 + anchor.y_offset_quarters,
+        ))
     }
 
     /// The summed resources of every slot in a region. `None` if any covered
@@ -413,6 +507,13 @@ fn valid_pblock_range(range: &str) -> bool {
                     character.is_ascii_alphanumeric() || matches!(character, '_' | ':')
                 })
         })
+}
+
+fn valid_site_name(site: &str) -> bool {
+    site.starts_with("NOC_")
+        && site
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || character == '_')
 }
 
 /// Return 70% of the raw wire capacity, rounded to the nearest integer (ties up).
@@ -512,6 +613,7 @@ mod tests {
             cols: 2,
             is_versal: false,
             user_pblock_name: None,
+            anchors: Vec::new(),
             slots: vec![
                 slot(0, 0, 10),
                 slot(1, 0, 20),
@@ -595,6 +697,25 @@ mod tests {
         let mut empty = grid_2x2();
         empty.cols = 0;
         assert_eq!(empty.validate(), Err(DeviceValidationError::EmptyGrid));
+    }
+
+    #[test]
+    fn device_validation_rejects_anchor_offsets_outside_the_slot() {
+        let mut device = grid_2x2();
+        device.slots[0].tags.push("PORT".to_string());
+        device.anchors.push(DeviceAnchor {
+            tag: "PORT".to_string(),
+            site: "NOC_NMU512_X0Y0".to_string(),
+            x_offset_quarters: i64::MIN,
+            y_offset_quarters: 0,
+        });
+
+        assert_eq!(
+            device.validate(),
+            Err(DeviceValidationError::AnchorOutsideSlot {
+                tag: "PORT".to_string(),
+            })
+        );
     }
 
     #[test]
