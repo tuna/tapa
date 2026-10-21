@@ -240,7 +240,8 @@ TEST(LeftoverLogTest, SingleLeftoverIsReported) {
   stream.write(2333);
 
   InSequence seq;
-  EXPECT_CALL(log, Warning(HasSubstr("'foo' destructed with leftovers")));
+  EXPECT_CALL(log,
+              Warning(HasSubstr("'foo' destroyed with leftover elements")));
   EXPECT_CALL(log, Warning(HasSubstr("'foo' leftover: 2333")));
 }
 
@@ -254,7 +255,8 @@ TEST(LeftoverLogTest, ExcessiveLeftoverIsOmitted) {
   }
 
   InSequence seq;
-  EXPECT_CALL(log, Warning(HasSubstr("'foo' destructed with leftovers")));
+  EXPECT_CALL(log,
+              Warning(HasSubstr("'foo' destroyed with leftover elements")));
   EXPECT_CALL(log, Warning(HasSubstr("'foo' leftover: "))).Times(3);
   EXPECT_CALL(
       log, Warning("Set TAPA_STREAM_LEFTOVER_LOG_COUNT to log more leftovers"));
@@ -267,7 +269,9 @@ TEST(LeftoverLogTest, InvalidLeftoverLogCountIsReported) {
   tapa::stream<int> stream("foo");
   stream.write(2333);
 
-  EXPECT_CALL(log, Error("Invalid TAPA_STREAM_LEFTOVER_LOG_COUNT value: 'x'"));
+  EXPECT_CALL(
+      log, Error("invalid TAPA_STREAM_LEFTOVER_LOG_COUNT value 'x'; expected a "
+                 "positive integer"));
 }
 
 }  // namespace

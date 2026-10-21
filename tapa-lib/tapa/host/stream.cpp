@@ -24,8 +24,8 @@ int GetLeftoverLogCount() {
   int n = 10;  // Log up to 10 by default.
   if (const char* env = getenv(kLeftoverLogCountEnvVar); env != nullptr) {
     if (n = atoi(env); n <= 0) {
-      LOG(ERROR) << "Invalid " << kLeftoverLogCountEnvVar << " value: '" << env
-                 << "'";
+      LOG(ERROR) << "invalid " << kLeftoverLogCountEnvVar << " value '" << env
+                 << "'; expected a positive integer";
     }
   }
   return n;
@@ -62,9 +62,10 @@ type_erased_queue::type_erased_queue(const std::string& name)
 
 void type_erased_queue::check_leftover() {
   if (!this->empty()) {
-    LOG(WARNING) << "channel '" << this->name
-                 << "' destructed with leftovers; hardware behavior may be "
-                    "unexpected in consecutive invocations";
+    LOG(WARNING)
+        << "channel '" << this->name
+        << "' destroyed with leftover elements; hardware behavior may be "
+           "unexpected in consecutive invocations";
     this->log_leftovers(GetLeftoverLogCount());
     if (!this->empty()) {
       LOG(WARNING) << "Set " << kLeftoverLogCountEnvVar

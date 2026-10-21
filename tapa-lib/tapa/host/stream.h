@@ -142,7 +142,10 @@ class locked_queue : public base_queue<T> {
   }
 
   frt::Stream<T>& get_frt_stream() override {
-    LOG(FATAL) << "Cannot pass this stream to FRT: " << this->get_name();
+    LOG(FATAL) << "stream '" << this->get_name()
+               << "' has infinite depth and cannot be passed to an FRT "
+                  "instance; declare it with a finite depth to use it as a "
+                  "kernel argument";
   }
 
   ~locked_queue() { this->check_leftover(); }
