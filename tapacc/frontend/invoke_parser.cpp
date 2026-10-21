@@ -512,8 +512,11 @@ void ParseInvocations(
           }
         }
 
-        ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
-                         arg->getBeginLoc(), "unexpected argument: %0")
+        ReportCustomDiag(
+            uc.ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
+            "cannot bind a %0 here; each invoke argument after the task must "
+            "be a stream or mmap channel, a scalar naming a parent task "
+            "parameter, or an integer constant")
             .AddString(arg->getStmtClassName());
       }
     }
@@ -538,18 +541,18 @@ void ValidateStreams(UpperTaskContext& uc) {
                                           : clang::SourceLocation();
     if (!produced && !consumed) {
       ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Warning, loc,
-                       "unused stream: %0")
+                       "stream '%0' is declared but never used")
           .AddString(it->first);
       it = uc.task.streams.erase(it);
     } else {
       if (produced != consumed) {
         if (consumed) {
           ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error, loc,
-                           "consumed but not produced stream: %0")
+                           "stream '%0' is consumed but never produced")
               .AddString(it->first);
         } else {
           ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error, loc,
-                           "produced but not consumed stream: %0")
+                           "stream '%0' is produced but never consumed")
               .AddString(it->first);
         }
       }
