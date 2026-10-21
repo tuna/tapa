@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<!-- Hand-authored stand-in for the Vitis HLS csynth report of the `Add`
+     task of tests/apps/vadd; consumed only through the mtime-skipped HLS
+     reload path, where it feeds report.json metrics. Values are nominal. -->
+<profile>
+  <UserAssignments>
+    <TopModelName>Add</TopModelName>
+    <Part>xcu55c-fsvh2892-2L-e</Part>
+    <TargetClockPeriod>3.33</TargetClockPeriod>
+  </UserAssignments>
+  <PerformanceEstimates>
+    <SummaryOfTimingAnalysis>
+      <EstimatedClockPeriod>1.0</EstimatedClockPeriod>
+    </SummaryOfTimingAnalysis>
+  </PerformanceEstimates>
+</profile>
