@@ -79,20 +79,60 @@ def _vendor_exec_requirements(jobs, remote_host):
 def _with_tool_constraints(target, kwargs):
     kwargs = dict(kwargs)
     constraints = list(kwargs.get("target_compatible_with", []))
-    if (not VITIS_HLS_RUNNER_AVAILABLE or (target == "xilinx-vitis" and not VIVADO_AVAILABLE)) and "@platforms//:incompatible" not in constraints:
+
+    # HLS fixtures impersonate the HLS step's output, so synth invokes no
+    # vendor tool; for the HLS target, pack (a pure zip writer) needs none
+    # either. The .xo packager remains the only fixture-path vendor gate.
+    fixtures = bool(kwargs.get("hls_fixtures"))
+    needs_hls_runner = not fixtures and not VITIS_HLS_RUNNER_AVAILABLE
+    needs_vivado = target == "xilinx-vitis" and not VIVADO_AVAILABLE
+    if (needs_hls_runner or needs_vivado) and "@platforms//:incompatible" not in constraints:
         constraints.append("@platforms//:incompatible")
     kwargs["target_compatible_with"] = constraints
     return kwargs
 
-def _staged_tapa_command(source, destination, arguments):
+def _staged_tapa_command(source, destination, arguments, pre_exec = []):
     """Copy one content-addressed stage, then execute TAPA in the next."""
-    return "\n".join([
+    lines = [
         "set -euo pipefail",
         "mkdir -p {}".format(sh_quote(destination)),
         "cp -aL {} {}".format(sh_quote(source + "/."), sh_quote(destination)),
         "chmod -R u+w {}".format(sh_quote(destination)),
-        "{}".format(" ".join([sh_quote(arg) for arg in arguments])),
-    ])
+    ]
+    lines += pre_exec
+    lines.append("{}".format(" ".join([sh_quote(arg) for arg in arguments])))
+    return "\n".join(lines)
+
+def _stage_hls_fixtures(fixture_files, destination):
+    """Stage HLS-output fixtures as an mtime-fresh `<work_dir>/hls` tree.
+
+    Each fixture must live under a directory named `hls-fixtures` laid out
+    as `<task>/{verilog,report}/<file>`, mirroring the harvested HLS tree.
+    Freshness is deterministic: the analyzed `rewritten/` tree (the
+    mtime-skip freshness deps) is stamped to a fixed past time and the
+    fixtures to now, so the skip never falls through to a real HLS run
+    regardless of sandbox clock granularity or cache-materialization
+    timestamps.
+    """
+    lines = [
+        "find {} -type f -exec touch -t 200109090146.40 {{}} +".format(
+            sh_quote(destination + "/rewritten"),
+        ),
+    ]
+    for f in fixture_files:
+        marker = "/hls-fixtures/"
+        idx = f.path.find(marker)
+        if idx < 0:
+            fail("hls_fixtures entry {} must live under a directory named 'hls-fixtures'".format(f.path))
+        rel = f.path[idx + len(marker):]
+        parts = rel.split("/")
+        if len(parts) != 3 or parts[1] not in ["verilog", "report"]:
+            fail("hls_fixtures entry {} must be laid out as hls-fixtures/<task>/verilog|report/<file>".format(f.path))
+        dest_dir = destination + "/hls/" + parts[0] + "/" + parts[1]
+        lines.append("mkdir -p {}".format(sh_quote(dest_dir)))
+        lines.append("cp {} {}".format(sh_quote(f.path), sh_quote(dest_dir + "/" + parts[2])))
+    lines.append("find {} -type f -exec touch {{}} +".format(sh_quote(destination + "/hls")))
+    return lines
 
 def _stage_pack_inputs(source, destination):
     """Keep only artifacts pack reads out of the synth work directory."""
@@ -112,6 +152,8 @@ def _stage_pack_inputs(source, destination):
 def _tapa_xo_impl(ctx):
     if ctx.attr.jobs < 1:
         fail("jobs must be >= 1, got {}".format(ctx.attr.jobs))
+    if ctx.files.hls_fixtures and ctx.attr.enable_synth_util:
+        fail("hls_fixtures is incompatible with enable_synth_util: post-synth utilization runs Vivado, which the fixture path exists to avoid")
     tapa_cli = ctx.executable.tapa_cli
     srcs = ctx.files.srcs
     top_name = ctx.attr.top_name
@@ -187,8 +229,10 @@ def _tapa_xo_impl(ctx):
         synth_cmd.extend(["--part-num", XILINX_PART_NUM, "--clock-period", "3.33"])
     if ctx.attr.enable_synth_util:
         synth_cmd.extend(["--enable-synth-util"])
+    if ctx.files.hls_fixtures:
+        synth_cmd.extend(["--skip-hls-based-on-mtime"])
 
-    synth_inputs = [analysis_dir]
+    synth_inputs = [analysis_dir] + ctx.files.hls_fixtures
     if ctx.file.ssh_key:
         synth_inputs.append(ctx.file.ssh_key)
     ctx.actions.run_shell(
@@ -199,10 +243,12 @@ def _tapa_xo_impl(ctx):
             analysis_dir.path,
             synth_dir.path,
             [ctx.executable.vitis_hls_env.path] + synth_cmd,
+            pre_exec = _stage_hls_fixtures(ctx.files.hls_fixtures, synth_dir.path) if ctx.files.hls_fixtures else [],
         ) + "\n" + _stage_pack_inputs(synth_dir.path, pack_input_dir.path),
         mnemonic = "TapaSynth",
         use_default_shell_env = True,
-        execution_requirements = _vendor_exec_requirements(ctx.attr.jobs, remote_host),
+        # Fixtures spawn no vendor processes, so no vendor reservation.
+        execution_requirements = {} if ctx.files.hls_fixtures else _vendor_exec_requirements(ctx.attr.jobs, remote_host),
     )
 
     pack_cmd = [tapa_cli.path, "--work-dir", work_dir.path] + remote_args + [
@@ -370,6 +416,17 @@ _tapa_xo = rule(
         ),
         "enable_synth_util": attr.bool(),
         "flatten_hierarchy": attr.bool(),
+        "hls_fixtures": attr.label_list(
+            allow_files = True,
+            doc = "HLS-output fixtures staged as the <work_dir>/hls tree " +
+                  "before `tapa synth --skip-hls-based-on-mtime`, replacing " +
+                  "every Vitis HLS run. Files must live under a directory " +
+                  "named 'hls-fixtures' laid out as <task>/verilog/<file> " +
+                  "and <task>/report/<task>_csynth.xml, mirroring the " +
+                  "harvested HLS tree. With the 'xilinx-hls' target the " +
+                  "whole analyze-synth-pack chain then runs without Xilinx " +
+                  "tools; 'xilinx-vitis' still needs Vivado for packaging.",
+        ),
         "ssh_key": attr.label(
             allow_single_file = True,
             default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
