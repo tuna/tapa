@@ -94,6 +94,15 @@ unit, and tapacc analysis tests remain available. Remote configurations stay
 enabled. See `bazel/vars.bzl` for the override mechanism and `VARS.bzl` for
 all available settings.
 
+The full analyze -> synth -> pack -> cosim chain also has a vendor-free
+tier: `//tests/apps/vadd:vadd-fixture-zipsim` synthesizes against
+checked-in HLS-output fixtures (`tapa_xo` with `hls_fixtures`, which runs
+`tapa synth --skip-hls-based-on-mtime` over the staged fixtures) and
+simulates the resulting zip with frt-cosim's Verilator backend, so TAPA's
+own analyze, codegen, pack, and cosim are exercised end-to-end on hosts
+with no Xilinx tools at all. The fixtures and their interface contract are
+documented in `tests/apps/vadd/hls-fixtures/PROVENANCE.md`.
+
 ## Build TAPA from Source
 
 To build TAPA, navigate to the root directory of the cloned repository and execute the following command:
