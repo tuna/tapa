@@ -201,7 +201,7 @@ impl TryFrom<DseOptions> for ValidatedOptions {
         validate_fraction("step", options.step)?;
         if options.min > options.max {
             return Err(DseError::InvalidOptions(format!(
-                "minimum {} exceeds maximum {}",
+                "the minimum utilization cap {} exceeds the maximum {}",
                 options.min, options.max
             )));
         }

@@ -344,7 +344,7 @@ pub(super) fn expected_memory_interfaces(
                     return Err(GraphError::UnsupportedMemoryInterface {
                         port: parent_port.to_owned(),
                         detail: format!(
-                            "child binding category '{}' must match child metadata '{}' and connect to a plain top mmap",
+                            "child binding category `{}` must match child metadata `{}` and connect to a plain top mmap",
                             argument.cat.as_str(),
                             child.cat.as_str(),
                         ),

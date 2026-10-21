@@ -76,7 +76,8 @@ impl Serialize for ArgCategory {
 impl<'de> Deserialize<'de> for ArgCategory {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let s = String::deserialize(deserializer)?;
-        Self::from_str(&s).map_err(|_| serde::de::Error::custom(format!("unknown category: {s}")))
+        Self::from_str(&s)
+            .map_err(|_| serde::de::Error::custom(format!("unknown port category `{s}`")))
     }
 }
 
