@@ -66,12 +66,16 @@ pub(super) fn upload_batch(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh for upload: {e}")))?;
+        .map_err(|e| {
+            XilinxError::RemoteTransfer(format!(
+                "cannot spawn ssh to upload the session files: {e}"
+            ))
+        })?;
 
     let ssh_in = ssh_child
         .stdin
         .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdin lost".into()))?;
+        .ok_or_else(|| XilinxError::RemoteTransfer("the ssh stdin pipe is unavailable".into()))?;
     let gz = flate2::write::GzEncoder::new(ssh_in, flate2::Compression::fast());
     let mut builder = tar::Builder::new(gz);
     builder.follow_symlinks(true);
@@ -82,28 +86,32 @@ pub(super) fn upload_batch(
         let rel = p.as_str();
         let rel = rel.trim_start_matches('/');
         if p.is_dir() {
-            builder
-                .append_dir_all(rel, p.as_std_path())
-                .map_err(|e| XilinxError::RemoteTransfer(format!("tar append dir {rel}: {e}")))?;
+            builder.append_dir_all(rel, p.as_std_path()).map_err(|e| {
+                XilinxError::RemoteTransfer(format!(
+                    "cannot add directory `{rel}` to the upload archive: {e}"
+                ))
+            })?;
         } else if p.is_file() {
             let mut f = std::fs::File::open(p.as_std_path())
-                .map_err(|e| XilinxError::RemoteTransfer(format!("open {p}: {e}")))?;
-            builder
-                .append_file(rel, &mut f)
-                .map_err(|e| XilinxError::RemoteTransfer(format!("tar append {rel}: {e}")))?;
+                .map_err(|e| XilinxError::RemoteTransfer(format!("cannot open `{p}`: {e}")))?;
+            builder.append_file(rel, &mut f).map_err(|e| {
+                XilinxError::RemoteTransfer(format!(
+                    "cannot add `{rel}` to the upload archive: {e}"
+                ))
+            })?;
         }
     }
-    let gz = builder
-        .into_inner()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("finish tar: {e}")))?;
-    let stdin_handle = gz
-        .finish()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("finish gz: {e}")))?;
+    let gz = builder.into_inner().map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot finish the upload archive: {e}"))
+    })?;
+    let stdin_handle = gz.finish().map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot compress the upload archive: {e}"))
+    })?;
     drop(stdin_handle);
 
     let out = ssh_child
         .wait_with_output()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh upload: {e}")))?;
+        .map_err(|e| XilinxError::RemoteTransfer(format!("cannot wait for the ssh upload: {e}")))?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         return Err(XilinxError::RemoteTransfer(format!(
@@ -121,24 +129,27 @@ pub(super) fn upload_batch(
 /// surface in the returned error and the outer retry path can classify
 /// them.
 pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest)
-        .map_err(|e| XilinxError::RemoteTransfer(format!("mkdir {}: {e}", dest.display())))?;
+    std::fs::create_dir_all(dest).map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot create `{}`: {e}", dest.display()))
+    })?;
     let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_dir));
     let mut ssh_child = session
         .exec_cmd(&remote_cmd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh for download: {e}")))?;
+        .map_err(|e| {
+            XilinxError::RemoteTransfer(format!("cannot spawn ssh to download `{remote_dir}`: {e}"))
+        })?;
 
     let ssh_out = ssh_child
         .stdout
         .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stdout lost".into()))?;
+        .ok_or_else(|| XilinxError::RemoteTransfer("the ssh stdout pipe is unavailable".into()))?;
     let mut ssh_err = ssh_child
         .stderr
         .take()
-        .ok_or_else(|| XilinxError::RemoteTransfer("ssh stderr lost".into()))?;
+        .ok_or_else(|| XilinxError::RemoteTransfer("the ssh stderr pipe is unavailable".into()))?;
 
     let stderr_handle = std::thread::spawn(move || {
         let mut buf = Vec::new();
@@ -151,9 +162,9 @@ pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Res
         archive.unpack(dest)
     };
 
-    let ssh_status = ssh_child
-        .wait()
-        .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh download: {e}")))?;
+    let ssh_status = ssh_child.wait().map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot wait for the ssh download: {e}"))
+    })?;
     let stderr_bytes = stderr_handle.join().unwrap_or_default();
     let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
     if !ssh_status.success() {
@@ -163,7 +174,9 @@ pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Res
             stderr.trim()
         )));
     }
-    unpack_result.map_err(|e| XilinxError::RemoteTransfer(format!("unpack tar download: {e}")))?;
+    unpack_result.map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot unpack the downloaded archive: {e}"))
+    })?;
     Ok(())
 }
 

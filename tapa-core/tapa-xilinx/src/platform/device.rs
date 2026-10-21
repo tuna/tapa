@@ -28,7 +28,10 @@ fn local_name(qname: &str) -> &str {
 /// Extract an attribute value by its local name.
 fn attr_value(e: &quick_xml::events::BytesStart<'_>, name: &str) -> Result<Option<String>> {
     for attr in e.attributes() {
-        let attr = attr.map_err(|err| XilinxError::HlsReportParse(err.to_string()))?;
+        let attr = attr.map_err(|err| XilinxError::DeviceConfig {
+            path: Utf8PathBuf::new(),
+            detail: format!("cannot parse an attribute of the .hpfm platform XML: {err}"),
+        })?;
         let key: &str = attr.key.as_ref();
         if local_name(key) == name {
             let val = attr
@@ -61,7 +64,7 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
             Err(e) => {
                 return Err(XilinxError::DeviceConfig {
                     path: Utf8PathBuf::new(),
-                    detail: format!("hpfm xml parse error: {e}"),
+                    detail: format!("cannot parse the .hpfm platform XML: {e}"),
                 });
             }
             Ok(Event::Eof) => break,
@@ -99,11 +102,11 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
         }),
         (None, _) => Err(XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
-            detail: "cannot find part number in platform".into(),
+            detail: "the platform XML does not declare a part number".into(),
         }),
         (_, None) => Err(XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
-            detail: "cannot find clock period in platform".into(),
+            detail: "the platform XML does not declare a clock period".into(),
         }),
     }
 }
@@ -114,7 +117,7 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
         XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
-            detail: format!("open archive: {e}"),
+            detail: format!("cannot open the platform archive: {e}"),
         }
     })?;
 
@@ -126,14 +129,14 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     let Some(idx) = hpfm_idx else {
         return Err(XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
-            detail: "archive missing .hpfm entry".into(),
+            detail: "the platform archive contains no .hpfm entry".into(),
         });
     };
     let mut entry = archive
         .by_index(idx)
         .map_err(|e| XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
-            detail: format!("open .hpfm entry: {e}"),
+            detail: format!("cannot read the .hpfm entry: {e}"),
         })?;
     let mut xml = Vec::with_capacity(entry.size() as usize);
     entry.read_to_end(&mut xml)?;

@@ -247,18 +247,19 @@ impl RemoteToolRunner {
         if inv.stdin.is_some() {
             ssh.stdin(Stdio::piped());
         }
-        let mut child = ssh
-            .spawn()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}")))?;
+        let mut child = ssh.spawn().map_err(|e| {
+            XilinxError::RemoteTransfer(format!("cannot spawn ssh to run a remote command: {e}"))
+        })?;
         if let Some(bytes) = &inv.stdin {
             if let Some(mut si) = child.stdin.take() {
-                si.write_all(bytes)
-                    .map_err(|e| XilinxError::RemoteTransfer(format!("write stdin: {e}")))?;
+                si.write_all(bytes).map_err(|e| {
+                    XilinxError::RemoteTransfer(format!("cannot write to the ssh stdin: {e}"))
+                })?;
             }
         }
-        let out = child
-            .wait_with_output()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("wait ssh exec: {e}")))?;
+        let out = child.wait_with_output().map_err(|e| {
+            XilinxError::RemoteTransfer(format!("cannot wait for the ssh command: {e}"))
+        })?;
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         let code = out.status.code().unwrap_or(-1);

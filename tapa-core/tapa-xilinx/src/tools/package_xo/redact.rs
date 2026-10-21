@@ -165,8 +165,9 @@ fn redact_cpp_paths(text: &str) -> String {
 /// Idempotent.
 pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
     let bytes = std::fs::read(path)?;
-    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| XilinxError::XoRedaction(format!("read zip: {e}")))?;
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
+        XilinxError::XoRedaction(format!("cannot open `{path}` as a zip archive: {e}"))
+    })?;
     let mut out = std::io::Cursor::new(Vec::<u8>::new());
     {
         let mut writer = zip::ZipWriter::new(&mut out);
@@ -180,9 +181,9 @@ pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
             .collect();
         names.sort();
         for name in &names {
-            let mut entry = archive
-                .by_name(name)
-                .map_err(|e| XilinxError::XoRedaction(format!("entry {name}: {e}")))?;
+            let mut entry = archive.by_name(name).map_err(|e| {
+                XilinxError::XoRedaction(format!("cannot read entry `{name}`: {e}"))
+            })?;
             let is_dir = name.ends_with('/');
             let unix_mode = if is_dir {
                 0o755
@@ -194,9 +195,9 @@ pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
                 .last_modified_time(zip::DateTime::default())
                 .unix_permissions(unix_mode);
             if is_dir {
-                writer
-                    .add_directory(name.clone(), opts)
-                    .map_err(|e| XilinxError::XoRedaction(format!("directory: {e}")))?;
+                writer.add_directory(name.clone(), opts).map_err(|e| {
+                    XilinxError::XoRedaction(format!("cannot write directory entry `{name}`: {e}"))
+                })?;
                 continue;
             }
             let mut buf = Vec::with_capacity(entry.size() as usize);
@@ -214,14 +215,16 @@ pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
             } else {
                 buf
             };
-            writer
-                .start_file(name.clone(), opts)
-                .map_err(|e| XilinxError::XoRedaction(format!("start: {e}")))?;
+            writer.start_file(name.clone(), opts).map_err(|e| {
+                XilinxError::XoRedaction(format!(
+                    "cannot start entry `{name}` in the redacted .xo: {e}"
+                ))
+            })?;
             writer.write_all(&redacted)?;
         }
-        writer
-            .finish()
-            .map_err(|e| XilinxError::XoRedaction(format!("finish: {e}")))?;
+        writer.finish().map_err(|e| {
+            XilinxError::XoRedaction(format!("cannot finish writing the redacted .xo: {e}"))
+        })?;
     }
     out.seek(SeekFrom::Start(0))?;
     std::fs::write(path, out.into_inner())?;

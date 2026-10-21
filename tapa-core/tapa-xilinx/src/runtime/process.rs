@@ -247,7 +247,7 @@ impl ToolRunner for LocalToolRunner {
         let child = cmd.start().map_err(|e| XilinxError::ToolFailure {
             program: inv.program.clone(),
             code: -1,
-            stderr: format!("spawn failed: {e}"),
+            stderr: format!("cannot spawn the process: {e}"),
         })?;
 
         // Duct feeds stdin and drains both output pipes concurrently. Its

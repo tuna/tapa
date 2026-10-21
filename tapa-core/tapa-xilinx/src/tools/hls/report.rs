@@ -135,14 +135,16 @@ pub fn normalize_hls_report_text(text: &str) -> String {
 
 pub fn parse_csynth_xml(bytes: &[u8]) -> Result<CsynthReport> {
     let parsed: CsynthXml = quick_xml::de::from_reader(bytes)
-        .map_err(|e| XilinxError::HlsReportParse(format!("csynth.xml parse failed: {e}")))?;
+        .map_err(|e| XilinxError::HlsReportParse(format!("invalid csynth.xml: {e}")))?;
 
     let top = parsed
         .user_assignments
         .top_model_name
         .or(parsed.user_assignments.top_module_name)
         .filter(|s| !s.trim().is_empty())
-        .ok_or_else(|| XilinxError::HlsReportParse("csynth.xml: TopModuleName not found".into()))?;
+        .ok_or_else(|| {
+            XilinxError::HlsReportParse("csynth.xml does not declare a top module name".into())
+        })?;
 
     let target_cp = parsed
         .user_assignments

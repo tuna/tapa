@@ -37,11 +37,9 @@ struct SshVendorFs<'a> {
 
 impl VendorRemoteFs for SshVendorFs<'_> {
     fn ssh_exec(&self, cmd: &str) -> Result<(i32, Vec<u8>, Vec<u8>)> {
-        let out = self
-            .session
-            .exec_cmd(cmd)
-            .output()
-            .map_err(|e| XilinxError::RemoteTransfer(format!("spawn ssh exec: {e}")))?;
+        let out = self.session.exec_cmd(cmd).output().map_err(|e| {
+            XilinxError::RemoteTransfer(format!("cannot spawn ssh to run a remote command: {e}"))
+        })?;
         Ok((out.status.code().unwrap_or(-1), out.stdout, out.stderr))
     }
 
@@ -114,11 +112,15 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     .expect("static macOS patch pattern must compile");
     let replacement = "#include <complex>";
     let mut any = false;
-    for entry in std::fs::read_dir(&etc_dir)
-        .map_err(|e| XilinxError::RemoteTransfer(format!("read_dir {}: {e}", etc_dir.display())))?
-    {
-        let entry =
-            entry.map_err(|e| XilinxError::RemoteTransfer(format!("read_dir entry: {e}")))?;
+    for entry in std::fs::read_dir(&etc_dir).map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot list `{}`: {e}", etc_dir.display()))
+    })? {
+        let entry = entry.map_err(|e| {
+            XilinxError::RemoteTransfer(format!(
+                "cannot read an entry of `{}`: {e}",
+                etc_dir.display()
+            ))
+        })?;
         let path = entry.path();
         let Some(name) = path.file_name().and_then(|s| s.to_str()) else {
             continue;
@@ -126,19 +128,24 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
         if !(name.starts_with("ap_") && name.ends_with("_special.h")) {
             continue;
         }
-        let content = std::fs::read_to_string(&path)
-            .map_err(|e| XilinxError::RemoteTransfer(format!("read {}: {e}", path.display())))?;
+        let content = std::fs::read_to_string(&path).map_err(|e| {
+            XilinxError::RemoteTransfer(format!("cannot read `{}`: {e}", path.display()))
+        })?;
         let new_content = pattern.replace(&content, replacement);
         if new_content != content {
             std::fs::write(&path, new_content.as_bytes()).map_err(|e| {
-                XilinxError::RemoteTransfer(format!("write {}: {e}", path.display()))
+                XilinxError::RemoteTransfer(format!("cannot write `{}`: {e}", path.display()))
             })?;
             any = true;
         }
     }
     if any {
-        std::fs::write(&marker, b"patched\n")
-            .map_err(|e| XilinxError::RemoteTransfer(format!("write macOS patch marker: {e}")))?;
+        std::fs::write(&marker, b"patched\n").map_err(|e| {
+            XilinxError::RemoteTransfer(format!(
+                "cannot write the macOS patch marker `{}`: {e}",
+                marker.display()
+            ))
+        })?;
     }
     Ok(())
 }
@@ -181,7 +188,10 @@ pub(crate) fn sync_vendor_includes_impl<F: VendorRemoteFs>(
 ) -> Result<()> {
     let cache_dir = cache_dir.to_path_buf();
     std::fs::create_dir_all(&cache_dir).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("mkdir cache {}: {e}", cache_dir.display()))
+        XilinxError::RemoteTransfer(format!(
+            "cannot create the vendor include cache `{}`: {e}",
+            cache_dir.display()
+        ))
     })?;
 
     // Advisory lock to prevent concurrent sync corruption.
@@ -191,9 +201,18 @@ pub(crate) fn sync_vendor_includes_impl<F: VendorRemoteFs>(
         .truncate(true)
         .write(true)
         .open(&lock_path)
-        .map_err(|e| XilinxError::RemoteTransfer(format!("open vendor lock: {e}")))?;
-    fs2::FileExt::lock_exclusive(&lock_file)
-        .map_err(|e| XilinxError::RemoteTransfer(format!("lock vendor cache: {e}")))?;
+        .map_err(|e| {
+            XilinxError::RemoteTransfer(format!(
+                "cannot open the vendor cache lock `{}`: {e}",
+                lock_path.display()
+            ))
+        })?;
+    fs2::FileExt::lock_exclusive(&lock_file).map_err(|e| {
+        XilinxError::RemoteTransfer(format!(
+            "cannot lock the vendor cache `{}`: {e}",
+            cache_dir.display()
+        ))
+    })?;
 
     let marker = cache_dir.join(".synced");
     if marker.is_file() {
@@ -228,8 +247,12 @@ pub(crate) fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     // after a fresh header download.
     let patch_marker = cache_dir.join(".patched_macos_complex");
     if patch_marker.exists() {
-        std::fs::remove_file(&patch_marker)
-            .map_err(|e| XilinxError::RemoteTransfer(format!("remove stale patch marker: {e}")))?;
+        std::fs::remove_file(&patch_marker).map_err(|e| {
+            XilinxError::RemoteTransfer(format!(
+                "cannot remove the stale macOS patch marker `{}`: {e}",
+                patch_marker.display()
+            ))
+        })?;
     }
 
     // Download include/.
@@ -258,8 +281,12 @@ pub(crate) fn sync_vendor_includes_impl<F: VendorRemoteFs>(
     }
 
     apply_macos_vendor_patch(&cache_dir)?;
-    std::fs::write(&marker, format!("{xilinx_tool}\n"))
-        .map_err(|e| XilinxError::RemoteTransfer(format!("write synced marker: {e}")))?;
+    std::fs::write(&marker, format!("{xilinx_tool}\n")).map_err(|e| {
+        XilinxError::RemoteTransfer(format!(
+            "cannot write the vendor sync marker `{}`: {e}",
+            marker.display()
+        ))
+    })?;
     Ok(())
 }
 

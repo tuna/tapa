@@ -168,8 +168,9 @@ fn bundle_report_paths_into_xo(
         return Ok(());
     }
     let raw = std::fs::read(xo)?;
-    let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw))
-        .map_err(|e| XilinxError::XoRedaction(format!("open xo for bundling: {e}")))?;
+    let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw)).map_err(|e| {
+        XilinxError::XoRedaction(format!("cannot open `{xo}` as a zip archive: {e}"))
+    })?;
     let tmp = tempfile::NamedTempFile::new_in(
         xo.parent()
             .unwrap_or_else(|| camino::Utf8Path::new("."))
@@ -183,28 +184,34 @@ fn bundle_report_paths_into_xo(
             .compression_method(zip::CompressionMethod::Deflated)
             .unix_permissions(0o755);
         for i in 0..z_in.len() {
-            let mut entry = z_in
-                .by_index(i)
-                .map_err(|e| XilinxError::XoRedaction(format!("read xo entry {i}: {e}")))?;
+            let mut entry = z_in.by_index(i).map_err(|e| {
+                XilinxError::XoRedaction(format!("cannot read entry {i} of `{xo}`: {e}"))
+            })?;
             let name = entry
                 .name()
-                .map_err(|e| XilinxError::XoRedaction(format!("read xo entry name {i}: {e}")))?
+                .map_err(|e| {
+                    XilinxError::XoRedaction(format!(
+                        "cannot read the name of entry {i} in `{xo}`: {e}"
+                    ))
+                })?
                 .into_owned();
             if written.contains(name.as_str()) {
                 continue;
             }
             if name.ends_with('/') {
-                z_out
-                    .add_directory(name, dir_opts)
-                    .map_err(|e| XilinxError::XoRedaction(format!("copy directory entry: {e}")))?;
+                z_out.add_directory(&name, dir_opts).map_err(|e| {
+                    XilinxError::XoRedaction(format!("cannot copy directory entry `{name}`: {e}"))
+                })?;
                 continue;
             }
             let file_opts = SimpleFileOptions::default()
                 .compression_method(zip::CompressionMethod::Deflated)
                 .unix_permissions(entry.unix_mode().unwrap_or(0o644) & 0o777);
-            z_out
-                .start_file(name, file_opts)
-                .map_err(|e| XilinxError::XoRedaction(format!("start entry: {e}")))?;
+            z_out.start_file(&name, file_opts).map_err(|e| {
+                XilinxError::XoRedaction(format!(
+                    "cannot start entry `{name}` in the bundled .xo: {e}"
+                ))
+            })?;
             let mut buf = Vec::new();
             entry.read_to_end(&mut buf)?;
             z_out.write_all(&buf)?;
@@ -220,15 +227,22 @@ fn bundle_report_paths_into_xo(
                         .compression_method(zip::CompressionMethod::Deflated)
                         .unix_permissions(0o644),
                 )
-                .map_err(|e| XilinxError::XoRedaction(format!("bundle entry: {e}")))?;
+                .map_err(|e| {
+                    XilinxError::XoRedaction(format!(
+                        "cannot add report `{name}` to the bundled .xo: {e}"
+                    ))
+                })?;
             z_out.write_all(&std::fs::read(rpt)?)?;
         }
-        z_out
-            .finish()
-            .map_err(|e| XilinxError::XoRedaction(format!("finish bundled xo: {e}")))?;
+        z_out.finish().map_err(|e| {
+            XilinxError::XoRedaction(format!("cannot finish writing the bundled .xo: {e}"))
+        })?;
     }
-    tmp.persist(xo)
-        .map_err(|e| XilinxError::XoRedaction(format!("persist bundled xo: {e}")))?;
+    tmp.persist(xo).map_err(|e| {
+        XilinxError::XoRedaction(format!(
+            "cannot replace `{xo}` with the bundled archive: {e}"
+        ))
+    })?;
     // `NamedTempFile` creates at 0600 and `persist` keeps that mode, so the
     // packaged `.xo` would end up private to the building user while the
     // `.zip` from the `xilinx-hls` target — written through `File::create` —
