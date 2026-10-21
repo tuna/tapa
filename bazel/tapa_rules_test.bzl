@@ -60,9 +60,12 @@ def _fixture_pipeline_actions_test_impl(ctx):
     _analyze, synth, _pack = actions
     asserts.equals(env, "TapaSynth", synth.mnemonic)
     asserts.true(env, _has_input(synth, "Mmap2Stream.v"), "fixture synth must read the HLS-output fixtures")
+
+    # run_shell actions expose their command through argv, not content.
+    command = " ".join(synth.argv) if synth.argv else (synth.content or "")
     asserts.true(
         env,
-        "--skip-hls-based-on-mtime" in synth.content,
+        "--skip-hls-based-on-mtime" in command,
         "fixture synth must route every HLS run through the mtime cache",
     )
     return analysistest.end(env)

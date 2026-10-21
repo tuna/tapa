@@ -5,6 +5,8 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:tapa_rules_test.bzl", "tapa_fixture_rules_test")
 load("//bazel:test_rules.bzl", "tapa_app_test")
 
 exports_files(
@@ -52,5 +54,47 @@ sh_test(
         ":vadd-zip",
         "//fpga-runtime:cargo_release_artifacts",
     ],
+    tags = ["cpu:2"],
+)
+
+# Vendor-free tier: synth runs against the checked-in HLS-output fixtures
+# under hls-fixtures/ instead of Vitis HLS, and the xilinx-hls packager is a
+# pure zip writer, so this zip and its Verilator cosim build and run with no
+# Xilinx tools at all. It exercises TAPA's own analyze, codegen, pack, and
+# frt-cosim; the fixtures stand in for Vitis HLS itself. See
+# hls-fixtures/PROVENANCE.md.
+tapa_xo(
+    name = "vadd-fixture-zip",
+    srcs = ["vadd.cpp"],
+    hdrs = ["vadd.h"],
+    include = ["."],
+    hls_fixtures = glob(["hls-fixtures/*/*/*"]),
+    target = "xilinx-hls",
+    top_name = "VecAdd",
+)
+
+tapa_fixture_rules_test(
+    name = "vadd-fixture-pipeline-actions-test",
+    target_under_test = ":vadd-fixture-zip",
+)
+
+sh_test(
+    name = "vadd-fixture-zipsim",
+    size = "enormous",
+    timeout = "moderate",
+    srcs = ["//bazel:sim_env.sh"],
+    args = [
+        "$(rootpath vadd-host)",
+        "--bitstream=$(rootpath vadd-fixture-zip)",
+        "--cosim_simulator=verilator",
+        "1000",
+    ],
+    data = [
+        ":vadd-fixture-zip",
+        ":vadd-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "@verilator//:verilator_executable",
+    ],
+    env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
     tags = ["cpu:2"],
 )
