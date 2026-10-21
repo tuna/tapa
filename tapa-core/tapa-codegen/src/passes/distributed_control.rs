@@ -147,7 +147,7 @@ impl DistributedControlPlan {
         }
         if task_name != state.design.top || !state.supports_distributed_control() {
             return Err(invalid_floorplan(format!(
-                "global controller placement cannot be realized for task '{task_name}'",
+                "global controller placement cannot be realized for task `{task_name}`",
             )));
         }
 
@@ -171,7 +171,7 @@ impl DistributedControlPlan {
             }
             (true, Some(control_region)) if control_region != global_region => {
                 return Err(invalid_floorplan(format!(
-                    "control_s_axi_U is placed in '{control_region}', expected global controller region '{global_region}'",
+                    "control_s_axi_U is placed in `{control_region}`, expected global controller region `{global_region}`",
                 )));
             }
             (false, Some(_)) => {
@@ -183,7 +183,7 @@ impl DistributedControlPlan {
         }
         let global_slot = parse_atomic_region(global_region).ok_or_else(|| {
             invalid_floorplan(format!(
-                "global controller has non-atomic placement '{global_region}'",
+                "global controller has non-atomic placement `{global_region}`",
             ))
         })?;
 
@@ -194,7 +194,7 @@ impl DistributedControlPlan {
                 let logical_name = instance.canonical_name(child_name, index).into_owned();
                 if !known_instances.insert(logical_name.clone()) {
                     return Err(invalid_floorplan(format!(
-                        "flattened child instance '{logical_name}' is not unique",
+                        "flattened child instance `{logical_name}` is not unique",
                     )));
                 }
                 child_entries.push(ChildEntry {
@@ -220,7 +220,7 @@ impl DistributedControlPlan {
             };
             if !known_instances.contains(instance) {
                 return Err(invalid_floorplan(format!(
-                    "control route names unknown child instance '{instance}'",
+                    "control route names unknown child instance `{instance}`",
                 )));
             }
             let planned = FeedForwardRoute {
@@ -235,7 +235,7 @@ impl DistributedControlPlan {
                 .is_some()
             {
                 return Err(invalid_floorplan(format!(
-                    "child '{instance}' has more than one {channel:?} route",
+                    "child `{instance}` has more than one {channel:?} route",
                 )));
             }
         }
@@ -251,22 +251,22 @@ impl DistributedControlPlan {
         } in child_entries
         {
             let child_region = floorplan.regions.get(&instance).ok_or_else(|| {
-                invalid_floorplan(format!("child '{instance}' has no instance placement"))
+                invalid_floorplan(format!("child `{instance}` has no instance placement"))
             })?;
             let child_slot = parse_atomic_region(child_region).ok_or_else(|| {
                 invalid_floorplan(format!(
-                    "child '{instance}' has non-atomic placement '{child_region}'",
+                    "child `{instance}` has non-atomic placement `{child_region}`",
                 ))
             })?;
             let local_name = local_controller_instance_name(&instance);
             let local_region = floorplan.regions.get(&local_name).ok_or_else(|| {
                 invalid_floorplan(format!(
-                    "child '{instance}' has no local controller placement '{local_name}'",
+                    "child `{instance}` has no local controller placement `{local_name}`",
                 ))
             })?;
             if local_region != child_region {
                 return Err(invalid_floorplan(format!(
-                    "local controller '{local_name}' is placed in '{local_region}', expected '{child_region}'",
+                    "local controller `{local_name}` is placed in `{local_region}`, expected `{child_region}`",
                 )));
             }
 
@@ -291,7 +291,7 @@ impl DistributedControlPlan {
                 && planned_routes.contains_key(&(instance.clone(), ControlChannel::Completion))
             {
                 return Err(invalid_floorplan(format!(
-                    "autorun child '{instance}' must not have a Completion route",
+                    "autorun child `{instance}` must not have a Completion route",
                 )));
             }
             let completion = if is_autorun {
@@ -309,7 +309,7 @@ impl DistributedControlPlan {
             if let (Some(launch), Some(reset)) = (&launch, &reset) {
                 if launch != reset {
                     return Err(invalid_floorplan(format!(
-                        "child '{instance}' Launch and Reset routes must be identical",
+                        "child `{instance}` Launch and Reset routes must be identical",
                     )));
                 }
             }
@@ -329,7 +329,7 @@ impl DistributedControlPlan {
                 flush_cycles.max(reset_latency.checked_add(completion_latency).ok_or_else(
                     || {
                         invalid_floorplan(format!(
-                            "child '{instance}' reset flush latency exceeds u32",
+                            "child `{instance}` reset flush latency exceeds u32",
                         ))
                     },
                 )?);
@@ -350,7 +350,7 @@ impl DistributedControlPlan {
 
         if let Some(((instance, channel), _)) = planned_routes.into_iter().next() {
             return Err(invalid_floorplan(format!(
-                "child '{instance}' has unexpected {channel:?} route",
+                "child `{instance}` has unexpected {channel:?} route",
             )));
         }
         flush_cycles = flush_cycles.max(
@@ -479,7 +479,7 @@ impl DistributedControlPlan {
             )?;
             if occurrence.flat_endpoint.is_some() {
                 let child = self.children.get_mut(instance).ok_or_else(|| {
-                    invalid_floorplan(format!("projected leaf '{instance}' has no control plan"))
+                    invalid_floorplan(format!("projected leaf `{instance}` has no control plan"))
                 })?;
                 child.owner = owner;
                 child.payload = payload;
@@ -487,7 +487,7 @@ impl DistributedControlPlan {
             } else {
                 if self.children.contains_key(instance) {
                     return Err(invalid_floorplan(format!(
-                        "upper scope '{instance}' collides with a physical child"
+                        "upper scope `{instance}` collides with a physical child"
                     )));
                 }
                 self.children.insert(
@@ -531,7 +531,7 @@ impl DistributedControlPlan {
     ) -> Result<(), CodegenError> {
         let child = self.children.get(logical_instance).ok_or_else(|| {
             invalid_floorplan(format!(
-                "generated child '{logical_instance}' has no control plan",
+                "generated child `{logical_instance}` has no control plan",
             ))
         })?;
         let Some(module) = modules.get_mut(task_name) else {
@@ -801,7 +801,7 @@ fn validate_scope_inventory(
                 for name in &generated {
                     if floorplan.regions.get(name) != global_region {
                         return Err(invalid_floorplan(format!(
-                            "upper scope controller '{name}' must be placed with the global controller")));
+                            "upper scope controller `{name}` must be placed with the global controller")));
                     }
                 }
             }
@@ -809,7 +809,7 @@ fn validate_scope_inventory(
         for name in generated {
             if !names.insert(name.clone()) {
                 return Err(invalid_floorplan(format!(
-                    "generated control instance '{name}' is not unique"
+                    "generated control instance `{name}` is not unique"
                 )));
             }
         }
@@ -830,10 +830,10 @@ fn take_expected_route(
     match (expected, route) {
         (false, None) => Ok(None),
         (false, Some(_)) => Err(invalid_floorplan(format!(
-            "child '{instance}' has a {channel:?} route despite co-located endpoints",
+            "child `{instance}` has a {channel:?} route despite co-located endpoints",
         ))),
         (true, None) => Err(invalid_floorplan(format!(
-            "cross-slot child '{instance}' is missing its {channel:?} route",
+            "cross-slot child `{instance}` is missing its {channel:?} route",
         ))),
         (true, Some(route)) => {
             validate_route(instance, channel, &route, source, destination)?;
@@ -851,7 +851,7 @@ fn validate_route(
 ) -> Result<(), CodegenError> {
     if route.path.len() < 2 {
         return Err(invalid_floorplan(format!(
-            "child '{instance}' {channel:?} route must cross at least two slots",
+            "child `{instance}` {channel:?} route must cross at least two slots",
         )));
     }
     let slots = route
@@ -862,25 +862,25 @@ fn validate_route(
                 .map(|coor| (coor.dl_x, coor.dl_y))
                 .ok_or_else(|| {
                     invalid_floorplan(format!(
-                        "child '{instance}' {channel:?} route has invalid slot '{region}'",
+                        "child `{instance}` {channel:?} route has invalid slot `{region}`",
                     ))
                 })
         })
         .collect::<Result<Vec<_>, _>>()?;
     if slots.first() != Some(&source) || slots.last() != Some(&destination) {
         return Err(invalid_floorplan(format!(
-            "child '{instance}' {channel:?} route has inconsistent direction",
+            "child `{instance}` {channel:?} route has inconsistent direction",
         )));
     }
     for region in &route.reg_regions {
         if Coor::from_slot_name(region).is_none() {
             return Err(invalid_floorplan(format!(
-                "child '{instance}' {channel:?} has invalid Body region '{region}'",
+                "child `{instance}` {channel:?} has invalid Body region `{region}`",
             )));
         }
         if !route.path.contains(region) {
             return Err(invalid_floorplan(format!(
-                "child '{instance}' {channel:?} Body region '{region}' is not on its route",
+                "child `{instance}` {channel:?} Body region `{region}` is not on its route",
             )));
         }
     }
@@ -902,7 +902,7 @@ fn build_payload_fields(
                 .is_none_or(|argument| !argument.cat.is_scalar())
             {
                 return Err(invalid_floorplan(format!(
-                    "child '{instance}' scalar port '{}.{}' requires a scalar argument",
+                    "child `{instance}` scalar port `{}.{}` requires a scalar argument",
                     child_name, port.name
                 )));
             }
@@ -945,7 +945,7 @@ fn build_payload_fields(
         };
         if width == 0 {
             return Err(invalid_floorplan(format!(
-                "child '{instance}' argument '{port_name}' has zero width",
+                "child `{instance}` argument `{port_name}` has zero width",
             )));
         }
         fields.push(PayloadField {
@@ -955,7 +955,9 @@ fn build_payload_fields(
             lsb: next_lsb,
         });
         next_lsb = next_lsb.checked_add(width).ok_or_else(|| {
-            invalid_floorplan(format!("child '{instance}' Launch width exceeds u32"))
+            invalid_floorplan(format!(
+                "the Launch width of child `{instance}` exceeds u32::MAX"
+            ))
         })?;
     }
     Ok((fields, next_lsb))
@@ -979,13 +981,13 @@ fn resolve_scalar_width(
         .map(|port| port.width);
     let topology_width = topology_width.filter(|width| *width > 0).ok_or_else(|| {
         invalid_floorplan(format!(
-            "cannot resolve topology scalar width for '{child_name}.{port_name}'",
+            "cannot resolve topology scalar width for `{child_name}.{port_name}`",
         ))
     })?;
     if let Some(rtl_width) = rtl_width {
         if rtl_width != topology_width {
             return Err(invalid_floorplan(format!(
-                "scalar width mismatch for '{child_name}.{port_name}': topology is {topology_width} bits but RTL is {rtl_width} bits",
+                "scalar width mismatch for `{child_name}.{port_name}`: topology is {topology_width} bits but RTL is {rtl_width} bits",
             )));
         }
     }

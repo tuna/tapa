@@ -220,7 +220,10 @@ impl ModuleInstance {
             return Err(BuilderError::EmptyName);
         }
         if self.ports.is_empty() {
-            return Err(BuilderError::NoPortConnections);
+            return Err(BuilderError::NoPortConnections {
+                module: self.module_name.clone(),
+                instance: self.instance_name.clone(),
+            });
         }
         Ok(())
     }

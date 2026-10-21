@@ -32,8 +32,8 @@ fn validate_mmap_channel_geometry(
     match (parent.chan_count, child.chan_count) {
         (Some(parent_count), Some(child_count)) if parent_count != child_count => {
             return Err(CodegenError::InvalidMmapConnection(format!(
-                "mmap channel-count mismatch: '{parent_task_name}.{parent_port_name}' declares \
-                 {parent_count}, but '{child_task_name}.{child_port_name}' declares {child_count}",
+                "mmap channel-count mismatch: `{parent_task_name}.{parent_port_name}` declares \
+                 {parent_count}, but `{child_task_name}.{child_port_name}` declares {child_count}",
             )));
         }
         _ => {}
@@ -41,8 +41,8 @@ fn validate_mmap_channel_geometry(
     match (parent.chan_size, child.chan_size) {
         (Some(parent_size), Some(child_size)) if parent_size != child_size => {
             return Err(CodegenError::InvalidMmapConnection(format!(
-                "mmap channel-size mismatch: '{parent_task_name}.{parent_port_name}' declares \
-                 {parent_size}, but '{child_task_name}.{child_port_name}' declares {child_size}",
+                "mmap channel-size mismatch: `{parent_task_name}.{parent_port_name}` declares \
+                 {parent_size}, but `{child_task_name}.{child_port_name}` declares {child_size}",
             )));
         }
         _ => {}
@@ -61,8 +61,8 @@ fn merge_mmap_port_metadata(
     if let (Some(parent), Some(child)) = (parent, child) {
         if parent.width != child.width {
             return Err(CodegenError::InvalidMmapConnection(format!(
-                "mmap width mismatch: '{parent_task_name}.{parent_port_name}' is {} bits, but \
-                 '{child_task_name}.{child_port_name}' is {} bits",
+                "mmap width mismatch: `{parent_task_name}.{parent_port_name}` is {} bits, but \
+                 `{child_task_name}.{child_port_name}` is {} bits",
                 parent.width, child.width,
             )));
         }
@@ -78,8 +78,8 @@ fn merge_mmap_port_metadata(
 
     let data_width = parent.or(child).map(|port| port.width).ok_or_else(|| {
         CodegenError::InvalidMmapConnection(format!(
-            "no port named '{parent_port_name}' on task '{parent_task_name}' or \
-             '{child_port_name}' on child '{child_task_name}' to derive the mmap data width from",
+            "no port named `{parent_port_name}` on task `{parent_task_name}` or \
+             `{child_port_name}` on child `{child_task_name}` to derive the mmap data width from",
         ))
     })?;
     let chan_count = parent
@@ -90,7 +90,7 @@ fn merge_mmap_port_metadata(
         .or_else(|| child.and_then(|port| port.chan_size));
     MemoryGeometry::new(data_width, chan_count, chan_size).map_err(|err| {
         CodegenError::InvalidMmapConnection(format!(
-            "mmap argument '{parent_task_name}.{parent_port_name}': {err}"
+            "mmap argument `{parent_task_name}.{parent_port_name}`: {err}"
         ))
     })
 }
@@ -224,16 +224,16 @@ impl TopologyWithRtl {
                         });
                     if conn.geometry.data_width() != geometry.data_width() {
                         return Err(CodegenError::InvalidMmapConnection(format!(
-                            "mmap argument '{task_name}.{parent_arg_name}' has conflicting data \
-                             widths: {} vs {} at '{child_task_name}.{child_port_name}'",
+                            "mmap argument `{task_name}.{parent_arg_name}` has conflicting data \
+                             widths: {} vs {} at `{child_task_name}.{child_port_name}`",
                             conn.geometry.data_width(),
                             geometry.data_width()
                         )));
                     }
                     if conn.geometry.channels() != geometry.channels() {
                         return Err(CodegenError::InvalidMmapConnection(format!(
-                            "mmap argument '{task_name}.{parent_arg_name}' has conflicting \
-                             channel shapes: {:?} vs {:?} at '{child_task_name}.{child_port_name}'",
+                            "mmap argument `{task_name}.{parent_arg_name}` has conflicting \
+                             channel shapes: {:?} vs {:?} at `{child_task_name}.{child_port_name}`",
                             conn.geometry.channels(),
                             geometry.channels()
                         )));
@@ -262,7 +262,7 @@ impl TopologyWithRtl {
             if let [slave] = conn.slaves.as_slice() {
                 if conn.geometry.is_hmap() && total_threads > 1 {
                     return Err(CodegenError::InvalidMmapConnection(format!(
-                        "hmap argument '{}' is driven only by '{}.{}', which \
+                        "hmap argument `{}` is driven only by `{}.{}`, which \
                          internally shares the mmap ({total_threads} threads); \
                          this combination is not supported",
                         conn.arg_name, slave.task, slave.port
@@ -681,8 +681,8 @@ mod tests {
             .aggregate_mmap_connections("top")
             .expect_err("mismatched channel counts must be rejected");
         assert!(err.to_string().contains("channel-count mismatch"));
-        assert!(err.to_string().contains("top.elems' declares 2"));
-        assert!(err.to_string().contains("leaf.data' declares 4"));
+        assert!(err.to_string().contains("top.elems` declares 2"));
+        assert!(err.to_string().contains("leaf.data` declares 4"));
     }
 
     #[test]
@@ -699,8 +699,8 @@ mod tests {
             .aggregate_mmap_connections("top")
             .expect_err("mismatched channel sizes must be rejected");
         assert!(err.to_string().contains("channel-size mismatch"));
-        assert!(err.to_string().contains("top.elems' declares 1024"));
-        assert!(err.to_string().contains("leaf.data' declares 2048"));
+        assert!(err.to_string().contains("top.elems` declares 1024"));
+        assert!(err.to_string().contains("leaf.data` declares 2048"));
     }
 
     #[test]

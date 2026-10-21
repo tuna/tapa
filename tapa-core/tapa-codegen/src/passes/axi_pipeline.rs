@@ -118,7 +118,7 @@ impl DirectAxiPipelinePlan {
             })?;
             let child_slot = parse_atomic_region(child_region).ok_or_else(|| {
                 invalid_floorplan(format!(
-                    "direct M-AXI endpoint {} has non-atomic instance placement '{child_region}'",
+                    "direct M-AXI endpoint {} has non-atomic instance placement `{child_region}`",
                     display_endpoint(&endpoint),
                 ))
             })?;
@@ -167,7 +167,7 @@ impl DirectAxiPipelinePlan {
                 for region in &route.reg_regions {
                     if Coor::from_slot_name(region).is_none() {
                         return Err(invalid_floorplan(format!(
-                            "direct M-AXI endpoint {} {:?} has invalid Body region '{region}'",
+                            "direct M-AXI endpoint {} {:?} has invalid Body region `{region}`",
                             display_endpoint(&endpoint),
                             channel,
                         )));
@@ -286,7 +286,7 @@ fn validate_channel_route(
                 .map(|coor| (coor.dl_x, coor.dl_y))
                 .ok_or_else(|| {
                     invalid_floorplan(format!(
-                        "direct M-AXI endpoint {} {:?} route has invalid slot '{region}'",
+                        "direct M-AXI endpoint {} {:?} route has invalid slot `{region}`",
                         display_endpoint(endpoint),
                         channel,
                     ))
@@ -460,7 +460,7 @@ fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
 
 fn display_endpoint(endpoint: &AxiEndpoint) -> String {
     format!(
-        "'{}.{}' (top port '{}')",
+        "`{}.{}` (top port `{}`)",
         endpoint.instance, endpoint.port, endpoint.top_port,
     )
 }
@@ -599,7 +599,7 @@ mod tests {
         let error = check(AxiChannel::ReadAddress, &bad)
             .expect_err("an invalid slot name must be rejected");
         assert!(
-            message(&error).contains("invalid slot 'NOT_A_SLOT'"),
+            message(&error).contains("invalid slot `NOT_A_SLOT`"),
             "{error}"
         );
     }

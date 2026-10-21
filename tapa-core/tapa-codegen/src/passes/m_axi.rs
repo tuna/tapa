@@ -228,13 +228,13 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
     if conn.slaves.iter().any(|slave| slave.threads == 0) {
         return Err(CodegenError::InvalidMmapConnection(format!(
-            "M-AXI slave thread count is 0 for argument '{}'",
+            "M-AXI slave thread count is 0 for argument `{}`",
             conn.arg_name
         )));
     }
     if needs_crossbar(conn) && conn.slaves.is_empty() {
         return Err(CodegenError::InvalidMmapConnection(format!(
-            "crossbar has no downstream connections for argument '{}'",
+            "crossbar has no downstream connections for argument `{}`",
             conn.arg_name
         )));
     }

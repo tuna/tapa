@@ -81,7 +81,7 @@ impl TopologyWithRtl {
         let module = self.module_map.get(&slave.task).ok_or_else(|| {
             invalid_direct_mmap(
                 &qualified_port,
-                &format!("has no RTL module attached for child task '{}'", slave.task),
+                &format!("has no RTL module attached for child task `{}`", slave.task),
             )
         })?;
         let (id_width, channel_widths, bridge_instance) = catalog_direct_mmap_rtl(
@@ -140,7 +140,7 @@ fn catalog_direct_mmap_rtl(
         return Err(invalid_direct_mmap(
             interface,
             &format!(
-                "has async mmap child '{}.{}' with neither FIFO-style async ports nor a compact M-AXI interface",
+                "has async mmap child `{}.{}` with neither FIFO-style async ports nor a compact M-AXI interface",
                 slave.task, slave.port
             ),
         ));
@@ -206,14 +206,14 @@ fn direct_mmap_child_instance<'task, 'connection>(
     let child_instances = task.tasks.get(&slave.task).ok_or_else(|| {
         invalid_direct_mmap(
             interface,
-            &format!("references missing child task definition '{}'", slave.task),
+            &format!("references missing child task definition `{}`", slave.task),
         )
     })?;
     let instance = child_instances.get(instance_index).ok_or_else(|| {
         invalid_direct_mmap(
             interface,
             &format!(
-                "references missing child instance '{}[{}]'",
+                "references missing child instance `{}[{}]`",
                 slave.task, slave.inst_idx
             ),
         )
@@ -231,17 +231,17 @@ fn validate_direct_child_mmap(
         invalid_direct_mmap(
             interface,
             &format!(
-                "references missing child binding '{}.{}'",
+                "references missing child binding `{}.{}`",
                 slave.task, slave.port
             ),
         )
     })?;
-    let child_location = format!("child port '{}.{}'", slave.task, slave.port);
+    let child_location = format!("child port `{}.{}`", slave.task, slave.port);
     if !binding.cat.is_direct_mmap() {
         return Err(invalid_direct_mmap(
             interface,
             &format!(
-                "has category '{}' at binding {child_location}, expected mmap or async_mmap",
+                "has category `{}` at binding {child_location}, expected mmap or async_mmap",
                 binding.cat.as_str()
             ),
         ));
@@ -250,14 +250,14 @@ fn validate_direct_child_mmap(
     let child_task = design.tasks.get(&slave.task).ok_or_else(|| {
         invalid_direct_mmap(
             interface,
-            &format!("references missing child task definition '{}'", slave.task),
+            &format!("references missing child task definition `{}`", slave.task),
         )
     })?;
     if child_task.level != TaskLevel::Lower {
         return Err(invalid_direct_mmap(
             interface,
             &format!(
-                "reaches upper-level child task '{}'; catalog a flattened design",
+                "reaches upper-level child task `{}`; catalog a flattened design",
                 slave.task
             ),
         ));
@@ -270,7 +270,7 @@ fn validate_direct_child_mmap(
             invalid_direct_mmap(
                 interface,
                 &format!(
-                    "has no child port metadata for '{}.{}'",
+                    "has no child port metadata for `{}.{}`",
                     slave.task, slave.port
                 ),
             )
@@ -279,7 +279,7 @@ fn validate_direct_child_mmap(
         return Err(invalid_direct_mmap(
             interface,
             &format!(
-                "has category '{}' at binding {child_location} but '{}' in child port metadata",
+                "has category `{}` at binding {child_location} but `{}` in child port metadata",
                 binding.cat.as_str(),
                 child_port.cat.as_str()
             ),
@@ -305,7 +305,7 @@ fn validate_plain_mmap_category(
         return Err(invalid_direct_mmap(
             interface,
             &format!(
-                "has category '{}' at {location}, expected plain mmap",
+                "has category `{}` at {location}, expected plain mmap",
                 category.as_str()
             ),
         ));
@@ -314,7 +314,7 @@ fn validate_plain_mmap_category(
 }
 
 fn invalid_direct_mmap(interface: &str, reason: &str) -> CodegenError {
-    CodegenError::InvalidMmapConnection(format!("direct M-AXI interface '{interface}' {reason}"))
+    CodegenError::InvalidMmapConnection(format!("direct M-AXI interface `{interface}` {reason}"))
 }
 
 fn direct_m_axi_channel_widths(data_width: u32, id_width: u32) -> AxiChannelWidths {
@@ -348,7 +348,7 @@ fn validate_compact_m_axi_ports(
             invalid_direct_mmap(
                 interface,
                 &format!(
-                    "is missing required child RTL port '{}.{port_name}'",
+                    "is missing required child RTL port `{}.{port_name}`",
                     module.name
                 ),
             )
@@ -361,7 +361,7 @@ fn validate_compact_m_axi_ports(
             return Err(invalid_direct_mmap(
                 interface,
                 &format!(
-                    "has child RTL port '{}.{port_name}' with direction {:?}, expected {:?}",
+                    "has child RTL port `{}.{port_name}` with direction {:?}, expected {:?}",
                     module.name, port.direction, expected_direction
                 ),
             ));
@@ -378,7 +378,7 @@ fn validate_compact_m_axi_ports(
             invalid_direct_mmap(
                 interface,
                 &format!(
-                    "cannot resolve ID width of child RTL port '{}.{rtl_prefix}{suffix}'{}",
+                    "cannot resolve ID width of child RTL port `{}.{rtl_prefix}{suffix}`{}",
                     module.name,
                     render_port_width(port)
                 ),
@@ -389,7 +389,7 @@ fn validate_compact_m_axi_ports(
                 return Err(invalid_direct_mmap(
                     interface,
                     &format!(
-                        "has inconsistent child RTL ID widths: '{}.{rtl_prefix}{suffix}' is \
+                        "has inconsistent child RTL ID widths: `{}.{rtl_prefix}{suffix}` is \
                          {width} bits, expected {previous} bits",
                         module.name
                     ),
@@ -424,7 +424,7 @@ fn validate_compact_m_axi_ports(
             return Err(invalid_direct_mmap(
                 interface,
                 &format!(
-                    "has child RTL port '{}.{port_name}' width {actual_width}, expected \
+                    "has child RTL port `{}.{port_name}` width {actual_width}, expected \
                      {expected_width}",
                     module.name
                 ),
@@ -609,7 +609,7 @@ mod tests {
                 .expect_err("unsupported memory topology must be rejected");
             assert!(
                 error.to_string().contains(expected),
-                "expected '{expected}', got: {error}"
+                "expected `{expected}`, got: {error}"
             );
         }
     }

@@ -1010,7 +1010,7 @@ fn test_generate_rtl_rejects_control_scalar_width_mismatch_without_mutation() {
     let error = generate_rtl(&mut state).unwrap_err();
     assert!(
         error.to_string().contains(
-            "scalar width mismatch for 'worker.count': topology is 17 bits but RTL is 16 bits"
+            "scalar width mismatch for `worker.count`: topology is 17 bits but RTL is 16 bits"
         ),
         "got {error}"
     );
