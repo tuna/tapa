@@ -363,7 +363,7 @@ fn hmap_category_is_rejected_by_the_schema() {
     let err = serde_json::from_str::<TaskGraph>(json)
         .expect_err("the hmap wire category must be rejected");
     assert!(
-        err.to_string().contains("unknown category: hmap"),
+        err.to_string().contains("unknown port category `hmap`"),
         "error must name the rejected category; got {err}",
     );
 }

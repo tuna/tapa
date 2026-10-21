@@ -88,7 +88,8 @@ pub fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> Strin
     // Neither spelling is declared (encrypted IP cannot be scanned): pin the
     // conventional one and say so, or elaboration fails far from the cause.
     eprintln!(
-        "frt-cosim: neither {conventional:?} nor {vitis_2025:?} found in the packaged RTL;          pinning {conventional:?}"
+        "frt-cosim: neither {conventional:?} nor {vitis_2025:?} was found in the \
+         packaged RTL; pinning {conventional:?}"
     );
     conventional
 }
