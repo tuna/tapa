@@ -80,7 +80,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         .flatten_hierarchy
         .then(|| tapa_ir::transforms::flatten_with_origins(&state.graph))
         .transpose()
-        .map_err(|error| CliError::Codegen(format!("flatten failed: {error}")))?;
+        .map_err(|error| CliError::Codegen(format!("cannot flatten the task graph: {error}")))?;
     generate_rtl_tree(
         &ctx.work_dir,
         &state.graph,

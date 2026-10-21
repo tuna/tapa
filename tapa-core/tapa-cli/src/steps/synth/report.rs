@@ -112,12 +112,12 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 
     let json_path = work_dir.join("report.json");
     let json_str = serde_json::to_string_pretty(&report)
-        .map_err(|e| CliError::Report(format!("report.json serialize: {e}")))?;
+        .map_err(|e| CliError::Report(format!("cannot serialize report.json: {e}")))?;
     fs::write(&json_path, json_str)?;
 
     let yaml_path = work_dir.join("report.yaml");
     let yaml_str = serde_yaml::to_string(&report)
-        .map_err(|e| CliError::Report(format!("report.yaml serialize: {e}")))?;
+        .map_err(|e| CliError::Report(format!("cannot serialize report.yaml: {e}")))?;
     fs::write(&yaml_path, yaml_str)?;
     Ok(())
 }
@@ -130,9 +130,10 @@ pub fn write_top_report(work_dir: &Path, design: &Design, override_schema: &str)
 /// of its own estimate and all descendants, while an empty `total_area` is
 /// computed as `self_area` plus every child instance's effective total.
 fn build_task_report(design: &Design, task_name: &str, schema: &str) -> Result<Report> {
-    let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::Report(format!("report: task `{task_name}` not found in design"))
-    })?;
+    let task = design
+        .tasks
+        .get(task_name)
+        .ok_or_else(|| CliError::Report(format!("task `{task_name}` not found in the design")))?;
 
     let area_source = if task.total_area.is_some() {
         MetricSource::Synth

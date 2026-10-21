@@ -90,7 +90,7 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
     for path in rtl_paths {
         if !path.exists() {
             return Err(CliError::InvalidArg(format!(
-                "--custom-rtl path does not exist: {}",
+                "--custom-rtl path `{}` does not exist",
                 path.display()
             )));
         }
@@ -109,14 +109,14 @@ pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathB
             }
             if !had_file {
                 return Err(CliError::InvalidArg(format!(
-                    "no rtl files found in {}",
+                    "no RTL files found in `{}`",
                     path.display()
                 )));
             }
             continue;
         }
         return Err(CliError::InvalidArg(format!(
-            "--custom-rtl unsupported path: {}",
+            "--custom-rtl path `{}` is neither a regular file nor a directory",
             path.display()
         )));
     }
@@ -139,7 +139,7 @@ pub(super) fn apply_custom_rtl(
     }
     if !rtl_dir.is_dir() {
         return Err(CliError::InvalidArg(format!(
-            "--custom-rtl requires the rtl directory to exist: {}",
+            "--custom-rtl requires the RTL directory `{}` to exist",
             rtl_dir.display()
         )));
     }
@@ -149,7 +149,7 @@ pub(super) fn apply_custom_rtl(
     for src in &files {
         let file_name = src.file_name().ok_or_else(|| {
             CliError::InvalidArg(format!(
-                "--custom-rtl path has no file name: {}",
+                "--custom-rtl path `{}` has no file name",
                 src.display()
             ))
         })?;

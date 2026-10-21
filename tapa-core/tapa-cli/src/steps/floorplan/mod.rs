@@ -306,7 +306,7 @@ pub struct FloorplanArgs {
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
     let parsed = value
         .parse::<f64>()
-        .map_err(|_| format!("`{value}` is not a number"))?;
+        .map_err(|_| format!("usage limit `{value}` is not a number"))?;
     if parsed.is_finite() && parsed > 0.0 && parsed <= 1.0 {
         Ok(parsed)
     } else {
@@ -434,7 +434,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     // Derive placement and controller ownership together. Parse RTL interfaces
     // before solving and reuse them directly for code generation below.
     let projection = flatten_with_origins(&state.graph)
-        .map_err(|e| CliError::Floorplan(format!("flatten failed: {e}")))?;
+        .map_err(|e| CliError::Floorplan(format!("cannot flatten the task graph: {e}")))?;
     let hdl_inputs = collect_hdl_inputs(&ctx.work_dir, &state.graph)?;
     let mut rtl_state = prepare_rtl_state(&state.graph, &hdl_inputs, Some(&projection))?;
 

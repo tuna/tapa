@@ -30,9 +30,10 @@ pub(super) fn instantiated_children<'a>(
 /// child. A task with neither is unannotated, and reports say so rather than
 /// counting it as free.
 pub(super) fn effective_total_area(design: &Design, task_name: &str) -> Result<Option<Area>> {
-    let task = design.tasks.get(task_name).ok_or_else(|| {
-        CliError::Report(format!("metrics: task `{task_name}` not found in design"))
-    })?;
+    let task = design
+        .tasks
+        .get(task_name)
+        .ok_or_else(|| CliError::Report(format!("task `{task_name}` not found in the design")))?;
     if let Some(total) = task.total_area {
         return Ok(Some(total));
     }
@@ -46,14 +47,14 @@ pub(super) fn effective_total_area(design: &Design, task_name: &str) -> Result<O
         };
         let count = u64::try_from(count).map_err(|error| {
             CliError::Report(format!(
-                "metrics: task `{task_name}` has too many child instances: {error}"
+                "task `{task_name}` has too many child instances: {error}"
             ))
         })?;
         total = total
             .checked_add_scaled(child_total, count)
             .ok_or_else(|| {
                 CliError::Report(format!(
-                    "metrics: area overflows while aggregating task `{task_name}`"
+                    "area overflows while aggregating task `{task_name}`"
                 ))
             })?;
     }

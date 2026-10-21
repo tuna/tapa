@@ -140,9 +140,13 @@ pub(super) fn collect_hls_reports(
             if !keep(path) {
                 continue;
             }
-            let rel = path
-                .strip_prefix(report_root)
-                .map_err(|e| CliError::Archive(format!("rpt strip_prefix: {e}")))?;
+            let rel = path.strip_prefix(report_root).map_err(|_| {
+                CliError::Archive(format!(
+                    "report file `{}` is not under the HLS report root `{}`",
+                    path.display(),
+                    report_root.display(),
+                ))
+            })?;
             files.push((
                 path.to_path_buf(),
                 format!("report/{task_name}/{}", rel.to_slash_lossy()),
@@ -154,10 +158,9 @@ pub(super) fn collect_hls_reports(
 }
 
 /// Add one stored entry to the archive under `name`. Entry-start
-/// failures share the `zip entry:` prefix (so an archive-structure
-/// problem reads differently from a payload copy problem), while
-/// copying `bytes` in propagates through the crate's plain
-/// `io::Error` conversion.
+/// failures name the entry (so an archive-structure problem reads
+/// differently from a payload copy problem), while copying `bytes`
+/// in propagates through the crate's plain `io::Error` conversion.
 fn add_zip_entry<W: std::io::Write + std::io::Seek>(
     z: &mut zip::ZipWriter<W>,
     opts: zip::write::FileOptions<'_, '_, ()>,
@@ -167,7 +170,7 @@ fn add_zip_entry<W: std::io::Write + std::io::Seek>(
     use std::io::Write as _;
 
     z.start_file(name, opts)
-        .map_err(|e| CliError::Archive(format!("zip entry: {e}")))?;
+        .map_err(|e| CliError::Archive(format!("cannot start zip entry `{name}`: {e}")))?;
     z.write_all(bytes)?;
     Ok(())
 }
@@ -220,9 +223,13 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     }
     rtl_files.sort();
     for rtl_file in &rtl_files {
-        let rel = rtl_file
-            .strip_prefix(&rtl_dir)
-            .map_err(|e| CliError::Archive(format!("rtl strip_prefix: {e}")))?;
+        let rel = rtl_file.strip_prefix(&rtl_dir).map_err(|_| {
+            CliError::Archive(format!(
+                "RTL file `{}` is not under the RTL directory `{}`",
+                rtl_file.display(),
+                rtl_dir.display(),
+            ))
+        })?;
         let name = format!("rtl/{}", rel.to_slash_lossy());
         add_zip_entry(&mut z, opts, &name, &fs_err::read(rtl_file)?)?;
     }
@@ -262,7 +269,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     }
 
     z.finish()
-        .map_err(|e| CliError::Archive(format!("zip finish: {e}")))?;
+        .map_err(|e| CliError::Archive(format!("cannot finalize the archive: {e}")))?;
     Ok(())
 }
 

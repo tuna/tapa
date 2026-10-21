@@ -309,7 +309,7 @@ pub fn list_hdl_files(dir: &camino::Utf8Path) -> Result<Vec<Utf8PathBuf>> {
     for ent in walkdir::WalkDir::new(dir) {
         let ent = ent.map_err(|e| {
             CliError::Codegen(format!(
-                "failed to inspect HDL directory `{}`: {e}",
+                "cannot inspect HDL directory `{}`: {e}",
                 dir.as_str()
             ))
         })?;
@@ -345,13 +345,13 @@ fn find_and_parse_csynth(
     let report_xml = if primary.is_file() { primary } else { fallback };
     let bytes = fs::read(&report_xml).map_err(|e| {
         CliError::Codegen(format!(
-            "missing cached csynth report `{}`: {e}",
+            "cannot read cached csynth report `{}`: {e}",
             report_xml.as_str(),
         ))
     })?;
     tapa_xilinx::parse_csynth_xml(&bytes).map_err(|e| {
         CliError::Codegen(format!(
-            "parse cached csynth `{}`: {e}",
+            "cannot parse cached csynth report `{}`: {e}",
             report_xml.as_str()
         ))
     })

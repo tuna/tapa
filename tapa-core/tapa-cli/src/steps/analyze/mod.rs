@@ -163,8 +163,11 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         );
     }
 
-    let graph: Graph = serde_json::from_value(graph_dict)
-        .map_err(|e| CliError::Codegen(format!("graph schema error: {e}")))?;
+    let graph: Graph = serde_json::from_value(graph_dict).map_err(|e| {
+        CliError::Codegen(format!(
+            "cannot parse the task graph produced by `tapacc`: {e}"
+        ))
+    })?;
 
     if is_top_leaf(&graph, &args.top) && args.target == AnalyzeTarget::XilinxVitis {
         return Err(CliError::InvalidArg(

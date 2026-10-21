@@ -442,7 +442,8 @@ pub fn run_update(_args: &UpdateArgs, _ctx: &CliContext) -> Result<()> {
     println!("Downloading TAPA {tag} from: {LATEST_TARBALL_URL}...");
     let download_dir = tempfile::tempdir()?;
     let tarball = download_dir.path().join("tapa.tar.gz");
-    download_tarball(&tarball).map_err(|e| CliError::Update(format!("download failed: {e}")))?;
+    download_tarball(&tarball)
+        .map_err(|e| CliError::Update(format!("cannot download the release tarball: {e}")))?;
 
     println!("Installing TAPA {tag} to \"{}\"...", root.display());
     install_tarball(&tarball, &root)?;

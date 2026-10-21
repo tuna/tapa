@@ -69,7 +69,7 @@ pub fn check_cosim_supported_categories(state: &WorkState) -> Result<()> {
         .ports
         .iter()
         .filter(|port| matches!(port.cat, ArgCategory::Immap | ArgCategory::Ommap))
-        .map(|port| format!("'{}' ({})", port.name, port.cat.as_str()))
+        .map(|port| format!("`{}` ({})", port.name, port.cat.as_str()))
         .collect();
     if unsupported.is_empty() {
         return Ok(());

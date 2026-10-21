@@ -49,7 +49,7 @@ pub fn prepare_rtl_state(
         let source = fs::read_to_string(&module_path)?;
         let parsed = VerilogModule::parse(&source).map_err(|e| {
             CliError::Codegen(format!(
-                "failed to parse HLS Verilog `{}` for task `{task_name}`: {e}",
+                "cannot parse HLS Verilog `{}` for task `{task_name}`: {e}",
                 module_path.as_str(),
             ))
         })?;
