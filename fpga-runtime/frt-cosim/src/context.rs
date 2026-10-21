@@ -33,7 +33,7 @@ impl CosimContext {
                 let path = entry["path"].as_str().ok_or_else(|| {
                     std::io::Error::new(
                         std::io::ErrorKind::InvalidData,
-                        format!("missing path for buffer '{}' in dpi_config.json", arg.name),
+                        format!("buffer `{}` has no path in dpi_config.json", arg.name),
                     )
                 })?;
                 let base = entry["base_addr"].as_u64().unwrap_or(0);
@@ -95,7 +95,7 @@ impl CosimContext {
             let Some(old) = self.buffers.get(name) else {
                 return Err(std::io::Error::new(
                     std::io::ErrorKind::NotFound,
-                    format!("unknown buffer arg '{name}'"),
+                    format!("the kernel metadata declares no buffer argument `{name}`"),
                 )
                 .into());
             };
@@ -118,14 +118,14 @@ impl CosimContext {
         if !self.streams.contains_key(name) {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::NotFound,
-                format!("unknown stream arg '{name}'"),
+                format!("the kernel metadata declares no stream argument `{name}`"),
             )
             .into());
         }
         if path.is_empty() {
             return Err(std::io::Error::new(
                 std::io::ErrorKind::InvalidInput,
-                "empty stream shm path",
+                "the stream shared-memory path is empty",
             )
             .into());
         }

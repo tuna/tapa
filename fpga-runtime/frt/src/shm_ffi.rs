@@ -56,7 +56,7 @@ pub extern "C" fn frt_shmq_create(
     let queue = match SharedMemoryQueue::create("stream", depth, width) {
         Ok(queue) => queue,
         Err(e) => {
-            set_last_error(format!("failed to create shared-memory queue: {e}"));
+            set_last_error(format!("cannot create the shared-memory queue: {e}"));
             return std::ptr::null_mut();
         }
     };
@@ -137,7 +137,7 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
         match q.try_push(slice) {
             Ok(()) => 0,
             Err(e) => {
-                set_last_error(format!("push failed: {e}"));
+                set_last_error(format!("cannot push to the shared-memory queue: {e}"));
                 -1
             }
         }

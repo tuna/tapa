@@ -127,10 +127,10 @@ impl SharedMemoryQueue {
         let tail = h.tail.load(Ordering::Acquire);
         let head = h.head.load(Ordering::Acquire);
         if tail - head >= self.layout.depth {
-            return Err("queue full");
+            return Err("the queue is full");
         }
         if data.len() != self.layout.width {
-            return Err("unexpected input size");
+            return Err("the input size does not match the queue width");
         }
         self.seg.as_mut_slice()[self.layout.slot(tail)].copy_from_slice(data);
         let new_tail = tail + 1;
@@ -186,7 +186,7 @@ fn validate_header(bytes: &[u8]) -> std::io::Result<QueueLayout> {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
             format!(
-                "unexpected magic '{:?}'; want 'tapa'",
+                "unexpected magic `{:?}`; expected `tapa`",
                 std::str::from_utf8(&hdr.magic).unwrap_or("????")
             ),
         ));
@@ -194,7 +194,7 @@ fn validate_header(bytes: &[u8]) -> std::io::Result<QueueLayout> {
     if hdr.version != 1 {
         return Err(std::io::Error::new(
             std::io::ErrorKind::InvalidData,
-            format!("unexpected version {}; want 1", hdr.version),
+            format!("unsupported queue version {}; expected 1", hdr.version),
         ));
     }
     let layout = QueueLayout::new(hdr.depth, hdr.width)

@@ -103,10 +103,16 @@ impl CosimDevice {
         let ctx = if opts.resume_from_post_sim {
             let config_path = tb_dir.path().join("dpi_config.json");
             let json = std::fs::read_to_string(&config_path).map_err(|e| {
-                FrtError::MetadataParse(format!("failed to read {}: {e}", config_path.display()))
+                FrtError::MetadataParse(format!(
+                    "cannot read the resumed cosim config `{}`: {e}",
+                    config_path.display()
+                ))
             })?;
             let config: serde_json::Value = serde_json::from_str(&json).map_err(|e| {
-                FrtError::MetadataParse(format!("failed to parse {}: {e}", config_path.display()))
+                FrtError::MetadataParse(format!(
+                    "cannot parse the resumed cosim config `{}`: {e}",
+                    config_path.display()
+                ))
             })?;
             let ctx = CosimContext::open_from_config(&spec, &config)?;
             // Strict frontier: every declared stream arg must be recorded
@@ -194,14 +200,22 @@ impl CosimDevice {
         self.arg_names
             .get(&index)
             .map(String::as_str)
-            .ok_or_else(|| FrtError::MetadataParse(format!("no arg at index {index}")))
+            .ok_or_else(|| {
+                FrtError::MetadataParse(format!(
+                    "the kernel metadata declares no argument at index {index}"
+                ))
+            })
     }
 
     fn stream_arg_name(&self, index: u32) -> Result<&str> {
         self.stream_arg_names
             .get(&index)
             .map(String::as_str)
-            .ok_or_else(|| FrtError::MetadataParse(format!("no stream arg at index {index}")))
+            .ok_or_else(|| {
+                FrtError::MetadataParse(format!(
+                    "the kernel metadata declares no stream argument at index {index}"
+                ))
+            })
     }
 
     /// Sorted `'name' (arg index N)` listing of the stream args the kernel
@@ -1293,7 +1307,8 @@ mod tests {
             .set_stream_arg(9, "/dev/shm/nope")
             .expect_err("unknown stream arg index");
         assert!(
-            err.to_string().contains("no stream arg at index 9"),
+            err.to_string()
+                .contains("declares no stream argument at index 9"),
             "{err}"
         );
     }

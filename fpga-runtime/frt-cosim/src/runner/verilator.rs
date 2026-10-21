@@ -259,8 +259,9 @@ struct XilinxFpIpConfig {
 
 fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
     let mut generated = HashSet::new();
-    let ip_re = Regex::new(r"(?m)^\s*(\w+_ip)\s+\w+\s*\(")
-        .map_err(|e| CosimError::Metadata(format!("regex compile failed: {e}")))?;
+    let ip_re = Regex::new(r"(?m)^\s*(\w+_ip)\s+\w+\s*\(").map_err(|e| {
+        CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
+    })?;
 
     for entry in std::fs::read_dir(rtl_dir)? {
         let entry = entry?;
@@ -434,8 +435,9 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         return Ok(None);
     }
 
-    let config_re = Regex::new(r"CONFIG\.([A-Za-z0-9_]+)\s+([^\s\\]+)")
-        .map_err(|e| CosimError::Metadata(format!("regex compile failed: {e}")))?;
+    let config_re = Regex::new(r"CONFIG\.([A-Za-z0-9_]+)\s+([^\s\\]+)").map_err(|e| {
+        CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
+    })?;
     let mut config = HashMap::<String, String>::new();
     for caps in config_re.captures_iter(content) {
         let key = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
@@ -482,7 +484,9 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
     };
     let latency = match config.get("c_latency") {
         Some(s) => s.parse::<usize>().map_err(|e| {
-            CosimError::Metadata(format!("invalid c_latency '{s}' in FP IP TCL: {e}"))
+            CosimError::Metadata(format!(
+                "invalid c_latency `{s}` in the floating-point IP Tcl: {e}"
+            ))
         })?,
         None => {
             return Err(CosimError::Metadata(

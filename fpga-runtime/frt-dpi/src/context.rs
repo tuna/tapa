@@ -23,11 +23,14 @@ pub struct DpiContext {
 
 #[derive(Debug, thiserror::Error)]
 pub enum DpiError {
-    #[error("TAPA_DPI_CONFIG not set")]
+    #[error(
+        "TAPA_DPI_CONFIG is not set; the DPI library must be loaded by a TAPA \
+         simulation runner, which sets it"
+    )]
     EnvMissing,
     #[error("TAPA_DPI_CONFIG parse error: {0}")]
     ParseError(#[from] serde_json::Error),
-    #[error("shm open error: {0}")]
+    #[error("cannot open the shared-memory segment: {0}")]
     Io(#[from] std::io::Error),
 }
 

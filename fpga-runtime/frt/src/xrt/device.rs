@@ -463,7 +463,7 @@ impl Device for XrtDevice {
                         )
                         .map_err(|code| FrtError::OpenCl {
                             code,
-                            msg: format!("set OpenCL scalar kernel arg: error code {code}"),
+                            msg: format!("cannot set scalar kernel argument {}", arg.id),
                         })?;
                     };
                 }
@@ -781,7 +781,7 @@ fn bind_buffer_arg(kernel: &Kernel, index: u32, buffer: &Buffer<u8>) -> Result<(
         )
         .map_err(|code| FrtError::OpenCl {
             code,
-            msg: format!("set OpenCL mmap kernel arg: error code {code}"),
+            msg: format!("cannot set mmap kernel argument {index}"),
         })
     }
 }

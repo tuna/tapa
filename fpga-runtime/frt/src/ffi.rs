@@ -92,7 +92,7 @@ fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String
     let c = unsafe { CStr::from_ptr(ptr) };
     c.to_str()
         .map(Some)
-        .map_err(|e| format!("invalid utf-8 in {field}: {e}"))
+        .map_err(|e| format!("invalid UTF-8 in {field}: {e}"))
 }
 
 fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
@@ -102,7 +102,9 @@ fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
         "xsim" => Ok(Simulator::Xsim {
             legacy: env_bool(frt_shm::env::FRT_XSIM_LEGACY),
         }),
-        other => Err(format!("unknown simulator '{other}'")),
+        other => Err(format!(
+            "unknown simulator `{other}`; expected `xsim` or `verilator`"
+        )),
     }
 }
 
@@ -223,11 +225,11 @@ pub extern "C" fn frt_instance_set_buffer_arg_typed(
 ) -> c_int {
     clear_last_error();
     if ptr.is_null() && bytes != 0 {
-        set_last_error("buffer ptr is null");
+        set_last_error("the buffer pointer is null");
         return -1;
     }
     let Some(access) = BufferAccess::from_wire(tag) else {
-        set_last_error(format!("unknown buffer access {tag}"));
+        set_last_error(format!("unknown buffer access tag {tag}"));
         return -1;
     };
     let Some(h) = with_handle_mut(handle) else {
@@ -370,6 +372,9 @@ mod tests {
     #[test]
     fn garbage_simulator_name_errors() {
         let err = parse_simulator(Some("not-a-simulator")).expect_err("garbage must error");
-        assert_eq!(err, "unknown simulator 'not-a-simulator'");
+        assert_eq!(
+            err,
+            "unknown simulator `not-a-simulator`; expected `xsim` or `verilator`"
+        );
     }
 }

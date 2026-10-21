@@ -6,7 +6,7 @@ pub enum CosimError {
     Io(#[from] std::io::Error),
     #[error("simulator exited with status {0}")]
     SimFailed(std::process::ExitStatus),
-    #[error("tool not found: {0}")]
+    #[error("simulator tool `{0}` not found")]
     ToolNotFound(String),
 }
 

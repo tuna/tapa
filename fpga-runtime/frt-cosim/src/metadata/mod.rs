@@ -130,8 +130,9 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         files.classify(&name, path);
     }
 
-    let xml = kernel_xml
-        .ok_or_else(|| CosimError::Metadata(format!("no kernel.xml in {}", src.display())))?;
+    let xml = kernel_xml.ok_or_else(|| {
+        CosimError::Metadata(format!("no kernel.xml found in `{}`", src.display()))
+    })?;
     let mut spec = xo::parse_kernel_xml(&xml, extract_dir.path())?;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;

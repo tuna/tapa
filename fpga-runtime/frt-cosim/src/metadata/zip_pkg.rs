@@ -22,7 +22,10 @@ const LEGACY_MMAP_ADDR_WIDTH: u32 = 64;
 /// simulator binds against, so the order here is load-bearing.
 pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
     let top_task = graph.tasks.get(&graph.top).ok_or_else(|| {
-        CosimError::Metadata(format!("top task '{}' missing from tasks", graph.top))
+        CosimError::Metadata(format!(
+            "top task `{}` is missing from the task graph",
+            graph.top
+        ))
     })?;
 
     let mut args = Vec::new();
