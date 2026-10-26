@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:aie_test.bzl", "aie_vck190_test")
 
 cc_binary(
     name = "aie-vadd-host",
@@ -99,5 +100,18 @@ sh_test(
         "//fpga-runtime:cargo_release_artifacts",
         "//tapa-core:tapa",
     ],
+    tags = ["manual"],
+)
+
+# Full VCK190 system emulation, including the aarch64 XRT host and graph.
+# Run with --config=vck190 and VERSAL_COMMON set to the extracted common image.
+aie_vck190_test(
+    name = "aie-vadd-hw-emu",
+    size = "enormous",
+    exec_compatible_with = ["@platforms//cpu:x86_64"],
+    headers = ["vadd.h"],
+    host = ":aie-vadd-host",
+    kernel = "vadd.cpp",
+    platform = "xilinx_vck190_base_202520_1",
     tags = ["manual"],
 )
