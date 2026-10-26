@@ -25,6 +25,8 @@ build --incompatible_strict_action_env
 # Vitis headers says what happened instead of erroring.
 test --skip_incompatible_explicit_targets
 
+build:vck190 --platforms=//bazel:vck190-aarch64
+
 build:asan --compilation_mode=dbg
 build:asan --copt -fsanitize=address
 build:asan --linkopt -fsanitize=address

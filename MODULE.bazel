@@ -105,18 +105,29 @@ llvm_toolchain(
 rust = use_extension("@rules_rust//rust:extensions.bzl", "rust", dev_dependency = True)
 rust.toolchain(
     edition = "2021",
+    extra_target_triples = ["aarch64-unknown-linux-gnu"],
     versions = ["1.99.1"],
 )
 use_repo(rust, "rust_toolchains")
 
 register_toolchains("@rust_toolchains//:all")
 
+vck190_sysroot = use_repo_rule("//bazel:vck190_sysroot.bzl", "vck190_sysroot")
+
+vck190_sysroot(name = "vck190_sysroot")
+
 llvm.toolchain(
+    cxx_include_layout = {"linux-aarch64": "yocto"},
     llvm_version = "23.1.2",
+    multiarch = {"linux-aarch64": "aarch64-amd-linux"},
     stdlib = {
         "linux-x86_64": "stdc++",
-        "linux-aarch64": "stdc++",
+        "linux-aarch64": "stdc++-13.4.0",
     },
+)
+llvm.sysroot(
+    label = "@vck190_sysroot//sysroot:sysroot",
+    targets = ["linux-aarch64"],
 )
 llvm.toolchain_root(label = "@llvm_toolchain_distribution//:BUILD.bazel")
 use_repo(llvm, "llvm_toolchain")
@@ -137,9 +148,11 @@ git_override(
     module_name = "rules_boost",
     commit = "d4d306ef48b7dbddf0389e48b90f6eb74ec18a71",
     patch_cmds = [
-        # Enable BOOST_USE_SEGMENTED_STACKS, BOOST_USE_ASAN, BOOST_USE_UCONTEXT.
+        # Enable segmented stacks where the GCC runtime supports them, plus
+        # BOOST_USE_ASAN and BOOST_USE_UCONTEXT on every target.
         # Use perl -i for cross-platform compatibility (sed -i differs between GNU and BSD).
-        """perl -i -pe 'print qq{    defines=["BOOST_USE_ASAN","BOOST_USE_SEGMENTED_STACKS","BOOST_USE_UCONTEXT"],\\n} if /name = "context",/' boost.BUILD""",
+        """perl -i -pe 'print qq{config_setting(\\n    name = "aarch64",\\n    constraint_values = ["@" + "platforms//cpu:aarch64"],\\n)\\n\\n} if $. == 1' boost.BUILD""",
+        """perl -i -pe 'print qq{    defines=select({":aarch64":["BOOST_USE_ASAN","BOOST_USE_UCONTEXT"],"//conditions:default":["BOOST_USE_ASAN","BOOST_USE_SEGMENTED_STACKS","BOOST_USE_UCONTEXT"]}),\\n} if /name = "context",/' boost.BUILD""",
         "perl -i -ne 'print unless /fiber\\.cpp/' boost.BUILD",
     ],
     remote = "https://github.com/nelhage/rules_boost.git",

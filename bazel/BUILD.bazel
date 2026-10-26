@@ -15,6 +15,22 @@ config_setting(
     constraint_values = ["@platforms//os:macos"],
 )
 
+platform(
+    name = "vck190-aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+)
+
+config_setting(
+    name = "is_vck190_aarch64",
+    constraint_values = [
+        "@platforms//cpu:aarch64",
+        "@platforms//os:linux",
+    ],
+)
+
 exports_files([
     "run_aiesim.sh",
     "sim_env.sh",

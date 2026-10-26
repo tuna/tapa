@@ -27,7 +27,14 @@ def _single_file(target, attr_name):
         fail("{} entries must provide exactly one file, got {}".format(attr_name, len(files)))
     return files[0]
 
-def _script_prelude(cargo, rustc, manifest, first_output, build_args):
+def _script_prelude(cargo, rustc, manifest, first_output, build_args, target = "", linker = ""):
+    target_setup = ""
+    if target:
+        target_setup = "export CARGO_BUILD_TARGET={}\nexport CARGO_TARGET_{}_LINKER={}\n".format(
+            _sh_quote(target),
+            target.replace("-", "_").upper(),
+            _sh_quote(linker),
+        )
     return """#!/bin/bash
 set -euo pipefail
 
@@ -47,7 +54,7 @@ rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
 export CARGO_HOME="$WORK_DIR/cargo-home"
 export CARGO_TARGET_DIR="$WORK_DIR/cargo-target"
-
+{target_setup}
 "$CARGO" build --manifest-path "$MANIFEST" --release --locked {build_args}
 
 copy_required() {{
@@ -67,6 +74,7 @@ empty() {{
         first_output = _sh_quote(first_output.path),
         work_name = first_output.owner.name,
         build_args = " ".join([_sh_quote(arg) for arg in build_args]),
+        target_setup = target_setup,
     )
 
 def _cargo_test_impl(ctx):
@@ -231,16 +239,47 @@ def _cargo_artifacts_impl(ctx):
     if not outputs:
         fail("outs must not be empty")
 
+    rustc = ctx.file._rustc
+    tools = [ctx.file._cargo, ctx.file._rustc]
+    if ctx.attr.target:
+        if not ctx.attr.linker:
+            fail("linker must be set when target is set")
+        rustc = ctx.actions.declare_file(ctx.label.name + "_rustc_wrapper.sh")
+        ctx.actions.write(
+            rustc,
+            """#!/bin/bash
+SELF=$(realpath "$0")
+EXECROOT="${{SELF%/{wrapper_path}}}"
+for arg in "$@"; do
+  if [ "$arg" = {target} ]; then
+    exec "${{EXECROOT}}/{target_rustc}" "$@"
+  fi
+done
+exec "${{EXECROOT}}/{host_rustc}" "$@"
+""".format(
+                target = _sh_quote(ctx.attr.target),
+                wrapper_path = rustc.path,
+                target_rustc = ctx.file._rustc_target.path,
+                host_rustc = ctx.file._rustc.path,
+            ),
+            is_executable = True,
+        )
+        tools.extend([rustc, ctx.file._rustc_target])
+
     script = ctx.actions.declare_file(ctx.label.name + "_cargo_artifacts.sh")
     body = _script_prelude(
         ctx.file._cargo,
-        ctx.file._rustc,
+        rustc,
         ctx.file.manifest,
         outputs[0],
         ctx.attr.build_args,
+        ctx.attr.target,
+        ctx.attr.linker,
     )
+    artifact_dir = ctx.attr.target + "/release" if ctx.attr.target else "release"
     for artifact, output in _parse_artifacts(ctx, "artifacts"):
-        body += "copy_required \"$CARGO_TARGET_DIR/release/{artifact}\" {output}\n".format(
+        body += "copy_required \"$CARGO_TARGET_DIR/{artifact_dir}/{artifact}\" {output}\n".format(
+            artifact_dir = artifact_dir,
             artifact = artifact,
             output = _sh_quote(output.path),
         )
@@ -260,7 +299,7 @@ def _cargo_artifacts_impl(ctx):
     ctx.actions.run(
         inputs = depset(ctx.files.srcs + [ctx.file.manifest]),
         outputs = outputs,
-        tools = [ctx.file._cargo, ctx.file._rustc, script],
+        tools = tools + [script],
         executable = script,
         mnemonic = "CargoArtifacts",
         execution_requirements = _exec_requirements(ctx),
@@ -334,6 +373,8 @@ _COMMON_ATTRS = {
     "manifest": attr.label(allow_single_file = True, mandatory = True),
     "outs": attr.output_list(mandatory = True),
     "build_args": attr.string_list(),
+    "target": attr.string(),
+    "linker": attr.string(),
     "local": attr.bool(default = False),
     "_cargo": attr.label(
         allow_single_file = True,
@@ -343,6 +384,11 @@ _COMMON_ATTRS = {
     "_rustc": attr.label(
         allow_single_file = True,
         cfg = "exec",
+        default = Label("@rules_rust//rust/toolchain:current_rustc_files"),
+    ),
+    "_rustc_target": attr.label(
+        allow_single_file = True,
+        cfg = "target",
         default = Label("@rules_rust//rust/toolchain:current_rustc_files"),
     ),
 }
