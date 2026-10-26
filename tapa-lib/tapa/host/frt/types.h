@@ -78,8 +78,9 @@ struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
 
   static std::string Encode(const elem_t<T>& val) {
     std::string bytes(kBytes, '\0');
-    for (int bit = 0; bit < kBits; ++bit) {
-      if (val.val[bit]) bytes[bit / 8] |= 1u << (bit % 8);
+    memcpy(bytes.data(), &val.val, kDataBytes);
+    if constexpr (kBits % 8 != 0) {
+      bytes[kDataBytes - 1] &= (1u << (kBits % 8)) - 1;
     }
     bytes[kDataBytes] = val.eot;
     return bytes;
@@ -88,9 +89,10 @@ struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
   static elem_t<T> Decode(std::string_view bytes) {
     CHECK_EQ(bytes.size(), kBytes);
     elem_t<T> val{};
-    for (int bit = 0; bit < kBits; ++bit) {
-      val.val[bit] =
-          (static_cast<unsigned char>(bytes[bit / 8]) >> (bit % 8)) & 1;
+    memcpy(&val.val, bytes.data(), kDataBytes);
+    if constexpr (kBits % 8 != 0) {
+      reinterpret_cast<unsigned char*>(&val.val)[kDataBytes - 1] &=
+          (1u << (kBits % 8)) - 1;
     }
     val.eot = bytes[kDataBytes] != 0;
     return val;
