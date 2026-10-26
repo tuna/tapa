@@ -6,10 +6,29 @@ load("//bazel:aie_test.bzl", "aie_vck190_test")
 
 cc_binary(
     name = "aie-vadd-host",
-    srcs = glob([
-        "*.cpp",
-        "*.h",
-    ]),
+    srcs = glob(
+        [
+            "*.cpp",
+            "*.h",
+        ],
+        exclude = ["detach.cpp"],
+    ),
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+cc_binary(
+    name = "aie-detach-host",
+    srcs = glob(
+        [
+            "*.cpp",
+            "*.h",
+        ],
+        exclude = ["detach.cpp"],
+    ),
+    copts = ["-DTAPA_AIE_TEST_REPEATS=2"],
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",
@@ -112,6 +131,20 @@ aie_vck190_test(
     headers = ["vadd.h"],
     host = ":aie-vadd-host",
     kernel = "vadd.cpp",
+    platform = "xilinx_vck190_base_202520_1",
+    tags = ["manual"],
+)
+
+aie_vck190_test(
+    name = "aie-detach-hw-emu",
+    size = "enormous",
+    exec_compatible_with = ["@platforms//cpu:x86_64"],
+    headers = [
+        "vadd.cpp",
+        "vadd.h",
+    ],
+    host = ":aie-detach-host",
+    kernel = "detach.cpp",
     platform = "xilinx_vck190_base_202520_1",
     tags = ["manual"],
 )

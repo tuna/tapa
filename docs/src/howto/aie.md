@@ -276,6 +276,9 @@ continues to run on the build machine. The test compiles the design, creates an
 SD image, launches QEMU and the hardware simulators, and invokes the guest host
 twice. It is a manual, vendor-gated test and can take hours. Set
 `AIE_HW_EMU_TIMEOUT` to override its default 7200-second emulator timeout.
+The `aie-detach-hw-emu` target in the same package checks run-forever graph
+restart by invoking twice in one guest process and clearing the output before
+each invocation.
 
 For another design, pass the common-image files and any guest applications to
 `tapa pack` (or `tapa compile`) together with `-s`:

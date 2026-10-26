@@ -9,6 +9,9 @@
 #ifndef TAPA_AIE_TEST_FRAME_SIZE
 #define TAPA_AIE_TEST_FRAME_SIZE 0
 #endif
+#ifndef TAPA_AIE_TEST_DETACH
+#define TAPA_AIE_TEST_DETACH 0
+#endif
 #if TAPA_AIE_TEST_FRAME_SIZE > 0
 #define TAPA_AIE_TEST_FRAME_ATTR [[tapa::aie_frame(TAPA_AIE_TEST_FRAME_SIZE)]]
 #else
@@ -45,6 +48,10 @@ void VecAdd(tapa::mmap<vec4f> a, tapa::mmap<vec4f> b, tapa::mmap<vec4f> c,
   tapa::task()
       .invoke(Mmap2Stream, a, n, a_q)
       .invoke(Mmap2Stream, b, n, b_q)
+#if TAPA_AIE_TEST_DETACH
+      .invoke<tapa::detach>(Add, a_q, b_q, c_q, n)
+#else
       .invoke(Add, a_q, b_q, c_q, n)
+#endif
       .invoke(Stream2Mmap, c_q, c, n);
 }
