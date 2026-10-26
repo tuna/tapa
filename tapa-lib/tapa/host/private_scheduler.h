@@ -48,12 +48,9 @@ class worker {
               delete coroutine;
               f();
             };
-            // Use 8 MB stack per coroutine, matching typical thread stack
-            // sizes. Without -fsplit-stacks (e.g., when using Clang),
-            // segmented_stack uses a fixed-size allocation and tasks with
-            // large local arrays (e.g., 128 KB in graph's ProcElem) would
-            // overflow the default ~64 KB stack.
-            l.emplace_back(segmented_stack(8 * 1024 * 1024), call_back);
+            // Use 8 MB per coroutine so tasks with large local arrays do not
+            // overflow the small default stack.
+            l.emplace_back(coroutine_stack(8 * 1024 * 1024), call_back);
             *coroutine = &l.back();
           }
         }
@@ -159,6 +156,7 @@ class thread_pool {
         worker_count = get_physical_core_count();
       }
     }
+    if (worker_count == 0) worker_count = 1;
     this->add_worker(worker_count);
     it = workers.begin();
   }

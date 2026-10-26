@@ -114,6 +114,20 @@ TEST(TaskTest, TapaConcurrencyOneWorker) {
   EXPECT_TRUE(result_q.empty());
 }
 
+TEST(TaskTest, TapaConcurrencyZeroFallsBackToOneWorker) {
+  tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", "0");
+  tapa::stream<int, 1> data_q("bounded0w");
+  tapa::stream<int, kBoundedN> result_q("result0w");
+  tapa::task()
+      .invoke(BoundedProducer, data_q, kBoundedN)
+      .invoke(BoundedConsumer, data_q, result_q, kBoundedN);
+  for (int i = 0; i < kBoundedN; ++i) {
+    ASSERT_FALSE(result_q.empty()) << "item " << i << " missing";
+    EXPECT_EQ(result_q.read(), i);
+  }
+  EXPECT_TRUE(result_q.empty());
+}
+
 // allocate/deallocate are mmap-backed; verify they return usable memory and
 // release cleanly — these stay in task.cpp after any scheduler split.
 TEST(TaskTest, AllocateDeallocateSharedMemory) {

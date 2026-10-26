@@ -331,17 +331,22 @@ extern "C" void kill_frt_sync_kernel(int) {
 #if TAPA_ENABLE_COROUTINE
 
 #include <boost/coroutine2/coroutine.hpp>
+#ifdef BOOST_USE_SEGMENTED_STACKS
 #include <boost/coroutine2/segmented_stack.hpp>
+using coroutine_stack = boost::coroutines2::segmented_stack;
+#else
+#include <boost/context/fixedsize_stack.hpp>
+using coroutine_stack = boost::context::fixedsize_stack;
+#endif
 #include <boost/thread/condition_variable.hpp>
+using condition_variable = boost::condition_variable;
+using mutex = boost::mutex;
 
 using std::function;
 using std::string;
 using std::unordered_map;
 
-using boost::condition_variable;
-using boost::mutex;
-using boost::coroutines2::segmented_stack;
-
+#ifdef BOOST_USE_SEGMENTED_STACKS
 // libgcc's split-stack runtime keeps the page size in a static that only
 // __morestack_load_mmap() fills in. It normally runs from an .init_array
 // entry that rides in with libgcc's morestack.o, but nothing guarantees the
@@ -351,6 +356,7 @@ using boost::coroutines2::segmented_stack;
 // coroutine dies with "unable to allocate additional stack space: errno 22".
 // Declared weak so a libgcc without the symbol still links.
 extern "C" void __morestack_load_mmap(void) __attribute__((weak));
+#endif
 
 using pull_type = boost::coroutines2::coroutine<void>::pull_type;
 using push_type = boost::coroutines2::coroutine<void>::push_type;
@@ -407,7 +413,9 @@ uint64_t get_time_ns() {
 
 // Idempotent: safe whether or not the .init_array entry already ran.
 void ensure_split_stack_runtime_ready() {
+#ifdef BOOST_USE_SEGMENTED_STACKS
   if (__morestack_load_mmap != nullptr) __morestack_load_mmap();
+#endif
 }
 
 int get_physical_core_count() {
@@ -435,7 +443,8 @@ int get_physical_core_count() {
       if (trim(key) == "core id") cores.insert(std::stoi(trim(val)));
     }
   }
-  return cores.size();
+  if (!cores.empty()) return cores.size();
+  return std::thread::hardware_concurrency();
 #endif
 }
 

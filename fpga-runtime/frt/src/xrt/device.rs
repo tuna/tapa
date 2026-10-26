@@ -394,6 +394,12 @@ fn ensure_xrt_emulation_bootstrap(meta: &KernelXml) -> Result<()> {
         std::env::set_var("SDACCEL_EM_RUN_DIR", &frt_tmp);
     }
 
+    // Versal guests use the platform's QEMU configuration, not an Alveo
+    // host-side emconfig.json or the emconfigutil installed on that host.
+    if cfg!(target_arch = "aarch64") {
+        return Ok(());
+    }
+
     let emconfig_dir = if let Some(path) = env_non_empty("EMCONFIG_PATH") {
         PathBuf::from(path)
     } else {
