@@ -339,6 +339,9 @@ mod tests {
             output: None,
             bitstream_script: None,
             connectivity: None,
+            package_kernel_image: None,
+            package_rootfs: None,
+            package_sd_file: vec![],
             custom_rtl: custom_rtl.iter().map(std::path::PathBuf::from).collect(),
         }
     }

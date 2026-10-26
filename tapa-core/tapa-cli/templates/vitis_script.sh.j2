@@ -1,7 +1,7 @@
 set -e
 
-TARGET=hw
-# TARGET=hw_emu
+TARGET=${TARGET:-hw}
+# TARGET=hw_emu ./this-script.sh
 # DEBUG=-g
 
 TOP={{ top }}
@@ -60,6 +60,11 @@ v++ ${DEBUG} \
   --save-temps \
   --temp_dir "${OUTPUT_DIR}/${TOP}_${PLATFORM}.package" \
   --output "${OUTPUT_DIR}/${TOP}_${PLATFORM}.xclbin" \
-  "${OUTPUT_DIR}/${TOP}_${PLATFORM}.xsa" \
+{% if let Some((kernel_image, rootfs, sd_files)) = embedded %}  --package.boot_mode=sd \
+  --package.kernel_image={{ kernel_image }} \
+  --package.rootfs={{ rootfs }} \
+  --package.defer_aie_run \
+{% for sd_file in sd_files %}  --package.sd_file={{ sd_file }} \
+{% endfor %}{% endif %}  "${OUTPUT_DIR}/${TOP}_${PLATFORM}.xsa" \
   "${LIBADF}"
 {% endif %}

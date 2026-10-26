@@ -25,7 +25,7 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work::FlowSettings;
 
-use super::bitstream_script::{write_vitis_script, LinkExtras};
+use super::bitstream_script::{write_vitis_script, EmbeddedPackage, LinkExtras};
 use super::custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
 use super::{enforce_xo_suffix, PackArgs};
@@ -33,6 +33,14 @@ use super::{enforce_xo_suffix, PackArgs};
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
     let flow = &state.flow;
+    let package_requested = args.package_kernel_image.is_some()
+        || args.package_rootfs.is_some()
+        || !args.package_sd_file.is_empty();
+    if package_requested && args.bitstream_script.is_none() {
+        return Err(CliError::InvalidArg(
+            "embedded SD package inputs require --bitstream-script".to_string(),
+        ));
+    }
     // Keep state validation ahead of custom-RTL overlays: malformed persisted
     // state must not mutate the canonical RTL tree before packaging fails.
     resolve_top_task(design)?;
@@ -67,6 +75,7 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
             &output_path,
             &link_inputs,
             aie.as_ref(),
+            args,
         )?;
     }
 
@@ -477,7 +486,21 @@ fn emit_bitstream_script(
     output_path: &Path,
     link_inputs: &LinkInputs,
     aie: Option<&(PathBuf, PathBuf)>,
+    args: &PackArgs,
 ) -> Result<()> {
+    let embedded = match (&args.package_kernel_image, &args.package_rootfs) {
+        (Some(kernel_image), Some(rootfs)) => Some(EmbeddedPackage {
+            kernel_image,
+            rootfs,
+            sd_files: &args.package_sd_file,
+        }),
+        (None, None) if args.package_sd_file.is_empty() => None,
+        _ => {
+            return Err(CliError::InvalidArg(
+                "--package-kernel-image and --package-rootfs must be provided together".to_string(),
+            ))
+        }
+    };
     write_vitis_script(
         script_dest,
         top,
@@ -488,6 +511,7 @@ fn emit_bitstream_script(
             floorplan_xdc: link_inputs.floorplan_xdc.as_deref(),
             connectivity_ini: link_inputs.connectivity.as_deref(),
             aie,
+            embedded,
         },
     )?;
     log::info!("generate the v++ script at {}", script_dest.display());
@@ -768,6 +792,9 @@ mod tests {
             output: None,
             bitstream_script: None,
             connectivity: None,
+            package_kernel_image: None,
+            package_rootfs: None,
+            package_sd_file: vec![],
             custom_rtl: vec![replacement],
         };
         let ctx = crate::testutil::ctx_at(dir.path());

@@ -57,6 +57,18 @@ pub struct PackArgs {
     #[arg(long = "connectivity", value_name = "FILE")]
     pub connectivity: Option<PathBuf>,
 
+    /// Linux kernel image for an embedded AI Engine SD package.
+    #[arg(long, value_name = "FILE", requires = "package_rootfs")]
+    pub package_kernel_image: Option<PathBuf>,
+
+    /// Linux root filesystem for an embedded AI Engine SD package.
+    #[arg(long, value_name = "FILE", requires = "package_kernel_image")]
+    pub package_rootfs: Option<PathBuf>,
+
+    /// Additional file to include in an embedded SD package (may repeat).
+    #[arg(long, value_name = "FILE")]
+    pub package_sd_file: Vec<PathBuf>,
+
     /// Custom RTL files / folders (may repeat; unavailable after floorplan).
     #[arg(long = "custom-rtl", value_name = "PATH")]
     pub custom_rtl: Vec<PathBuf>,

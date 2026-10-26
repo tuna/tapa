@@ -14,6 +14,13 @@ use tapa_ir::ClockPeriod;
 use crate::error::{CliError, Result};
 use crate::util::shell_quote;
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EmbeddedPackage<'a> {
+    pub kernel_image: &'a Path,
+    pub rootfs: &'a Path,
+    pub sd_files: &'a [PathBuf],
+}
+
 /// The optional inputs a link takes besides the `.xo`.
 #[derive(Debug, Default, Clone, Copy)]
 pub(super) struct LinkExtras<'a> {
@@ -23,6 +30,7 @@ pub(super) struct LinkExtras<'a> {
     pub connectivity_ini: Option<&'a Path>,
     /// The AI Engine graph (`libadf.a`) and its PLIO connectivity.
     pub aie: Option<&'a (PathBuf, PathBuf)>,
+    pub embedded: Option<EmbeddedPackage<'a>>,
 }
 
 /// Render the `#!/bin/bash` v++ script with an absolute `.xo` path.
@@ -49,23 +57,33 @@ pub(super) fn render_vitis_script(
         connectivity_ini: Option<&'a str>,
         /// The AI Engine graph and its link connectivity.
         aie: Option<(String, String)>,
+        embedded: Option<(String, String, Vec<String>)>,
     }
     let LinkExtras {
         floorplan_xdc,
         connectivity_ini,
         aie,
+        embedded,
     } = extras;
-    let aie = aie.map(|(libadf, cfg)| {
-        let quoted = |p: &Path| shell_quote(&absolutize_lexical(p).display().to_string());
-        (quoted(libadf), quoted(cfg))
+    if embedded.is_some() && aie.is_none() {
+        return Err(CliError::InvalidArg(
+            "embedded SD packaging requires an AI Engine graph".to_string(),
+        ));
+    }
+    let quoted = |p: &Path| shell_quote(&absolutize_lexical(p).display().to_string());
+    let aie = aie.map(|(libadf, cfg)| (quoted(libadf), quoted(cfg)));
+    let embedded = embedded.map(|package| {
+        (
+            quoted(package.kernel_image),
+            quoted(package.rootfs),
+            package.sd_files.iter().map(|p| quoted(p)).collect(),
+        )
     });
     let top = shell_quote(top);
-    let xo = shell_quote(&absolutize_lexical(output_file).display().to_string());
+    let xo = quoted(output_file);
     let platform = platform.filter(|value| !value.is_empty()).map(shell_quote);
-    let floorplan_xdc =
-        floorplan_xdc.map(|p| shell_quote(&absolutize_lexical(p).display().to_string()));
-    let connectivity_ini =
-        connectivity_ini.map(|p| shell_quote(&absolutize_lexical(p).display().to_string()));
+    let floorplan_xdc = floorplan_xdc.map(quoted);
+    let connectivity_ini = connectivity_ini.map(quoted);
     let target_frequency = clock_period
         .map(|clock| {
             let frequency = if aie.is_some() {
@@ -100,6 +118,7 @@ pub(super) fn render_vitis_script(
             floorplan_xdc: floorplan_xdc.as_deref(),
             connectivity_ini: connectivity_ini.as_deref(),
             aie,
+            embedded,
         })
         .expect("render succeeds")
     );
@@ -172,6 +191,7 @@ mod tests {
                 floorplan_xdc,
                 connectivity_ini,
                 aie: None,
+                ..LinkExtras::default()
             },
         )
         .expect("valid script inputs")
@@ -397,6 +417,57 @@ source "$1""#,
     }
 
     #[test]
+    fn aie_script_packages_embedded_sd_inputs() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let script = dir.path().join("run.sh");
+        let aie = (dir.path().join("k.libadf.a"), dir.path().join("k.aie.cfg"));
+        let kernel_image = dir.path().join("boot files/Image");
+        let rootfs = dir.path().join("boot files/rootfs.ext4");
+        let sd_files = vec![dir.path().join("host app"), dir.path().join("input.dat")];
+        write_vitis_script(
+            &script,
+            "Top",
+            &dir.path().join("k.xo"),
+            Some("vck"),
+            None,
+            LinkExtras {
+                aie: Some(&aie),
+                embedded: Some(EmbeddedPackage {
+                    kernel_image: &kernel_image,
+                    rootfs: &rootfs,
+                    sd_files: &sd_files,
+                }),
+                ..LinkExtras::default()
+            },
+        )
+        .expect("write script");
+        let output = std::process::Command::new("bash")
+            .args([
+                "-c",
+                r#"v++() { if [ "$1" = --package ]; then printf '%s\0' "$@"; fi; }
+source "$1""#,
+                "capture-vitis-script",
+            ])
+            .arg(&script)
+            .current_dir(dir.path())
+            .output()
+            .expect("execute rendered Bash script");
+        assert!(output.status.success());
+        let captured = String::from_utf8(output.stdout).expect("UTF-8 arguments");
+        let package: Vec<&str> = captured.split_terminator('\0').collect();
+        for arg in [
+            "--package.boot_mode=sd".to_string(),
+            format!("--package.kernel_image={}", kernel_image.display()),
+            format!("--package.rootfs={}", rootfs.display()),
+            format!("--package.sd_file={}", sd_files[0].display()),
+            format!("--package.sd_file={}", sd_files[1].display()),
+            "--package.defer_aie_run".to_string(),
+        ] {
+            assert!(package.contains(&arg.as_str()), "{package:?}");
+        }
+    }
+
+    #[test]
     fn aie_script_stops_when_link_fails() {
         let dir = tempfile::tempdir().expect("tempdir");
         let script = dir.path().join("run.sh");
@@ -457,6 +528,7 @@ source "$1""#,
                     floorplan_xdc: Some(&xdc),
                     connectivity_ini: Some(&ini),
                     aie: None,
+                    ..LinkExtras::default()
                 },
             )
             .expect("write script");
