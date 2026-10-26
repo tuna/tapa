@@ -24,11 +24,11 @@ void Forward(tapa::istream<Wide>& wide_in, tapa::istream<Signed>& signed_in,
 }
 
 void StreamWidthAlignment(tapa::istream<Wide>& wide_in,
-                   tapa::istream<Signed>& signed_in,
-                   tapa::istream<Small>& small_in,
-                   tapa::ostream<Wide>& wide_out,
-                   tapa::ostream<Signed>& signed_out,
-                   tapa::ostream<Small>& small_out) {
+                          tapa::istream<Signed>& signed_in,
+                          tapa::istream<Small>& small_in,
+                          tapa::ostream<Wide>& wide_out,
+                          tapa::ostream<Signed>& signed_out,
+                          tapa::ostream<Small>& small_out) {
   tapa::stream<Wide> wide("wide");
   tapa::stream<Signed> signed_values("signed_values");
   tapa::stream<Small> small("small");

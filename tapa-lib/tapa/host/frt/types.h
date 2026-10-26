@@ -71,8 +71,7 @@ struct StreamCodec {
 };
 
 template <typename T>
-struct StreamCodec<elem_t<T>,
-                   std::enable_if_t<(StreamWidth<T>::value > 0)>> {
+struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
   static constexpr int kBits = StreamWidth<T>::value;
   static constexpr size_t kDataBytes = (kBits + 7) / 8;
   static constexpr size_t kBytes = kDataBytes + 1;

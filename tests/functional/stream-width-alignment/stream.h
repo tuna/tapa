@@ -12,8 +12,8 @@ constexpr int TransactionSize(int transaction) {
 }
 
 void StreamWidthAlignment(tapa::istream<Wide>& wide_in,
-                   tapa::istream<Signed>& signed_in,
-                   tapa::istream<Small>& small_in,
-                   tapa::ostream<Wide>& wide_out,
-                   tapa::ostream<Signed>& signed_out,
-                   tapa::ostream<Small>& small_out);
+                          tapa::istream<Signed>& signed_in,
+                          tapa::istream<Small>& small_in,
+                          tapa::ostream<Wide>& wide_out,
+                          tapa::ostream<Signed>& signed_out,
+                          tapa::ostream<Small>& small_out);
