@@ -143,14 +143,20 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         match reader.read_event() {
             Ok(Event::Start(e)) => match e.name().0 {
                 "kernel" => {
+                    let is_aie = e.attributes().flatten().any(|a| {
+                        a.key.0 == "vlnv" && a.value.as_ref() == "xilinx.com:ip:ai_engine:1.0"
+                    });
+                    reader
+                        .read_to_end(e.name())
+                        .map_err(|e| CosimError::Metadata(e.to_string()))?;
+                    if is_aie {
+                        continue;
+                    }
                     if kernel.is_some() {
                         return Err(CosimError::Metadata(
                             "multiple <kernel> elements in kernel metadata XML; cosim packages must contain exactly one kernel".into(),
                         ));
                     }
-                    reader
-                        .read_to_end(e.name())
-                        .map_err(|e| CosimError::Metadata(e.to_string()))?;
                     kernel = Some(
                         quick_xml::de::from_str(&xml[start..reader.buffer_position() as usize])
                             .map_err(|e| CosimError::Metadata(e.to_string()))?,
@@ -415,6 +421,9 @@ mod tests {
         <port name="m_axi_a" mode="master" dataWidth="512"/>
         <arg name="a" addressQualifier="1" id="0" port="m_axi_a" size="0x8"/>
         <arg name="n" addressQualifier="0" id="1" type="uint32_t" hostSize="0x4"/>
+      </kernel>
+      <kernel name="ai_engine_0" vlnv="xilinx.com:ip:ai_engine:1.0">
+        <arg name="a_q" addressQualifier="4" id="0" port="S00_AXIS" type="void*"/>
       </kernel>
     </core></device>
   </platform>
