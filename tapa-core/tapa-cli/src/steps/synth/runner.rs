@@ -30,9 +30,9 @@ use super::SynthArgs;
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
 )]
 pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -> Result<()> {
-    // The flow target is typed and validated by the state parse itself, so
-    // there is nothing left for this step to re-check: synthesis is Xilinx
-    // HLS for every supported flow.
+    // The flow target is typed and validated by the state parse itself;
+    // synthesis is Xilinx HLS for every supported flow, and the target's
+    // only other say is which platform shell device resolution accepts.
     let mut state = work_io::load(&ctx.work_dir)?;
     let partition = tapa_ir::AiePartition::derive(&state.graph)?;
     if args.aie_only && partition.is_none() {
@@ -50,7 +50,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         crate::aie::warn_narrow_boundaries(partition);
     }
 
-    let device = resolve_device_info(args)?;
+    let device = resolve_device_info(args, state.graph.target)?;
     // The vendor tools speak nanoseconds in text; this is the one place
     // that reading becomes our own typed quantity.
     let clock_period = ClockPeriod::from_nanoseconds_str(&device.clock_period)

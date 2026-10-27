@@ -59,6 +59,7 @@ pub use runtime::value::ToolValue;
 pub use error::{Result, XilinxError};
 pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};
 pub use platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
+pub use platform::slash::{find_slash_platform, SlashPlatform, SLASH_PLATFORMS};
 pub use runtime::config::RemoteConfig;
 pub use runtime::process::{
     LocalToolRunner, MockToolRunner, ToolInvocation, ToolOutput, ToolRunner,
