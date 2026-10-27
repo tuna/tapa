@@ -101,7 +101,7 @@ work.out/
 | `floorplan-timing.rpt` | Post-implementation timing report used to produce those metrics. |
 | `floorplan.xclbin` / `floorplan.vbin` | The winning implementation's bitstream from `--run-impl` or `--dse` (`.xclbin` from the Vitis backend, `.vbin` from SLASH). |
 | `link/link-metrics.json` | SLASH link record: pinned `slash_commit`, `requested_mhz` vs `recorded_mhz`, kernel WNS and Fmax, `timing_closed`, and the fixed-shell domain's WNS. A `--sim` link records only the commit and requested versus recorded MHz — simulation produces no routed timing report. |
-| `dse/candidates.json` | Summary of all candidates explored by `--dse`. |
+| `dse/candidates.json` | Exploration results and ranking diagnostics for all candidates explored by `--dse`; final full-link metrics are in `floorplan-metrics.json`. |
 
 ### Files TAPA manages for you
 

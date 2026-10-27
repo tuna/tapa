@@ -119,6 +119,13 @@ Review:
 - `work.out/floorplan.xclbin` (Vitis) or `work.out/floorplan.vbin` (SLASH),
   the implemented bitstream of the measured plan.
 
+For Vitis, candidate exploration stops after post-route timing. After selecting
+the winner, TAPA runs one additional full `v++ --link` with that candidate's
+prepared package and constraints to produce `floorplan.xclbin`. The top-level
+metrics and timing report come from this final link; `dse/candidates.json`
+retains the exploration measurements used for ranking. SLASH already completes
+its hardware implementation during exploration and needs no additional link.
+
 If implementation fails inside one task's combinational logic, change the HLS
 source rather than increasing floorplan effort. Add pipelining or split the
 operation across cycles, then rerun synthesis and floorplanning.

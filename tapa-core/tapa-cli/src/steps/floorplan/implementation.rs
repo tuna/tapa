@@ -266,7 +266,7 @@ pub(super) fn implement_and_publish(
     };
 
     persist_diagnostics(work_dir, &outcomes, infeasible)?;
-    finish_with_winner(outcomes, infeasible, publish)
+    finish_with_winner(outcomes, infeasible, runner, publish)
 }
 
 fn candidate_worker_count(requested_jobs: usize, candidate_count: usize) -> Result<usize> {
@@ -302,7 +302,9 @@ fn implement_one(
         target,
         &candidate,
     ) {
-        Ok(output) => ImplementationWinner::from_link(candidate, output, target.flow),
+        Ok((output, vitis_job)) => {
+            ImplementationWinner::from_link(candidate, output, target.flow, vitis_job)
+        }
         Err(error) => CandidateOutcome::Failure {
             candidate,
             error: error.to_string(),
@@ -336,7 +338,7 @@ fn try_implement_one(
     connectivity: Option<&[u8]>,
     target: &ImplementationTarget,
     candidate: &PlannedCandidate,
-) -> Result<LinkOutput> {
+) -> Result<(LinkOutput, Option<Box<VitisLinkJob>>)> {
     let paths = CandidatePaths::new(work_dir, candidate.index, &projection.flat.top);
     paths.recreate()?;
 
@@ -371,7 +373,7 @@ fn try_implement_one(
                 "V80 SLASH implementation requires floorplan connectivity".to_string(),
             )
         })?;
-        return tapa_xilinx::tools::slash::link(
+        let output = tapa_xilinx::tools::slash::link(
             runner,
             &tapa_xilinx::tools::slash::SlashLinkJob {
                 package,
@@ -385,8 +387,8 @@ fn try_implement_one(
                 floorplan_xdc: Some(crate::util::utf8(paths.constraints.join(FLOORPLAN_XDC))),
                 mode: tapa_xilinx::tools::slash::SlashLinkMode::Hardware,
             },
-        )
-        .map_err(Into::into);
+        )?;
+        return Ok((output, None));
     }
 
     log::info!(
@@ -413,7 +415,8 @@ fn try_implement_one(
             connectivity.map(|_| crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY))),
         )
         .build();
-    Ok(run_vitis_link(runner, &job)?)
+    let output = run_vitis_link(runner, &job)?;
+    Ok((output, Some(Box::new(job))))
 }
 
 fn package_candidate(
@@ -454,9 +457,11 @@ enum CandidateOutcome {
 pub(super) struct ImplementationWinner {
     candidate: PlannedCandidate,
     output: LinkOutput,
-    /// Routed kernel timing, resolved once at this boundary: floorplan
-    /// candidates always implement hardware links, so concrete hardware
-    /// timing is required rather than optional.
+    /// The completed post-route job, retained so only the winner is rerun in
+    /// full mode. SLASH winners already ran their complete hardware flow.
+    vitis_job: Option<Box<VitisLinkJob>>,
+    /// Exploration timing drives ranking; the final Vitis link replaces it
+    /// before artifact and metrics publication.
     timing: KernelTiming,
 }
 
@@ -468,6 +473,7 @@ impl ImplementationWinner {
         candidate: PlannedCandidate,
         output: LinkOutput,
         flow: Target,
+        vitis_job: Option<Box<VitisLinkJob>>,
     ) -> CandidateOutcome {
         let error = match output.hardware_timing() {
             Ok(timing)
@@ -478,6 +484,7 @@ impl ImplementationWinner {
                     timing: *timing,
                     candidate,
                     output,
+                    vitis_job,
                 });
             }
             Ok(timing) => format!(
@@ -491,6 +498,24 @@ impl ImplementationWinner {
 
     pub(super) fn floorplan(&self) -> &FloorplanResult {
         &self.candidate.floorplan
+    }
+
+    /// Complete only the selected Vitis candidate, reusing its prepared XO,
+    /// constraints, connectivity, and tool paths. Candidate selection and its
+    /// persisted diagnostics deliberately remain based on exploration timing.
+    fn run_final_vitis_link(mut self, runner: &dyn ToolRunner) -> Result<Self> {
+        let Some(job) = self.vitis_job.as_mut() else {
+            return Ok(self);
+        };
+        job.mode = VitisLinkMode::Full;
+        log::info!(
+            "floorplan candidate_{:03}: running final full Vitis link",
+            self.candidate.index,
+        );
+        let output = run_vitis_link(runner, job)?;
+        self.timing = *output.hardware_timing()?;
+        self.output = output;
+        Ok(self)
     }
 
     pub(super) fn publish_artifacts(&self, work_dir: &Path, target_mhz: u32) -> Result<()> {
@@ -537,12 +562,14 @@ impl ImplementationWinner {
 fn finish_with_winner(
     mut outcomes: Vec<CandidateOutcome>,
     infeasible: &[InfeasibleCandidate],
+    runner: &dyn ToolRunner,
     publish: impl FnOnce(&ImplementationWinner) -> Result<()>,
 ) -> Result<()> {
     let winner = winner_index(&outcomes).ok_or_else(|| all_failed_error(&outcomes, infeasible))?;
     let CandidateOutcome::Success(winner) = outcomes.swap_remove(winner) else {
         unreachable!("winner selection only returns successful candidates")
     };
+    let winner = winner.run_final_vitis_link(runner)?;
     publish(&winner)
 }
 
@@ -837,7 +864,7 @@ fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use tapa_ir::ClockPeriod;
-    use tapa_xilinx::{ToolInvocation, ToolOutput};
+    use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
     struct SlashZipPackRunner;
 
@@ -894,8 +921,116 @@ mod tests {
                 stdout: String::new(),
                 stderr: String::new(),
             },
+            vitis_job: None,
             timing,
         })
+    }
+
+    fn vitis_job(work_dir: &Path, index: usize) -> VitisLinkJob {
+        let paths = CandidatePaths::new(work_dir, index, "Top");
+        paths.recreate().expect("candidate directories");
+        fs_err::write(&paths.xo, "prepared XO").expect("write prepared XO");
+        fs_err::write(paths.constraints.join(FLOORPLAN_XDC), "constraints")
+            .expect("write constraints");
+        VitisLinkJob::builder()
+            .kernel_name("Top".to_string())
+            .xo(crate::util::utf8(&paths.xo))
+            .platform("xilinx_test_platform".to_string())
+            .target_mhz(300)
+            .vivado_threads(2)
+            .mode(VitisLinkMode::PostRouteTiming)
+            .work_dir(crate::util::utf8(&paths.link))
+            .artifacts_dir(crate::util::utf8(&paths.artifacts))
+            .output_xclbin(crate::util::utf8(&paths.xclbin))
+            .report_dir(crate::util::utf8(&paths.reports))
+            .log_dir(crate::util::utf8(&paths.logs))
+            .temp_dir(crate::util::utf8(&paths.temp))
+            .floorplan_xdc(Some(crate::util::utf8(
+                paths.constraints.join(FLOORPLAN_XDC),
+            )))
+            .build()
+    }
+
+    #[test]
+    fn vitis_winner_runs_one_full_link_and_publishes_its_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let CandidateOutcome::Success(mut loser) = success(0, 350.0) else {
+            unreachable!("success helper returns a winner")
+        };
+        loser.vitis_job = Some(Box::new(vitis_job(dir.path(), 0)));
+        let CandidateOutcome::Success(mut winner) = success(1, 360.0) else {
+            unreachable!("success helper returns a winner")
+        };
+        winner.vitis_job = Some(Box::new(vitis_job(dir.path(), 1)));
+        let final_paths = CandidatePaths::new(dir.path(), 1, "Top");
+        let final_fmax = 1000.0 / (3.333 - 0.4);
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(
+            crate::util::utf8(&final_paths.xclbin),
+            b"final full xclbin".to_vec(),
+        );
+        runner.attach_download(
+            crate::util::utf8(final_paths.artifacts.join("timing_summary.rpt")),
+            b"
+| Clock Summary
+| -------------
+
+Clock   Waveform(ns)         Period(ns)      Frequency(MHz)
+-----   ------------         ----------      --------------
+ap_clk  {0.000 1.667}        3.333           300.030
+
+| Intra Clock Table
+| -----------------
+
+Clock             WNS(ns)      TNS(ns)
+-----             -------      -------
+ap_clk              0.400        0.000
+
+"
+            .to_vec(),
+        );
+        let published = std::cell::Cell::new(false);
+
+        let outcomes = vec![
+            CandidateOutcome::Success(loser),
+            CandidateOutcome::Success(winner),
+        ];
+        persist_diagnostics(dir.path(), &outcomes, &[]).expect("exploration diagnostics");
+        finish_with_winner(outcomes, &[], &runner, |winner| {
+            published.set(true);
+            assert_eq!(winner.candidate.index, 1);
+            assert!((winner.timing.fmax_mhz - final_fmax).abs() < f64::EPSILON);
+            winner.publish_artifacts(dir.path(), 300)
+        })
+        .expect("winner final link and publication");
+
+        assert!(published.get());
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 1, "only the winner gets a final link");
+        let args = calls[0].local_args();
+        let final_xclbin = crate::util::utf8(&final_paths.xclbin).to_string();
+        assert!(!args.iter().any(|arg| arg == "--to_step"));
+        assert!(args
+            .windows(2)
+            .any(|args| { args[0] == "--output" && args[1] == final_xclbin }));
+        assert_eq!(
+            fs_err::read(dir.path().join("floorplan.xclbin")).expect("published xclbin"),
+            b"final full xclbin"
+        );
+        let metrics: serde_json::Value = serde_json::from_slice(
+            &fs_err::read(dir.path().join(IMPLEMENTATION_METRICS)).expect("read metrics"),
+        )
+        .expect("parse metrics");
+        assert_eq!(metrics["candidate_index"], 1);
+        assert_eq!(metrics["fmax_mhz"], final_fmax);
+        assert_ne!(metrics["fmax_mhz"], 360.0);
+        let diagnostics: serde_json::Value = serde_json::from_slice(
+            &fs_err::read(dir.path().join(CANDIDATE_ROOT).join(CANDIDATE_DIAGNOSTICS))
+                .expect("read exploration diagnostics"),
+        )
+        .expect("parse exploration diagnostics");
+        assert_eq!(diagnostics[1]["fmax_mhz"], 360.0);
     }
 
     #[test]
@@ -927,7 +1062,7 @@ mod tests {
         }];
         let published = std::cell::Cell::new(false);
 
-        let error = finish_with_winner(outcomes, &[], |_| {
+        let error = finish_with_winner(outcomes, &[], &SlashZipPackRunner, |_| {
             published.set(true);
             fs_err::write(&active, "new floorplan")?;
             fs_err::write(&state_path, "new state")?;
