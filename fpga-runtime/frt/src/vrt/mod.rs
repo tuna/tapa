@@ -2,7 +2,9 @@
 
 mod api;
 mod device;
+mod sim;
 mod vbin;
+mod zmq;
 
 use crate::device::Device;
 use crate::error::{FrtError, Result};
@@ -15,10 +17,7 @@ pub(crate) fn open(path: &Path) -> Result<Box<dyn Device>> {
     let vbin = Vbin::open(path)?;
     match vbin.platform {
         Platform::Hardware => Ok(Box::new(device::VrtDevice::open(&vbin)?)),
-        Platform::Simulation => Err(FrtError::Vrt(
-            "SLASH simulation VBINs are unsupported; this build supports hardware VBINs only"
-                .into(),
-        )),
+        Platform::Simulation => Ok(Box::new(sim::SimDevice::open(vbin)?)),
         Platform::Emulation => Err(FrtError::Vrt(
             "SLASH emulation VBINs are unsupported: TAPA packages contain RTL, not HLS C models"
                 .into(),
@@ -56,18 +55,20 @@ mod tests {
     }
 
     #[test]
-    fn non_hardware_modes_are_rejected_without_loading_libvrtd() {
-        for (platform, expected) in [
-            (Platform::Simulation, "unsupported"),
-            (Platform::Emulation, "unsupported"),
-        ] {
-            let temp = tempfile::tempdir().expect("temp dir");
-            let path = temp.path().join("design.vbin");
-            vbin(&path, platform);
-            let Err(error) = open(&path) else {
-                panic!("non-hardware VBIN unexpectedly opened");
-            };
-            assert!(error.to_string().contains(expected), "{error}");
-        }
+    fn simulation_dispatches_without_loading_libvrtd_and_emulation_is_rejected() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let path = temp.path().join("design.vbin");
+        vbin(&path, Platform::Simulation);
+        let Err(error) = open(&path) else {
+            panic!("simulation VBIN without vpp_sim unexpectedly opened");
+        };
+        assert!(error.to_string().contains("vpp_sim"), "{error}");
+        assert!(!error.to_string().contains("libvrtd"), "{error}");
+
+        vbin(&path, Platform::Emulation);
+        let Err(error) = open(&path) else {
+            panic!("emulation VBIN unexpectedly opened");
+        };
+        assert!(error.to_string().contains("unsupported"), "{error}");
     }
 }

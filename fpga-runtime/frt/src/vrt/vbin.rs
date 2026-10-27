@@ -98,7 +98,6 @@ pub struct Vbin {
     pub kernel: Kernel,
     pub pdi_paths: Vec<PathBuf>,
     /// Path to the extracted `vpp_sim`, when present.
-    #[allow(dead_code, reason = "hardware execution does not launch simulation")]
     pub simulation_executable: Option<PathBuf>,
 }
 
@@ -130,10 +129,6 @@ impl Vbin {
     }
 
     /// Root of the owned archive extraction directory.
-    #[allow(
-        dead_code,
-        reason = "hardware execution only retains extracted PDI paths"
-    )]
     pub(crate) fn extraction_dir(&self) -> &Path {
         self.temp_dir.path()
     }
