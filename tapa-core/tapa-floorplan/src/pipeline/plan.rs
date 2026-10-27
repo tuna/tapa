@@ -585,7 +585,6 @@ fn validate_realized_usage(
             if !device.plans_resource(resource) {
                 // Do not reject V80 plans for hard-block usage; Vivado places
                 // BRAM/URAM after TAPA has fixed the SLR/NOC topology.
-                // 不因硬块用量拒绝 V80 布局；TAPA 固定 SLR/NOC 拓扑后由 Vivado 放置。
                 continue;
             }
             let used = resource.amount(used_area);

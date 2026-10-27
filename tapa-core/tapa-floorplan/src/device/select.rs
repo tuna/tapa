@@ -269,7 +269,6 @@ mod tests {
         // X2Y144:X3Y155 (24).
         assert_eq!(slr1.area.uram, 216);
         // BRAM/URAM remain inventory data, not TAPA capacity constraints.
-        // BRAM/URAM 保留为库存数据，不作为 TAPA 容量约束。
         assert!(!device.plans_resource(tapa_ir::Resource::Bram18k));
         assert!(!device.plans_resource(tapa_ir::Resource::Uram));
         assert!(device.plans_resource(tapa_ir::Resource::Lut));

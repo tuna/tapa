@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use super::*;
-use crate::device::model::{DirCaps, PlacementStyle, PlannedResources, Slot};
+use crate::device::model::{DeviceAnchor, DirCaps, PlacementStyle, PlannedResources, Slot};
 use crate::device::select::select_device;
 use crate::solver::{LpSolution, VarKind};
 use crate::ExactInt;
@@ -629,6 +629,61 @@ fn canonical_placement_model_matches_expected_formulation() {
             (route_y[2].to_string(), 10_500.0),
         ]),
         "35-bit width times the vertically penalized 150-unit distance"
+    );
+}
+
+/// A tagged terminal's physical anchor moves its objective endpoint off the
+/// slot-centroid grid: the terminal is priced at the tagged slot's centroid
+/// plus the measured quarter-unit site offsets, and the coefficient is
+/// `width × distance_quarters / 4` of the `(100, 150)` unit metric.
+///
+/// The mmap edge sums to 1262 bits and the `HBM[7]` anchor sits at (100, 550)
+/// quarter units — 100 east and 50 south of the top slot's centroid (0, 600).
+/// Against the reader at the bottom centroid that is `100 + 2·550 = 1200`
+/// quarter units (`1262 · 300 = 378600`), and against the reader co-placed in
+/// the top slot `100 + 2·50 = 200` (`1262 · 50 = 63100`). Without the anchor
+/// the co-placed candidate would cost nothing, so the second term exists only
+/// because the measured site pulls the terminal inside its own slot.
+#[test]
+fn anchor_objective_prices_quarter_unit_site_offsets() {
+    let graph = mmap_floor_graph();
+    let bottom = Coor::slot(0, 0);
+    let top = Coor::slot(0, 1);
+    let mut device = two_slot_golden_device();
+    device.slots[1].tags.push("HBM[7]".to_string());
+    device.anchors.push(DeviceAnchor {
+        tag: "HBM[7]".to_string(),
+        site: "NOC_NMU512_X2Y13".to_string(),
+        x_offset_quarters: 100,
+        y_offset_quarters: -50,
+    });
+
+    // The bank tag pins the terminal to the top slot; every other vertex
+    // keeps both slots as candidates.
+    let terminal = graph.index_of("__tapa_bank_hbm_7").expect("bank terminal");
+    let mut domains = vec![vec![bottom, top]; graph.vertices().len()];
+    domains[terminal] = vec![top];
+
+    let model = FloorplanModel::build(
+        &graph,
+        &device,
+        &domains,
+        &domain_areas(&device, &domains),
+        &[],
+        DEFAULT_USAGE_LIMIT,
+        &PlacementConstraints::default(),
+    )
+    .expect("model");
+
+    assert_eq!(model.lp.objective.constant.to_bits(), 1.0_f64.to_bits());
+    assert_eq!(
+        named_terms(&model.lp, &model.lp.objective),
+        BTreeMap::from([
+            ("y_0_0_0".to_string(), 378_600.0),
+            ("y_0_1_0".to_string(), 63_100.0),
+        ]),
+        "1262-bit width times the anchored quarter-unit distances to the \
+         bottom and top reader candidates"
     );
 }
 

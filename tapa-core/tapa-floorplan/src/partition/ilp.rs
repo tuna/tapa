@@ -1281,7 +1281,6 @@ fn add_resource_constraints(
         for resource in Resource::ALL {
             if !device.plans_resource(resource) {
                 // V80 BRAM/URAM legality is delegated to Vivado.
-                // V80 的 BRAM/URAM 合法放置交由 Vivado 决定。
                 continue;
             }
             let mut terms = SparseRow::new();
