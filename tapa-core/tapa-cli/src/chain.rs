@@ -101,7 +101,7 @@ pub struct ChainTail {
 )]
 #[derive(Debug, Subcommand)]
 pub enum Step {
-    /// Link a TAPA XO into a V80 hardware VBIN using SLASH.
+    /// Link a packaged TAPA kernel for its persisted Vitis or SLASH target.
     Link {
         #[command(flatten)]
         args: link::LinkArgs,

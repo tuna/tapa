@@ -52,7 +52,23 @@ pub fn target_frequency_mhz(clock_period_ns: f64) -> Result<u32> {
     Ok(floored as u32)
 }
 
-/// One portable Alveo hardware-link job.
+/// How much of the Vitis implementation flow to run.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum VitisLinkMode {
+    /// Produce a complete hardware bitstream (and package AIE links).
+    #[default]
+    Full,
+    /// Stop after post-route physical optimization and read kernel timing.
+    PostRouteTiming,
+}
+
+#[derive(Debug)]
+struct AieInputs {
+    libadf: Utf8PathBuf,
+    config: Utf8PathBuf,
+}
+
+/// One portable Vitis hardware-link job.
 ///
 /// `platform` must be an installed platform name. Platform paths are rejected
 /// because they cannot be transferred safely to a remote tool host without
@@ -62,7 +78,7 @@ pub struct VitisLinkJob {
     pub kernel_name: String,
     pub xo: Utf8PathBuf,
     pub platform: String,
-    /// Whole MHz passed to `v++ --kernel_frequency`; zero is rejected.
+    /// Whole MHz requested for the kernel; AIE links convert it to Hz. Zero is rejected.
     pub target_mhz: u32,
     /// Per-job directory used as the tool working directory.
     pub work_dir: Utf8PathBuf,
@@ -83,6 +99,11 @@ pub struct VitisLinkJob {
     /// `--vivado.synth.jobs`. Acts as the per-link thread budget.
     #[builder(default = 2)]
     pub vivado_threads: u32,
+    #[builder(default)]
+    pub mode: VitisLinkMode,
+    /// Vitis linker/packager program, resolved by the ToolRunner on the tool host.
+    #[builder(default = "v++".to_string())]
+    pub vpp: String,
 }
 
 #[derive(Debug)]
@@ -97,32 +118,43 @@ struct ResolvedJob<'a> {
     temp_dir: Utf8PathBuf,
     floorplan_xdc: Option<Utf8PathBuf>,
     connectivity_config: Option<Utf8PathBuf>,
+    aie: Option<AieInputs>,
+    link_output: Utf8PathBuf,
+    package_temp_dir: Utf8PathBuf,
     timing_hook: Utf8PathBuf,
     timing_report: Utf8PathBuf,
 }
 
+fn validate_job(job: &VitisLinkJob) -> Result<()> {
+    if job.kernel_name.trim().is_empty() {
+        return link_error("kernel name must not be empty");
+    }
+    if job.platform.trim().is_empty() {
+        return link_error("platform must not be empty");
+    }
+    if platform_looks_like_path(&job.platform) {
+        return link_error(format!(
+            "platform `{}` must be an installed platform name, not a path",
+            job.platform
+        ));
+    }
+    if job.target_mhz == 0 {
+        return Err(XilinxError::InvalidFrequency(
+            "target frequency must be positive, got `0` MHz".into(),
+        ));
+    }
+    if job.vivado_threads == 0 {
+        return link_error("Vivado thread count must be greater than zero, got `0`");
+    }
+    if job.vpp.trim().is_empty() {
+        return link_error("v++ program name must not be empty");
+    }
+    Ok(())
+}
+
 impl<'a> ResolvedJob<'a> {
     fn new(job: &'a VitisLinkJob) -> Result<Self> {
-        if job.kernel_name.trim().is_empty() {
-            return link_error("kernel name must not be empty");
-        }
-        if job.platform.trim().is_empty() {
-            return link_error("platform must not be empty");
-        }
-        if platform_looks_like_path(&job.platform) {
-            return link_error(format!(
-                "platform `{}` must be an installed platform name, not a path",
-                job.platform
-            ));
-        }
-        if job.target_mhz == 0 {
-            return Err(XilinxError::InvalidFrequency(
-                "target frequency must be positive, got `0` MHz".into(),
-            ));
-        }
-        if job.vivado_threads == 0 {
-            return link_error("Vivado thread count must be greater than zero, got `0`");
-        }
+        validate_job(job)?;
 
         let xo = crate::util::absolutize(&job.xo);
         let work_dir = crate::util::absolutize(&job.work_dir);
@@ -143,15 +175,17 @@ impl<'a> ResolvedJob<'a> {
             "artifacts directory",
             "work directory",
         )?;
-        ensure_under(
-            &output_xclbin,
-            &artifacts_dir,
-            "xclbin",
-            "artifacts directory",
-        )?;
+        if job.mode == VitisLinkMode::PostRouteTiming {
+            ensure_under(
+                &output_xclbin,
+                &artifacts_dir,
+                "post-route timing output",
+                "artifacts directory",
+            )?;
+        }
         if output_xclbin.extension() != Some("xclbin") {
             return link_error(format!(
-                "Alveo link output `{output_xclbin}` must use the `.xclbin` extension"
+                "Vitis link output `{output_xclbin}` must use the `.xclbin` extension"
             ));
         }
         ensure_under(
@@ -172,11 +206,21 @@ impl<'a> ResolvedJob<'a> {
                 "temp directory must be outside the downloadable artifacts directory",
             );
         }
-        let output_parent = output_xclbin
-            .parent()
-            .ok_or_else(|| XilinxError::VitisLink("xclbin path has no parent directory".into()))?;
-        let timing_hook = output_parent.join(FINAL_TIMING_HOOK_NAME);
-        let timing_report = output_parent.join(TIMING_REPORT_NAME);
+        let aie = discover_aie_inputs(&xo)?;
+        if aie.is_some() && job.mode == VitisLinkMode::PostRouteTiming {
+            return link_error("AI Engine sidecars require a full Vitis link");
+        }
+        let link_output = if aie.is_some() {
+            let stem = output_xclbin
+                .file_stem()
+                .ok_or_else(|| XilinxError::VitisLink("xclbin path has no file stem".into()))?;
+            artifacts_dir.join(format!("{stem}.xsa"))
+        } else {
+            output_xclbin.clone()
+        };
+        let package_temp_dir = Utf8PathBuf::from(format!("{temp_dir}.package"));
+        let timing_hook = artifacts_dir.join(FINAL_TIMING_HOOK_NAME);
+        let timing_report = artifacts_dir.join(TIMING_REPORT_NAME);
 
         Ok(Self {
             job,
@@ -189,10 +233,30 @@ impl<'a> ResolvedJob<'a> {
             temp_dir,
             floorplan_xdc,
             connectivity_config,
+            aie,
+            link_output,
+            package_temp_dir,
             timing_hook,
             timing_report,
         })
     }
+}
+
+fn discover_aie_inputs(xo: &Utf8Path) -> Result<Option<AieInputs>> {
+    let parent = xo
+        .parent()
+        .ok_or_else(|| XilinxError::VitisLink("XO path has no parent directory".into()))?;
+    let stem = xo
+        .file_stem()
+        .ok_or_else(|| XilinxError::VitisLink("XO path has no file stem".into()))?;
+    let libadf = parent.join(format!("{stem}.libadf.a"));
+    let config = parent.join(format!("{stem}.aie.cfg"));
+    if !libadf.exists() && !config.exists() {
+        return Ok(None);
+    }
+    validate_input(&libadf, "AI Engine graph (`<name>.libadf.a`)")?;
+    validate_input(&config, "AI Engine connectivity (`<name>.aie.cfg`)")?;
+    Ok(Some(AieInputs { libadf, config }))
 }
 
 fn platform_looks_like_path(platform: &str) -> bool {
@@ -229,19 +293,23 @@ fn final_timing_tcl() -> &'static str {
 report_timing_summary -file [file join $artifact_dir timing_summary.rpt]\n"
 }
 
-fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
+fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     let job = resolved.job;
-    let mut inv = ToolInvocation::new("v++")
+    let mut inv = ToolInvocation::new(job.vpp.clone())
         .arg("--link")
         .arg("--target")
         .arg("hw")
-        .arg("--save-temps")
-        .arg("--to_step")
-        .arg("vpl.impl.post_route_phys_opt_design")
+        .arg("--save-temps");
+    if job.mode == VitisLinkMode::PostRouteTiming {
+        inv = inv
+            .arg("--to_step")
+            .arg("vpl.impl.post_route_phys_opt_design");
+    }
+    inv = inv
         .arg("--platform")
         .arg(job.platform.clone())
         .arg("--output")
-        .arg(ToolValue::path(&resolved.output_xclbin))
+        .arg(ToolValue::path(&resolved.link_output))
         .arg("--report_dir")
         .arg(ToolValue::path(&resolved.report_dir))
         .arg("--log_dir")
@@ -249,15 +317,26 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--temp_dir")
         .arg(ToolValue::path(&resolved.temp_dir))
         .arg("--optimize")
-        .arg("3")
-        .arg("--kernel_frequency")
-        .arg(job.target_mhz.to_string())
+        .arg("3");
+    if resolved.aie.is_some() {
+        inv = inv
+            .arg("--clock.default_freqhz")
+            .arg((u64::from(job.target_mhz) * 1_000_000).to_string());
+    } else {
+        inv = inv
+            .arg("--kernel_frequency")
+            .arg(job.target_mhz.to_string());
+    }
+    inv = inv
         .arg("--connectivity.nk")
         .arg(format!("{}:1:{}", job.kernel_name, job.kernel_name))
         .arg("--vivado.synth.jobs")
         .arg(job.vivado_threads.to_string());
     for (key, value) in VIVADO_IMPL_STEP_PROPS {
         inv = inv.arg(format!("--vivado.prop=run.impl_1.STEPS.{key}={value}"));
+    }
+    if let Some(aie) = &resolved.aie {
+        inv = inv.arg("--config").arg(ToolValue::path(&aie.config));
     }
     if let Some(config) = &resolved.connectivity_config {
         inv = inv.arg("--config").arg(ToolValue::path(config));
@@ -274,6 +353,9 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
             &resolved.timing_hook,
         ))
         .arg(ToolValue::path(&resolved.xo));
+    if let Some(aie) = &resolved.aie {
+        inv = inv.arg(ToolValue::path(&aie.libadf));
+    }
 
     inv.cwd = Some(resolved.work_dir.clone());
     inv.env
@@ -286,7 +368,45 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     if let Some(config) = &resolved.connectivity_config {
         inv.uploads.push(config.clone());
     }
+    if let Some(aie) = &resolved.aie {
+        inv.uploads.push(aie.libadf.clone());
+        inv.uploads.push(aie.config.clone());
+    }
     inv.downloads.push(resolved.artifacts_dir.clone());
+    if job.mode == VitisLinkMode::Full && !resolved.link_output.starts_with(&resolved.artifacts_dir)
+    {
+        inv.downloads.push(resolved.link_output.clone());
+    }
+    inv
+}
+
+fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
+    let job = resolved.job;
+    let aie = resolved
+        .aie
+        .as_ref()
+        .expect("package invocation is only built for AIE links");
+    let mut inv = ToolInvocation::new(job.vpp.clone())
+        .arg("--package")
+        .arg("--target")
+        .arg("hw")
+        .arg("--platform")
+        .arg(job.platform.clone())
+        .arg("--save-temps")
+        .arg("--temp_dir")
+        .arg(ToolValue::path(&resolved.package_temp_dir))
+        .arg("--output")
+        .arg(ToolValue::path(&resolved.output_xclbin))
+        .arg(ToolValue::path(&resolved.link_output))
+        .arg(ToolValue::path(&aie.libadf));
+    inv.cwd = Some(resolved.work_dir.clone());
+    inv.env
+        .insert("HOME".into(), ToolValue::path(&resolved.work_dir));
+    inv.uploads = vec![resolved.link_output.clone(), aie.libadf.clone()];
+    inv.downloads = vec![resolved.artifacts_dir.clone()];
+    if !resolved.output_xclbin.starts_with(&resolved.artifacts_dir) {
+        inv.downloads.push(resolved.output_xclbin.clone());
+    }
     inv
 }
 
@@ -310,14 +430,36 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
     fs_err::create_dir_all(&resolved.report_dir)?;
     fs_err::create_dir_all(&resolved.log_dir)?;
     remove_stale_output(&resolved.output_xclbin)?;
+    if resolved.link_output != resolved.output_xclbin {
+        remove_stale_output(&resolved.link_output)?;
+    }
     remove_stale_output(&resolved.timing_report)?;
     fs_err::write(&resolved.timing_hook, final_timing_tcl().as_bytes())?;
 
-    let invocation = build_invocation(&resolved);
-    let tool_output = runner.run(&invocation)?;
-    if tool_output.exit_code != 0 {
-        return Err(super::tool_failure("v++", tool_output));
+    let link_output = runner.run(&build_link_invocation(&resolved))?;
+    if link_output.exit_code != 0 {
+        return Err(super::tool_failure(&job.vpp, link_output));
     }
+    if job.mode == VitisLinkMode::Full && !resolved.link_output.is_file() {
+        return link_error(format!(
+            "v++ --link exited successfully but did not produce `{}`",
+            resolved.link_output
+        ));
+    }
+
+    let (stdout, stderr) = if resolved.aie.is_some() {
+        let package_output = runner.run(&build_package_invocation(&resolved))?;
+        if package_output.exit_code != 0 {
+            return Err(super::tool_failure(&job.vpp, package_output));
+        }
+        validate_input(&resolved.output_xclbin, "packaged xclbin")?;
+        (
+            merge_tool_text(link_output.stdout, package_output.stdout),
+            merge_tool_text(link_output.stderr, package_output.stderr),
+        )
+    } else {
+        (link_output.stdout, link_output.stderr)
+    };
     if !resolved.timing_report.is_file() {
         return link_error(format!(
             "v++ exited successfully but did not produce timing report `{}`",
@@ -333,9 +475,20 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         recorded_mhz: f64::from(job.target_mhz),
         timing,
         timing_report: resolved.timing_report,
-        stdout: tool_output.stdout,
-        stderr: tool_output.stderr,
+        stdout,
+        stderr,
     })
+}
+
+fn merge_tool_text(first: String, second: String) -> String {
+    match (first.is_empty(), second.is_empty()) {
+        (true, _) => second,
+        (_, true) => first,
+        (false, false) => format!(
+            "{first}
+{second}"
+        ),
+    }
 }
 
 fn remove_stale_output(path: &Utf8Path) -> Result<()> {
@@ -379,6 +532,7 @@ mod tests {
                 .report_dir(artifacts.join("reports"))
                 .log_dir(artifacts.join("logs"))
                 .temp_dir(work.join("vitis.tmp"))
+                .mode(VitisLinkMode::PostRouteTiming)
                 .floorplan_xdc(Some(xdc))
                 .connectivity_config(Some(config))
                 .build();
@@ -386,11 +540,7 @@ mod tests {
         }
 
         fn timing_report(&self) -> Utf8PathBuf {
-            self.job
-                .output_xclbin
-                .parent()
-                .unwrap()
-                .join(TIMING_REPORT_NAME)
+            self.job.work_dir.join("artifacts").join(TIMING_REPORT_NAME)
         }
 
         fn attach_success(&self, runner: &MockToolRunner) {
@@ -538,6 +688,123 @@ ap_clk             -0.100       -1.000
     }
 
     #[test]
+    fn full_link_omits_to_step_and_requires_the_xclbin() {
+        let mut fixture = Fixture::new();
+        fixture.job.mode = VitisLinkMode::Full;
+        fixture.job.vpp = "custom-vpp".into();
+        fixture.job.output_xclbin = fixture
+            .job
+            .work_dir
+            .parent()
+            .expect("work parent")
+            .join("published/Top.xclbin");
+        let runner = MockToolRunner::new();
+        runner.push_ok("custom-vpp", ToolOutput::default());
+        runner.attach_download(&fixture.job.output_xclbin, b"xclbin".to_vec());
+        runner.attach_download(fixture.timing_report(), timing_report());
+
+        let output = run_vitis_link(&runner, &fixture.job).expect("full link succeeds");
+
+        assert_eq!(output.bitstream, fixture.job.output_xclbin);
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].program, "custom-vpp");
+        assert!(!calls[0].local_args().iter().any(|arg| arg == "--to_step"));
+        assert!(calls[0].downloads.contains(&fixture.job.output_xclbin));
+        assert_eq!(output.timing_report, fixture.timing_report());
+    }
+
+    #[test]
+    fn aie_full_link_produces_xsa_then_packages_xclbin() {
+        let mut fixture = Fixture::new();
+        fixture.job.mode = VitisLinkMode::Full;
+        let parent = fixture.job.xo.parent().expect("XO parent");
+        let libadf = parent.join("kernel.libadf.a");
+        let aie_config = parent.join("kernel.aie.cfg");
+        fs_err::write(&libadf, b"adf").expect("write libadf");
+        fs_err::write(&aie_config, b"aie config").expect("write AIE config");
+        let xsa = fixture
+            .job
+            .output_xclbin
+            .parent()
+            .expect("output parent")
+            .join("Top.xsa");
+        let runner = MockToolRunner::new();
+        runner.push_ok(
+            "v++",
+            ToolOutput {
+                exit_code: 0,
+                stdout: "linked".into(),
+                stderr: String::new(),
+            },
+        );
+        runner.attach_download(&xsa, b"xsa".to_vec());
+        runner.attach_download(fixture.timing_report(), timing_report());
+        runner.push_ok(
+            "v++",
+            ToolOutput {
+                exit_code: 0,
+                stdout: "packaged".into(),
+                stderr: String::new(),
+            },
+        );
+        runner.attach_download(&fixture.job.output_xclbin, b"xclbin".to_vec());
+
+        let output = run_vitis_link(&runner, &fixture.job).expect("AIE link succeeds");
+
+        assert_eq!(
+            output.stdout,
+            "linked
+packaged"
+        );
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 2);
+        let link_args = calls[0].local_args();
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--link", "--target"]));
+        assert!(!link_args.iter().any(|arg| arg == "--to_step"));
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--output", xsa.as_str()]));
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--clock.default_freqhz", "300000000"]));
+        assert!(!link_args.iter().any(|arg| arg == "--kernel_frequency"));
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--config", aie_config.as_str()]));
+        assert_eq!(link_args.last(), Some(&libadf.to_string()));
+        let package_args = calls[1].local_args();
+        assert_eq!(package_args[0], "--package");
+        assert!(package_args
+            .windows(2)
+            .any(|args| args == ["--output", fixture.job.output_xclbin.as_str()]));
+        assert!(package_args.contains(&xsa.to_string()));
+        assert!(package_args.contains(&libadf.to_string()));
+        assert!(!package_args.iter().any(|arg| arg.contains("boot_mode")));
+        assert!(!package_args.iter().any(|arg| arg.contains("kernel_image")));
+        assert!(!package_args.iter().any(|arg| arg.contains("rootfs")));
+        assert!(!package_args.iter().any(|arg| arg.contains("sd_file")));
+    }
+
+    #[test]
+    fn incomplete_aie_sidecars_fail_before_invocation() {
+        let fixture = Fixture::new();
+        let libadf = fixture
+            .job
+            .xo
+            .parent()
+            .expect("XO parent")
+            .join("kernel.libadf.a");
+        fs_err::write(libadf, b"adf").expect("write libadf");
+        let runner = MockToolRunner::new();
+        let error = run_vitis_link(&runner, &fixture.job).expect_err("missing AIE config");
+        assert!(error.to_string().contains("kernel.aie.cfg"));
+        assert!(runner.calls().is_empty());
+    }
+
+    #[test]
     fn optional_hooks_are_omitted_from_args_and_uploads() {
         let mut fixture = Fixture::new();
         fixture.job.floorplan_xdc = None;
@@ -625,7 +892,7 @@ ap_clk             -0.100       -1.000
         let mut fixture = Fixture::new();
         fixture.job.output_xclbin = fixture.job.artifacts_dir.join("Top.xsa");
         let runner = MockToolRunner::new();
-        let error = run_vitis_link(&runner, &fixture.job).expect_err("Versal output must fail");
+        let error = run_vitis_link(&runner, &fixture.job).expect_err("non-xclbin output must fail");
         assert!(error.to_string().contains(".xclbin"));
         assert!(runner.calls().is_empty());
     }

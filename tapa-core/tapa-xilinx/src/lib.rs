@@ -79,6 +79,6 @@ pub use tools::package_xo::{
     pack_ip, pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs,
 };
 pub use tools::vitis::timing::KernelTiming;
-pub use tools::vitis::{run_vitis_link, target_frequency_mhz, VitisLinkJob};
+pub use tools::vitis::{run_vitis_link, target_frequency_mhz, VitisLinkJob, VitisLinkMode};
 pub use tools::vivado::{run_vivado, VivadoJob, VivadoOutput};
 pub use tools::LinkOutput;

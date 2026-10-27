@@ -9,11 +9,13 @@ use tapa_floorplan::device::select::select_device;
 use tapa_floorplan::ExactDseResourceCaps;
 use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{FloorplanResult, Target, WorkState};
-use tapa_xilinx::{run_vitis_link, target_frequency_mhz, LinkOutput, ToolRunner, VitisLinkJob};
+use tapa_xilinx::{
+    run_vitis_link, target_frequency_mhz, LinkOutput, ToolRunner, VitisLinkJob, VitisLinkMode,
+};
 
 use crate::error::{CliError, Result};
 use crate::state::json;
-use crate::steps::pack::vitis_packaging::package_prepared_vitis_rtl;
+use crate::steps::pack::vitis_packaging::{package_prepared_slash_zip, package_prepared_vitis_rtl};
 use crate::steps::synth::rtl_codegen::{emit_prepared_rtl_tree, prepare_rtl_state, TaskHdlInputs};
 
 use super::{FLOORPLAN_CONNECTIVITY, FLOORPLAN_XDC};
@@ -368,11 +370,7 @@ fn try_implement_one(
 
     let mut candidate_state = state.clone();
     candidate_state.floorplan = Some(candidate.floorplan.clone());
-    log::info!(
-        "floorplan candidate_{:03} [2/3]: packaging XO with Vivado",
-        candidate.index,
-    );
-    let xo = package_prepared_vitis_rtl(runner, &candidate_state, &paths.rtl, &paths.xo, None)?;
+    let package = package_candidate(runner, &candidate_state, &paths, work_dir, target.flow)?;
 
     if target.flow == Target::XilinxSlash {
         log::info!(
@@ -384,10 +382,10 @@ fn try_implement_one(
                 "V80 SLASH implementation requires floorplan connectivity".to_string(),
             )
         })?;
-        let result = tapa_xilinx::tools::slash::link(
+        return tapa_xilinx::tools::slash::link(
             runner,
             &tapa_xilinx::tools::slash::SlashLinkJob {
-                package: crate::util::utf8(xo),
+                package,
                 config: crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY)),
                 output: crate::util::utf8(paths.vbin.clone()),
                 work_dir: crate::util::utf8(paths.link.clone()),
@@ -398,8 +396,8 @@ fn try_implement_one(
                 floorplan_xdc: Some(crate::util::utf8(paths.constraints.join(FLOORPLAN_XDC))),
                 mode: tapa_xilinx::tools::slash::SlashLinkMode::Hardware,
             },
-        )?;
-        return Ok(result);
+        )
+        .map_err(Into::into);
     }
 
     log::info!(
@@ -408,10 +406,11 @@ fn try_implement_one(
     );
     let job = VitisLinkJob::builder()
         .kernel_name(projection.flat.top.clone())
-        .xo(xo)
+        .xo(package)
         .platform(target.platform.clone())
         .target_mhz(target.target_mhz)
         .vivado_threads(target.vivado_threads)
+        .mode(VitisLinkMode::PostRouteTiming)
         .work_dir(crate::util::utf8(&paths.link))
         .artifacts_dir(crate::util::utf8(&paths.artifacts))
         .output_xclbin(crate::util::utf8(&paths.xclbin))
@@ -425,8 +424,31 @@ fn try_implement_one(
             connectivity.map(|_| crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY))),
         )
         .build();
-    let output = run_vitis_link(runner, &job)?;
-    Ok(output)
+    Ok(run_vitis_link(runner, &job)?)
+}
+
+fn package_candidate(
+    runner: &dyn ToolRunner,
+    state: &WorkState,
+    paths: &CandidatePaths,
+    report_work_dir: &Path,
+    flow: Target,
+) -> Result<camino::Utf8PathBuf> {
+    match flow {
+        Target::XilinxVitis => {
+            log::info!("floorplan candidate [2/3]: packaging XO with Vivado");
+            Ok(package_prepared_vitis_rtl(
+                runner, state, &paths.rtl, &paths.xo, None,
+            )?)
+        }
+        Target::XilinxSlash => {
+            log::info!("floorplan candidate [2/3]: packaging SLASH ZIP with Vivado");
+            package_prepared_slash_zip(runner, state, &paths.rtl, &paths.zip, report_work_dir)
+        }
+        Target::XilinxHls => Err(CliError::InvalidArg(
+            "floorplan implementation has no Xilinx HLS link backend".into(),
+        )),
+    }
 }
 
 #[derive(Debug)]
@@ -700,6 +722,7 @@ struct CandidatePaths {
     rtl: PathBuf,
     package: PathBuf,
     xo: PathBuf,
+    zip: PathBuf,
     constraints: PathBuf,
     link: PathBuf,
     artifacts: PathBuf,
@@ -720,6 +743,7 @@ impl CandidatePaths {
         let artifacts = link.join("artifacts");
         Self {
             xo: package.join(format!("{top}.xo")),
+            zip: package.join(format!("{top}.zip")),
             xclbin: artifacts.join(format!("{top}.xclbin")),
             vbin: artifacts.join(format!("{top}.vbin")),
             reports: artifacts.join("reports"),
@@ -792,6 +816,20 @@ fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
 mod tests {
     use super::*;
     use tapa_ir::ClockPeriod;
+    use tapa_xilinx::{ToolInvocation, ToolOutput};
+
+    struct SlashZipPackRunner;
+
+    impl ToolRunner for SlashZipPackRunner {
+        fn run(&self, invocation: &ToolInvocation) -> tapa_xilinx::Result<ToolOutput> {
+            assert_eq!(invocation.program, "vivado");
+            let work = invocation.cwd.as_ref().expect("Vivado work directory");
+            let ip = work.join("tmp_ip_dir");
+            fs_err::create_dir_all(&ip)?;
+            fs_err::write(ip.join("component.xml"), "<component/>")?;
+            Ok(ToolOutput::default())
+        }
+    }
 
     fn exact_caps(logic: f64, block: f64) -> CandidateCaps {
         CandidateCaps::exact(ExactDseResourceCaps {
@@ -904,6 +942,7 @@ mod tests {
         for (left, right) in [
             (&first.rtl, &second.rtl),
             (&first.xo, &second.xo),
+            (&first.zip, &second.zip),
             (&first.temp, &second.temp),
             (&first.artifacts, &second.artifacts),
         ] {
@@ -913,6 +952,52 @@ mod tests {
         }
         assert!(!first.temp.starts_with(&first.artifacts));
         assert!(!second.temp.starts_with(&second.artifacts));
+    }
+
+    #[test]
+    fn slash_candidate_is_packaged_as_a_k5_zip_not_an_xo() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let paths = CandidatePaths::new(dir.path(), 0, "Top");
+        paths.recreate().expect("candidate directories");
+        fs_err::write(
+            paths.rtl.join("Top.v"),
+            "module Top(input wire ap_clk, input wire [31:0] n); endmodule\n",
+        )
+        .expect("write RTL");
+        fs_err::write(dir.path().join("report.yaml"), "candidate: report\n").expect("write report");
+        let mut state = crate::testutil::state_from_json(
+            r#"{
+                "schema_version": 3,
+                "cflags": [], "top": "Top", "target": "xilinx-slash",
+                "tasks": {"Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "lower",
+                    "synth": "hls", "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
+                    "tasks": {}, "fifos": {}}}
+            }"#,
+        );
+        state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".into());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
+
+        let package = package_candidate(
+            &SlashZipPackRunner,
+            &state,
+            &paths,
+            dir.path(),
+            Target::XilinxSlash,
+        )
+        .expect("package SLASH candidate");
+
+        assert_eq!(package, crate::util::utf8(&paths.zip));
+        assert!(paths.zip.is_file());
+        assert!(!paths.xo.exists());
+        let mut archive = zip::ZipArchive::new(fs_err::File::open(&paths.zip).expect("open ZIP"))
+            .expect("parse ZIP");
+        drop(
+            archive
+                .by_name("impl/ip/component.xml")
+                .expect("impl/ip/component.xml"),
+        );
+        drop(archive.by_name("hls_data.json").expect("hls_data.json"));
+        drop(archive.by_name("tapa.json").expect("tapa.json"));
     }
 
     #[test]

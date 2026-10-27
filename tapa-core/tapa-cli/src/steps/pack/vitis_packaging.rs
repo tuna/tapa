@@ -102,6 +102,69 @@ pub fn package_prepared_vitis_rtl(
 /// Package SLASH directly from the prepared RTL, stopping Vivado after the
 /// IP-XACT core is saved rather than manufacturing an intermediate XO.
 pub(super) fn pack_slash(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
+    validate_slash_top(state)?;
+    let hdl_dir = ctx.work_dir.join("rtl");
+    apply_pack_overlays(args, ctx, &hdl_dir)?;
+    let output_path = enforce_zip_suffix(args.output.as_ref());
+    ctx.with_tool_runner(|runner| {
+        package_prepared_slash_zip(runner, state, &hdl_dir, &output_path, &ctx.work_dir)
+    })?;
+    Ok(())
+}
+
+/// Package an already prepared RTL tree with the K5 SLASH ZIP layout.
+///
+/// `report_work_dir` is read-only and supplies the synthesis report. This is
+/// also the floorplan-candidate entry point: candidates must never fall back
+/// to an XO merely because both flows share the IP-XACT Vivado helper.
+pub fn package_prepared_slash_zip(
+    runner: &dyn ToolRunner,
+    state: &WorkState,
+    rtl_dir: &Path,
+    zip_path: &Path,
+    report_work_dir: &Path,
+) -> Result<Utf8PathBuf> {
+    validate_slash_top(state)?;
+    if !rtl_dir.is_dir() {
+        return Err(CliError::MissingState {
+            name: "RTL directory (run `tapa synth` first)".into(),
+            path: rtl_dir.to_path_buf(),
+        });
+    }
+    let report_yaml = report_work_dir.join("report.yaml");
+    if !report_yaml.is_file() {
+        return Err(CliError::MissingState {
+            name: "TAPA report (run `tapa synth` first)".into(),
+            path: report_yaml,
+        });
+    }
+    if zip_path.extension().and_then(std::ffi::OsStr::to_str) != Some("zip") {
+        return Err(CliError::InvalidArg(format!(
+            "SLASH package output `{}` must use the `.zip` extension",
+            zip_path.display()
+        )));
+    }
+
+    let staging = tempfile::tempdir()?;
+    let unused_xo = staging.path().join("unused.xo");
+    let inputs = prepare_package_inputs(state, rtl_dir, &unused_xo, None)?;
+    let hls_data = emit_slash_hls_data(&inputs.kernel_xml)?;
+    let kernel_xml = emit_kernel_xml(&inputs.kernel_xml)?;
+    let ip_dir = staging.path().join("impl/ip");
+    fs_err::create_dir_all(ip_dir.parent().expect("IP parent"))?;
+    pack_ip(runner, &inputs, &crate::util::utf8(&ip_dir))?;
+    write_slash_zip(
+        zip_path,
+        &ip_dir,
+        &hls_data,
+        &kernel_xml,
+        report_work_dir,
+        state,
+    )?;
+    Ok(crate::util::utf8(zip_path))
+}
+
+fn validate_slash_top(state: &WorkState) -> Result<()> {
     let top_task = resolve_top_task(&state.graph)?;
     let host_streams: Vec<&str> = top_task
         .ports
@@ -111,8 +174,7 @@ pub(super) fn pack_slash(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
         .collect();
     if !host_streams.is_empty() {
         return Err(CliError::InvalidArg(format!(
-            "the xilinx-slash target does not support host streams at pack time; \
-             remove top-level stream port(s) {}",
+            "the xilinx-slash target does not support host streams at pack time; remove top-level stream port(s) {}",
             host_streams.join(", ")
         )));
     }
@@ -122,45 +184,11 @@ pub(super) fn pack_slash(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
         .any(|port| port.cat.is_scalar() || port.cat.is_mmap_like())
     {
         return Err(CliError::InvalidArg(
-            "the xilinx-slash target requires the ap_ctrl_hs control protocol; \
-             the top task must have a scalar or mmap argument"
+            "the xilinx-slash target requires the ap_ctrl_hs control protocol; the top task must have a scalar or mmap argument"
                 .into(),
         ));
     }
-
-    let hdl_dir = ctx.work_dir.join("rtl");
-    if !hdl_dir.is_dir() {
-        return Err(CliError::MissingState {
-            name: "RTL directory (run `tapa synth` first)".into(),
-            path: hdl_dir,
-        });
-    }
-    apply_pack_overlays(args, ctx, &hdl_dir)?;
-
-    let report_yaml = ctx.work_dir.join("report.yaml");
-    if !report_yaml.is_file() {
-        return Err(CliError::MissingState {
-            name: "TAPA report (run `tapa synth` first)".into(),
-            path: report_yaml,
-        });
-    }
-    let output_path = enforce_zip_suffix(args.output.as_ref());
-    let staging = tempfile::tempdir()?;
-    let unused_xo = staging.path().join("unused.xo");
-    let inputs = prepare_package_inputs(state, &hdl_dir, &unused_xo, None)?;
-    let hls_data = emit_slash_hls_data(&inputs.kernel_xml)?;
-    let kernel_xml = emit_kernel_xml(&inputs.kernel_xml)?;
-    let ip_dir = staging.path().join("impl/ip");
-    fs_err::create_dir_all(ip_dir.parent().expect("IP parent"))?;
-    ctx.with_tool_runner(|runner| pack_ip(runner, &inputs, &crate::util::utf8(&ip_dir)))?;
-    write_slash_zip(
-        &output_path,
-        &ip_dir,
-        &hls_data,
-        &kernel_xml,
-        &ctx.work_dir,
-        state,
-    )
+    Ok(())
 }
 
 fn prepare_package_inputs(
@@ -387,6 +415,17 @@ fn collect_hls_report_paths(work_dir: &Path) -> Result<Vec<(Utf8PathBuf, String)
         fs_err::remove_dir_all(&staged_root)?;
     }
     let mut reports = Vec::<(Utf8PathBuf, String)>::new();
+    let state_path = work_dir.join(crate::state::work::FILE_NAME);
+    if !state_path.is_file() {
+        return Err(CliError::MissingState {
+            name: "typed flow state for the link package".into(),
+            path: state_path,
+        });
+    }
+    reports.push((
+        crate::util::utf8(&state_path),
+        crate::state::work::FILE_NAME.to_owned(),
+    ));
     for file in ["report.json", "report.yaml"] {
         let path = work_dir.join(file);
         if path.is_file() {
@@ -888,6 +927,11 @@ mod tests {
         let dir = tempfile::tempdir().expect("tempdir");
         let rtl_dir = write_prepared_rtl(dir.path());
         fs_err::write(dir.path().join("report.yaml"), "normal: report\n").expect("write report");
+        fs_err::write(
+            dir.path().join(crate::state::work::FILE_NAME),
+            crate::state::work::to_bytes(&packaging_state()).expect("serialize state"),
+        )
+        .expect("write state");
         let xo_path = dir.path().join("normal.xo");
         let runner = mock_pack_runner(dir.path(), &xo_path, "normal-seed.xo");
 
@@ -904,6 +948,7 @@ mod tests {
             xo_entry(&xo_path, "report.yaml"),
             Some(b"normal: report\n".to_vec()),
         );
+        assert!(xo_entry(&xo_path, crate::state::work::FILE_NAME).is_some());
     }
 
     #[test]
