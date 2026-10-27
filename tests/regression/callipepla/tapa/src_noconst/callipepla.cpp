@@ -425,7 +425,9 @@ l_rp:
           for (int p = 0; p < 8; ++p) {
             auto a_row = raxv.row[p];
             if (a_row[17] == 0) {
-              local_C[p][a_row] += raxv.axv[p];
+              [[tapa::bind_op("dadd", "fabric", 4)]] double acc =
+                  local_C[p][a_row] + raxv.axv[p];
+              local_C[p][a_row] = acc;
             }
           }
           ++j;
@@ -826,7 +828,9 @@ rp:
 
   comp3:
     [[tapa::pipeline(1)]] for (int i = 1; i < DEP_DIST_LOAD_STORE; ++i) {
-      psum[0][0] += psum[0][i];
+      [[tapa::bind_op("dadd", "fabric", 4)]] double acc =
+          psum[0][0] + psum[0][i];
+      psum[0][0] = acc;
     }
 
     double pAp = psum[0][0];
@@ -900,7 +904,9 @@ rp:
 
   comp3:
     [[tapa::pipeline(1)]] for (int i = 1; i < DEP_DIST_LOAD_STORE; ++i) {
-      psum[0][0] += psum[0][i];
+      [[tapa::bind_op("dadd", "fabric", 4)]] double acc =
+          psum[0][0] + psum[0][i];
+      psum[0][0] = acc;
     }
 
     ResTerm out_p;
@@ -969,7 +975,9 @@ rp:
 
   comp3:
     [[tapa::pipeline(1)]] for (int i = 1; i < DEP_DIST_LOAD_STORE; ++i) {
-      psum[0][0] += psum[0][i];
+      [[tapa::bind_op("dadd", "fabric", 4)]] double acc =
+          psum[0][0] + psum[0][i];
+      psum[0][0] = acc;
     }
 
     double rz = psum[0][0];
