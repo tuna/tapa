@@ -29,10 +29,9 @@ pub const FRT_SHM_MIN_DEPTH: &str = "FRT_SHM_MIN_DEPTH";
 // ── XRT device selection ────────────────────────────────────────────────
 pub const FRT_XOCL_BDF: &str = "FRT_XOCL_BDF";
 
-// VRT hardware adapter and explicit board/kernel selection.
-pub const FRT_VRT_LIBRARY: &str = "FRT_VRT_LIBRARY";
+// VRT hardware board selection and optional libvrtd loader override.
 pub const FRT_VRT_BDF: &str = "FRT_VRT_BDF";
-pub const FRT_VRT_KERNEL: &str = "FRT_VRT_KERNEL";
+pub const FRT_VRTD_LIBRARY: &str = "FRT_VRTD_LIBRARY";
 
 // ── Internal (set by runners, read by DPI libraries) ────────────────────
 pub const TAPA_DPI_CONFIG: &str = "TAPA_DPI_CONFIG";

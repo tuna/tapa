@@ -48,7 +48,7 @@ impl Instance {
     pub fn open(path: impl AsRef<Path>, sim: &Simulator) -> Result<Self> {
         let path = path.as_ref();
         let device: Box<dyn Device> = match ExecutionMode::of(path)? {
-            ExecutionMode::Vrt => Box::new(crate::vrt::VrtDevice::open(path)?),
+            ExecutionMode::Vrt => crate::vrt::open(path)?,
             ExecutionMode::Hardware => Box::new(XrtDevice::open(path)?),
             ExecutionMode::Cosim => Box::new(CosimDevice::open(path, sim)?),
         };
@@ -127,6 +127,10 @@ mod tests {
 
     #[test]
     fn the_file_kind_decides_the_backend() {
+        assert_eq!(
+            ExecutionMode::of(Path::new("k.vbin")).expect("vbin"),
+            ExecutionMode::Vrt
+        );
         assert_eq!(
             ExecutionMode::of(Path::new("k.xclbin")).expect("xclbin"),
             ExecutionMode::Hardware
