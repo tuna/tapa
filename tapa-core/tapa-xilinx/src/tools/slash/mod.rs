@@ -398,8 +398,10 @@ mod tests {
         let vadd = fs_err::read_to_string(fixture("vadd-routed-timing.rpt")).expect("vadd report");
         let timing = parse_named_clock_timing_summary(&vadd, KERNEL_CLOCK).expect("kernel row");
         let fixed_wns_ns = parse_named_clock_wns(&vadd, FIXED_CLOCK).expect("fixed row");
-        assert_eq!(timing.wns_ns, 0.252);
-        assert_eq!(fixed_wns_ns, -0.534);
+        assert_eq!(timing.reported_target_period_ns, 3.333);
+        assert_eq!(timing.wns_ns, 0.006);
+        assert!(timing.fmax_mhz > 300.0);
+        assert_eq!(fixed_wns_ns, -0.592);
         assert!(vadd.contains("Timing constraints are not met"));
 
         let callipepla = fs_err::read_to_string(fixture("callipepla-routed-timing.rpt"))

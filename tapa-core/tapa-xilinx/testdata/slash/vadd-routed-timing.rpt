@@ -1,15 +1,15 @@
 Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 | Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
-| Date              : Tue Oct 27 01:25:23 2026
+| Date              : Tue Oct 27 11:19:17 2026
 | Host              : dev running 64-bit Ubuntu 26.04.1 LTS
-| Command           : report_timing_summary -delay_type min_max -check_timing_verbose -max_paths 1 -input_pins -routable_nets -file /home/dotkrnl/slash-build/vadd-v80/vadd.hw.vbin.prj/slash_rm/report_timing_vadd_hw.txt
+| Command           : report_timing_summary -delay_type min_max -check_timing_verbose -max_paths 1 -input_pins -routable_nets -file /home/dotkrnl/slash-build/vadd-v80-clk/vadd.hw.vbin.prj/slash_rm/report_timing_vadd_hw.txt
 | Design            : top_wrapper
 | Device            : xcv80-lsva4737
 | Speed File        : -2MHP  PRODUCTION 2.04 2024-08-06
 | Design State      : Routed
 | Temperature Grade : E
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
 
 Timing Summary Report
 
@@ -44,6 +44,8 @@ Timing Summary Report
 
 Rule       Severity          Description                                         Violations
 ---------  ----------------  --------------------------------------------------  ----------
+TIMING-1   Critical Warning  Invalid clock waveform on Clock Modifying Block     1
+TIMING-3   Critical Warning  Invalid primary clock on Clock Modifying Block      1
 TIMING-4   Critical Warning  Invalid primary clock redefinition on a clock tree  2
 TIMING-17  Critical Warning  Non-clocked sequential cell                         4
 TIMING-27  Critical Warning  Invalid primary clock on hierarchical pin           2
@@ -165,7 +167,7 @@ top_i/service_layer/qsfp_2_n_3/DCMAC_subsys/dcmac_gt1_wrapper/util_ds_buf_mbufg_
 
     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints
     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------
-     -0.534     -423.928                   1891                34507        0.003        0.000                      0                34327        0.250        0.000                       0                 12189
+     -0.592     -491.602                   2278                34611        0.002        0.000                      0                34431        0.250        0.000                       0                 12231
 
 
 Timing constraints are not met.
@@ -179,8 +181,8 @@ Timing constraints are not met.
 Clock                                                            Waveform(ns)         Period(ns)      Frequency(MHz)
 -----                                                            ------------         ----------      --------------
 clk_pl_3                                                         {0.000 5.000}        10.000          100.000
+tapa_user_clk                                                    {0.000 1.666}        3.333           300.030
 top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1  {0.000 5.000}        10.000          100.000
-  tapa_user_clk                                            {0.000 2.500}        5.000           200.000
 top_i/static_region/clk_wizard_0/inst/clk_in1                    {0.000 5.000}        10.000          100.000
   clk_wizard_0_clk_out1_1                                        {0.000 1.250}        2.500           400.000
 
@@ -193,10 +195,10 @@ top_i/static_region/clk_wizard_0/inst/clk_in1                    {0.000 5.000}  
 Clock                                                                WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints
 -----                                                                -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------
 clk_pl_3                                                                                                                                                                                                           4.620        0.000                       0                     1
+tapa_user_clk                                                          0.006        0.000                      0                23221        0.036        0.000                      0                23221        0.666        0.000                       0                  9245
 top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1                                                                                                                                                    4.609        0.000                       0                     1
-  tapa_user_clk                                                  0.252        0.000                      0                23078        0.023        0.000                      0                23078        1.500        0.000                       0                  9183
 top_i/static_region/clk_wizard_0/inst/clk_in1                                                                                                                                                                      4.609        0.000                       0                     1
-  clk_wizard_0_clk_out1_1                                             -0.534     -423.928                   1891                11249        0.003        0.000                      0                11249        0.250        0.000                       0                  3003
+  clk_wizard_0_clk_out1_1                                             -0.592     -491.602                   2278                11210        0.002        0.000                      0                11210        0.250        0.000                       0                  2983
 
 
 ------------------------------------------------------------------------------------------------
@@ -206,8 +208,8 @@ top_i/static_region/clk_wizard_0/inst/clk_in1                                   
 
 From Clock               To Clock                     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints
 ----------               --------                     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------
-clk_wizard_0_clk_out1_1  tapa_user_clk            1.273        0.000                      0                  616
-tapa_user_clk      clk_wizard_0_clk_out1_1        3.337        0.000                      0                 1534
+clk_wizard_0_clk_out1_1  tapa_user_clk                  0.932        0.000                      0                  616
+tapa_user_clk            clk_wizard_0_clk_out1_1        1.855        0.000                      0                 1531
 
 
 ------------------------------------------------------------------------------------------------
@@ -250,6 +252,177 @@ High Pulse Width  Slow    BUFG_PS/I  n/a            0.380         5.000       4.
 
 
 ---------------------------------------------------------------------------------------------------
+From Clock:  tapa_user_clk
+  To Clock:  tapa_user_clk
+
+Setup :            0  Failing Endpoints,  Worst Slack        0.006ns,  Total Violation        0.000ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.036ns,  Total Violation        0.000ns
+PW    :            0  Failing Endpoints,  Worst Slack        0.666ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Max Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             0.006ns  (required time - arrival time)
+  Source:                 top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/out_ptr_reg[0]/C
+                            (rising edge-triggered cell FDSE clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
+  Destination:            top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/add_reg_151_reg[11]/D
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
+  Path Group:             tapa_user_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            3.333ns  (tapa_user_clk rise@3.333ns - tapa_user_clk rise@0.000ns)
+  Data Path Delay:        3.076ns  (logic 1.713ns (55.689%)  route 1.363ns (44.311%))
+  Logic Levels:           5  (DSP_FP_ADDER=1 DSP_FP_OUTPUT=1 DSP_FPA_CREG=1 LUT2=1 SRL16E=1)
+  Clock Path Skew:        -0.128ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    5.423ns = ( 8.756 - 3.333 )
+    Source Clock Delay      (SCD):    6.171ns
+    Clock Pessimism Removal (CPR):    0.620ns
+  Clock Uncertainty:      0.129ns  (CJ)/2 + PE + PJ
+    Clock Jitter             (CJ):    0.259ns
+    Phase Error              (PE):    0.000ns
+    Phase Jitter             (PJ):    0.000ns
+  Clock Net Delay (Source):      5.681ns (routing 1.682ns, distribution 3.999ns)
+  Clock Net Delay (Destination): 5.007ns (routing 1.515ns, distribution 3.492ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    MMCM_X8Y0            MMCME5                       0.000     0.000 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.412     0.412    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.078     0.490 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=9243, routed)        5.681     6.171    boundary                            top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X183Y735       FDSE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/out_ptr_reg[0]/C
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X183Y735       FDSE (Prop_AFF2_SLICEM_C_Q)
+                                                      0.091     6.262 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/out_ptr_reg[0]/Q
+                         net (fo=7, routed)           0.192     6.454    reconfigurable                      top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/out_ptr_reg[0]
+    SLICE_X182Y735                                                    r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/mem_reg[3][0]_srl4_i_2__0/I0
+    SLICE_X182Y735       LUT2 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.119     6.573 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/mem_reg[3][0]_srl4_i_2__0/O
+                         net (fo=32, routed)          0.301     6.874    reconfigurable                      top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/shift_reg_addr[0]
+    SLICE_X181Y744                                                    r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/mem_reg[3][27]_srl4/A0
+    SLICE_X181Y744       SRL16E (Prop_D5LUT_SLICEM_A0_Q)
+                                                      0.124     6.998 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/b_q_fifo/srl.unit/mem_reg[3][27]_srl4/Q
+                         net (fo=1, routed)           0.482     7.480    reconfigurable                      top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373                                                        r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373           DSP_FPA_CREG (Prop_DSP_FPA_CREG_DSPFP_C[27]_C3_FP_DATA[27])
+                                                      0.565     8.045 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.000     8.045    reconfigurable                      top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373                                                        r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373           DSP_FP_ADDER (Prop_DSP_FP_ADDER_DSPFP_C3_FP_DATA[27]_FPA_INT[11])
+                                                      0.666     8.711 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.000     8.711    reconfigurable                      top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373                                                        r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    DSP_X8Y373           DSP_FP_OUTPUT (Prop_DSP_FP_OUTPUT_DSPFP_FPA_INT[11]_FPA_OUT[11])
+                                                      0.148     8.859 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_VecAdd_0_0/slash_base_VecAdd_0_0_VecAdd/slash_base_VecAdd_0_0_Add/slash_base_VecAdd_0_0_Add_Add_Pipeline_VITIS_LOOP_9_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1/slash_base_VecAdd_0_0_Add_fadd_32ns_32ns_32_1_primitive_dsp_1_ip/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.388     9.247    reconfigurable                      top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/add_fu_65_p2[11]
+    SLICE_X177Y745       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/add_reg_151_reg[11]/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock tapa_user_clk rise edge)
+                                                      3.333     3.333 r
+    MMCM_X8Y0            MMCME5                       0.000     3.333 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.353     3.686    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.063     3.749 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=9243, routed)        5.007     8.756    boundary                            top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X177Y745       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/add_reg_151_reg[11]/C
+                         clock pessimism              0.620     9.376
+                         clock uncertainty           -0.129     9.247
+    SLICE_X177Y745       FDRE (Setup_GFF2_SLICEM_C_D)
+                                                      0.006     9.253    reconfigurable   pblock_slash           top_i/slash/VecAdd_0/inst/Add_0/grp_Add_Pipeline_VITIS_LOOP_9_1_fu_88/add_reg_151_reg[11]
+  -------------------------------------------------------------------
+                         required time                          9.253
+                         arrival time                          -9.247
+  -------------------------------------------------------------------
+                         slack                                  0.006
+
+
+
+
+
+Min Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             0.036ns  (arrival time - required time)
+  Source:                 top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/mem_reg[8][68]_srl9/CLK
+                            (rising edge-triggered cell SRL16E clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
+  Destination:            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/dout_reg[68]/D
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
+  Path Group:             tapa_user_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (tapa_user_clk rise@0.000ns - tapa_user_clk rise@0.000ns)
+  Data Path Delay:        0.128ns  (logic 0.111ns (86.719%)  route 0.017ns (13.281%))
+  Logic Levels:           0
+  Clock Path Skew:        0.057ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    4.361ns
+    Source Clock Delay      (SCD):    3.642ns
+    Clock Pessimism Removal (CPR):    0.662ns
+  Clock Net Delay (Source):      3.363ns (routing 0.995ns, distribution 2.369ns)
+  Clock Net Delay (Destination): 4.000ns (routing 1.184ns, distribution 2.816ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    MMCM_X8Y0            MMCME5                       0.000     0.000 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.234     0.234    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.045     0.279 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=9243, routed)        3.363     3.642    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X175Y722       SRL16E                                       r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/mem_reg[8][68]_srl9/CLK
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X175Y722       SRL16E (Prop_E6LUT_SLICEM_CLK_Q)
+                                                      0.111     3.753 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/mem_reg[8][68]_srl9/Q
+                         net (fo=1, routed)           0.017     3.770    reconfigurable                      top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/mem_reg[8][68]_srl9_n_2
+    SLICE_X175Y722       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/dout_reg[68]/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    MMCM_X8Y0            MMCME5                       0.000     0.000 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.300     0.300    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.061     0.361 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=9243, routed)        4.000     4.361    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X175Y722       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/dout_reg[68]/C
+                         clock pessimism             -0.662     3.699
+    SLICE_X175Y722       FDRE (Hold_EFF2_SLICEM_C_D)
+                                                      0.035     3.734    reconfigurable   pblock_slash           top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/fifo_rreq/U_fifo_srl/dout_reg[68]
+  -------------------------------------------------------------------
+                         required time                         -3.734
+                         arrival time                           3.770
+  -------------------------------------------------------------------
+                         slack                                  0.036
+
+
+
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         tapa_user_clk
+Waveform(ns):       { 0.000 1.666 }
+Period(ns):         3.333
+Sources:            { top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0 }
+
+Check Type        Corner  Lib Pin         Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location          Pin
+Min Period        n/a     NOC_NSU512/CLK  n/a            2.000         3.333       1.333      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+Low Pulse Width   Slow    NOC_NSU512/CLK  n/a            1.000         1.667       0.667      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+High Pulse Width  Slow    NOC_NSU512/CLK  n/a            1.000         1.666       0.666      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+
+
+
+---------------------------------------------------------------------------------------------------
 From Clock:  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1
   To Clock:  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1
 
@@ -271,185 +444,6 @@ Min Period        n/a     MMCME5/CLKIN1  n/a            0.934         10.000    
 Max Period        n/a     MMCME5/CLKIN1  n/a            100.000       10.000      90.000     MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
 Low Pulse Width   Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
 High Pulse Width  Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
-
-
-
----------------------------------------------------------------------------------------------------
-From Clock:  tapa_user_clk
-  To Clock:  tapa_user_clk
-
-Setup :            0  Failing Endpoints,  Worst Slack        0.252ns,  Total Violation        0.000ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.023ns,  Total Violation        0.000ns
-PW    :            0  Failing Endpoints,  Worst Slack        1.500ns,  Total Violation        0.000ns
----------------------------------------------------------------------------------------------------
-
-
-Max Delay Paths
---------------------------------------------------------------------------------------
-Slack (MET) :             0.252ns  (required time - arrival time)
-  Source:                 top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[2]/C
-                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
-  Destination:            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/ADDRBWRADDR[4]
-                            (rising edge-triggered cell RAMB18E5_INT clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
-  Path Group:             tapa_user_clk
-  Path Type:              Setup (Max at Slow Process Corner)
-  Requirement:            5.000ns  (tapa_user_clk rise@5.000ns - tapa_user_clk rise@0.000ns)
-  Data Path Delay:        3.394ns  (logic 0.092ns (2.710%)  route 3.302ns (97.290%))
-  Logic Levels:           0
-  Clock Path Skew:        -0.567ns (DCD - SCD + CPR)
-    Destination Clock Delay (DCD):    6.955ns = ( 11.955 - 5.000 )
-    Source Clock Delay      (SCD):    8.101ns
-    Clock Pessimism Removal (CPR):    0.578ns
-  Clock Uncertainty:      0.145ns  (CJ)/2 + PE + PJ
-    Clock Jitter             (CJ):    0.290ns
-    Phase Error              (PE):    0.000ns
-    Phase Jitter             (PJ):    0.000ns
-  Inter-SLR Compensation: 0.344ns  ((DCD - CCD) * PF)
-    Destination Clock Delay (DCD):    6.955ns
-    Common Clock Delay      (CCD):    3.510ns
-    Prorating Factor         (PF):    0.100
-  Clock Net Delay (Source):      5.725ns (routing 1.682ns, distribution 4.043ns)
-  Clock Net Delay (Destination): 4.960ns (routing 1.515ns, distribution 3.444ns)
-
-    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
-  -------------------------------------------------------------------    -------------------------------------------------------
-                         (clock tapa_user_clk rise edge)
-                                                      0.000     0.000 r
-    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
-                         net (fo=2, routed)           1.835     1.835    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
-    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
-    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
-                                                      0.051     1.886 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
-                         net (fo=1, routed)           0.412     2.298    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
-    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
-    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
-                                                      0.078     2.376 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=9181, routed)        5.725     8.101    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/ap_clk
-    SLR Crossing[0->2]
-    SLICE_X142Y693       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[2]/C
-  -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X142Y693       FDRE (Prop_CFF2_SLICEL_C_Q)
-                                                      0.092     8.193 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[2]/Q
-                         net (fo=5, routed)           3.302    11.495    reconfigurable                      top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/i_prim[2]  (DELAYED_FOR_HOLD_FIX)
-    SLR Crossing[2->1]
-    RAMB18_X5Y310        RAMB18E5_INT                                 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/ADDRBWRADDR[4]
-  -------------------------------------------------------------------    -------------------------------------------------------
-
-                         (clock tapa_user_clk rise edge)
-                                                      5.000     5.000 r
-    BUFG_PS_X1Y9         BUFG_PS                      0.000     5.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
-                         net (fo=2, routed)           1.584     6.584    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
-    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
-    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
-                                                     -0.005     6.579 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
-                         net (fo=1, routed)           0.353     6.932    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
-    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
-    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
-                                                      0.063     6.995 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=9181, routed)        4.960    11.955    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/ap_clk
-    SLR Crossing[0->1]
-    RAMB18_X5Y310        RAMB18E5_INT                                 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/CLKBWRCLK
-                         clock pessimism              0.578    12.533
-                         inter-SLR compensation      -0.344    12.189
-                         clock uncertainty           -0.145    12.044
-    RAMB18_X5Y310        RAMB18E5_INT (Setup_RAMB18_L_CLKBWRCLK_ADDRBWRADDR[4])
-                                                     -0.297    11.747    reconfigurable   pblock_slash           top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0
-  -------------------------------------------------------------------
-                         required time                         11.747
-                         arrival time                         -11.495
-  -------------------------------------------------------------------
-                         slack                                  0.252
-
-
-
-
-
-Min Delay Paths
---------------------------------------------------------------------------------------
-Slack (MET) :             0.023ns  (arrival time - required time)
-  Source:                 top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[3]/C
-                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
-  Destination:            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/ADDRBWRADDR[5]
-                            (rising edge-triggered cell RAMB18E5_INT clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
-  Path Group:             tapa_user_clk
-  Path Type:              Hold (Min at Fast Process Corner)
-  Requirement:            0.000ns  (tapa_user_clk rise@0.000ns - tapa_user_clk rise@0.000ns)
-  Data Path Delay:        0.600ns  (logic 0.049ns (8.167%)  route 0.551ns (91.833%))
-  Logic Levels:           0
-  Clock Path Skew:        0.331ns (DCD - SCD - CPR)
-    Destination Clock Delay (DCD):    5.730ns
-    Source Clock Delay      (SCD):    4.807ns
-    Clock Pessimism Removal (CPR):    0.592ns
-  Inter-SLR Compensation: 0.281ns  ((DCD - CCD) * DF)
-    Destination Clock Delay (DCD):    5.730ns
-    Common Clock Delay      (CCD):    2.922ns
-    Derating Factor          (DF):    0.100
-  Clock Net Delay (Source):      3.450ns (routing 0.995ns, distribution 2.455ns)
-  Clock Net Delay (Destination): 3.992ns (routing 1.184ns, distribution 2.808ns)
-
-    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
-  -------------------------------------------------------------------    -------------------------------------------------------
-                         (clock tapa_user_clk rise edge)
-                                                      0.000     0.000 r
-    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
-                         net (fo=2, routed)           1.112     1.112    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
-    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
-    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
-                                                     -0.034     1.078 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
-                         net (fo=1, routed)           0.234     1.312    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
-    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
-    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
-                                                      0.045     1.357 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=9181, routed)        3.450     4.807    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/ap_clk
-    SLR Crossing[0->2]
-    SLICE_X142Y693       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[3]/C
-  -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X142Y693       FDRE (Prop_CFF_SLICEL_C_Q)
-                                                      0.049     4.856 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/waddr_reg[3]/Q
-                         net (fo=5, routed)           0.551     5.406    reconfigurable                      top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/i_prim[3]
-    SLR Crossing[2->1]
-    RAMB18_X5Y310        RAMB18E5_INT                                 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/ADDRBWRADDR[5]
-  -------------------------------------------------------------------    -------------------------------------------------------
-
-                         (clock tapa_user_clk rise edge)
-                                                      0.000     0.000 r
-    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
-                         net (fo=2, routed)           1.348     1.348    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
-    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
-    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
-                                                      0.029     1.377 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
-                         net (fo=1, routed)           0.300     1.677    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
-    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
-    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
-                                                      0.061     1.738 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=9181, routed)        3.992     5.730    boundary                            top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/ap_clk
-    SLR Crossing[0->1]
-    RAMB18_X5Y310        RAMB18E5_INT                                 r  reconfigurable pblock_slash         top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0/CLKBWRCLK
-                         clock pessimism             -0.592     5.138
-                         inter-SLR compensation       0.281     5.418
-    RAMB18_X5Y310        RAMB18E5_INT (Hold_RAMB18_L_CLKBWRCLK_ADDRBWRADDR[5])
-                                                     -0.035     5.383    reconfigurable   pblock_slash           top_i/slash/VecAdd_0/inst/Mmap2Stream_0/mmap_m_axi_U/load_unit_0/buff_rdata/U_fifo_mem/mem_reg_bram_0
-  -------------------------------------------------------------------
-                         required time                         -5.383
-                         arrival time                           5.406
-  -------------------------------------------------------------------
-                         slack                                  0.023
-
-
-
-
-
-Pulse Width Checks
---------------------------------------------------------------------------------------
-Clock Name:         tapa_user_clk
-Waveform(ns):       { 0.000 2.500 }
-Period(ns):         5.000
-Sources:            { top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0 }
-
-Check Type        Corner  Lib Pin         Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location          Pin
-Min Period        n/a     NOC_NSU512/CLK  n/a            2.000         5.000       3.000      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
-Low Pulse Width   Slow    NOC_NSU512/CLK  n/a            1.000         2.500       1.500      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
-High Pulse Width  Slow    NOC_NSU512/CLK  n/a            1.000         2.500       1.500      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
 
 
 
@@ -482,34 +476,34 @@ High Pulse Width  Slow    MMCME5/CLKIN1  n/a            0.391         5.000     
 From Clock:  clk_wizard_0_clk_out1_1
   To Clock:  clk_wizard_0_clk_out1_1
 
-Setup :         1891  Failing Endpoints,  Worst Slack       -0.534ns,  Total Violation     -423.928ns
-Hold  :            0  Failing Endpoints,  Worst Slack        0.003ns,  Total Violation        0.000ns
+Setup :         2278  Failing Endpoints,  Worst Slack       -0.592ns,  Total Violation     -491.602ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.002ns,  Total Violation        0.000ns
 PW    :            0  Failing Endpoints,  Worst Slack        0.250ns,  Total Violation        0.000ns
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (VIOLATED) :        -0.534ns  (required time - arrival time)
-  Source:                 top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]/C
+Slack (VIOLATED) :        -0.592ns  (required time - arrival time)
+  Source:                 top_i/slash/hbm_sc_00/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]/C
                             (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
-  Destination:            top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/IF_NOC_AXI_TOP_AWADDR[38]
+  Destination:            top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/IF_NOC_AXI_TOP_ARADDR[0]
                             (rising edge-triggered cell NOC_NMU_HBM2E clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
   Path Group:             clk_wizard_0_clk_out1_1
   Path Type:              Setup (Max at Slow Process Corner)
   Requirement:            2.500ns  (clk_wizard_0_clk_out1_1 rise@2.500ns - clk_wizard_0_clk_out1_1 rise@0.000ns)
-  Data Path Delay:        2.846ns  (logic 0.092ns (3.233%)  route 2.754ns (96.767%))
+  Data Path Delay:        3.055ns  (logic 0.091ns (2.979%)  route 2.964ns (97.021%))
   Logic Levels:           0
-  Clock Path Skew:        0.095ns (DCD - SCD + CPR)
-    Destination Clock Delay (DCD):    7.209ns = ( 9.709 - 2.500 )
-    Source Clock Delay      (SCD):    7.863ns
-    Clock Pessimism Removal (CPR):    0.749ns
+  Clock Path Skew:        0.175ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    7.133ns = ( 9.633 - 2.500 )
+    Source Clock Delay      (SCD):    7.789ns
+    Clock Pessimism Removal (CPR):    0.832ns
   Clock Uncertainty:      0.112ns  (CJ)/2 + PE + PJ
     Clock Jitter             (CJ):    0.223ns
     Phase Error              (PE):    0.000ns
     Phase Jitter             (PJ):    0.000ns
-  Clock Net Delay (Source):      5.403ns (routing 1.770ns, distribution 3.633ns)
-  Clock Net Delay (Destination): 5.141ns (routing 1.588ns, distribution 3.553ns)
+  Clock Net Delay (Source):      5.330ns (routing 1.770ns, distribution 3.560ns)
+  Clock Net Delay (Destination): 5.065ns (routing 1.588ns, distribution 3.477ns)
 
     Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
   -------------------------------------------------------------------    -------------------------------------------------------
@@ -524,14 +518,14 @@ Slack (VIOLATED) :        -0.534ns  (required time - arrival time)
     BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
     BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
                                                       0.078     2.460 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=3001, routed)        5.403     7.863    boundary                            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/clkb
+    X5Y7 (CLOCK_ROOT)    net (fo=2981, routed)        5.330     7.789    boundary                            top_i/slash/hbm_sc_00/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/clkb
     SLR Crossing[0->2]
-    SLICE_X30Y837        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]/C
+    SLICE_X54Y818        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_00/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]/C
   -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X30Y837        FDRE (Prop_AFF2_SLICEL_C_Q)
-                                                      0.092     7.955 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]/Q
-                         net (fo=1, routed)           2.754    10.709    boundary                            top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/IF_NOC_AXI_AWADDR[38]
-    NOC_NMU_HBM2E_X1Y0   NOC_NMU_HBM2E                                r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/IF_NOC_AXI_TOP_AWADDR[38]
+    SLICE_X54Y818        FDRE (Prop_AFF_SLICEL_C_Q)
+                                                      0.091     7.880 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_00/inst/s00_nodes/s00_ar_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]/Q
+                         net (fo=1, routed)           2.964    10.844    boundary                            top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/IF_NOC_AXI_ARADDR[0]
+    NOC_NMU_HBM2E_X2Y0   NOC_NMU_HBM2E                                r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/IF_NOC_AXI_TOP_ARADDR[0]
   -------------------------------------------------------------------    -------------------------------------------------------
 
                          (clock clk_wizard_0_clk_out1_1 rise edge)
@@ -545,18 +539,18 @@ Slack (VIOLATED) :        -0.534ns  (required time - arrival time)
     BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
     BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
                                                       0.063     4.567 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=3001, routed)        5.141     9.709    static                              top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/aclk
+    X5Y7 (CLOCK_ROOT)    net (fo=2981, routed)        5.065     9.633    static                              top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/aclk
     SLR Crossing[0->2]
-    NOC_NMU_HBM2E_X1Y0   NOC_NMU_HBM2E                                r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
-                         clock pessimism              0.749    10.458
-                         clock uncertainty           -0.112    10.346
-    NOC_NMU_HBM2E_X1Y0   NOC_NMU_HBM2E (Setup_NMU_NOC_NMU_HBM2E_CLK_IF_NOC_AXI_TOP_AWADDR[38])
-                                                     -0.171    10.175    static                                  top_i/static_region/noc/axi_noc_cips/inst/HBM02_AXI_nmu/bd_6ff4_HBM02_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST
+    NOC_NMU_HBM2E_X2Y0   NOC_NMU_HBM2E                                r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+                         clock pessimism              0.832    10.465
+                         clock uncertainty           -0.112    10.353
+    NOC_NMU_HBM2E_X2Y0   NOC_NMU_HBM2E (Setup_NMU_NOC_NMU_HBM2E_CLK_IF_NOC_AXI_TOP_ARADDR[0])
+                                                     -0.101    10.252    static                                  top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST
   -------------------------------------------------------------------
-                         required time                         10.175
-                         arrival time                         -10.709
+                         required time                         10.252
+                         arrival time                         -10.844
   -------------------------------------------------------------------
-                         slack                                 -0.534
+                         slack                                 -0.592
 
 
 
@@ -564,22 +558,22 @@ Slack (VIOLATED) :        -0.534ns  (required time - arrival time)
 
 Min Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             0.003ns  (arrival time - required time)
-  Source:                 top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/areset_reg_replica_3/C
+Slack (MET) :             0.002ns  (arrival time - required time)
+  Source:                 top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/m_sc_areset_r_reg/C
                             (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
-  Destination:            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[115]/CE
+  Destination:            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/count_r_reg[4]/R
                             (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
   Path Group:             clk_wizard_0_clk_out1_1
   Path Type:              Hold (Min at Fast Process Corner)
   Requirement:            0.000ns  (clk_wizard_0_clk_out1_1 rise@0.000ns - clk_wizard_0_clk_out1_1 rise@0.000ns)
-  Data Path Delay:        0.438ns  (logic 0.135ns (30.849%)  route 0.303ns (69.151%))
-  Logic Levels:           2  (LUT3=2)
-  Clock Path Skew:        0.403ns (DCD - SCD - CPR)
-    Destination Clock Delay (DCD):    5.803ns
-    Source Clock Delay      (SCD):    4.588ns
+  Data Path Delay:        0.517ns  (logic 0.049ns (9.469%)  route 0.468ns (90.531%))
+  Logic Levels:           0
+  Clock Path Skew:        0.509ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    5.926ns
+    Source Clock Delay      (SCD):    4.606ns
     Clock Pessimism Removal (CPR):    0.811ns
-  Clock Net Delay (Source):      3.182ns (routing 1.045ns, distribution 2.137ns)
-  Clock Net Delay (Destination): 3.999ns (routing 1.253ns, distribution 2.746ns)
+  Clock Net Delay (Source):      3.199ns (routing 1.045ns, distribution 2.154ns)
+  Clock Net Delay (Destination): 4.122ns (routing 1.253ns, distribution 2.870ns)
 
     Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
   -------------------------------------------------------------------    -------------------------------------------------------
@@ -594,22 +588,14 @@ Slack (MET) :             0.003ns  (arrival time - required time)
     BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
     BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
                                                       0.045     1.407 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=3001, routed)        3.182     4.588    boundary                            top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/aclk
+    X5Y7 (CLOCK_ROOT)    net (fo=2981, routed)        3.199     4.606    boundary                            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/m_sc_aclk
     SLR Crossing[0->2]
-    SLICE_X31Y848        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/areset_reg_replica_3/C
+    SLICE_X50Y829        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/m_sc_areset_r_reg/C
   -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X31Y848        FDRE (Prop_AFF2_SLICEM_C_Q)
-                                                      0.050     4.638 f  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/areset_reg_replica_3/Q
-                         net (fo=1, routed)           0.109     4.747    reconfigurable                      top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/exit_inst/gen_w_cmd_fifo.w_cmd_fifo/areset_repN_3_alias
-    SLICE_X30Y848                                                     f  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/exit_inst/gen_w_cmd_fifo.w_cmd_fifo/s_axi_awready_INST_0/I2
-    SLICE_X30Y848        LUT3 (Prop_A6LUT_SLICEL_I2_O)
-                                                      0.060     4.807 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/m00_exit_pipeline/m00_exit/inst/exit_inst/gen_w_cmd_fifo.w_cmd_fifo/s_axi_awready_INST_0/O
-                         net (fo=6, routed)           0.007     4.814    reconfigurable                      top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/m_sc_recv[0]
-    SLICE_X30Y848                                                     r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/gen_mem_rep[0].inst_xpm_memory_i_1/I0
-    SLICE_X30Y848        LUT3 (Prop_B6LUT_SLICEL_I0_O)
-                                                      0.025     4.839 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/gen_mem_rep[0].inst_xpm_memory_i_1/O
-                         net (fo=103, routed)         0.187     5.026    reconfigurable                      top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/enb
-    SLICE_X34Y847        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[115]/CE
+    SLICE_X50Y829        FDRE (Prop_EFF2_SLICEL_C_Q)
+                                                      0.049     4.655 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/m_sc_areset_r_reg/Q
+                         net (fo=104, routed)         0.468     5.123    reconfigurable                      top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/SR[0]
+    SLICE_X29Y832        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/count_r_reg[4]/R
   -------------------------------------------------------------------    -------------------------------------------------------
 
                          (clock clk_wizard_0_clk_out1_1 rise edge)
@@ -623,17 +609,17 @@ Slack (MET) :             0.003ns  (arrival time - required time)
     BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
     BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
                                                       0.061     1.804 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
-    X5Y7 (CLOCK_ROOT)    net (fo=3001, routed)        3.999     5.803    boundary                            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/clkb
+    X5Y7 (CLOCK_ROOT)    net (fo=2981, routed)        4.122     5.926    boundary                            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/m_sc_aclk
     SLR Crossing[0->2]
-    SLICE_X34Y847        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[115]/C
-                         clock pessimism             -0.811     4.991
-    SLICE_X34Y847        FDRE (Hold_DFF2_SLICEL_C_CE)
-                                                      0.032     5.023    reconfigurable   pblock_slash           top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[115]
+    SLICE_X29Y832        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/count_r_reg[4]/C
+                         clock pessimism             -0.811     5.115
+    SLICE_X29Y832        FDRE (Hold_GFF2_SLICEM_C_R)
+                                                      0.006     5.121    reconfigurable   pblock_slash           top_i/slash/hbm_sc_02/inst/s00_nodes/s00_aw_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_rd_addrb/count_r_reg[4]
   -------------------------------------------------------------------
-                         required time                         -5.023
-                         arrival time                           5.026
+                         required time                         -5.121
+                         arrival time                           5.123
   -------------------------------------------------------------------
-                         slack                                  0.003
+                         slack                                  0.002
 
 
 
@@ -657,42 +643,42 @@ High Pulse Width  Slow    NOC_NMU_HBM2E/CLK  n/a            1.000         1.250 
 From Clock:  clk_wizard_0_clk_out1_1
   To Clock:  tapa_user_clk
 
-Setup :            0  Failing Endpoints,  Worst Slack        1.273ns,  Total Violation        0.000ns
+Setup :            0  Failing Endpoints,  Worst Slack        0.932ns,  Total Violation        0.000ns
 Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             1.273ns  (required time - arrival time)
-  Source:                 top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMC/CLK
+Slack (MET) :             0.932ns  (required time - arrival time)
+  Source:                 top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMB_D1/CLK
                             (rising edge-triggered cell RAMD32 clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
-  Destination:            top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]/D
-                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Destination:            top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[131]/D
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
   Path Group:             tapa_user_clk
   Path Type:              Setup (Max at Slow Process Corner)
   Requirement:            2.500ns  (MaxDelay Path 2.500ns)
-  Data Path Delay:        1.234ns  (logic 0.316ns (25.608%)  route 0.918ns (74.392%))
+  Data Path Delay:        1.576ns  (logic 0.320ns (20.305%)  route 1.256ns (79.695%))
   Logic Levels:           0
   Timing Exception:       MaxDelay Path 2.500ns -datapath_only
 
     Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
   -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X37Y813                                     0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMC/CLK
-    SLICE_X37Y813        RAMD32 (Prop_C5LUT_SLICEM_CLK_O)
-                                                      0.316     0.316 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMC/O
-                         net (fo=1, routed)           0.918     1.234    reconfigurable                      top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[132]
-    SLICE_X80Y796        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]/D
+    SLICE_X51Y819                                     0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMB_D1/CLK
+    SLICE_X51Y819        RAMD32 (Prop_B6LUT_SLICEM_CLK_O)
+                                                      0.320     0.320 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_126_139/RAMB_D1/O
+                         net (fo=1, routed)           1.256     1.576    reconfigurable                      top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[131]
+    SLICE_X122Y804       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[131]/D
   -------------------------------------------------------------------    -------------------------------------------------------
 
                          max delay                    2.500     2.500
-    SLICE_X80Y796        FDRE (Setup_FFF2_SLICEL_C_D)
-                                                      0.007     2.507    reconfigurable   pblock_slash           top_i/slash/hbm_sc_00/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[132]
+    SLICE_X122Y804       FDRE (Setup_AFF_SLICEL_C_D)
+                                                      0.008     2.508    reconfigurable   pblock_slash           top_i/slash/hbm_sc_01/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[131]
   -------------------------------------------------------------------
-                         required time                          2.507
-                         arrival time                          -1.234
+                         required time                          2.508
+                         arrival time                          -1.576
   -------------------------------------------------------------------
-                         slack                                  1.273
+                         slack                                  0.932
 
 
 
@@ -702,39 +688,39 @@ Slack (MET) :             1.273ns  (required time - arrival time)
 From Clock:  tapa_user_clk
   To Clock:  clk_wizard_0_clk_out1_1
 
-Setup :            0  Failing Endpoints,  Worst Slack        3.337ns,  Total Violation        0.000ns
+Setup :            0  Failing Endpoints,  Worst Slack        1.855ns,  Total Violation        0.000ns
 Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
 ---------------------------------------------------------------------------------------------------
 
 
 Max Delay Paths
 --------------------------------------------------------------------------------------
-Slack (MET) :             3.337ns  (required time - arrival time)
-  Source:                 top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_140_153/RAMB/CLK
-                            (rising edge-triggered cell RAMD32 clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
-  Destination:            top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[142]/D
+Slack (MET) :             1.855ns  (required time - arrival time)
+  Source:                 top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_84_97/RAMF/CLK
+                            (rising edge-triggered cell RAMD32 clocked by tapa_user_clk  {rise@0.000ns fall@1.666ns period=3.333ns})
+  Destination:            top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]/D
                             (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
   Path Group:             clk_wizard_0_clk_out1_1
   Path Type:              Setup (Max at Slow Process Corner)
-  Requirement:            5.000ns  (MaxDelay Path 5.000ns)
-  Data Path Delay:        1.671ns  (logic 0.314ns (18.791%)  route 1.357ns (81.209%))
+  Requirement:            3.333ns  (MaxDelay Path 3.333ns)
+  Data Path Delay:        1.485ns  (logic 0.310ns (20.875%)  route 1.175ns (79.125%))
   Logic Levels:           0
-  Timing Exception:       MaxDelay Path 5.000ns -datapath_only
+  Timing Exception:       MaxDelay Path 3.333ns -datapath_only
 
     Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
   -------------------------------------------------------------------    -------------------------------------------------------
-    SLICE_X35Y876                                     0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_140_153/RAMB/CLK
-    SLICE_X35Y876        RAMD32 (Prop_D5LUT_SLICEM_CLK_O)
-                                                      0.314     0.314 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_140_153/RAMB/O
-                         net (fo=1, routed)           1.357     1.671    reconfigurable                      top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[142]
-    SLICE_X40Y827        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[142]/D
+    SLICE_X95Y826                                     0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_84_97/RAMF/CLK
+    SLICE_X95Y826        RAMD32 (Prop_F5LUT_SLICEM_CLK_O)
+                                                      0.310     0.310 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_84_97/RAMF/O
+                         net (fo=1, routed)           1.175     1.485    reconfigurable                      top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[94]
+    SLICE_X40Y856        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]/D
   -------------------------------------------------------------------    -------------------------------------------------------
 
-                         max delay                    5.000     5.000
-    SLICE_X40Y827        FDRE (Setup_CFF2_SLICEL_C_D)
-                                                      0.008     5.008    reconfigurable   pblock_slash           top_i/slash/hbm_sc_01/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[142]
+                         max delay                    3.333     3.333
+    SLICE_X40Y856        FDRE (Setup_EFF2_SLICEL_C_D)
+                                                      0.007     3.340    reconfigurable   pblock_slash           top_i/slash/hbm_sc_02/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[94]
   -------------------------------------------------------------------
-                         required time                          5.008
-                         arrival time                          -1.671
+                         required time                          3.340
+                         arrival time                          -1.485
   -------------------------------------------------------------------
-                         slack                                  3.337
+                         slack                                  1.855
