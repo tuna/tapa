@@ -119,7 +119,7 @@ pub struct FlowSettings {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub part_num: Option<String>,
     /// Vitis platform `synth --platform` ran against, when given. Read by
-    /// `pack --bitstream-script` to render the `v++` invocation.
+    /// `tapa link` to run `v++ --link` against the packaged `.xo`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub platform: Option<String>,
     /// The **requested** target clock period.

@@ -10,13 +10,10 @@ The `--target` selected during analysis determines the output format.
 
 ### `xilinx-vitis` (default)
 
-`tapa pack` produces an `.xo` file. Use it for fast cosimulation or pass it to
-`v++ --link` to build an `hw_emu.xclbin` or `hw.xclbin`. For an AI Engine
-design, pack also writes `<name>.libadf.a` and `<name>.aie.cfg`; `-s` emits a
-script that links and packages all three. Embedded SD packaging accepts
-`--package-kernel-image`, `--package-rootfs`, and repeated
-`--package-sd-file` inputs. Set `TARGET=hw_emu` in the script's environment to
-override its default `hw` target.
+`tapa pack` produces an `.xo` file. Use it for fast cosimulation or run
+`tapa link --package <name>.xo` on it to build an `hw.xclbin` bitstream. For
+an AI Engine design, pack also writes `<name>.libadf.a` and `<name>.aie.cfg`
+next to the XO, and `tapa link` links and packages all three.
 
 ### `xilinx-hls`
 

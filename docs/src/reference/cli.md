@@ -64,7 +64,6 @@ documented for those three stages.
 | `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). Also takes `TASK:TARGET` mappings, see `analyze`. |
 | `-j N` / `--jobs N` | Number of parallel HLS jobs. |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeatable. |
-| `--connectivity FILE` | Vitis link config with memory `sp=` bank assignments. |
 
 ### Example
 
@@ -279,7 +278,9 @@ tapa --work-dir work.out floorplan \
 tapa --work-dir work.out pack -o kernel.xo
 ```
 
-The floorplanned `pack` consumes `floorplan.xdc` and the connectivity config automatically once the floorplan marker is present.
+A published floorplan stages `floorplan.xdc` and the connectivity config in
+the work directory; pass them to `tapa link` (`--floorplan-xdc`,
+`--connectivity`) when building the bitstream.
 
 ---
 
@@ -289,7 +290,8 @@ Package RTL from the work directory into a single output artifact: an XO for
 the default `xilinx-vitis` target or a ZIP for `xilinx-hls`. Reads RTL
 produced by `tapa synth`. A design with AI Engine tasks also gets
 `<name>.libadf.a` and `<name>.aie.cfg` next to the XO; see
-[AI Engine Tasks](../howto/aie.md).
+[AI Engine Tasks](../howto/aie.md). The packaged artifact feeds `tapa link`,
+which produces the `.xclbin` (or `.vbin`) bitstream.
 
 ### Optional flags
 
@@ -297,8 +299,6 @@ produced by `tapa synth`. A design with AI Engine tasks also gets
 |------|-------------|
 | `--output FILE` / `-o FILE` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for other targets). |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeat the flag for multiple paths. Not available after `tapa floorplan`. |
-| `--connectivity FILE` | Memory connectivity `.ini` with the Vitis `sp=` bank assignments. When set, the emitted bitstream script passes it to `v++ --link` as a `--config`, binding each M-AXI port to its bank — required for HBM/DDR designs. |
-| `--bitstream-script FILE` / `-s FILE` | Write the generated bitstream-generation script to this path. |
 
 ### Example
 

@@ -234,7 +234,7 @@ pub fn warn_narrow_boundaries(partition: &AiePartition) {
 
 /// The `v++ --link` connectivity of the PLIOs: each PL kernel AXIS port is
 /// wired to the PLIO of the same name. The compute unit is named after the
-/// top task, as the bitstream script's `--connectivity.nk` names it.
+/// top task, matching the `--connectivity.nk` naming `tapa link` uses.
 pub fn link_config(top: &str, partition: &AiePartition) -> String {
     let mut out = String::from("[connectivity]\n");
     for stream in &partition.streams {

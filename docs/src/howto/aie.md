@@ -182,7 +182,8 @@ kernel:
 
 ```bash
 tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
-  --platform xilinx_vck190_base_202520_1 -o vadd.xo -s link.sh
+  --platform xilinx_vck190_base_202520_1 -o vadd.xo
+tapa link --package vadd.xo -o vadd.xclbin
 ```
 
 - `tapa synth` compiles the AI Engine tasks into `work.out/aie/hw/libadf.a`
@@ -205,8 +206,8 @@ tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
   `vadd.libadf.a` and the PLIO connectivity as `vadd.aie.cfg`, one
   `stream_connect` per boundary stream between the kernel's compute unit
   (named after the top task) and `ai_engine_0`.
-- The `-s` script links the three into an `.xsa` and packages that into the
-  `.xclbin`.
+- `tapa link` finds the sidecars next to the `.xo`, links the three into an
+  `.xsa`, and packages that into the `.xclbin`.
 
 ### Iterating on the AI Engine only
 
@@ -257,43 +258,3 @@ its tasks start again from the top. The reported kernel time is still the PL
 kernel's, from start to done.
 
 This control path has not yet run on an AI Engine device.
-
-## VCK190 system emulation
-
-A VCK190 `hw_emu` run includes the PL RTL, the AI Engine simulator, and an
-aarch64 Linux guest running the unchanged host through XRT. It requires Vitis
-with the VCK190 base platform and the matching extracted
-`xilinx-versal-common` image; no physical board is used. Set `VERSAL_COMMON`
-to the directory containing `Image` and `rootfs.ext4`, then run:
-
-```bash
-bazel test --config=vck190 --test_env=VERSAL_COMMON \
-  //tests/functional/aie-vadd:aie-vadd-hw-emu
-```
-
-The `--config=vck190` platform cross-builds the guest host while TAPA itself
-continues to run on the build machine. The test compiles the design, creates an
-SD image, launches QEMU and the hardware simulators, and invokes the guest host
-twice. It is a manual, vendor-gated test and can take hours. Set
-`AIE_HW_EMU_TIMEOUT` to override its default 7200-second emulator timeout.
-The `aie-detach-hw-emu` target in the same package checks run-forever graph
-restart by invoking twice in one guest process and clearing the output before
-each invocation.
-
-For another design, pass the common-image files and any guest applications to
-`tapa pack` (or `tapa compile`) together with `-s`:
-
-```bash
-tapa compile -f vadd.cpp -t VecAdd --platform xilinx_vck190_base_202520_1 \
-  -o vadd.xo -s link.sh \
-  --package-kernel-image "$VERSAL_COMMON/Image" \
-  --package-rootfs "$VERSAL_COMMON/rootfs.ext4" \
-  --package-sd-file ./vadd-host-aarch64
-TARGET=hw_emu ./link.sh
-./launch_hw_emu.sh -run-app './vadd-host-aarch64 --bitstream=VecAdd_xilinx_vck190_base_202520_1.xclbin 64'
-```
-
-The package options require an AI Engine graph and a bitstream script. The
-script sets SD boot mode and defers automatic AI Engine startup so FRT can
-write runtime parameters before starting the graph. Without these options,
-existing PCIe and PL-only scripts are unchanged.

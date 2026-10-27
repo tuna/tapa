@@ -1,20 +1,17 @@
 //! `tapa pack` orchestration.
 //!
-//! Reloads `<work_dir>/tapa.json`, projects the top
-//! task's external ports into a [`PackageXoInputs`] block, and drives
+//! Reloads `<work_dir>/tapa.json`, projects the top task's external
+//! ports into a [`PackageXoInputs`] block, and drives
 //! `tapa_xilinx::pack_xo` against `<work_dir>/rtl` to produce the
-//! `.xo`. Three optional overlays are applied around the core pack:
+//! `.xo`. One optional overlay is applied around the core pack:
+//! `--custom-rtl <PATH>` (may repeat) validates user-supplied Verilog
+//! files against `<work_dir>/templates_info.json` and copies them into
+//! `<work_dir>/rtl` before Vivado runs; an active floorplan rejects
+//! this late RTL mutation.
 //!
-//! * `--custom-rtl <PATH>` (may repeat) — validate user-supplied
-//!   Verilog files against `<work_dir>/templates_info.json` and copy
-//!   them into `<work_dir>/rtl` before Vivado runs. An active floorplan
-//!   rejects this late RTL mutation.
-//! * `--bitstream-script <FILE>` — after `.xo` emission, render the
-//!   `get_vitis_script` helper and drop it at the requested
-//!   path (executable on Unix).
-//!
-//! The Vitis target emits an `.xo`; the HLS target emits a
-//! reproducible `.zip` archive.
+//! The Vitis target emits an `.xo`, the SLASH target a `.zip` package,
+//! and the HLS target a reproducible `.zip` archive. The bitstream
+//! itself is produced by `tapa link` from the packaged artifact.
 
 use std::path::{Path, PathBuf};
 
@@ -27,7 +24,6 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work::{self as work_io, WorkState};
 
-mod bitstream_script;
 mod cosim_compat;
 mod custom_rtl;
 mod kernel_xml_ports;
@@ -46,28 +42,6 @@ pub struct PackArgs {
     /// Output `.xo` (Vitis target) or `.zip` (HLS target).
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
-
-    /// Bitstream-generation script path.
-    #[arg(short = 's', long = "bitstream-script", value_name = "FILE")]
-    pub bitstream_script: Option<PathBuf>,
-
-    /// Memory connectivity `.ini` (v++ `sp=` bank assignments). When set, the
-    /// emitted bitstream script adds it as a `--config`, so `v++ --link` binds
-    /// each M-AXI to its bank — required for HBM/DDR designs.
-    #[arg(long = "connectivity", value_name = "FILE")]
-    pub connectivity: Option<PathBuf>,
-
-    /// Linux kernel image for an embedded AI Engine SD package.
-    #[arg(long, value_name = "FILE", requires = "package_rootfs")]
-    pub package_kernel_image: Option<PathBuf>,
-
-    /// Linux root filesystem for an embedded AI Engine SD package.
-    #[arg(long, value_name = "FILE", requires = "package_kernel_image")]
-    pub package_rootfs: Option<PathBuf>,
-
-    /// Additional file to include in an embedded SD package (may repeat).
-    #[arg(long, value_name = "FILE")]
-    pub package_sd_file: Vec<PathBuf>,
 
     /// Custom RTL files / folders (may repeat; unavailable after floorplan).
     #[arg(long = "custom-rtl", value_name = "PATH")]
