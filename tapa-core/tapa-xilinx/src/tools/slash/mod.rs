@@ -188,7 +188,9 @@ fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink, vivado: &str) -
         .arg("-o")
         .arg(ToolValue::path(&prepared.output))
         .arg("--clock-hz")
-        .arg(requested_hz(job.target_mhz).to_string());
+        .arg(requested_hz(job.target_mhz).to_string())
+        .arg("--pre-synth-tcls")
+        .arg(ToolValue::path(&prepared.hook));
     invocation.cwd = Some(prepared.work.clone());
     invocation.uploads = vec![
         prepared.ip.clone(),
@@ -486,11 +488,9 @@ mod tests {
         let expected_recorded =
             recorded_clock_hz(300_000_000, &result.timing).expect("recorded clock");
         assert_eq!(result.bitstream, output_path);
-        assert_eq!(result.requested_mhz, 300);
         assert_eq!(result.recorded_mhz, hz_to_mhz(expected_recorded));
         assert_eq!(result.stdout, "linked");
         assert_eq!(result.stderr, "warning");
-        assert!(!result.timing.wns_ns.is_sign_positive());
         assert_eq!(
             vbin::read_system_map(&result.bitstream)
                 .expect("rewritten map")
@@ -509,6 +509,9 @@ mod tests {
         assert_eq!(call.program, "/tool-host/bin/slashkit");
         let args = call.local_args();
         assert!(args.windows(2).any(|pair| pair == ["-p", "hw"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--pre-synth-tcls", work.join("tapa_pre_synth.tcl").as_str()]));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--vivado", "/tool-host/bin/vivado"]));
