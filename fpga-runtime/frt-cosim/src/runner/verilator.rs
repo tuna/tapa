@@ -90,7 +90,7 @@ impl SimRunner for VerilatorRunner {
                 std::fs::copy(f, rtl_dir.join(fname))?;
             }
         }
-        generate_xilinx_fp_ip_models(&rtl_dir)?;
+        generate_xilinx_ip_models(&rtl_dir)?;
         fix_combinational_nba(&rtl_dir)?;
         Ok(())
     }
@@ -255,9 +255,23 @@ fn num_cpus_str() -> String {
 struct XilinxFpIpConfig {
     dpi_func: String,
     latency: usize,
+    operands: usize,
 }
 
-fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct XilinxDividerIpConfig {
+    quotient_width: usize,
+    divisor_width: usize,
+    latency: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum XilinxIpModel {
+    FloatingPoint(XilinxFpIpConfig),
+    UnsignedDivider(XilinxDividerIpConfig),
+}
+
+fn generate_xilinx_ip_models(rtl_dir: &Path) -> Result<()> {
     let mut generated = HashSet::new();
     let ip_re = Regex::new(r"(?m)^\s*(\w+_ip)\s+\w+\s*\(").map_err(|e| {
         CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
@@ -292,12 +306,16 @@ fn generate_xilinx_fp_ip_models(rtl_dir: &Path) -> Result<()> {
                 }
             }
 
-            let model = parse_xilinx_fp_ip_model(&ip_module, rtl_dir)?;
-            if let Some(model) = model {
-                std::fs::write(
-                    &ip_sv_path,
-                    generate_xilinx_fp_ip_replacement(&ip_module, &model),
-                )?;
+            if let Some(model) = parse_xilinx_ip_model(&ip_module, rtl_dir)? {
+                let replacement = match model {
+                    XilinxIpModel::FloatingPoint(config) => {
+                        generate_xilinx_fp_ip_replacement(&ip_module, &config)
+                    }
+                    XilinxIpModel::UnsignedDivider(config) => {
+                        generate_xilinx_divider_ip_replacement(&ip_module, &config)
+                    }
+                };
+                std::fs::write(&ip_sv_path, replacement)?;
             }
         }
     }
@@ -416,18 +434,18 @@ fn is_verilog_like(path: &Path) -> bool {
         .is_some_and(|x| matches!(x, "v" | "sv" | "vh"))
 }
 
-fn parse_xilinx_fp_ip_model(ip_module: &str, rtl_dir: &Path) -> Result<Option<XilinxFpIpConfig>> {
-    if let Some(config) = parse_xilinx_fp_ip_tcl(&rtl_dir.join(format!("{ip_module}.tcl")))? {
-        return Ok(Some(config));
-    }
-    Ok(detect_xilinx_fp_ip_model_from_name(ip_module))
-}
-
-fn parse_xilinx_fp_ip_tcl(tcl_path: &Path) -> Result<Option<XilinxFpIpConfig>> {
+fn parse_xilinx_ip_model(ip_module: &str, rtl_dir: &Path) -> Result<Option<XilinxIpModel>> {
+    let tcl_path = rtl_dir.join(format!("{ip_module}.tcl"));
     let Ok(content) = std::fs::read_to_string(tcl_path) else {
-        return Ok(None);
+        return Ok(detect_xilinx_fp_ip_model_from_name(ip_module).map(XilinxIpModel::FloatingPoint));
     };
-    parse_xilinx_fp_ip_tcl_text(&content)
+    if let Some(config) = parse_xilinx_fp_ip_tcl_text(&content)? {
+        return Ok(Some(XilinxIpModel::FloatingPoint(config)));
+    }
+    if let Some(config) = parse_xilinx_divider_ip_tcl_text(&content)? {
+        return Ok(Some(XilinxIpModel::UnsignedDivider(config)));
+    }
+    Ok(detect_xilinx_fp_ip_model_from_name(ip_module).map(XilinxIpModel::FloatingPoint))
 }
 
 fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>> {
@@ -435,32 +453,25 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         return Ok(None);
     }
 
-    let config_re = Regex::new(r"CONFIG\.([A-Za-z0-9_]+)\s+([^\s\\]+)").map_err(|e| {
-        CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
-    })?;
-    let mut config = HashMap::<String, String>::new();
-    for caps in config_re.captures_iter(content) {
-        let key = caps.get(1).map(|m| m.as_str()).unwrap_or_default();
-        let value = caps.get(2).map(|m| m.as_str()).unwrap_or_default();
-        config.insert(key.to_owned(), value.to_owned());
-    }
+    let config = parse_xilinx_tcl_config(content)?;
 
     let precision = config
         .get("a_precision_type")
-        .map_or_else(|| "single".into(), |s| s.to_ascii_lowercase());
+        .map_or("single", String::as_str);
     let is_double = precision == "double";
 
     let op = if let Some(operation_type) = config.get("operation_type") {
-        let operation_type = operation_type.to_ascii_lowercase();
-        if operation_type.contains("multiply") {
-            Some("mul")
+        if operation_type.contains("multiply_add") {
+            operation_type.contains("unfused").then_some(("madd", 3))
+        } else if operation_type.contains("multiply") {
+            Some(("mul", 2))
         } else if operation_type.contains("add") || operation_type.contains("subtract") {
             // For Add_Subtract IPs, check add_sub_value to distinguish add vs sub
-            let add_sub = config.get("add_sub_value").map(|s| s.to_ascii_lowercase());
-            if add_sub.as_deref() == Some("subtract") || add_sub.as_deref() == Some("sub") {
-                Some("sub")
+            let add_sub = config.get("add_sub_value").map(String::as_str);
+            if add_sub == Some("subtract") || add_sub == Some("sub") {
+                Some(("sub", 2))
             } else {
-                Some("add")
+                Some(("add", 2))
             }
         } else {
             None
@@ -469,7 +480,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         None
     };
 
-    let Some(op) = op else {
+    let Some((op, operands)) = op else {
         return Ok(None);
     };
 
@@ -477,6 +488,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         (false, "add") => "fp32_add",
         (false, "sub") => "fp32_sub",
         (false, "mul") => "fp32_mul",
+        (false, "madd") => "fp32_unfused_madd",
         (true, "add") => "fp64_add",
         (true, "sub") => "fp64_sub",
         (true, "mul") => "fp64_mul",
@@ -498,7 +510,64 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
     Ok(Some(XilinxFpIpConfig {
         dpi_func: dpi_func.to_owned(),
         latency,
+        operands,
     }))
+}
+
+fn parse_xilinx_divider_ip_tcl_text(content: &str) -> Result<Option<XilinxDividerIpConfig>> {
+    if !content.contains("create_ip -name div_gen") {
+        return Ok(None);
+    }
+    let config = parse_xilinx_tcl_config(content)?;
+    if config.get("operand_sign").map(String::as_str) != Some("unsigned") {
+        return Ok(None);
+    }
+    let parse_width = |name: &str| -> Result<usize> {
+        config
+            .get(name)
+            .ok_or_else(|| CosimError::Metadata(format!("divider IP TCL missing CONFIG.{name}")))?
+            .parse::<usize>()
+            .map_err(|e| {
+                CosimError::Metadata(format!("invalid CONFIG.{name} in divider IP TCL: {e}"))
+            })
+    };
+    let quotient_width = parse_width("dividend_and_quotient_width")?;
+    let divisor_width = parse_width("divisor_width")?;
+    let latency = parse_width("latency")?;
+    if quotient_width == 0 || divisor_width == 0 || latency == 0 {
+        return Err(CosimError::Metadata(
+            "divider IP widths and latency must be nonzero".into(),
+        ));
+    }
+    Ok(Some(XilinxDividerIpConfig {
+        quotient_width,
+        divisor_width,
+        latency,
+    }))
+}
+
+fn parse_xilinx_tcl_config(content: &str) -> Result<HashMap<String, String>> {
+    let config_re = Regex::new(r"CONFIG\.([A-Za-z0-9_]+)\s+([^\s\\]+)")
+        .map_err(|e| CosimError::Metadata(format!("regex compile failed: {e}")))?;
+    Ok(config_re
+        .captures_iter(content)
+        .map(|caps| {
+            let key = caps
+                .get(1)
+                .map(|m| m.as_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let value = caps
+                .get(2)
+                .map(|m| m.as_str())
+                .unwrap_or_default()
+                .trim_start_matches('{')
+                .trim_end_matches('}')
+                .trim_end_matches(']')
+                .to_ascii_lowercase();
+            (key, value)
+        })
+        .collect())
 }
 
 fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConfig> {
@@ -529,6 +598,30 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
         "int unsigned"
     };
     let latency = model.latency;
+    let dpi_func = model.dpi_func.as_str();
+    let third_port = if model.operands == 3 {
+        format!(
+            "    input  wire        s_axis_c_tvalid,\n    input  wire [{data_hi}:0] s_axis_c_tdata,\n",
+            data_hi = bit_width - 1,
+        )
+    } else {
+        String::new()
+    };
+    let dpi_args = if model.operands == 3 {
+        format!("input {ret_type} a, input {ret_type} b, input {ret_type} c")
+    } else {
+        format!("input {ret_type} a, input {ret_type} b")
+    };
+    let dpi_call = if model.operands == 3 {
+        format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata, s_axis_c_tdata)")
+    } else {
+        format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata)")
+    };
+    let valid_expr = if model.operands == 3 {
+        "s_axis_a_tvalid & s_axis_b_tvalid & s_axis_c_tvalid"
+    } else {
+        "s_axis_a_tvalid & s_axis_b_tvalid"
+    };
 
     if latency == 0 {
         return format!(
@@ -541,15 +634,15 @@ module {ip_module} (
     input  wire [{data_hi}:0] s_axis_a_tdata,
     input  wire        s_axis_b_tvalid,
     input  wire [{data_hi}:0] s_axis_b_tdata,
+{third_port}
     output wire        m_axis_result_tvalid,
     output wire [{data_hi}:0] m_axis_result_tdata
 );
 
-import "DPI-C" function {ret_type} {dpi_func}(
-input {ret_type} a, input {ret_type} b);
+import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
 
-assign m_axis_result_tdata = {dpi_func}(s_axis_a_tdata, s_axis_b_tdata);
-assign m_axis_result_tvalid = s_axis_a_tvalid & s_axis_b_tvalid;
+assign m_axis_result_tdata = {dpi_call};
+assign m_axis_result_tvalid = {valid_expr};
 
 endmodule
 "#,
@@ -557,6 +650,10 @@ endmodule
             data_hi = bit_width - 1,
             ret_type = ret_type,
             dpi_func = model.dpi_func,
+            third_port = third_port,
+            dpi_args = dpi_args,
+            dpi_call = dpi_call,
+            valid_expr = valid_expr,
         );
     }
 
@@ -572,12 +669,12 @@ module {ip_module} (
     input  wire [{data_hi}:0] s_axis_a_tdata,
     input  wire        s_axis_b_tvalid,
     input  wire [{data_hi}:0] s_axis_b_tdata,
+{third_port}
     output wire        m_axis_result_tvalid,
     output wire [{data_hi}:0] m_axis_result_tdata
 );
 
-import "DPI-C" function {ret_type} {dpi_func}(
-input {ret_type} a, input {ret_type} b);
+import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
 
 reg [{data_hi}:0] pipe [0:{depth_hi}];
 reg [{depth_hi}:0]  valid_pipe;
@@ -586,8 +683,8 @@ integer i;
 
 always @(posedge aclk) begin
     if (aclken) begin
-        pipe[0] <= {dpi_func}(s_axis_a_tdata, s_axis_b_tdata);
-        valid_pipe[0] <= s_axis_a_tvalid & s_axis_b_tvalid;
+        pipe[0] <= {dpi_call};
+        valid_pipe[0] <= {valid_expr};
         for (i = 1; i < {depth}; i = i + 1) begin
             pipe[i] <= pipe[i-1];
             valid_pipe[i] <= valid_pipe[i-1];
@@ -604,8 +701,66 @@ endmodule
         data_hi = bit_width - 1,
         ret_type = ret_type,
         dpi_func = model.dpi_func,
+        third_port = third_port,
+        dpi_args = dpi_args,
+        dpi_call = dpi_call,
+        valid_expr = valid_expr,
         depth = depth,
         depth_hi = depth_hi,
+    )
+}
+
+fn generate_xilinx_divider_ip_replacement(
+    ip_module: &str,
+    model: &XilinxDividerIpConfig,
+) -> String {
+    let data_width = model.quotient_width + model.divisor_width;
+    let depth_hi = model.latency - 1;
+    format!(
+        "`timescale 1ns/1ps
+
+module {ip_module} (
+    input  wire                    aclk,
+    input  wire                    aclken,
+    input  wire                    s_axis_dividend_tvalid,
+    input  wire [{quotient_hi}:0] s_axis_dividend_tdata,
+    input  wire                    s_axis_divisor_tvalid,
+    input  wire [{divisor_hi}:0] s_axis_divisor_tdata,
+    output wire                    m_axis_dout_tvalid,
+    output wire [{data_hi}:0]     m_axis_dout_tdata
+);
+
+localparam DATA_WIDTH = {data_width};
+wire [{quotient_hi}:0] quotient = s_axis_dividend_tdata / s_axis_divisor_tdata;
+wire [{divisor_hi}:0] remainder = s_axis_dividend_tdata % s_axis_divisor_tdata;
+wire [DATA_WIDTH-1:0] result = {{quotient, remainder}};
+reg [DATA_WIDTH-1:0] data_pipe [0:{depth_hi}];
+reg [{depth_hi}:0] valid_pipe = '0;
+integer i;
+
+always @(posedge aclk) begin
+    if (aclken) begin
+        data_pipe[0] <= result;
+        valid_pipe[0] <= s_axis_dividend_tvalid & s_axis_divisor_tvalid;
+        for (i = 1; i < {latency}; i = i + 1) begin
+            data_pipe[i] <= data_pipe[i-1];
+            valid_pipe[i] <= valid_pipe[i-1];
+        end
+    end
+end
+
+assign m_axis_dout_tdata = data_pipe[{depth_hi}];
+assign m_axis_dout_tvalid = valid_pipe[{depth_hi}];
+
+endmodule
+",
+        ip_module = ip_module,
+        quotient_hi = model.quotient_width - 1,
+        divisor_hi = model.divisor_width - 1,
+        data_hi = data_width - 1,
+        data_width = data_width,
+        depth_hi = depth_hi,
+        latency = model.latency,
     )
 }
 
@@ -801,6 +956,51 @@ set_property -dict [list CONFIG.a_precision_type Single \
             .expect("fp model");
         assert_eq!(model.dpi_func, "fp32_add");
         assert_eq!(model.latency, 5);
+        assert_eq!(model.operands, 2);
+    }
+
+    #[test]
+    fn parses_braced_unfused_multiply_add_tcl_case_insensitively() {
+        let tcl = r"
+create_ip -name floating_point -module_name Fmadd_ip
+set_property -dict [list CONFIG.Operation_Type {Unfused_Multiply_Add} \
+                          CONFIG.A_Precision_Type {Single} \
+                          CONFIG.c_latency 2] [get_ips Fmadd_ip]
+";
+        let model = parse_xilinx_fp_ip_tcl_text(tcl)
+            .expect("parse tcl")
+            .expect("fma model");
+        assert_eq!(model.dpi_func, "fp32_unfused_madd");
+        assert_eq!(model.latency, 2);
+        assert_eq!(model.operands, 3);
+        let replacement = generate_xilinx_fp_ip_replacement("Fmadd_ip", &model);
+        assert!(replacement.contains("s_axis_c_tdata"));
+        assert!(replacement.contains("s_axis_c_tvalid"));
+        assert!(replacement
+            .contains("fp32_unfused_madd(s_axis_a_tdata, s_axis_b_tdata, s_axis_c_tdata)"));
+    }
+
+    #[test]
+    fn parses_and_generates_unsigned_divider_ip_model() {
+        let tcl = r"
+create_ip -name div_gen -module_name Divide_ip
+set_property -dict [list CONFIG.dividend_and_quotient_width 32 \
+                          CONFIG.divisor_width 32 \
+                          CONFIG.operand_sign {Unsigned} \
+                          CONFIG.latency_configuration {Manual} \
+                          CONFIG.latency 18 \
+                          CONFIG.ACLKEN {true}] [get_ips Divide_ip]
+";
+        let config = parse_xilinx_divider_ip_tcl_text(tcl)
+            .expect("parse tcl")
+            .expect("divider model");
+        assert_eq!(config.quotient_width, 32);
+        assert_eq!(config.divisor_width, 32);
+        assert_eq!(config.latency, 18);
+        let model = generate_xilinx_divider_ip_replacement("Divide_ip", &config);
+        assert!(model.contains("s_axis_dividend_tdata / s_axis_divisor_tdata"));
+        assert!(model.contains("reg [17:0] valid_pipe"));
+        assert!(model.contains("data_pipe[17]"));
     }
 
     #[test]
@@ -808,6 +1008,7 @@ set_property -dict [list CONFIG.a_precision_type Single \
         let model = XilinxFpIpConfig {
             dpi_func: "fp32_mul".into(),
             latency: 5,
+            operands: 2,
         };
         let replacement =
             generate_xilinx_fp_ip_replacement("ProcElem_fmul_32ns_32ns_32_4_max_dsp_1_ip", &model);
@@ -832,7 +1033,7 @@ set_property -dict [list CONFIG.a_precision_type Single \
         )
         .expect("write tcl");
 
-        generate_xilinx_fp_ip_models(tmp.path()).expect("generate models");
+        generate_xilinx_ip_models(tmp.path()).expect("generate models");
         let model =
             std::fs::read_to_string(tmp.path().join("Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.sv"))
                 .expect("read generated model");
