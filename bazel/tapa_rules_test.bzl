@@ -30,6 +30,9 @@ def _pipeline_actions_are_content_staged_test_impl(ctx):
     asserts.false(env, _has_input(pack, "cache-fixture-xo.analysis.tapa"), "pack must not depend directly on analyze")
     asserts.true(env, _has_input(pack, "overlay.v"), "custom RTL belongs to pack")
     asserts.false(env, _has_input(synth, "overlay.v"), "custom RTL must not invalidate synth")
+    asserts.false(env, _has_input(pack, "vadd.h"), "connectivity belongs to link, not pack")
+    pack_command = " ".join(pack.argv) if pack.argv else (pack.content or "")
+    asserts.false(env, "--connectivity" in pack_command, "pack must not receive retired link flags")
     return analysistest.end(env)
 
 _pipeline_actions_test = analysistest.make(_pipeline_actions_are_content_staged_test_impl)
@@ -42,6 +45,7 @@ def tapa_rules_test_suite(name):
         include = ["//tests/apps/vadd:."],
         tags = ["manual"],
         custom_rtl_files = ["overlay.v"],
+        connectivity = "//tests/apps/vadd:vadd.h",
         top_name = "VecAdd",
     )
     _pipeline_actions_test(

@@ -276,14 +276,10 @@ def _tapa_xo_impl(ctx):
         "--output",
         output_file.path,
     ]
-    if ctx.file.connectivity:
-        pack_cmd.extend(["--connectivity", ctx.file.connectivity.path])
     for rtl_file in ctx.files.custom_rtl_files:
         pack_cmd.extend(["--custom-rtl", rtl_file.path])
 
     pack_inputs = [pack_input_dir] + ctx.files.custom_rtl_files
-    if ctx.file.connectivity:
-        pack_inputs.append(ctx.file.connectivity)
     if ctx.file.ssh_key:
         pack_inputs.append(ctx.file.ssh_key)
     pack_outputs = [output_file, work_dir]
@@ -432,9 +428,8 @@ _tapa_xo = rule(
         "part_num": attr.string(),
         "connectivity": attr.label(
             allow_single_file = True,
-            doc = "Optional memory-connectivity .ini forwarded to `pack " +
-                  "--connectivity`; consumed when pack emits a v++ link " +
-                  "script, accepted and idle for a bare .xo.",
+            doc = "Optional memory-connectivity .ini retained as an input " +
+                  "for downstream link rules; not forwarded to pack.",
         ),
         "jobs": attr.int(
             default = 1,
