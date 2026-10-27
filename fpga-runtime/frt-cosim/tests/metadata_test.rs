@@ -433,3 +433,33 @@ fn missing_top_task_is_rejected() {
         "error must name the missing top task; got {err}",
     );
 }
+
+#[test]
+fn slash_zip_dispatches_to_the_xo_loader_by_content() {
+    use std::io::Write as _;
+
+    let dir = tempfile::tempdir().expect("tempdir");
+    let path = dir.path().join("vadd.zip");
+    let mut archive = zip::ZipWriter::new(std::fs::File::create(&path).expect("create zip"));
+    let options = zip::write::SimpleFileOptions::default();
+    archive
+        .start_file("kernel.xml", options)
+        .expect("kernel.xml entry");
+    archive
+        .write_all(KERNEL_XML.as_bytes())
+        .expect("write kernel.xml");
+    archive
+        .start_file("impl/ip/hdl/vadd.v", options)
+        .expect("RTL entry");
+    archive
+        .write_all(b"module vadd; endmodule\n")
+        .expect("write RTL");
+    archive.finish().expect("finish zip");
+
+    let (spec, extracted) = metadata::load_spec(&path).expect("load SLASH package");
+    assert_eq!(spec.mode, Mode::Vitis);
+    assert_eq!(spec.top_name, "vadd");
+    assert_eq!(spec.args.len(), 3);
+    assert_eq!(spec.verilog_files.len(), 1);
+    assert!(spec.verilog_files[0].starts_with(extracted.path()));
+}

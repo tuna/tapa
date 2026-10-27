@@ -58,7 +58,10 @@ pub use runtime::value::ToolValue;
 
 pub use error::{Result, XilinxError};
 pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};
-pub use platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
+pub use platform::kernel_xml::{
+    emit_kernel_xml, emit_slash_hls_data, render_slash_registers, KernelXmlArgs, KernelXmlPort,
+    PortCategory,
+};
 pub use platform::slash::{find_slash_platform, SlashPlatform, SLASH_PLATFORMS};
 pub use runtime::config::RemoteConfig;
 pub use runtime::process::{
@@ -72,7 +75,9 @@ pub use tools::hls::report::{
     UtilizationReport,
 };
 pub use tools::hls::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput};
-pub use tools::package_xo::{pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs};
+pub use tools::package_xo::{
+    pack_ip, pack_xo, pack_xo_without_redaction, redact_xo, PackageXoInputs,
+};
 pub use tools::vitis::timing::KernelTiming;
 pub use tools::vitis::{run_vitis_link, target_frequency_mhz, VitisLinkJob, VitisLinkOutput};
 pub use tools::vivado::{run_vivado, VivadoJob, VivadoOutput};

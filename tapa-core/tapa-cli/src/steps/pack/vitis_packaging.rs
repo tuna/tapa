@@ -17,8 +17,8 @@ use camino::Utf8PathBuf;
 use std::path::{Path, PathBuf};
 use tapa_ir::{ClockPeriod, Design, WorkState};
 use tapa_xilinx::{
-    normalize_hls_report_text, pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs,
-    PackageXoInputs, ToolRunner,
+    emit_kernel_xml, emit_slash_hls_data, normalize_hls_report_text, pack_ip,
+    pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, PackageXoInputs, ToolRunner,
 };
 
 use crate::context::CliContext;
@@ -28,7 +28,7 @@ use crate::state::work::FlowSettings;
 use super::bitstream_script::{write_vitis_script, EmbeddedPackage, LinkExtras};
 use super::custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
-use super::{enforce_xo_suffix, PackArgs};
+use super::{enforce_xo_suffix, enforce_zip_suffix, PackArgs};
 
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
@@ -95,7 +95,80 @@ pub fn package_prepared_vitis_rtl(
     xo_path: &Path,
     report_work_dir: Option<&Path>,
 ) -> Result<Utf8PathBuf> {
-    // The `.xo` is the PL half: AI Engine streams are its AXIS ports.
+    let inputs = prepare_package_inputs(state, rtl_dir, xo_path, report_work_dir)?;
+    Ok(xilinx_pack_xo(runner, &inputs)?)
+}
+
+/// Package SLASH directly from the prepared RTL, stopping Vivado after the
+/// IP-XACT core is saved rather than manufacturing an intermediate XO.
+pub(super) fn pack_slash(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
+    let top_task = resolve_top_task(&state.graph)?;
+    let host_streams: Vec<&str> = top_task
+        .ports
+        .iter()
+        .filter(|port| port.cat.is_stream())
+        .map(|port| port.name.as_str())
+        .collect();
+    if !host_streams.is_empty() {
+        return Err(CliError::InvalidArg(format!(
+            "the xilinx-slash target does not support host streams at pack time; \
+             remove top-level stream port(s) {}",
+            host_streams.join(", ")
+        )));
+    }
+    if !top_task
+        .ports
+        .iter()
+        .any(|port| port.cat.is_scalar() || port.cat.is_mmap_like())
+    {
+        return Err(CliError::InvalidArg(
+            "the xilinx-slash target requires the ap_ctrl_hs control protocol; \
+             the top task must have a scalar or mmap argument"
+                .into(),
+        ));
+    }
+
+    let hdl_dir = ctx.work_dir.join("rtl");
+    if !hdl_dir.is_dir() {
+        return Err(CliError::MissingState {
+            name: "RTL directory (run `tapa synth` first)".into(),
+            path: hdl_dir,
+        });
+    }
+    apply_pack_overlays(args, ctx, &hdl_dir)?;
+
+    let report_yaml = ctx.work_dir.join("report.yaml");
+    if !report_yaml.is_file() {
+        return Err(CliError::MissingState {
+            name: "TAPA report (run `tapa synth` first)".into(),
+            path: report_yaml,
+        });
+    }
+    let output_path = enforce_zip_suffix(args.output.as_ref());
+    let staging = tempfile::tempdir()?;
+    let unused_xo = staging.path().join("unused.xo");
+    let inputs = prepare_package_inputs(state, &hdl_dir, &unused_xo, None)?;
+    let hls_data = emit_slash_hls_data(&inputs.kernel_xml)?;
+    let kernel_xml = emit_kernel_xml(&inputs.kernel_xml)?;
+    let ip_dir = staging.path().join("impl/ip");
+    fs_err::create_dir_all(ip_dir.parent().expect("IP parent"))?;
+    ctx.with_tool_runner(|runner| pack_ip(runner, &inputs, &crate::util::utf8(&ip_dir)))?;
+    write_slash_zip(
+        &output_path,
+        &ip_dir,
+        &hls_data,
+        &kernel_xml,
+        &ctx.work_dir,
+        state,
+    )
+}
+
+fn prepare_package_inputs(
+    state: &WorkState,
+    rtl_dir: &Path,
+    output_path: &Path,
+    report_work_dir: Option<&Path>,
+) -> Result<PackageXoInputs> {
     let design = &crate::aie::pl_graph(&state.graph)?;
     let flow = &state.flow;
     let top_task = resolve_top_task(design)?;
@@ -108,25 +181,80 @@ pub fn package_prepared_vitis_rtl(
     if kernel_ports.is_empty() {
         return Err(CliError::InvalidArg(format!(
             "top task `{}` has no external ports; cannot emit kernel.xml",
-            design.top,
+            design.top
         )));
     }
     let report_paths = report_work_dir
         .map(collect_hls_report_paths)
         .transpose()?
         .unwrap_or_default();
-    let inputs = build_package_xo_inputs(
+    Ok(build_package_xo_inputs(
         design,
         rtl_dir,
-        xo_path,
+        output_path,
         part_num,
         clock_period,
         kernel_ports,
         m_axi_param_block(&top_task.ports, &top_m_axi_bases),
         report_paths,
-    );
+    ))
+}
 
-    Ok(xilinx_pack_xo(runner, &inputs)?)
+fn write_slash_zip(
+    output_path: &Path,
+    ip_dir: &Path,
+    hls_data: &str,
+    kernel_xml: &str,
+    work_dir: &Path,
+    state: &WorkState,
+) -> Result<()> {
+    use path_slash::PathExt as _;
+
+    if let Some(parent) = output_path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs_err::create_dir_all(parent)?;
+        }
+    }
+    let file = fs_err::File::create(output_path)?;
+    let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
+    let options: zip::write::FileOptions<'_, '_, ()> =
+        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut ip_files = Vec::new();
+    for entry in walkdir::WalkDir::new(ip_dir) {
+        let entry = entry.map_err(std::io::Error::other)?;
+        if entry.file_type().is_file() {
+            ip_files.push(entry.into_path());
+        }
+    }
+    ip_files.sort();
+    for path in ip_files {
+        let relative = path.strip_prefix(ip_dir).map_err(|_| {
+            CliError::Archive(format!(
+                "IP file `{}` is not under `{}`",
+                path.display(),
+                ip_dir.display()
+            ))
+        })?;
+        let name = format!("impl/ip/{}", relative.to_slash_lossy());
+        super::add_zip_entry(&mut zip, options, &name, &fs_err::read(path)?)?;
+    }
+    super::add_zip_entry(&mut zip, options, "hls_data.json", hls_data.as_bytes())?;
+    super::add_zip_entry(&mut zip, options, "kernel.xml", kernel_xml.as_bytes())?;
+    super::add_zip_entry(
+        &mut zip,
+        options,
+        "report.yaml",
+        &fs_err::read(work_dir.join("report.yaml"))?,
+    )?;
+    super::add_zip_entry(
+        &mut zip,
+        options,
+        crate::state::work::FILE_NAME,
+        &crate::state::work::to_bytes(&super::stamp_cosim_port_metadata(state))?,
+    )?;
+    zip.finish()
+        .map_err(|error| CliError::Archive(format!("cannot finalize the archive: {error}")))?;
+    Ok(())
 }
 
 fn resolve_top_task(design: &Design) -> Result<&tapa_ir::Task> {
@@ -989,5 +1117,99 @@ SOURCE=\"/home/tapa/execroot/_main/bazel-out/bin/tests/apps/vadd/vadd-xo.tapa/re
         assert!(!sanitized.contains(r#"row id="1""#));
         assert!(!sanitized.contains(r#"row id="2""#));
         assert_eq!(sanitized.matches(r#"row id="0""#).count(), 2);
+    }
+
+    #[test]
+    fn slash_zip_has_the_link_and_cosim_layout() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let ip_dir = dir.path().join("unpacked/impl/ip");
+        fs_err::create_dir_all(ip_dir.join("hdl")).expect("hdl");
+        fs_err::create_dir_all(ip_dir.join("xgui")).expect("xgui");
+        fs_err::write(ip_dir.join("component.xml"), "<component/>").expect("component");
+        fs_err::write(ip_dir.join("hdl/Top.v"), "module Top; endmodule").expect("RTL");
+        fs_err::write(ip_dir.join("xgui/Top.tcl"), "# xgui").expect("xgui");
+        fs_err::write(dir.path().join("report.yaml"), "clock: 3.33\n").expect("report");
+        let mut state = packaging_state();
+        state.graph.target = tapa_ir::Target::XilinxSlash;
+        let top = state.graph.tasks.get_mut("Top").expect("top");
+        top.ports[0].cat = tapa_ir::ArgCategory::Mmap;
+        top.ports[0].ctype = "int*".into();
+        let output = dir.path().join("vadd.zip");
+
+        write_slash_zip(
+            &output,
+            &ip_dir,
+            "{\"Args\":{}}\n",
+            "<root/>\n",
+            dir.path(),
+            &state,
+        )
+        .expect("write SLASH zip");
+
+        let mut archive =
+            zip::ZipArchive::new(fs_err::File::open(output).expect("open zip")).expect("parse zip");
+        let names: Vec<String> = (0..archive.len())
+            .map(|index| {
+                archive
+                    .by_index(index)
+                    .expect("entry")
+                    .name()
+                    .expect("name")
+                    .into_owned()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            [
+                "impl/ip/component.xml",
+                "impl/ip/hdl/Top.v",
+                "impl/ip/xgui/Top.tcl",
+                "hls_data.json",
+                "kernel.xml",
+                "report.yaml",
+                "tapa.json",
+            ]
+        );
+        let mut packed_state = String::new();
+        archive
+            .by_name("tapa.json")
+            .expect("state entry")
+            .read_to_string(&mut packed_state)
+            .expect("read state");
+        let packed_state = WorkState::from_json(&packed_state).expect("parse packed state");
+        assert_eq!(packed_state.graph.target, tapa_ir::Target::XilinxSlash);
+        assert_eq!(
+            packed_state.graph.tasks["Top"].ports[0].mmap_addr_width,
+            Some(64),
+            "the state entry carries the cosim mmap metadata"
+        );
+    }
+
+    #[test]
+    fn slash_pack_rejects_host_streams_and_non_handshake_tops() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let args = PackArgs {
+            output: None,
+            bitstream_script: None,
+            connectivity: None,
+            package_kernel_image: None,
+            package_rootfs: None,
+            package_sd_file: vec![],
+            custom_rtl: vec![],
+        };
+        let ctx = crate::testutil::ctx_at(dir.path());
+        let mut state = packaging_state();
+        state.graph.target = tapa_ir::Target::XilinxSlash;
+        let mut stream = state.graph.tasks["Top"].ports[0].clone();
+        stream.name = "input".into();
+        stream.cat = tapa_ir::ArgCategory::Istream;
+        state.graph.tasks.get_mut("Top").unwrap().ports.push(stream);
+        let error = pack_slash(&args, &ctx, &state).expect_err("host stream must fail");
+        assert!(error.to_string().contains("host streams"), "{error}");
+        assert!(error.to_string().contains("input"), "{error}");
+
+        state.graph.tasks.get_mut("Top").unwrap().ports.clear();
+        let error = pack_slash(&args, &ctx, &state).expect_err("ap_ctrl_none must fail");
+        assert!(error.to_string().contains("ap_ctrl_hs"), "{error}");
     }
 }

@@ -90,11 +90,31 @@ pub fn load_spec(path: &Path) -> Result<(KernelSpec, tempfile::TempDir)> {
 
     match path.extension().and_then(|e| e.to_str()) {
         Some("xo") => load_xo_spec(&mut zip, path),
+        Some("zip") if zip_contains_kernel_xml(&mut zip)? => load_xo_spec(&mut zip, path),
         Some("zip") => load_zip_spec(&mut zip, path),
         other => Err(CosimError::Metadata(format!(
             "unsupported cosim package extension: {other:?}"
         ))),
     }
+}
+
+/// `.zip` is used by both the HLS and SLASH pack flows. SLASH carries the
+/// same kernel.xml + RTL contract as an XO, so content, not the suffix, picks
+/// the metadata reader and leaves existing fast-cosim setup unchanged.
+fn zip_contains_kernel_xml<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<bool> {
+    for index in 0..zip.len() {
+        let entry = zip
+            .by_index(index)
+            .map_err(|error| CosimError::Metadata(error.to_string()))?;
+        if entry
+            .name()
+            .map_err(|error| CosimError::Metadata(error.to_string()))?
+            .ends_with("kernel.xml")
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn load_xo_spec<R: Read + std::io::Seek>(

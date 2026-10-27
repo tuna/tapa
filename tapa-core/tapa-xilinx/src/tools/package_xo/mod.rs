@@ -12,7 +12,9 @@ use zip::write::SimpleFileOptions;
 
 use crate::error::{Result, XilinxError};
 use crate::platform::device::DeviceInfo;
-use crate::platform::kernel_xml::{emit_kernel_xml, KernelXmlArgs, KernelXmlPort, PortCategory};
+use crate::platform::kernel_xml::{
+    emit_kernel_xml, render_slash_registers, KernelXmlArgs, KernelXmlPort, PortCategory,
+};
 use crate::runtime::process::ToolRunner;
 use crate::tools::vivado::{run_vivado, VivadoJob};
 use tapa_protocol::{M_AXI_PREFIX, S_AXI_NAME};
@@ -119,15 +121,18 @@ fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
 fn format_package_xo_tcl(
     top_name: &str,
     bus_ifaces: &str,
+    registers: &str,
     cpp_kernels: &str,
     part_num: &str,
+    package_xo: bool,
 ) -> Result<String> {
     #[derive(askama::Template)]
     #[template(path = "package_xo.tcl.j2", escape = "none")]
     struct Template<'a> {
         top_name: &'a str,
         bus_ifaces: &'a str,
-        cpp_kernels: &'a str,
+        registers: &'a str,
+        package_xo: &'a str,
         part_arg: &'a str,
     }
     let part_arg = if part_num.is_empty() {
@@ -135,10 +140,16 @@ fn format_package_xo_tcl(
     } else {
         format!(" -part {part_num}")
     };
+    let package_xo_command = package_xo.then(|| {
+        format!(
+            "package_xo -force -xo_path \"$xo_file\" -kernel_name {top_name} \\\n        -ip_directory ${{tmp_ip_dir}} -kernel_xml $kernel_xml_path{cpp_kernels}"
+        )
+    });
     askama::Template::render(&Template {
         top_name,
         bus_ifaces,
-        cpp_kernels,
+        registers,
+        package_xo: package_xo_command.as_deref().unwrap_or(""),
         part_arg: &part_arg,
     })
     .map_err(|e| XilinxError::Template(e.to_string()))
@@ -281,15 +292,17 @@ fn set_artifact_mode(_path: &camino::Utf8Path) -> Result<()> {
     Ok(())
 }
 
-/// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`
-/// without running the reproducibility redaction pass. Primarily
-/// useful for tests that need a pre-redaction artifact to exercise
-/// [`redact::redact_xo`] directly.
-#[doc(hidden)] // public only for integration tests
-pub fn pack_xo_without_redaction(
+struct PreparedVivadoPackage {
+    // Own the scratch directory until the caller has consumed the XO or IP.
+    tmp: tempfile::TempDir,
+    kernel_out_path: Utf8PathBuf,
+}
+
+fn run_vivado_packaging(
     runner: &dyn ToolRunner,
     inputs: &PackageXoInputs,
-) -> Result<Utf8PathBuf> {
+    slash_ip_only: bool,
+) -> Result<PreparedVivadoPackage> {
     if !inputs.hdl_dir.is_dir() {
         return Err(XilinxError::KernelXml(format!(
             "pack_xo hdl_dir does not exist: {}",
@@ -316,12 +329,19 @@ pub fn pack_xo_without_redaction(
     let m_axi = m_axi_port_names(&inputs.kernel_xml);
     let axis = axis_port_names(&inputs.kernel_xml);
     let bus_ifaces = render_bus_ifaces(&s_axi, &axis, &m_axi, &inputs.m_axi_params)?;
+    let registers = if slash_ip_only {
+        render_slash_registers(&inputs.kernel_xml)?
+    } else {
+        String::new()
+    };
     let cpp_kernels = render_cpp_kernels(&inputs.cpp_kernels);
     let tcl = format_package_xo_tcl(
         &inputs.top_name,
         &bus_ifaces,
+        &registers,
         &cpp_kernels,
         &inputs.device_info.part_num,
+        !slash_ip_only,
     )?;
 
     if let Some(parent) = kernel_out_path.parent() {
@@ -337,13 +357,73 @@ pub fn pack_xo_without_redaction(
 
     let mut job = VivadoJob::new(tcl);
     job.work_dir = Some(tmp_path.clone());
-    job.uploads = vec![inputs.hdl_dir.clone(), tmp_path, kernel_xml_path];
-    if let Some(parent) = kernel_out_path.parent() {
-        job.downloads = vec![parent.to_path_buf()];
-    }
+    job.uploads = vec![inputs.hdl_dir.clone(), tmp_path.clone(), kernel_xml_path];
+    job.downloads = if slash_ip_only {
+        vec![tmp_path]
+    } else if let Some(parent) = kernel_out_path.parent() {
+        vec![parent.to_path_buf()]
+    } else {
+        Vec::new()
+    };
     job.tclargs = tclargs.to_vec();
 
     let _out = run_vivado(runner, &job)?;
+    Ok(PreparedVivadoPackage {
+        tmp,
+        kernel_out_path,
+    })
+}
+
+/// Package an IP-XACT directory through `ipx::save_core`, without `package_xo`.
+/// SLASH uses this directory directly; Vitis continues through [`pack_xo`].
+pub fn pack_ip(
+    runner: &dyn ToolRunner,
+    inputs: &PackageXoInputs,
+    ip_dir: &camino::Utf8Path,
+) -> Result<Utf8PathBuf> {
+    let prepared = run_vivado_packaging(runner, inputs, true)?;
+    let source = prepared.tmp.path().join("tmp_ip_dir");
+    if !source.join("component.xml").is_file() {
+        return Err(XilinxError::XoRedaction(format!(
+            "pack_ip: Vivado returned success but {} is missing",
+            source.join("component.xml").display()
+        )));
+    }
+    let output = crate::util::absolutize(ip_dir);
+    if output.exists() {
+        return Err(XilinxError::XoRedaction(format!(
+            "pack_ip output directory already exists: {output}"
+        )));
+    }
+    copy_directory(&source, output.as_std_path())?;
+    Ok(output)
+}
+
+fn copy_directory(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
+    std::fs::create_dir(destination)?;
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        let target = destination.join(entry.file_name());
+        if entry.file_type()?.is_dir() {
+            copy_directory(&entry.path(), &target)?;
+        } else if entry.file_type()?.is_file() {
+            std::fs::copy(entry.path(), target)?;
+        }
+    }
+    Ok(())
+}
+
+/// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`
+/// without running the reproducibility redaction pass. Primarily
+/// useful for tests that need a pre-redaction artifact to exercise
+/// [`redact::redact_xo`] directly.
+#[doc(hidden)] // public only for integration tests
+pub fn pack_xo_without_redaction(
+    runner: &dyn ToolRunner,
+    inputs: &PackageXoInputs,
+) -> Result<Utf8PathBuf> {
+    let prepared = run_vivado_packaging(runner, inputs, false)?;
+    let kernel_out_path = prepared.kernel_out_path;
     if !kernel_out_path.is_file() {
         return Err(XilinxError::XoRedaction(format!(
             "pack_xo: Vivado returned success but {} is missing",
@@ -356,7 +436,7 @@ pub fn pack_xo_without_redaction(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::process::MockToolRunner;
+    use crate::runtime::process::{MockToolRunner, ToolInvocation, ToolOutput};
     use std::io::{Read, Write};
 
     fn minimal_inputs(hdl_dir: Utf8PathBuf, kernel_out_path: Utf8PathBuf) -> PackageXoInputs {
@@ -470,7 +550,6 @@ mod tests {
 
     #[test]
     fn pack_xo_drives_vivado_and_redacts() {
-        use crate::runtime::process::ToolOutput;
         let tmp = tempfile::tempdir().unwrap();
         let hdl_dir = Utf8PathBuf::from_path_buf(tmp.path().join("hdl")).unwrap();
         std::fs::create_dir_all(&hdl_dir).unwrap();
@@ -516,8 +595,10 @@ mod tests {
         let tcl = format_package_xo_tcl(
             "my_kernel",
             "\n# ifaces\n",
+            "",
             " -kernel_files /tmp/x.cpp",
             "xcu250-figd2104-2L-e",
+            true,
         )
         .unwrap();
         assert!(tcl.contains("set_property top my_kernel"));
@@ -558,5 +639,48 @@ mod tests {
             zw.write_all(body.as_bytes()).unwrap();
         }
         zw.finish().unwrap();
+    }
+
+    #[test]
+    fn slash_pack_saves_and_copies_ip_without_packaging_an_xo() {
+        struct SaveCoreRunner;
+        impl ToolRunner for SaveCoreRunner {
+            fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
+                let args = inv.local_args();
+                let source = args
+                    .windows(2)
+                    .find(|args| args[0] == "-source")
+                    .map(|args| &args[1])
+                    .expect("Vivado Tcl source");
+                let tcl = std::fs::read_to_string(source).expect("read Tcl");
+                assert!(tcl.contains("ipx::save_core"));
+                assert!(tcl.contains("ipx::add_register"));
+                assert!(tcl.contains("{gmem0_0 0x10}"));
+                assert!(tcl.contains("{gmem0_1 0x14}"));
+                assert!(!tcl.contains("package_xo"));
+                let ip = inv.cwd.as_ref().expect("scratch cwd").join("tmp_ip_dir");
+                std::fs::create_dir_all(ip.join("hdl")).expect("IP hdl");
+                std::fs::write(ip.join("component.xml"), "<component/>").expect("component");
+                std::fs::write(ip.join("hdl/k.v"), "module k; endmodule").expect("HDL");
+                Ok(ToolOutput::default())
+            }
+        }
+
+        let dir = tempfile::tempdir().unwrap();
+        let hdl = Utf8PathBuf::from_path_buf(dir.path().join("hdl")).unwrap();
+        std::fs::create_dir(&hdl).unwrap();
+        let inputs = minimal_inputs(hdl, Utf8PathBuf::from("unused.xo"));
+        let output = Utf8PathBuf::from_path_buf(dir.path().join("impl/ip")).unwrap();
+        std::fs::create_dir_all(output.parent().unwrap()).unwrap();
+
+        let packaged = pack_ip(&SaveCoreRunner, &inputs, &output).expect("package IP");
+
+        assert_eq!(packaged, output);
+        assert!(output.join("component.xml").is_file());
+        assert_eq!(
+            std::fs::read_to_string(output.join("hdl/k.v")).unwrap(),
+            "module k; endmodule"
+        );
+        assert!(!dir.path().join("unused.xo").exists());
     }
 }

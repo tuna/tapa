@@ -35,7 +35,7 @@ pub(crate) mod vitis_packaging;
 
 use cosim_compat::{check_cosim_supported_categories, stamp_cosim_port_metadata};
 use custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
-use vitis_packaging::pack_vitis;
+use vitis_packaging::{pack_slash, pack_vitis};
 
 #[derive(Debug, Clone, Parser)]
 #[command(
@@ -101,9 +101,7 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     // match is the dispatch site a new `Target` variant would break.
     match state.graph.target {
         Target::XilinxVitis => pack_vitis(args, ctx, &state),
-        Target::XilinxSlash => Err(CliError::InvalidArg(
-            "`pack` does not yet support the `xilinx-slash` target".to_string(),
-        )),
+        Target::XilinxSlash => pack_slash(args, ctx, &state),
         Target::XilinxHls => pack_hls_zip(args, ctx, &state),
     }
 }

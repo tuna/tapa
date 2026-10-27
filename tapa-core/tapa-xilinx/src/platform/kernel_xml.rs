@@ -68,6 +68,9 @@ struct XmlArg {
     host_offset: String,
     host_size: String,
     arg_type: String,
+    size_bytes: u64,
+    offset_bytes: u64,
+    host_size_bytes: u64,
 }
 
 #[allow(
@@ -75,15 +78,7 @@ struct XmlArg {
     reason = "kernel.xml emission is inherently sequential; \
               splitting would fragment the element tree construction"
 )]
-pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
-    #[derive(askama::Template)]
-    #[template(path = "kernel.xml.j2", escape = "none")]
-    struct Template<'a> {
-        name: &'a str,
-        hw_ctrl_protocol: &'a str,
-        ports: &'a [XmlPort],
-        args: &'a [XmlArg],
-    }
+fn project_kernel_xml(args: &KernelXmlArgs) -> Result<(Vec<XmlPort>, Vec<XmlArg>)> {
     if args.ports.is_empty() {
         return Err(XilinxError::KernelXml(format!(
             "no ports supplied for kernel `{}`",
@@ -160,6 +155,9 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
             host_offset: "0x0".into(),
             host_size: format!("{host_size:#x}"),
             arg_type: xml_escape(&port.ctype),
+            size_bytes: size,
+            offset_bytes: arg_offset,
+            host_size_bytes: host_size,
         });
     }
 
@@ -174,7 +172,20 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
         });
     }
 
-    let hw_ctrl_protocol = if has_s_axi_control {
+    Ok((ports, xml_args))
+}
+
+pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
+    #[derive(askama::Template)]
+    #[template(path = "kernel.xml.j2", escape = "none")]
+    struct Template<'a> {
+        name: &'a str,
+        hw_ctrl_protocol: &'a str,
+        ports: &'a [XmlPort],
+        args: &'a [XmlArg],
+    }
+    let (ports, xml_args) = project_kernel_xml(args)?;
+    let hw_ctrl_protocol = if xml_args.iter().any(|arg| arg.addr_qualifier != 4) {
         "ap_ctrl_hs"
     } else {
         "ap_ctrl_none"
@@ -187,6 +198,107 @@ pub fn emit_kernel_xml(args: &KernelXmlArgs) -> Result<String> {
         args: &xml_args,
     })
     .map_err(|e| XilinxError::KernelXml(e.to_string()))
+}
+
+struct SlashAbi {
+    ports: Vec<XmlPort>,
+    args: Vec<XmlArg>,
+}
+
+fn slash_abi(args: &KernelXmlArgs) -> Result<SlashAbi> {
+    let (ports, xml_args) = project_kernel_xml(args)?;
+    if xml_args.is_empty()
+        || xml_args
+            .iter()
+            .any(|arg| !matches!(arg.addr_qualifier, 0 | 1) || !matches!(arg.size_bytes, 4 | 8))
+    {
+        return Err(XilinxError::KernelXml(
+            "SLASH packaging requires an ap_ctrl_hs kernel with only 32- or 64-bit \
+             scalar and mmap arguments"
+                .into(),
+        ));
+    }
+    Ok(SlashAbi {
+        ports,
+        args: xml_args,
+    })
+}
+
+/// Render the SLASH IP-XACT register map from the kernel.xml ABI projection.
+pub fn render_slash_registers(args: &KernelXmlArgs) -> Result<String> {
+    let abi = slash_abi(args)?;
+    let mut registers = vec![
+        ("CTRL".to_string(), 0),
+        ("GIER".to_string(), 4),
+        ("IP_IER".to_string(), 8),
+        ("IP_ISR".to_string(), 12),
+    ];
+    for arg in &abi.args {
+        for word in 0..arg.size_bytes / 4 {
+            registers.push((format!("{}_{word}", arg.name), arg.offset_bytes + word * 4));
+        }
+    }
+    let entries = registers
+        .iter()
+        .map(|(name, offset)| format!("{{{name} {offset:#x}}}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    Ok(format!(
+        "set tapa_control_block [ipx::get_address_blocks reg0 -of_objects \
+         [ipx::get_memory_maps s_axi_control -of_objects [ipx::current_core]]]\n\
+         foreach {{tapa_register_name tapa_register_offset}} {{{entries}}} {{\n\
+         \x20 set tapa_register [ipx::add_register $tapa_register_name $tapa_control_block]\n\
+         \x20 set_property address_offset $tapa_register_offset $tapa_register\n\
+         \x20 set_property size 32 $tapa_register\n\
+         \x20 set_property access read-write $tapa_register\n\
+         }}\n"
+    ))
+}
+
+/// Emit slashkit's argument metadata from the same ABI as kernel.xml.
+pub fn emit_slash_hls_data(args: &KernelXmlArgs) -> Result<String> {
+    let abi = slash_abi(args)?;
+    let interface_ports: std::collections::BTreeMap<&str, &XmlPort> = abi
+        .ports
+        .iter()
+        .map(|port| (port.name.as_str(), port))
+        .collect();
+    let mut metadata = serde_json::Map::new();
+    for (arg, source) in abi.args.iter().zip(&args.ports) {
+        let mut refs = Vec::new();
+        for word in 0..arg.size_bytes / 4 {
+            refs.push(serde_json::json!({
+                "type": "register",
+                "interface": "s_axi_control",
+                "name": format!("{}_{word}", arg.name),
+                "usage": if arg.addr_qualifier == 1 { "address" } else { "data" },
+            }));
+        }
+        if arg.addr_qualifier == 1 {
+            if !interface_ports.contains_key(arg.port.as_str()) {
+                return Err(XilinxError::KernelXml(format!(
+                    "SLASH argument `{}` refers to missing interface `{}`",
+                    arg.name, arg.port
+                )));
+            }
+            refs.push(serde_json::json!({
+                "type": "interface",
+                "interface": arg.port,
+            }));
+        }
+        metadata.insert(
+            arg.name.clone(),
+            serde_json::json!({
+                "index": arg.id,
+                "srcType": source.ctype,
+                "srcSize": arg.host_size_bytes * 8,
+                "hwRefs": refs,
+            }),
+        );
+    }
+    let mut json = serde_json::to_string_pretty(&serde_json::json!({ "Args": metadata }))?;
+    json.push('\n');
+    Ok(json)
 }
 
 #[cfg(test)]
@@ -338,5 +450,78 @@ mod tests {
         assert_eq!(xml_escape(">"), "&gt;");
         assert_eq!(xml_escape("\""), "&quot;");
         assert_eq!(xml_escape("a & b"), "a &amp; b");
+    }
+
+    fn slash_test_args() -> KernelXmlArgs {
+        KernelXmlArgs {
+            top_name: "vadd".into(),
+            clock_period: "3.33".into(),
+            ports: vec![
+                KernelXmlPort {
+                    name: "a".into(),
+                    category: PortCategory::MAxi,
+                    width: 64,
+                    port: String::new(),
+                    ctype: "const int*".into(),
+                },
+                KernelXmlPort {
+                    name: "n".into(),
+                    category: PortCategory::Scalar,
+                    width: 64,
+                    port: String::new(),
+                    ctype: "uint64_t".into(),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn slash_registers_and_hls_data_share_the_kernel_xml_abi() {
+        let args = slash_test_args();
+        let xml = emit_kernel_xml(&args).unwrap();
+        assert!(xml.contains("name=\"a\" addressQualifier=\"1\" id=\"0\""));
+        assert!(xml.contains("size=\"0x8\" offset=\"0x10\""));
+        assert!(xml.contains("name=\"n\" addressQualifier=\"0\" id=\"1\""));
+        assert!(xml.contains("size=\"0x8\" offset=\"0x1c\""));
+
+        let registers = render_slash_registers(&args).unwrap();
+        for entry in [
+            "{CTRL 0x0}",
+            "{GIER 0x4}",
+            "{IP_IER 0x8}",
+            "{IP_ISR 0xc}",
+            "{a_0 0x10}",
+            "{a_1 0x14}",
+            "{n_0 0x1c}",
+            "{n_1 0x20}",
+        ] {
+            assert!(registers.contains(entry), "missing {entry}: {registers}");
+        }
+        assert!(registers.contains("ipx::add_register"));
+        assert!(registers.contains("set_property size 32"));
+
+        let data: serde_json::Value =
+            serde_json::from_str(&emit_slash_hls_data(&args).unwrap()).unwrap();
+        assert_eq!(data["Args"]["a"]["index"], 0);
+        assert_eq!(data["Args"]["a"]["srcType"], "const int*");
+        assert_eq!(data["Args"]["a"]["srcSize"], 64);
+        assert_eq!(
+            data["Args"]["a"]["hwRefs"],
+            serde_json::json!([
+                {"type":"register", "interface":"s_axi_control", "name":"a_0", "usage":"address"},
+                {"type":"register", "interface":"s_axi_control", "name":"a_1", "usage":"address"},
+                {"type":"interface", "interface":"m_axi_a"}
+            ])
+        );
+        assert_eq!(data["Args"]["n"]["index"], 1);
+        assert_eq!(data["Args"]["n"]["srcType"], "uint64_t");
+        assert_eq!(data["Args"]["n"]["srcSize"], 64);
+        assert_eq!(
+            data["Args"]["n"]["hwRefs"],
+            serde_json::json!([
+                {"type":"register", "interface":"s_axi_control", "name":"n_0", "usage":"data"},
+                {"type":"register", "interface":"s_axi_control", "name":"n_1", "usage":"data"}
+            ])
+        );
     }
 }
