@@ -1,303 +1,551 @@
-//! TAPA XO to SLASH IP-XACT adaptation and V80 hardware linking.
+//! Pure-Rust linking of one K5 package through the pinned SLASH linker.
 
-use camino::Utf8PathBuf;
-use regex::Regex;
-use std::path::Path;
+mod hooks;
+mod package;
+mod vbin;
 
-use crate::tools::vitis::timing::KernelTiming;
+use camino::{Utf8Path, Utf8PathBuf};
+use serde::Serialize;
 
+use super::LinkOutput;
 use crate::error::{Result, XilinxError};
-use crate::runtime::process::{ToolInvocation, ToolRunner};
+use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
+use crate::tools::vitis::timing::{
+    parse_named_clock_timing_summary, parse_named_clock_whs, parse_named_clock_wns, KernelTiming,
+};
+use crate::ToolValue;
+
+const SLASH_COMMIT: &str = "26f9c55c";
+const KERNEL_CLOCK: &str = "tapa_user_clk";
+const FIXED_CLOCK: &str = "clk_wizard_0_clk_out1_1";
+const METRICS_NAME: &str = "link-metrics.json";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SlashLinkMode {
+    Hardware,
+    Simulation,
+}
+
+impl SlashLinkMode {
+    const fn slashkit_name(self) -> &'static str {
+        match self {
+            Self::Hardware => "hw",
+            Self::Simulation => "sim",
+        }
+    }
+
+    const fn system_map_platform(self) -> &'static str {
+        match self {
+            Self::Hardware => "Hardware",
+            Self::Simulation => "Simulation",
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct SlashLinkJob {
-    pub xo: Utf8PathBuf,
+    pub package: Utf8PathBuf,
     pub config: Utf8PathBuf,
     pub output: Utf8PathBuf,
+    /// Per-link directory, conventionally `<work>/link`.
     pub work_dir: Utf8PathBuf,
+    /// Program names are passed to ToolRunner verbatim and resolved on the
+    /// tool host, never through the local process's PATH.
     pub slashkit: String,
     pub vivado: String,
     pub jobs: u32,
-    pub clock_hz: u64,
+    pub target_mhz: u32,
     pub floorplan_xdc: Option<Utf8PathBuf>,
+    pub mode: SlashLinkMode,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct SlashLinkOutput {
-    pub timing_report: Utf8PathBuf,
-    pub timing: KernelTiming,
-    pub stdout: String,
-    pub stderr: String,
+/// Link a K5 ZIP without Python, base-address relocation, or finalization.
+/// Producing a vbin is success; a missed kernel period is recorded with a
+/// warning, and fixed-shell timing never fails the link.
+pub fn link(runner: &dyn ToolRunner, job: &SlashLinkJob) -> Result<LinkOutput> {
+    let prepared = prepare_link(job)?;
+    let tool_output = runner.run(&build_invocation(job, &prepared))?;
+    finish_link(job, prepared, tool_output)
 }
 
-/// Link a single TAPA kernel for the service shell. A missed target is an
-/// error even if SLASH emitted a VBIN with a derated clock.
-pub fn link(runner: &dyn ToolRunner, job: &SlashLinkJob) -> Result<SlashLinkOutput> {
-    if job.output.extension() != Some("vbin") || job.clock_hz == 0 || job.jobs == 0 {
-        return Err(XilinxError::SlashLink(
-            "link requires a .vbin output, a positive clock and a positive job count".into(),
-        ));
-    }
-    let xo = crate::util::absolutize(&job.xo);
-    let config = crate::util::absolutize(&job.config);
+#[derive(Debug)]
+struct PreparedLink {
+    output: Utf8PathBuf,
+    work: Utf8PathBuf,
+    ip: Utf8PathBuf,
+    hls_data: Utf8PathBuf,
+    config: Utf8PathBuf,
+    hook: Utf8PathBuf,
+    clock_xdc: Utf8PathBuf,
+    floorplan_xdc: Option<Utf8PathBuf>,
+    timing_report: Utf8PathBuf,
+}
+
+fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
+    validate_job(job)?;
+    let package = crate::util::absolutize(&job.package);
+    let input_config = crate::util::absolutize(&job.config);
     let output = crate::util::absolutize(&job.output);
     let work = crate::util::absolutize(&job.work_dir);
-    let ip = work.join("slash-ip");
-    let slashkit = resolve_executable(&job.slashkit)?;
-    let vivado = resolve_executable(&job.vivado)?;
-    if output.exists() || ip.exists() {
-        return Err(XilinxError::SlashLink(
-            "SLASH output or export directory already exists; use a fresh link work directory"
-                .into(),
-        ));
+    let floorplan_xdc = job.floorplan_xdc.as_deref().map(crate::util::absolutize);
+    validate_input(&package, "K5 package")?;
+    validate_input(&input_config, "SLASH connectivity config")?;
+    if let Some(xdc) = &floorplan_xdc {
+        validate_input(xdc, "floorplan XDC")?;
     }
+    if output.exists() {
+        return Err(slash_error(format!(
+            "SLASH output `{output}` already exists; use a fresh output path"
+        )));
+    }
+
     fs_err::create_dir_all(&work)?;
-    let adapter = work.join("slash_export.py");
-    fs_err::write(&adapter, include_str!("export.py"))?;
-    let mut export = ToolInvocation::new("python3")
-        .arg(adapter.as_str())
-        .arg("export")
-        .arg(xo.as_str())
-        .arg(ip.as_str());
-    export.uploads = vec![adapter.clone(), xo];
-    export.downloads = vec![ip.clone()];
-    run(runner, &export)?;
-
-    let mut invocation = ToolInvocation::new(slashkit.as_str())
-        .arg("link")
-        .arg("--vivado")
-        .arg(vivado.as_str())
-        .arg("--jobs")
-        .arg(job.jobs.to_string())
-        .arg("-c")
-        .arg(config.as_str())
-        .arg("-k")
-        .arg(ip.join("impl/ip/component.xml").as_str())
-        .arg("-o")
-        .arg(output.as_str())
-        .arg("-p")
-        .arg("hw")
-        .arg("--clock-hz")
-        .arg(job.clock_hz.to_string());
-    invocation.uploads = vec![ip, config];
-    // The implementation project is retained on the tool host. Verification
-    // runs there too, so remote linking need not download the Vivado project.
-    invocation.downloads = vec![output.clone(), Utf8PathBuf::from(format!("{output}.prj"))];
-    if let Some(xdc) = &job.floorplan_xdc {
-        let xdc = crate::util::absolutize(xdc);
-        let hook = work.join("slash_floorplan.tcl");
-        fs_err::write(&hook, pre_synth_hook(&xdc))?;
-        invocation
-            .args
-            .extend(["--pre-synth-tcls".into(), hook.to_string().into()]);
-        invocation.uploads.extend([xdc, hook]);
+    if let Some(parent) = output.parent() {
+        fs_err::create_dir_all(parent)?;
     }
-    let link_output = run_output(runner, &invocation)?;
+    let ip = work.join("ip");
+    let solution = work
+        .parent()
+        .ok_or_else(|| slash_error(format!("SLASH link work directory `{work}` has no parent")))?;
+    let hls_data = solution.join("hls_data.json");
+    let metadata = package::extract_package(&package, &ip, &hls_data)?;
 
-    // SLASH's BD address assignment drives the hardware. Keep the exported
-    // system map in sync so VRT's BAR lookup names that same AXI-Lite window.
-    let project = Utf8PathBuf::from(format!("{output}.prj"));
-    let mut finalize = ToolInvocation::new("python3")
-        .arg(adapter.as_str())
-        .arg("finalize")
-        .arg(output.as_str());
-    finalize.uploads = vec![adapter.clone(), output.clone(), project.clone()];
-    finalize.downloads = vec![output.clone(), project.clone()];
-    run(runner, &finalize)?;
+    let input_config_text = fs_err::read_to_string(input_config)?;
+    let mut config_text = crate::connectivity::prepare_slash_config(
+        &input_config_text,
+        &metadata.top_name,
+        &metadata.ports,
+        requested_hz(job.target_mhz),
+    )
+    .map_err(XilinxError::SlashLink)?;
+    if !config_text.ends_with('\n') {
+        config_text.push('\n');
+    }
+    config_text.push_str("\n[user_region]\npre_synth=tapa_pre_synth.tcl\n");
 
-    let mut verify = ToolInvocation::new("python3")
-        .arg(adapter.as_str())
-        .arg("verify")
-        .arg(output.as_str())
-        .arg(job.clock_hz.to_string());
-    verify.uploads = vec![adapter, output.clone(), project];
-    run(runner, &verify)?;
-    let timing_report = find_timing_report(&Utf8PathBuf::from(format!("{output}.prj")))?;
-    let timing_text = fs_err::read_to_string(&timing_report)?;
-    let timing = parse_timing(&timing_text, job.clock_hz)?;
-    Ok(SlashLinkOutput {
+    let config = work.join("config.cfg");
+    let hook = work.join(hooks::HOOK_NAME);
+    let clock_xdc = work.join(hooks::CLOCK_XDC_NAME);
+    fs_err::write(&config, config_text)?;
+    fs_err::write(&hook, hooks::pre_synth_hook(floorplan_xdc.is_some()))?;
+    fs_err::write(&clock_xdc, hooks::user_clock_xdc(job.target_mhz))?;
+    let floorplan_xdc = floorplan_xdc
+        .as_ref()
+        .map(|source| {
+            let destination = work.join(hooks::FLOORPLAN_XDC_NAME);
+            fs_err::copy(source, &destination)?;
+            Ok::<_, XilinxError>(destination)
+        })
+        .transpose()?;
+    let timing_report = routed_timing_report(&output)?;
+    Ok(PreparedLink {
+        output,
+        work,
+        ip,
+        hls_data,
+        config,
+        hook,
+        clock_xdc,
+        floorplan_xdc,
         timing_report,
-        timing,
-        stdout: link_output.stdout,
-        stderr: link_output.stderr,
     })
 }
 
-fn pre_synth_hook(floorplan_xdc: &Utf8PathBuf) -> String {
-    format!(
-        "# TAPA floorplan.xdc is a Tcl implementation hook, not a plain XDC file.\n\
-         # Vivado's XDC parser rejects the control-flow diagnostics it contains.\n\
-         # Static OPT_DESIGN sees the reconfigurable module only as a black box.\n\
-         # Apply cell constraints after the RM is linked and before placement.\n\
-         set_property STEPS.PLACE_DESIGN.TCL.PRE [list {{{floorplan_xdc}}}] [get_runs impl_1]\n\
-         # VRT reserves the first 64 KiB of the service-shell control aperture.\n\
-         set tapa_kernel_cells [get_bd_cells -hier -filter {{VLNV =~ \"tapa:xrtl:*\"}}]\n\
-         if {{[llength $tapa_kernel_cells] != 1}} {{ error \"TAPA V80 link requires exactly one TAPA kernel, found [llength $tapa_kernel_cells]\" }}\n\
-         set tapa_kernel_cell [lindex $tapa_kernel_cells 0]\n\
-         set tapa_control_seg [get_bd_addr_segs -quiet \"$tapa_kernel_cell/s_axi_control/reg0\"]\n\
-         if {{[llength $tapa_control_seg] != 1}} {{ error \"TAPA V80 link could not resolve the kernel AXI-Lite register segment\" }}\n\
-         set tapa_control_range [get_property RANGE $tapa_control_seg]\n\
-         set tapa_control_space [get_bd_addr_spaces S_AXILITE_INI]\n\
-         if {{[llength $tapa_control_space] != 1}} {{ error \"TAPA V80 link could not resolve the service-shell control address space\" }}\n\
-         assign_bd_address -offset 0x020200010000 -range $tapa_control_range -target_address_space $tapa_control_space $tapa_control_seg -force\n\
-         set tapa_mapped_name \"SEG_[get_property NAME $tapa_kernel_cell]_reg0\"\n\
-         set tapa_mapped_segments [list]\n\
-         foreach tapa_mapped_candidate [get_bd_addr_segs -quiet -of_objects $tapa_control_space] {{\n\
-             if {{[get_property NAME $tapa_mapped_candidate] eq $tapa_mapped_name}} {{ lappend tapa_mapped_segments $tapa_mapped_candidate }}\n\
-         }}\n\
-         if {{[llength $tapa_mapped_segments] != 1}} {{ error \"TAPA V80 link could not resolve the mapped kernel AXI-Lite segment\" }}\n\
-         set tapa_actual_offset [get_property OFFSET [lindex $tapa_mapped_segments 0]]\n\
-         if {{$tapa_actual_offset != 0x020200010000}} {{ error \"TAPA V80 kernel AXI-Lite segment did not move past the service-shell reservation (got $tapa_actual_offset)\" }}\n"
-    )
-}
-
-fn resolve_executable(program: &str) -> Result<Utf8PathBuf> {
-    let path = Path::new(program);
-    if path.is_absolute() || program.contains(std::path::MAIN_SEPARATOR) {
-        let path = crate::util::absolutize(camino::Utf8Path::new(program));
-        if path.is_file() {
-            return Ok(path);
-        }
-    } else if let Some(paths) = std::env::var_os("PATH") {
-        for dir in std::env::split_paths(&paths) {
-            let candidate = dir.join(program);
-            if candidate.is_file() {
-                return Ok(crate::util::utf8(candidate));
-            }
-        }
+fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink) -> ToolInvocation {
+    let mut invocation = ToolInvocation::new(job.slashkit.clone())
+        .arg("link")
+        .arg("-p")
+        .arg(job.mode.slashkit_name())
+        .arg("--vivado")
+        .arg(job.vivado.clone())
+        .arg("--jobs")
+        .arg(job.jobs.to_string())
+        .arg("-c")
+        .arg(ToolValue::path(&prepared.config))
+        .arg("-k")
+        .arg(ToolValue::path(prepared.ip.join("component.xml")))
+        .arg("-o")
+        .arg(ToolValue::path(&prepared.output))
+        .arg("--clock-hz")
+        .arg(requested_hz(job.target_mhz).to_string());
+    invocation.cwd = Some(prepared.work.clone());
+    invocation.uploads = vec![
+        prepared.ip.clone(),
+        prepared.hls_data.clone(),
+        prepared.config.clone(),
+        prepared.hook.clone(),
+        prepared.clock_xdc.clone(),
+    ];
+    if let Some(xdc) = &prepared.floorplan_xdc {
+        invocation.uploads.push(xdc.clone());
     }
-    Err(XilinxError::SlashLink(format!(
-        "SLASH tool `{program}` is not an executable file or PATH entry"
-    )))
+    invocation.downloads = vec![prepared.output.clone(), prepared.timing_report.clone()];
+    invocation
 }
 
-fn run(runner: &dyn ToolRunner, invocation: &ToolInvocation) -> Result<()> {
-    let output = run_output(runner, invocation)?;
-    if output.exit_code != 0 {
-        return Err(super::tool_failure(&invocation.program, output));
+fn finish_link(
+    job: &SlashLinkJob,
+    prepared: PreparedLink,
+    tool_output: ToolOutput,
+) -> Result<LinkOutput> {
+    if tool_output.exit_code != 0 {
+        return Err(super::tool_failure(&job.slashkit, tool_output));
+    }
+    validate_input(&prepared.output, "SLASH vbin output")?;
+    validate_input(&prepared.timing_report, "SLASH routed timing report")?;
+
+    let system_map = vbin::read_system_map(&prepared.output)?;
+    if system_map.platform != job.mode.system_map_platform() {
+        return Err(slash_error(format!(
+            "SLASH {} vbin has Platform `{}`, expected `{}`",
+            job.mode.slashkit_name(),
+            system_map.platform,
+            job.mode.system_map_platform(),
+        )));
+    }
+    let report = fs_err::read_to_string(&prepared.timing_report)?;
+    let timing = parse_named_clock_timing_summary(&report, KERNEL_CLOCK)?;
+    let fixed_wns_ns = parse_named_clock_wns(&report, FIXED_CLOCK)?;
+    let kernel_whs_ns = parse_named_clock_whs(&report, KERNEL_CLOCK)?;
+    let requested_hz = requested_hz(job.target_mhz);
+    let clock_hz = recorded_clock_hz(requested_hz, &timing)?;
+    if system_map.clock_hz != clock_hz {
+        vbin::rewrite_clock(&prepared.output, clock_hz)?;
+    }
+    if clock_hz < requested_hz {
+        log::warn!(
+            "SLASH routed kernel timing did not meet {} MHz; recording {:.6} MHz in `{}`",
+            job.target_mhz,
+            hz_to_mhz(clock_hz),
+            prepared.output,
+        );
+    }
+    if kernel_whs_ns < 0.0 {
+        log::warn!(
+            "SLASH kernel clock `{KERNEL_CLOCK}` has hold WHS {kernel_whs_ns:.3} ns; \
+             the vbin is retained without clock derating",
+        );
+    }
+    if fixed_wns_ns < 0.0 {
+        log::warn!(
+            "SLASH fixed 400 MHz domain `{FIXED_CLOCK}` has WNS {fixed_wns_ns:.3} ns; \
+             leaving shell timing unchanged",
+        );
+    }
+
+    let recorded_mhz = hz_to_mhz(clock_hz);
+    write_metrics(
+        &prepared.work.join(METRICS_NAME),
+        &prepared.timing_report,
+        job.target_mhz,
+        recorded_mhz,
+        &timing,
+        fixed_wns_ns,
+    )?;
+    Ok(LinkOutput {
+        bitstream: prepared.output,
+        requested_mhz: job.target_mhz,
+        recorded_mhz,
+        timing,
+        timing_report: prepared.timing_report,
+        stdout: tool_output.stdout,
+        stderr: tool_output.stderr,
+    })
+}
+
+fn requested_hz(target_mhz: u32) -> u64 {
+    u64::from(target_mhz) * 1_000_000
+}
+
+fn validate_job(job: &SlashLinkJob) -> Result<()> {
+    if job.output.extension() != Some("vbin") {
+        return Err(slash_error(
+            "SLASH link output must use the .vbin extension",
+        ));
+    }
+    if job.target_mhz == 0 {
+        return Err(XilinxError::InvalidFrequency(
+            "SLASH target frequency must be positive, got `0` MHz".into(),
+        ));
+    }
+    if job.jobs == 0 {
+        return Err(slash_error("SLASH job count must be positive"));
+    }
+    if job.slashkit.trim().is_empty() || job.vivado.trim().is_empty() {
+        return Err(slash_error("SLASH tool names must not be empty"));
     }
     Ok(())
 }
 
-fn run_output(
-    runner: &dyn ToolRunner,
-    invocation: &ToolInvocation,
-) -> Result<crate::runtime::process::ToolOutput> {
-    let output = runner.run(invocation)?;
-    if output.exit_code != 0 {
-        return Err(super::tool_failure(&invocation.program, output));
+fn validate_input(path: &Utf8Path, label: &str) -> Result<()> {
+    if path.is_file() {
+        Ok(())
+    } else {
+        Err(slash_error(format!("{label} `{path}` is not a file")))
     }
-    Ok(output)
 }
 
-fn find_timing_report(project: &Utf8PathBuf) -> Result<Utf8PathBuf> {
-    let root = Path::new(project.as_str()).join("slash_rm");
-    let mut reports = fs_err::read_dir(&root)?
-        .filter_map(std::result::Result::ok)
-        .map(|entry| entry.path())
-        .filter(|path| {
-            path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("report_timing_") && name.ends_with(".txt"))
+fn routed_timing_report(output: &Utf8Path) -> Result<Utf8PathBuf> {
+    let stem = output
+        .file_stem()
+        .ok_or_else(|| slash_error(format!("SLASH output `{output}` has no file stem")))?;
+    let mut project = stem
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || character == '_' {
+                character
+            } else {
+                '_'
+            }
         })
-        .map(crate::util::utf8)
-        .collect::<Vec<_>>();
-    reports.sort();
-    match reports.as_slice() {
-        [report] => Ok(report.clone()),
-        [] => Err(XilinxError::SlashLink(format!(
-            "SLASH produced no routed timing report under `{project}`"
-        ))),
-        _ => Err(XilinxError::SlashLink(format!(
-            "SLASH produced multiple routed timing reports under `{project}`"
-        ))),
+        .collect::<String>();
+    if project.is_empty() {
+        project.push_str("proj");
     }
+    if project.starts_with(|character: char| character.is_ascii_digit()) {
+        project.insert(0, '_');
+    }
+    Ok(Utf8PathBuf::from(format!("{output}.prj"))
+        .join("slash_rm")
+        .join(format!("report_timing_{project}.txt")))
 }
 
-fn parse_timing(report: &str, clock_hz: u64) -> Result<KernelTiming> {
-    let requested_mhz = clock_hz / 1_000_000;
-    if requested_mhz == 0 || requested_mhz > u64::from(u32::MAX) {
-        return Err(XilinxError::InvalidFrequency(format!(
-            "invalid SLASH clock `{clock_hz}` Hz"
+fn recorded_clock_hz(requested_hz: u64, timing: &KernelTiming) -> Result<u64> {
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "SLASH requests are u32 MHz, so their Hz values remain below 2^53"
+    )]
+    let requested = requested_hz as f64;
+    let recorded = (1_000_000_000.0 / timing.achieved_period_ns)
+        .floor()
+        .min(requested);
+    if !recorded.is_finite() || recorded < 1.0 {
+        return Err(slash_error(format!(
+            "SLASH achieved clock is invalid for period {} ns and WNS {} ns",
+            timing.achieved_period_ns, timing.wns_ns,
         )));
     }
-    let requested_mhz = f64::from(u32::try_from(requested_mhz).expect("checked above"));
-    let row = Regex::new(
-        r"(?m)WNS\(ns\)\s+TNS\(ns\).*?\n\s*-+\s*\n\s*([-+0-9.]+)\s+([-+0-9.]+)\s+\d+\s+\d+\s+([-+0-9.]+)\s+([-+0-9.]+)",
-    )
-    .expect("static SLASH timing expression");
-    let captures = row.captures(report).ok_or_else(|| {
-        XilinxError::TimingSummaryParse(
-            "SLASH routed timing report has no WNS/TNS/WHS/THS summary".into(),
-        )
-    })?;
-    let parse = |index: usize, name: &str| -> Result<f64> {
-        let value = captures[index]
-            .parse::<f64>()
-            .map_err(|_| XilinxError::TimingSummaryParse(format!("invalid SLASH {name} value")))?;
-        if value.is_finite() {
-            Ok(value)
-        } else {
-            Err(XilinxError::TimingSummaryParse(format!(
-                "SLASH {name} value is not finite"
-            )))
-        }
+    #[allow(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "recorded was floored and checked to be in 1..=requested_hz"
+    )]
+    Ok(recorded as u64)
+}
+
+fn hz_to_mhz(hz: u64) -> f64 {
+    #[allow(
+        clippy::cast_precision_loss,
+        reason = "recorded SLASH clocks are capped by a u32-MHz request"
+    )]
+    (hz as f64 / 1_000_000.0)
+}
+
+#[derive(Debug, Serialize)]
+struct LinkMetrics<'a> {
+    slash_commit: &'static str,
+    requested_mhz: u32,
+    recorded_mhz: f64,
+    kernel_wns_ns: f64,
+    kernel_fmax_mhz: f64,
+    timing_closed: bool,
+    fixed_domain_wns_ns: f64,
+    timing_report: &'a Utf8Path,
+}
+
+fn write_metrics(
+    path: &Utf8Path,
+    timing_report: &Utf8Path,
+    requested_mhz: u32,
+    recorded_mhz: f64,
+    timing: &KernelTiming,
+    fixed_domain_wns_ns: f64,
+) -> Result<()> {
+    let metrics = LinkMetrics {
+        slash_commit: SLASH_COMMIT,
+        requested_mhz,
+        recorded_mhz,
+        kernel_wns_ns: timing.wns_ns,
+        kernel_fmax_mhz: timing.fmax_mhz,
+        timing_closed: timing.wns_ns >= 0.0,
+        fixed_domain_wns_ns,
+        timing_report,
     };
-    let wns = parse(1, "WNS")?;
-    let tns = parse(2, "TNS")?;
-    let whs = parse(3, "WHS")?;
-    let ths = parse(4, "THS")?;
-    if [wns, tns, whs, ths].iter().any(|value| *value < 0.0) {
-        return Err(XilinxError::TimingSummaryParse(format!(
-            "SLASH timing failed at {requested_mhz:.0} MHz: WNS={wns}, TNS={tns}, WHS={whs}, THS={ths}"
-        )));
-    }
-    let period = 1000.0 / requested_mhz;
-    let achieved_period = period - wns;
-    if achieved_period <= 0.0 {
-        return Err(XilinxError::TimingSummaryParse(
-            "SLASH achieved period is not positive".into(),
-        ));
-    }
-    Ok(KernelTiming {
-        reported_target_period_ns: period,
-        reported_target_mhz: requested_mhz,
-        wns_ns: wns,
-        achieved_period_ns: achieved_period,
-        fmax_mhz: 1000.0 / achieved_period,
-    })
+    let mut bytes = serde_json::to_vec_pretty(&metrics)?;
+    bytes.push(b'\n');
+    fs_err::write(path, bytes)?;
+    Ok(())
+}
+
+fn slash_error(detail: impl Into<String>) -> XilinxError {
+    XilinxError::SlashLink(detail.into())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{pre_synth_hook, resolve_executable};
-    use camino::Utf8PathBuf;
+    use super::*;
+    use crate::runtime::process::{MockToolRunner, ToolOutput};
+
+    fn fixture(name: &str) -> Utf8PathBuf {
+        Utf8PathBuf::from(format!(
+            "{}/testdata/slash/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+    }
 
     #[test]
-    fn v80_pre_synth_hook_reassigns_the_real_kernel_control_segment() {
-        let hook = pre_synth_hook(&Utf8PathBuf::from("/tmp/floorplan.xdc"));
-        assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
-        assert!(!hook.contains("STEPS.OPT_DESIGN.TCL.PRE"));
-        assert!(hook.contains("get_bd_cells -hier -filter {VLNV =~ \"tapa:xrtl:*\"}"));
-        assert!(hook.contains("get_property RANGE $tapa_control_seg"));
-        assert!(
-            hook.contains("assign_bd_address -offset 0x020200010000 -range $tapa_control_range")
+    fn parses_real_kernel_and_fixed_rows_without_global_timing_failure() {
+        let vadd = fs_err::read_to_string(fixture("vadd-routed-timing.rpt")).expect("vadd report");
+        let timing = parse_named_clock_timing_summary(&vadd, KERNEL_CLOCK).expect("kernel row");
+        let fixed_wns_ns = parse_named_clock_wns(&vadd, FIXED_CLOCK).expect("fixed row");
+        assert_eq!(timing.wns_ns, 0.252);
+        assert_eq!(fixed_wns_ns, -0.534);
+        assert!(vadd.contains("Timing constraints are not met"));
+
+        let callipepla = fs_err::read_to_string(fixture("callipepla-routed-timing.rpt"))
+            .expect("Callipepla report");
+        let timing = parse_named_clock_timing_summary(&callipepla, KERNEL_CLOCK)
+            .expect("negative kernel slack is data");
+        let fixed_wns_ns =
+            parse_named_clock_wns(&callipepla, FIXED_CLOCK).expect("negative fixed slack is data");
+        assert_eq!(timing.wns_ns, -5.529);
+        assert_eq!(fixed_wns_ns, -1.023);
+    }
+
+    #[test]
+    fn pure_rust_link_transfers_only_required_files_and_derates_vbin() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = crate::util::utf8(temp.path());
+        let work = root.join("work").join("link");
+        let output_path = root.join("vadd.hw.vbin");
+        let report_path = routed_timing_report(&output_path).expect("report path");
+        let floorplan = root.join("floorplan-input.xdc");
+        fs_err::write(&floorplan, "# floorplan\n").expect("write floorplan");
+        let job = SlashLinkJob {
+            package: fixture("vadd-package.zip"),
+            config: fixture("vadd-config.cfg"),
+            output: output_path.clone(),
+            work_dir: work.clone(),
+            slashkit: "/tool-host/bin/slashkit".into(),
+            vivado: "vivado-on-tool-host".into(),
+            jobs: 3,
+            target_mhz: 300,
+            floorplan_xdc: Some(floorplan),
+            mode: SlashLinkMode::Hardware,
+        };
+        let runner = MockToolRunner::new();
+        runner.push_ok(
+            &job.slashkit,
+            ToolOutput {
+                exit_code: 0,
+                stdout: "linked".into(),
+                stderr: "warning".into(),
+            },
         );
-        assert!(hook.contains("get_bd_addr_segs -quiet -of_objects $tapa_control_space"));
-        assert!(hook.contains("SEG_[get_property NAME $tapa_kernel_cell]_reg0"));
-        assert!(hook.contains("get_property OFFSET [lindex $tapa_mapped_segments 0]"));
-        assert!(hook.contains("if {$tapa_actual_offset != 0x020200010000}"));
+        runner.attach_download(
+            &output_path,
+            fs_err::read(fixture("vadd-gzip.vbin")).expect("gzip fixture"),
+        );
+        runner.attach_download(
+            &report_path,
+            fs_err::read(fixture("callipepla-routed-timing.rpt")).expect("timing fixture"),
+        );
+
+        let result = link(&runner, &job).expect("negative kernel/fixed slack still links");
+        let expected_recorded =
+            recorded_clock_hz(300_000_000, &result.timing).expect("recorded clock");
+        assert_eq!(result.bitstream, output_path);
+        assert_eq!(result.requested_mhz, 300);
+        assert_eq!(result.recorded_mhz, hz_to_mhz(expected_recorded));
+        assert_eq!(result.stdout, "linked");
+        assert_eq!(result.stderr, "warning");
+        assert!(!result.timing.wns_ns.is_sign_positive());
+        assert_eq!(
+            vbin::read_system_map(&result.bitstream)
+                .expect("rewritten map")
+                .clock_hz,
+            expected_recorded,
+        );
+
+        let calls = runner.calls();
+        assert_eq!(
+            calls.len(),
+            1,
+            "only slashkit runs; no Python/finalize/verify"
+        );
+        let call = &calls[0];
+        assert_eq!(call.program, "/tool-host/bin/slashkit");
+        let args = call.local_args();
+        assert!(args.windows(2).any(|pair| pair == ["-p", "hw"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--vivado", "vivado-on-tool-host"]));
+        assert_eq!(call.downloads, vec![output_path, report_path.clone()]);
+        assert_eq!(call.uploads.len(), 6);
+        assert!(call.uploads.contains(&work.join("floorplan.xdc")));
+        assert!(call.uploads.contains(&work.join("ip")));
+        assert!(call
+            .uploads
+            .contains(&root.join("work").join("hls_data.json")));
+        assert!(!args.iter().any(|arg| arg.contains("python")));
+
+        let config = fs_err::read_to_string(work.join("config.cfg")).expect("staged config");
+        assert!(config.contains("[user_region]\npre_synth=tapa_pre_synth.tcl"));
+        assert!(config.contains("freqhz=300000000"));
+        assert!(work.join("ip").join("component.xml").is_file());
+        let hook = fs_err::read_to_string(work.join("tapa_pre_synth.tcl")).expect("hook");
+        assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
+        let metrics: serde_json::Value = serde_json::from_slice(
+            &fs_err::read(work.join(METRICS_NAME)).expect("read link metrics"),
+        )
+        .expect("metrics JSON");
+        assert_eq!(metrics["slash_commit"], SLASH_COMMIT);
+        assert_eq!(metrics["requested_mhz"], 300);
+        assert_eq!(metrics["recorded_mhz"], result.recorded_mhz);
+        assert_eq!(metrics["kernel_wns_ns"], -5.529);
+        assert_eq!(metrics["fixed_domain_wns_ns"], -1.023);
+        assert_eq!(metrics["timing_closed"], false);
+        assert_eq!(metrics["timing_report"], report_path.as_str());
     }
 
     #[test]
-    fn resolves_absolute_executable() {
-        let resolved = resolve_executable("/bin/sh").expect("shell must exist");
-        assert_eq!(resolved, "/bin/sh");
+    fn simulation_mode_is_forwarded_to_the_tool_host() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = crate::util::utf8(temp.path());
+        let output = root.join("vadd.sim.vbin");
+        let job = SlashLinkJob {
+            package: fixture("vadd-package.zip"),
+            config: fixture("vadd-config.cfg"),
+            output: output.clone(),
+            work_dir: root.join("work").join("link"),
+            slashkit: "slashkit-not-on-local-path".into(),
+            vivado: "vivado-not-on-local-path".into(),
+            jobs: 1,
+            target_mhz: 300,
+            floorplan_xdc: None,
+            mode: SlashLinkMode::Simulation,
+        };
+        let prepared = prepare_link(&job).expect("prepare simulation link");
+        let invocation = build_invocation(&job, &prepared);
+        assert_eq!(invocation.program, "slashkit-not-on-local-path");
+        assert!(invocation
+            .local_args()
+            .windows(2)
+            .any(|pair| pair == ["-p", "sim"]));
+        assert!(invocation
+            .local_args()
+            .windows(2)
+            .any(|pair| pair == ["--vivado", "vivado-not-on-local-path"]));
+        assert_eq!(invocation.downloads[0], output);
     }
 
     #[test]
-    fn rejects_missing_executable() {
-        let error = resolve_executable("tapa-slash-missing-tool").expect_err("must fail");
-        assert!(error.to_string().contains("not an executable file"));
+    fn report_path_matches_pinned_slashkit_project_sanitization() {
+        assert_eq!(
+            routed_timing_report(Utf8Path::new("/tmp/9-vadd.hw.vbin"))
+                .expect("report path")
+                .as_str(),
+            "/tmp/9-vadd.hw.vbin.prj/slash_rm/report_timing__9_vadd_hw.txt",
+        );
     }
 }

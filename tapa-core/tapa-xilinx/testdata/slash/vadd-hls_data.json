@@ -1,0 +1,92 @@
+{
+    "Args": {
+        "a": {
+            "hwRefs": [
+                {
+                    "interface": "s_axi_control",
+                    "name": "a_0",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "s_axi_control",
+                    "name": "a_1",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "m_axi_a",
+                    "type": "interface"
+                }
+            ],
+            "index": 0,
+            "srcSize": 64,
+            "srcType": "const float*"
+        },
+        "b": {
+            "hwRefs": [
+                {
+                    "interface": "s_axi_control",
+                    "name": "b_0",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "s_axi_control",
+                    "name": "b_1",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "m_axi_b",
+                    "type": "interface"
+                }
+            ],
+            "index": 1,
+            "srcSize": 64,
+            "srcType": "const float*"
+        },
+        "c": {
+            "hwRefs": [
+                {
+                    "interface": "s_axi_control",
+                    "name": "c_0",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "s_axi_control",
+                    "name": "c_1",
+                    "type": "register",
+                    "usage": "address"
+                },
+                {
+                    "interface": "m_axi_c",
+                    "type": "interface"
+                }
+            ],
+            "index": 2,
+            "srcSize": 64,
+            "srcType": "float*"
+        },
+        "n": {
+            "hwRefs": [
+                {
+                    "interface": "s_axi_control",
+                    "name": "n_0",
+                    "type": "register",
+                    "usage": "data"
+                },
+                {
+                    "interface": "s_axi_control",
+                    "name": "n_1",
+                    "type": "register",
+                    "usage": "data"
+                }
+            ],
+            "index": 3,
+            "srcSize": 64,
+            "srcType": "uint64_t"
+        }
+    }
+}

@@ -1,0 +1,921 @@
+Copyright 1986-2022 Xilinx, Inc. All Rights Reserved. Copyright 2022-2025 Advanced Micro Devices, Inc. All Rights Reserved.
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+| Tool Version      : Vivado v.2025.2 (lin64) Build 6299465 Fri Nov 14 12:34:56 MST 2025
+| Date              : Tue Oct 27 05:43:51 2026
+| Host              : dev running 64-bit Ubuntu 26.04.1 LTS
+| Command           : report_timing_summary -delay_type min_max -check_timing_verbose -max_paths 1 -input_pins -routable_nets -file /home/dotkrnl/slash-build/callipepla-v80/callipepla.hw.vbin.prj/slash_rm/report_timing_callipepla_hw.txt
+| Design            : top_wrapper
+| Device            : xcv80-lsva4737
+| Speed File        : -2MHP  PRODUCTION 2.04 2024-08-06
+| Design State      : Routed
+| Temperature Grade : E
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Timing Summary Report
+
+------------------------------------------------------------------------------------------------
+| Timer Settings
+| --------------
+------------------------------------------------------------------------------------------------
+
+  Enable Multi Corner Analysis               :  Yes
+  Enable Pessimism Removal                   :  Yes
+  Pessimism Removal Resolution               :  Nearest Common Node
+  Enable Input Delay Default Clock           :  No
+  Enable Preset / Clear Arcs                 :  No
+  Disable Flight Delays                      :  No
+  Ignore I/O Paths                           :  No
+  Timing Early Launch at Borrowing Latches   :  No
+  Borrow Time for Max Delay Exceptions       :  Yes
+  Merge Timing Exceptions                    :  Yes
+  Inter-SLR Compensation                     :  Conservative
+
+  Corner  Analyze    Analyze
+  Name    Max Paths  Min Paths
+  ------  ---------  ---------
+  Slow    Yes        Yes
+  Fast    Yes        Yes
+
+
+------------------------------------------------------------------------------------------------
+| Report Methodology
+| ------------------
+------------------------------------------------------------------------------------------------
+
+Rule       Severity          Description                                         Violations
+---------  ----------------  --------------------------------------------------  ----------
+TIMING-4   Critical Warning  Invalid primary clock redefinition on a clock tree  2
+TIMING-17  Critical Warning  Non-clocked sequential cell                         4
+TIMING-27  Critical Warning  Invalid primary clock on hierarchical pin           2
+AVAL-344   Warning           Design_needs_USER_RAM_AVERAGE_ACTIVITY_set          1
+TIMING-16  Warning           Large setup violation                               1000
+CLKC-3     Advisory          Clock Buffer has LOC and not CLOCK_REGION           14
+CLKC-72    Advisory          Substitute PLL for MMCME5 check                     2
+
+Note: This report is based on the most recent report_methodology run and may not be up-to-date. Run report_methodology on the current design for the latest report.
+
+
+
+check_timing report
+
+Table of Contents
+-----------------
+1. checking no_clock (4)
+2. checking constant_clock (0)
+3. checking pulse_width_clock (2)
+4. checking unconstrained_internal_endpoints (0)
+5. checking no_input_delay (0)
+6. checking no_output_delay (0)
+7. checking multiple_clock (0)
+8. checking generated_clocks (0)
+9. checking loops (0)
+10. checking partial_input_delay (0)
+11. checking partial_output_delay (0)
+12. checking latch_loops (0)
+
+1. checking no_clock (4)
+------------------------
+ There is 1 register/latch pin with no clock driven by root clock pin: top_i/service_layer/qsfp_0_n_1/clk_n_resets/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT1 (HIGH)
+
+top_i/service_layer/qsfp_0_n_1/adwc0_1024_512/inst/gen_downsizer_conversion.axisc_downsizer_0/r0_data_reg[0]/C
+
+ There is 1 register/latch pin with no clock driven by root clock pin: top_i/service_layer/qsfp_2_n_3/DCMAC_subsys/dcmac_gt1_wrapper/util_ds_buf_0/U0/USE_IBUFDS_GTME5.GEN_IBUFDS_GTME5[0].IBUFDS_GTME5_U/ODIV2 (HIGH)
+
+top_i/service_layer/qsfp_2_n_3/adwc0_1024_512/inst/gen_downsizer_conversion.axisc_downsizer_0/r0_data_reg[0]/C
+
+ There is 1 register/latch pin with no clock driven by root clock pin: top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_0.PL_CLK_0_BUFG/O (HIGH)
+
+top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/DCLK
+
+ There is 1 register/latch pin with no clock driven by root clock pin: top_i/static_region/clk_rst_shell/clk_wizard_service/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0 (HIGH)
+
+top_i/service_layer/axi_register_slice_0/inst/aw.aw_pipe/aresetn_d_reg[0]/C
+
+
+2. checking constant_clock (0)
+------------------------------
+ There are 0 register/latch pins with constant_clock.
+
+
+3. checking pulse_width_clock (2)
+---------------------------------
+ There are 2 register/latch pins which need pulse_width check. (LOW)
+
+top_i/service_layer/qsfp_2_n_3/DCMAC_subsys/dcmac_gt1_wrapper/util_ds_buf_mbufg_rx_0/U0/USE_MBUFG_GT_SYNC.GEN_MBUFG_GT[0].MBUFG_GT_U/CLR
+top_i/service_layer/qsfp_2_n_3/DCMAC_subsys/dcmac_gt1_wrapper/util_ds_buf_mbufg_tx_0/U0/USE_MBUFG_GT_SYNC.GEN_MBUFG_GT[0].MBUFG_GT_U/CLR
+
+
+4. checking unconstrained_internal_endpoints (0)
+------------------------------------------------
+ There are 0 pins that are not constrained for maximum delay.
+
+ There are 0 pins that are not constrained for maximum delay due to constant clock.
+
+
+5. checking no_input_delay (0)
+------------------------------
+ There are 0 input ports with no input delay specified.
+
+ There are 0 input ports with no input delay but user has a false path constraint.
+
+
+6. checking no_output_delay (0)
+-------------------------------
+ There are 0 ports with no output delay specified.
+
+ There are 0 ports with no output delay but user has a false path constraint
+
+ There are 0 ports with no output delay but with a timing clock defined on it or propagating through it
+
+
+7. checking multiple_clock (0)
+------------------------------
+ There are 0 register/latch pins with multiple clocks.
+
+
+8. checking generated_clocks (0)
+--------------------------------
+ There are 0 generated clocks that are not connected to a clock source.
+
+
+9. checking loops (0)
+---------------------
+ There are 0 combinational loops in the design.
+
+
+10. checking partial_input_delay (0)
+------------------------------------
+ There are 0 input ports with partial input delay specified.
+
+
+11. checking partial_output_delay (0)
+-------------------------------------
+ There are 0 ports with partial output delay specified.
+
+
+12. checking latch_loops (0)
+----------------------------
+ There are 0 combinational latch loops in the design through latch input
+
+
+
+------------------------------------------------------------------------------------------------
+| Design Timing Summary
+| ---------------------
+------------------------------------------------------------------------------------------------
+
+    WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints
+    -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------
+     -5.529  -107105.586                  84900              1178389        0.000        0.000                      0              1176829        0.250        0.000                       0                443349
+
+
+Timing constraints are not met.
+
+
+------------------------------------------------------------------------------------------------
+| Clock Summary
+| -------------
+------------------------------------------------------------------------------------------------
+
+Clock                                                            Waveform(ns)         Period(ns)      Frequency(MHz)
+-----                                                            ------------         ----------      --------------
+clk_pl_3                                                         {0.000 5.000}        10.000          100.000
+top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1  {0.000 5.000}        10.000          100.000
+  tapa_user_clk                                            {0.000 2.500}        5.000           200.000
+top_i/static_region/clk_wizard_0/inst/clk_in1                    {0.000 5.000}        10.000          100.000
+  clk_wizard_0_clk_out1_1                                        {0.000 1.250}        2.500           400.000
+
+
+------------------------------------------------------------------------------------------------
+| Intra Clock Table
+| -----------------
+------------------------------------------------------------------------------------------------
+
+Clock                                                                WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints     WPWS(ns)     TPWS(ns)  TPWS Failing Endpoints  TPWS Total Endpoints
+-----                                                                -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------     --------     --------  ----------------------  --------------------
+clk_pl_3                                                                                                                                                                                                           4.620        0.000                       0                     1
+top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1                                                                                                                                                    4.609        0.000                       0                     1
+  tapa_user_clk                                                 -5.529   -82164.734                  40003               971362        0.000        0.000                      0               971362        1.500        0.000                       0                389493
+top_i/static_region/clk_wizard_0/inst/clk_in1                                                                                                                                                                      4.609        0.000                       0                     1
+  clk_wizard_0_clk_out1_1                                             -1.023   -24940.859                  44897               205467        0.002        0.000                      0               205467        0.250        0.000                       0                 53853
+
+
+------------------------------------------------------------------------------------------------
+| Inter Clock Table
+| -----------------
+------------------------------------------------------------------------------------------------
+
+From Clock               To Clock                     WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints
+----------               --------                     -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------
+clk_wizard_0_clk_out1_1  tapa_user_clk            0.316        0.000                      0                12715
+tapa_user_clk      clk_wizard_0_clk_out1_1        3.328        0.000                      0                20149
+
+
+------------------------------------------------------------------------------------------------
+| Other Path Groups Table
+| -----------------------
+------------------------------------------------------------------------------------------------
+
+Path Group    From Clock    To Clock          WNS(ns)      TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints      WHS(ns)      THS(ns)  THS Failing Endpoints  THS Total Endpoints
+----------    ----------    --------          -------      -------  ---------------------  -------------------      -------      -------  ---------------------  -------------------
+
+
+------------------------------------------------------------------------------------------------
+| Timing Details
+| --------------
+------------------------------------------------------------------------------------------------
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  clk_pl_3
+  To Clock:  clk_pl_3
+
+Setup :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+PW    :            0  Failing Endpoints,  Worst Slack        4.620ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         clk_pl_3
+Waveform(ns):       { 0.000 5.000 }
+Period(ns):         10.000
+Sources:            { top_i/static_region/aved/cips/inst/pspmc_0/inst/PS9_inst/PMCRCLKCLK[3] }
+
+Check Type        Corner  Lib Pin    Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location      Pin
+Min Period        n/a     BUFG_PS/I  n/a            0.934         10.000      9.066      BUFG_PS_X1Y9  top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/I
+Low Pulse Width   Slow    BUFG_PS/I  n/a            0.380         5.000       4.620      BUFG_PS_X1Y9  top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/I
+High Pulse Width  Slow    BUFG_PS/I  n/a            0.380         5.000       4.620      BUFG_PS_X1Y9  top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/I
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1
+  To Clock:  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1
+
+Setup :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+PW    :            0  Failing Endpoints,  Worst Slack        4.609ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1
+Waveform(ns):       { 0.000 5.000 }
+Period(ns):         10.000
+Sources:            { top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clk_in1 }
+
+Check Type        Corner  Lib Pin        Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location   Pin
+Min Period        n/a     MMCME5/CLKIN1  n/a            0.934         10.000      9.066      MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+Max Period        n/a     MMCME5/CLKIN1  n/a            100.000       10.000      90.000     MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+Low Pulse Width   Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+High Pulse Width  Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X8Y0  top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  tapa_user_clk
+  To Clock:  tapa_user_clk
+
+Setup :        40003  Failing Endpoints,  Worst Slack       -5.529ns,  Total Violation   -82164.734ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.000ns,  Total Violation        0.000ns
+PW    :            0  Failing Endpoints,  Worst Slack        1.500ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Max Delay Paths
+--------------------------------------------------------------------------------------
+Slack (VIOLATED) :        -5.529ns  (required time - arrival time)
+  Source:                 top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/grp_fu_322_p0_reg[37]/C
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Destination:            top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/ram_reg_uram_3/DIN_B[1]
+                            (rising edge-triggered cell URAM288E5 clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Path Group:             tapa_user_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            5.000ns  (tapa_user_clk rise@5.000ns - tapa_user_clk rise@0.000ns)
+  Data Path Delay:        10.361ns  (logic 3.567ns (34.427%)  route 6.794ns (65.573%))
+  Logic Levels:           47  (LOOKAHEAD8=17 LUT2=2 LUT3=2 LUT4=3 LUT5=2 LUT6=10 LUTCY1=4 LUTCY2=7)
+  Clock Path Skew:        0.401ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    7.815ns = ( 12.815 - 5.000 )
+    Source Clock Delay      (SCD):    8.348ns
+    Clock Pessimism Removal (CPR):    0.934ns
+  Clock Uncertainty:      0.145ns  (CJ)/2 + PE + PJ
+    Clock Jitter             (CJ):    0.290ns
+    Phase Error              (PE):    0.000ns
+    Phase Jitter             (PJ):    0.000ns
+  Clock Net Delay (Source):      5.973ns (routing 1.682ns, distribution 4.291ns)
+  Clock Net Delay (Destination): 5.820ns (routing 1.515ns, distribution 4.305ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.835     1.835    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
+    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                      0.051     1.886 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.412     2.298    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.078     2.376 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=389843, routed)      5.973     8.348    boundary                            top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/ap_clk
+    SLR Crossing[0->1]
+    SLICE_X93Y583        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/grp_fu_322_p0_reg[37]/C
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X93Y583        FDRE (Prop_EFF_SLICEM_C_Q)
+                                                      0.091     8.439 r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/grp_fu_322_p0_reg[37]/Q
+                         net (fo=7, routed)           0.417     8.857    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y583                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y583        LUT6 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.086     8.943 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.301     9.244    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y584                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y584        LUTCY1 (Prop_B5LUT_SLICEM_I2_PROP)
+                                                      0.086     9.330 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.002     9.332    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y584                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y584        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_PROPB_COUTH)
+                                                      0.177     9.509 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001     9.510    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y585                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y585        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTB)
+                                                      0.051     9.561 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.013     9.574    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y585                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y585        LUTCY2 (Prop_C6LUT_SLICEM_I4_O)
+                                                      0.054     9.628 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.250     9.878    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X90Y584                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X90Y584        LUT3 (Prop_F6LUT_SLICEL_I1_O)
+                                                      0.050     9.928 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=110, routed)         0.364    10.292    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y581                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y581        LUT6 (Prop_C6LUT_SLICEL_I1_O)
+                                                      0.072    10.364 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.239    10.603    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y578                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y578        LUT6 (Prop_D6LUT_SLICEL_I4_O)
+                                                      0.074    10.677 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.256    10.933    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576        LUTCY2 (Prop_A6LUT_SLICEM_I2_O)
+                                                      0.088    11.021 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.016    11.037    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576        LUTCY2 (Prop_B6LUT_SLICEM_I4_O)
+                                                      0.062    11.099 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.000    11.099    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X87Y576        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CYB_COUTF)
+                                                      0.136    11.235 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.290    11.525    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576        LUT6 (Prop_D6LUT_SLICEL_I0_O)
+                                                      0.048    11.573 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.212    11.785    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576        LUT6 (Prop_H6LUT_SLICEL_I0_O)
+                                                      0.088    11.873 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.218    12.091    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X86Y576        LUT6 (Prop_G6LUT_SLICEL_I5_O)
+                                                      0.074    12.165 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.153    12.318    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y576        LUT3 (Prop_G6LUT_SLICEL_I1_O)
+                                                      0.050    12.368 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.012    12.380    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X88Y576        LUT5 (Prop_H6LUT_SLICEL_I3_O)
+                                                      0.060    12.440 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.233    12.673    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y576        LUTCY2 (Prop_A6LUT_SLICEM_I2_GE)
+                                                      0.088    12.761 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.036    12.797    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y576        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_GEA_COUTH)
+                                                      0.242    13.039 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.041    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y577                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y577        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    13.081 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.083    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y578                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y578        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    13.123 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.125    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y579                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y579        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    13.165 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.167    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y580                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y580        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    13.207 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.209    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y581                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y581        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    13.249 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.002    13.251    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTD)
+                                                      0.042    13.293 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.014    13.307    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582        LUTCY2 (Prop_E6LUT_SLICEM_I4_O)
+                                                      0.058    13.365 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.027    13.392    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X93Y582        LUTCY1 (Prop_F5LUT_SLICEM_I4_O)
+                                                      0.068    13.460 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.282    13.742    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X95Y581                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X95Y581        LUT4 (Prop_E6LUT_SLICEM_I0_O)
+                                                      0.088    13.830 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.151    13.981    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581        LUTCY2 (Prop_A6LUT_SLICEL_I2_O)
+                                                      0.085    14.066 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.019    14.085    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581        LUTCY2 (Prop_B6LUT_SLICEL_I4_O)
+                                                      0.061    14.146 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.000    14.146    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y581        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEL_CYB_COUTB)
+                                                      0.054    14.200 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.419    14.619    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y580                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y580        LUT4 (Prop_E5LUT_SLICEL_I1_O)
+                                                      0.134    14.753 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.316    15.069    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y580                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X94Y580        LUT5 (Prop_C6LUT_SLICEL_I4_O)
+                                                      0.057    15.126 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=75, routed)          0.468    15.594    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X96Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X96Y576        LUT4 (Prop_C6LUT_SLICEL_I3_O)
+                                                      0.080    15.674 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.336    16.010    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X96Y576                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X96Y576        LUT6 (Prop_E6LUT_SLICEL_I0_O)
+                                                      0.128    16.138 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=4, routed)           0.332    16.470    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y576                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y576        LUT6 (Prop_F6LUT_SLICEM_I5_O)
+                                                      0.133    16.603 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.150    16.753    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y576        LUTCY1 (Prop_E5LUT_SLICEM_I2_PROP)
+                                                      0.087    16.840 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.002    16.842    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y576                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y576        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_PROPE_COUTH)
+                                                      0.130    16.972 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    16.973    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y577                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y577        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    17.013 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    17.014    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y578                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y578        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    17.054 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    17.055    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y579                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y579        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    17.095 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    17.096    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y580                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y580        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    17.136 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    17.137    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y581                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y581        LOOKAHEAD8 (Prop_LOOKAHEAD8_SLICEM_CIN_COUTH)
+                                                      0.040    17.177 f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=3, routed)           0.001    17.178    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y582                                                     f  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X99Y582        LUTCY1 (Prop_A5LUT_SLICEM_I4_O)
+                                                      0.059    17.237 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=5, routed)           0.237    17.475    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582        LUT2 (Prop_A6LUT_SLICEM_I0_O)
+                                                      0.074    17.549 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=2, routed)           0.226    17.775    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582        LUT6 (Prop_E6LUT_SLICEM_I5_O)
+                                                      0.028    17.803 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.022    17.825    reconfigurable                      top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582                                                     r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+    SLICE_X97Y582        LUT6 (Prop_F6LUT_SLICEM_I1_O)
+                                                      0.062    17.887 r  reconfigurable pblock_slash         top_wrapper/top/slash_base/slash_base_Callipepla_0_0/slash_base_Callipepla_0_0_Callipepla/slash_base_Callipepla_0_0_PEG_Yvec__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_PEG_Yvec_Pipeline_computation__xdcDup__13/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1__xdcDup__99/slash_base_Callipepla_0_0_PEG_Yvec_dadd_64ns_64ns_64_1_no_dsp_1_ip__178/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>/<hidden>
+                         net (fo=1, routed)           0.230    18.117    reconfigurable                      top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/dadd_64ns_64ns_64_1_no_dsp_1_U12/grp_PEG_Yvec_Pipeline_computation_fu_276_local_C_2_d1[55]
+    SLICE_X97Y582                                                     r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/dadd_64ns_64ns_64_1_no_dsp_1_U12/ram_reg_uram_3_i_9__52/I1
+    SLICE_X97Y582        LUT2 (Prop_G6LUT_SLICEM_I1_O)
+                                                      0.062    18.179 r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/grp_PEG_Yvec_Pipeline_computation_fu_276/dadd_64ns_64ns_64_1_no_dsp_1_U12/ram_reg_uram_3_i_9__52/O
+                         net (fo=1, routed)           0.531    18.710    reconfigurable                      top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/d1[55]
+    URAM288_X2Y147       URAM288E5                                    r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/ram_reg_uram_3/DIN_B[1]
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock tapa_user_clk rise edge)
+                                                      5.000     5.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     5.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.584     6.584    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
+    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                     -0.005     6.579 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.353     6.932    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.063     6.995 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=389843, routed)      5.820    12.815    boundary                            top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/ap_clk
+    SLR Crossing[0->1]
+    URAM288_X2Y147       URAM288E5                                    r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/ram_reg_uram_3/CLK
+                         clock pessimism              0.934    13.749
+                         clock uncertainty           -0.145    13.604
+    URAM288_X2Y147       URAM288E5 (Setup_URAM288_CLK_DIN_B[1])
+                                                     -0.424    13.180    reconfigurable   pblock_slash           top_i/slash/Callipepla_0/inst/PEG_Yvec_6/local_C_2_U/ram_reg_uram_3
+  -------------------------------------------------------------------
+                         required time                         13.180
+                         arrival time                         -18.710
+  -------------------------------------------------------------------
+                         slack                                 -5.529
+
+
+
+
+
+Min Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             0.000ns  (arrival time - required time)
+  Source:                 top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/tmp_13_reg_931_reg[9]/C
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Destination:            top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/local_C_7_addr_reg_985_pp0_iter2_reg_reg[9]_srl2/D
+                            (rising edge-triggered cell SRL16E clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Path Group:             tapa_user_clk
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (tapa_user_clk rise@0.000ns - tapa_user_clk rise@0.000ns)
+  Data Path Delay:        0.246ns  (logic 0.050ns (20.318%)  route 0.196ns (79.682%))
+  Logic Levels:           0
+  Clock Path Skew:        0.171ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    6.224ns
+    Source Clock Delay      (SCD):    5.139ns
+    Clock Pessimism Removal (CPR):    0.915ns
+  Clock Net Delay (Source):      3.782ns (routing 0.995ns, distribution 2.787ns)
+  Clock Net Delay (Destination): 4.486ns (routing 1.184ns, distribution 3.302ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.112     1.112    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
+    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                     -0.034     1.078 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.234     1.312    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.045     1.357 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=389843, routed)      3.782     5.139    boundary                            top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X57Y836        FDRE                                         r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/tmp_13_reg_931_reg[9]/C
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X57Y836        FDRE (Prop_CFF2_SLICEM_C_Q)
+                                                      0.050     5.189 r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/tmp_13_reg_931_reg[9]/Q
+                         net (fo=2, routed)           0.196     5.385    reconfigurable                      top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/grp_PEG_Yvec_Pipeline_computation_fu_276_local_C_7_address0[9]
+    SLICE_X69Y841        SRL16E                                       r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/local_C_7_addr_reg_985_pp0_iter2_reg_reg[9]_srl2/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock tapa_user_clk rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.348     1.348    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clk_in1
+    MMCM_X8Y0                                                         r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X8Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                      0.029     1.377 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.300     1.677    static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/clkout1_primitive
+    BUFGCE_X8Y23                                                      r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/I
+    BUFGCE_X8Y23         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.061     1.738 r  static                              top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/BUFG_clkout1_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=389843, routed)      4.486     6.224    boundary                            top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/ap_clk
+    SLR Crossing[0->2]
+    SLICE_X69Y841        SRL16E                                       r  reconfigurable pblock_slash         top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/local_C_7_addr_reg_985_pp0_iter2_reg_reg[9]_srl2/CLK
+                         clock pessimism             -0.915     5.310
+    SLICE_X69Y841        SRL16E (Hold_B5LUT_SLICEM_CLK_D)
+                                                      0.075     5.385    reconfigurable   pblock_slash           top_i/slash/Callipepla_0/inst/PEG_Yvec_3/grp_PEG_Yvec_Pipeline_computation_fu_276/local_C_7_addr_reg_985_pp0_iter2_reg_reg[9]_srl2
+  -------------------------------------------------------------------
+                         required time                         -5.385
+                         arrival time                           5.385
+  -------------------------------------------------------------------
+                         slack                                  0.000
+
+
+
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         tapa_user_clk
+Waveform(ns):       { 0.000 2.500 }
+Period(ns):         5.000
+Sources:            { top_i/static_region/clk_rst_shell/clk_wizard_slash/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0 }
+
+Check Type        Corner  Lib Pin         Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location          Pin
+Min Period        n/a     NOC_NSU512/CLK  n/a            2.000         5.000       3.000      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+Low Pulse Width   Slow    NOC_NSU512/CLK  n/a            1.000         2.500       1.500      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+High Pulse Width  Slow    NOC_NSU512/CLK  n/a            1.000         2.500       1.500      NOC_NSU512_X0Y15  top_i/slash/axi_noc_0/inst/M00_AXI_nsu/bd_2beb_M00_AXI_nsu_0_top_INST/NOC_NSU512_INST/CLK
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  top_i/static_region/clk_wizard_0/inst/clk_in1
+  To Clock:  top_i/static_region/clk_wizard_0/inst/clk_in1
+
+Setup :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+PW    :            0  Failing Endpoints,  Worst Slack        4.609ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         top_i/static_region/clk_wizard_0/inst/clk_in1
+Waveform(ns):       { 0.000 5.000 }
+Period(ns):         10.000
+Sources:            { top_i/static_region/clk_wizard_0/inst/clk_in1 }
+
+Check Type        Corner  Lib Pin        Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location   Pin
+Min Period        n/a     MMCME5/CLKIN1  n/a            0.934         10.000      9.066      MMCM_X7Y0  top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+Max Period        n/a     MMCME5/CLKIN1  n/a            100.000       10.000      90.000     MMCM_X7Y0  top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+Low Pulse Width   Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X7Y0  top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+High Pulse Width  Slow    MMCME5/CLKIN1  n/a            0.391         5.000       4.609      MMCM_X7Y0  top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  clk_wizard_0_clk_out1_1
+  To Clock:  clk_wizard_0_clk_out1_1
+
+Setup :        44897  Failing Endpoints,  Worst Slack       -1.023ns,  Total Violation   -24940.859ns
+Hold  :            0  Failing Endpoints,  Worst Slack        0.002ns,  Total Violation        0.000ns
+PW    :            0  Failing Endpoints,  Worst Slack        0.250ns,  Total Violation        0.000ns
+---------------------------------------------------------------------------------------------------
+
+
+Max Delay Paths
+--------------------------------------------------------------------------------------
+Slack (VIOLATED) :        -1.023ns  (required time - arrival time)
+  Source:                 top_i/static_region/noc/axi_noc_cips/inst/HBM24_AXI_nmu/bd_6ff4_HBM24_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+                            (rising edge-triggered cell NOC_NMU_HBM2E clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Destination:            top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/count_r_reg[2]/CE
+                            (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Path Group:             clk_wizard_0_clk_out1_1
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            2.500ns  (clk_wizard_0_clk_out1_1 rise@2.500ns - clk_wizard_0_clk_out1_1 rise@0.000ns)
+  Data Path Delay:        2.623ns  (logic 0.457ns (17.423%)  route 2.166ns (82.577%))
+  Logic Levels:           2  (LUT2=2)
+  Clock Path Skew:        -0.700ns (DCD - SCD + CPR)
+    Destination Clock Delay (DCD):    6.126ns = ( 8.626 - 2.500 )
+    Source Clock Delay      (SCD):    7.595ns
+    Clock Pessimism Removal (CPR):    0.769ns
+  Clock Uncertainty:      0.112ns  (CJ)/2 + PE + PJ
+    Clock Jitter             (CJ):    0.223ns
+    Phase Error              (PE):    0.000ns
+    Phase Jitter             (PJ):    0.000ns
+  Clock Net Delay (Source):      5.135ns (routing 1.770ns, distribution 3.365ns)
+  Clock Net Delay (Destination): 4.059ns (routing 1.588ns, distribution 2.471ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock clk_wizard_0_clk_out1_1 rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.930     1.930    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_in1
+    MMCM_X7Y0                                                         r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X7Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                      0.051     1.981 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.401     2.382    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1
+    BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
+    BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.078     2.460 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=53851, routed)       5.135     7.595    static                              top_i/static_region/noc/axi_noc_cips/inst/HBM24_AXI_nmu/bd_6ff4_HBM24_AXI_nmu_0_top_INST/aclk
+    SLR Crossing[0->2]
+    NOC_NMU_HBM2E_X27Y0  NOC_NMU_HBM2E                                r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM24_AXI_nmu/bd_6ff4_HBM24_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+  -------------------------------------------------------------------    -------------------------------------------------------
+    NOC_NMU_HBM2E_X27Y0  NOC_NMU_HBM2E (Prop_NMU_NOC_NMU_HBM2E_CLK_IF_NOC_AXI_TOP_BVALID)
+                                                      0.315     7.910 r  static                              top_i/static_region/noc/axi_noc_cips/inst/HBM24_AXI_nmu/bd_6ff4_HBM24_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/IF_NOC_AXI_TOP_BVALID
+                         net (fo=1, routed)           0.718     8.628    static                              top_wrapper/top/static_region_imp_R96LB/top_dfx_decoupler_0_0/<hidden>
+    SLICE_X178Y881                                                    r  static                              top_wrapper/top/static_region_imp_R96LB/top_dfx_decoupler_0_0/<hidden>
+    SLICE_X178Y881       LUT2 (Prop_D6LUT_SLICEL_I0_O)
+                                                      0.048     8.676 r  static                              top_wrapper/top/static_region_imp_R96LB/top_dfx_decoupler_0_0/<hidden>
+                         net (fo=13, routed)          0.800     9.476    boundary                            top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_si_handler/s_sc_send[0]
+    SLICE_X215Y870                                                    r  reconfigurable pblock_slash         top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_si_handler/count_r[5]_i_1__0/I0
+    SLICE_X215Y870       LUT2 (Prop_F5LUT_SLICEM_I0_O)
+                                                      0.094     9.570 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_si_handler/count_r[5]_i_1__0/O
+                         net (fo=12, routed)          0.648    10.218    reconfigurable                      top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/E[0]
+    SLICE_X226Y870       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/count_r_reg[2]/CE
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock clk_wizard_0_clk_out1_1 rise edge)
+                                                      2.500     2.500 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     2.500 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.662     4.162    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_in1
+    MMCM_X7Y0                                                         r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X7Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                     -0.005     4.157 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.347     4.504    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1
+    BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
+    BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.063     4.567 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=53851, routed)       4.059     8.626    boundary                            top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/s_sc_aclk
+    SLR Crossing[0->2]
+    SLICE_X226Y870       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/count_r_reg[2]/C
+                         clock pessimism              0.769     9.395
+                         clock uncertainty           -0.112     9.284
+    SLICE_X226Y870       FDRE (Setup_CFF2_SLICEL_C_CE)
+                                                     -0.089     9.195    reconfigurable   pblock_slash           top_i/slash/hbm_sc_24/inst/s00_nodes/s00_b_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[0].inst_wr_addra/count_r_reg[2]
+  -------------------------------------------------------------------
+                         required time                          9.195
+                         arrival time                         -10.218
+  -------------------------------------------------------------------
+                         slack                                 -1.023
+
+
+
+
+
+Min Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             0.002ns  (arrival time - required time)
+  Source:                 top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_async_clocks.inst_cdc_addra_to_rd_clk/dest_graysync_ff_reg[2][5]/C
+                            (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Destination:            top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_reg/D
+                            (rising edge-triggered cell FDSE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Path Group:             clk_wizard_0_clk_out1_1
+  Path Type:              Hold (Min at Fast Process Corner)
+  Requirement:            0.000ns  (clk_wizard_0_clk_out1_1 rise@0.000ns - clk_wizard_0_clk_out1_1 rise@0.000ns)
+  Data Path Delay:        0.227ns  (logic 0.102ns (44.901%)  route 0.125ns (55.099%))
+  Logic Levels:           1  (LUT6=1)
+  Clock Path Skew:        0.190ns (DCD - SCD - CPR)
+    Destination Clock Delay (DCD):    5.371ns
+    Source Clock Delay      (SCD):    4.384ns
+    Clock Pessimism Removal (CPR):    0.797ns
+  Clock Net Delay (Source):      2.977ns (routing 1.045ns, distribution 1.932ns)
+  Clock Net Delay (Destination): 3.567ns (routing 1.253ns, distribution 2.314ns)
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+                         (clock clk_wizard_0_clk_out1_1 rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.168     1.168    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_in1
+    MMCM_X7Y0                                                         r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X7Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                     -0.034     1.134 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.228     1.362    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1
+    BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
+    BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.045     1.407 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=53851, routed)       2.977     4.384    boundary                            top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_async_clocks.inst_cdc_addra_to_rd_clk/dest_clk
+    SLR Crossing[0->2]
+    SLICE_X132Y818       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_async_clocks.inst_cdc_addra_to_rd_clk/dest_graysync_ff_reg[2][5]/C
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X132Y818       FDRE (Prop_HFF2_SLICEL_C_Q)
+                                                      0.050     4.434 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_async_clocks.inst_cdc_addra_to_rd_clk/dest_graysync_ff_reg[2][5]/Q
+                         net (fo=6, routed)           0.108     4.542    reconfigurable                      top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/rd_addra_sync[5]
+    SLICE_X131Y818                                                    r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_i_1/I4
+    SLICE_X131Y818       LUT6 (Prop_E6LUT_SLICEM_I4_O)
+                                                      0.052     4.594 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_i_1/O
+                         net (fo=1, routed)           0.017     4.611    reconfigurable                      top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_i_1_n_0
+    SLICE_X131Y818       FDSE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_reg/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         (clock clk_wizard_0_clk_out1_1 rise edge)
+                                                      0.000     0.000 r
+    BUFG_PS_X1Y9         BUFG_PS                      0.000     0.000 r  static                              top_i/static_region/aved/cips/inst/pspmc_0/inst/buffer_pl_clk_3.PL_CLK_3_BUFG/O
+                         net (fo=2, routed)           1.423     1.423    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_in1
+    MMCM_X7Y0                                                         r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKIN1
+    MMCM_X7Y0            MMCME5 (Prop_MMCM_CLKIN1_CLKOUT0)
+                                                      0.029     1.452 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0
+                         net (fo=1, routed)           0.291     1.743    static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1
+    BUFGCE_X7Y15                                                      r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/I
+    BUFGCE_X7Y15         BUFGCE (Prop_BUFCE_BUFGCE_I_O)
+                                                      0.061     1.804 r  static                              top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/clk_out1_BUFG_inst/O
+    X5Y7 (CLOCK_ROOT)    net (fo=53851, routed)       3.567     5.371    boundary                            top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/m_sc_aclk
+    SLR Crossing[0->2]
+    SLICE_X131Y818       FDSE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_reg/C
+                         clock pessimism             -0.797     4.574
+    SLICE_X131Y818       FDSE (Hold_EFF2_SLICEM_C_D)
+                                                      0.035     4.609    reconfigurable   pblock_slash           top_i/slash/hbm_sc_19/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_rd.fifo_empty_r_reg
+  -------------------------------------------------------------------
+                         required time                         -4.609
+                         arrival time                           4.611
+  -------------------------------------------------------------------
+                         slack                                  0.002
+
+
+
+
+
+Pulse Width Checks
+--------------------------------------------------------------------------------------
+Clock Name:         clk_wizard_0_clk_out1_1
+Waveform(ns):       { 0.000 1.250 }
+Period(ns):         2.500
+Sources:            { top_i/static_region/clk_wizard_0/inst/clock_primitive_inst/MMCME5_inst/CLKOUT0 }
+
+Check Type        Corner  Lib Pin            Reference Pin  Required(ns)  Actual(ns)  Slack(ns)  Location            Pin
+Min Period        n/a     NOC_NMU_HBM2E/CLK  n/a            2.000         2.500       0.500      NOC_NMU_HBM2E_X2Y0  top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+Low Pulse Width   Slow    NOC_NMU_HBM2E/CLK  n/a            1.000         1.250       0.250      NOC_NMU_HBM2E_X2Y0  top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+High Pulse Width  Slow    NOC_NMU_HBM2E/CLK  n/a            1.000         1.250       0.250      NOC_NMU_HBM2E_X2Y0  top_i/static_region/noc/axi_noc_cips/inst/HBM00_AXI_nmu/bd_6ff4_HBM00_AXI_nmu_0_top_INST/NOC_NMU_HBM2E_INST/CLK
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  clk_wizard_0_clk_out1_1
+  To Clock:  tapa_user_clk
+
+Setup :            0  Failing Endpoints,  Worst Slack        0.316ns,  Total Violation        0.000ns
+Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+---------------------------------------------------------------------------------------------------
+
+
+Max Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             0.316ns  (required time - arrival time)
+  Source:                 top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMF/CLK
+                            (rising edge-triggered cell RAMD32 clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Destination:            top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[24]/D
+                            (rising edge-triggered cell FDRE clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Path Group:             tapa_user_clk
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            2.500ns  (MaxDelay Path 2.500ns)
+  Data Path Delay:        2.191ns  (logic 0.310ns (14.149%)  route 1.881ns (85.851%))
+  Logic Levels:           0
+  Timing Exception:       MaxDelay Path 2.500ns -datapath_only
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X171Y829                                    0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMF/CLK
+    SLICE_X171Y829       RAMD32 (Prop_F5LUT_SLICEM_CLK_O)
+                                                      0.310     0.310 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMF/O
+                         net (fo=1, routed)           1.881     2.191    reconfigurable                      top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[24]
+    SLICE_X265Y828       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[24]/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         max delay                    2.500     2.500
+    SLICE_X265Y828       FDRE (Setup_CFF2_SLICEM_C_D)
+                                                      0.007     2.507    reconfigurable   pblock_slash           top_i/slash/hbm_sc_13/inst/s00_nodes/s00_r_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[2].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[24]
+  -------------------------------------------------------------------
+                         required time                          2.507
+                         arrival time                          -2.191
+  -------------------------------------------------------------------
+                         slack                                  0.316
+
+
+
+
+
+---------------------------------------------------------------------------------------------------
+From Clock:  tapa_user_clk
+  To Clock:  clk_wizard_0_clk_out1_1
+
+Setup :            0  Failing Endpoints,  Worst Slack        3.328ns,  Total Violation        0.000ns
+Hold  :           NA  Failing Endpoints,  Worst Slack           NA  ,  Total Violation           NA
+---------------------------------------------------------------------------------------------------
+
+
+Max Delay Paths
+--------------------------------------------------------------------------------------
+Slack (MET) :             3.328ns  (required time - arrival time)
+  Source:                 top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMD_D1/CLK
+                            (rising edge-triggered cell RAMD32 clocked by tapa_user_clk  {rise@0.000ns fall@2.500ns period=5.000ns})
+  Destination:            top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[21]/D
+                            (rising edge-triggered cell FDRE clocked by clk_wizard_0_clk_out1_1  {rise@0.000ns fall@1.250ns period=2.500ns})
+  Path Group:             clk_wizard_0_clk_out1_1
+  Path Type:              Setup (Max at Slow Process Corner)
+  Requirement:            5.000ns  (MaxDelay Path 5.000ns)
+  Data Path Delay:        1.679ns  (logic 0.317ns (18.880%)  route 1.362ns (81.120%))
+  Logic Levels:           0
+  Timing Exception:       MaxDelay Path 5.000ns -datapath_only
+
+    Location             Delay type                Incr(ns)  Path(ns)    Partition      PBlock               Netlist Resource(s)
+  -------------------------------------------------------------------    -------------------------------------------------------
+    SLICE_X151Y772                                    0.000     0.000 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMD_D1/CLK
+    SLICE_X151Y772       RAMD32 (Prop_D6LUT_SLICEM_CLK_O)
+                                                      0.317     0.317 r  reconfigurable pblock_slash         top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_wr_a.gen_word_narrow.mem_reg_0_31_14_27/RAMD_D1/O
+                         net (fo=1, routed)           1.362     1.679    reconfigurable                      top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg0[21]
+    SLICE_X151Y813       FDRE                                         r  reconfigurable pblock_slash         top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[21]/D
+  -------------------------------------------------------------------    -------------------------------------------------------
+
+                         max delay                    5.000     5.000
+    SLICE_X151Y813       FDRE (Setup_AFF2_SLICEM_C_D)
+                                                      0.007     5.007    reconfigurable   pblock_slash           top_i/slash/hbm_sc_21/inst/s00_nodes/s00_w_node/inst/inst_mi_handler/gen_normal_area.inst_fifo_node_payld/gen_xpm_memory_fifo.inst_fifo/gen_mem_rep[1].inst_xpm_memory/xpm_memory_base_inst/gen_rd_b.gen_rd_b_synth_template.gen_rf_narrow_reg.doutb_reg_reg[21]
+  -------------------------------------------------------------------
+                         required time                          5.007
+                         arrival time                          -1.679
+  -------------------------------------------------------------------
+                         slack                                  3.328

@@ -17,13 +17,14 @@
 mod transport;
 
 use std::io::Write;
+use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
 
 use self::transport::{cleanup_session, local_to_remote_path, unique_session_id, upload_batch};
-pub(crate) use self::transport::{download_tree, shell_quote};
+pub(crate) use self::transport::{download_path, shell_quote};
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{
     unified_hls_args, xilinx_tool_name, ToolInvocation, ToolOutput, ToolRunner,
@@ -114,7 +115,11 @@ fn build_remote_script(
     let mut parts: Vec<String> = Vec::new();
     for dl in &plan.downloads_abs {
         let remote_dl = local_to_remote_path(dl, &plan.session_dir);
-        parts.push(format!("mkdir -p {}", shell_quote(&remote_dl)));
+        let remote_parent = Path::new(&remote_dl)
+            .parent()
+            .and_then(Path::to_str)
+            .unwrap_or("/");
+        parts.push(format!("mkdir -p {}", shell_quote(remote_parent)));
     }
     if let Some(xs) = xilinx_settings {
         if !xs.trim().is_empty() {
@@ -276,7 +281,7 @@ impl RemoteToolRunner {
             let remote_src = local_to_remote_path(abs, &plan.session_dir);
             // Download back to the caller's requested path (raw), which
             // may be relative — keeping the caller-facing contract.
-            download_tree(&self.session, &remote_src, raw.as_std_path())?;
+            download_path(&self.session, &remote_src, raw.as_std_path())?;
         }
 
         Ok(ToolOutput {
@@ -452,7 +457,7 @@ mod tests {
 
     #[test]
     fn build_script_splices_downloads_settings_env_and_exec() {
-        // Representative full invocation: one download-target mkdir,
+        // Representative full invocation: one download-parent mkdir,
         // the Xilinx settings source line, one allowlisted env entry
         // whose value is rewritten (with a non-allowlisted entry
         // dropped), and absolute paths rewritten in the args before
@@ -472,7 +477,7 @@ mod tests {
             build_remote_script(&plan, &inv, Some("/opt/Xilinx/Vitis/2023.2/settings64.sh"));
         assert_eq!(
             script,
-            "bash -c 'mkdir -p /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/work.out ; \
+            "bash -c 'mkdir -p /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top ; \
                 source /opt/Xilinx/Vitis/2023.2/settings64.sh ; \
                 export TAPA_TCL=/tmp/tapa-remote/tapa-1-2-3/rootfs/work/top/run.tcl ; \
                 cd /tmp/tapa-remote/tapa-1-2-3/rootfs/work/top && \

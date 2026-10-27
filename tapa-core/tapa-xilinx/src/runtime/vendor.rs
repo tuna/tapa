@@ -44,7 +44,7 @@ impl VendorRemoteFs for SshVendorFs<'_> {
     }
 
     fn download_dir(&self, remote_path: &str, local_dest: &Path) -> Result<()> {
-        crate::runtime::remote::download_tree(self.session, remote_path, local_dest)
+        crate::runtime::remote::download_path(self.session, remote_path, local_dest)
     }
 }
 

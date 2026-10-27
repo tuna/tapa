@@ -33,9 +33,14 @@ pub(crate) fn parse_kernel_timing_summary(
     target_mhz: Option<u32>,
 ) -> Result<KernelTiming> {
     let kernel_clock = identify_kernel_clock(report, target_mhz)?;
+    parse_named_clock_timing_summary(report, &kernel_clock)
+}
 
-    let clock_row = unique_clock_row(report, "Clock Summary", &kernel_clock)?;
-    let intra_row = unique_clock_row(report, "Intra Clock Table", &kernel_clock)?;
+/// Parse one explicitly named clock, used when a generated constraint gives
+/// the kernel clock a stable name independent of its requested frequency.
+pub(crate) fn parse_named_clock_timing_summary(report: &str, clock: &str) -> Result<KernelTiming> {
+    let clock_row = unique_clock_row(report, "Clock Summary", clock)?;
+    let intra_row = unique_clock_row(report, "Intra Clock Table", clock)?;
 
     let reported_target_period_ns =
         positive_finite("kernel Period(ns)", parse_field(&clock_row, "Period(ns)")?)?;
@@ -55,6 +60,20 @@ pub(crate) fn parse_kernel_timing_summary(
         achieved_period_ns,
         fmax_mhz,
     })
+}
+
+/// Read only setup WNS for a clock whose negative slack must never be
+/// interpreted as a deratable kernel frequency (for example the fixed NoC).
+pub(crate) fn parse_named_clock_wns(report: &str, clock: &str) -> Result<f64> {
+    let row = unique_clock_row(report, "Intra Clock Table", clock)?;
+    finite("clock WNS(ns)", parse_field(&row, "WNS(ns)")?)
+}
+
+/// Read hold WHS for diagnostics. Hold slack is never converted into a
+/// frequency cap.
+pub(crate) fn parse_named_clock_whs(report: &str, clock: &str) -> Result<f64> {
+    let row = unique_clock_row(report, "Intra Clock Table", clock)?;
+    finite("clock WHS(ns)", parse_field(&row, "WHS(ns)")?)
 }
 
 /// Decide which clock row in the `Clock Summary` is the kernel clock.

@@ -43,6 +43,20 @@ pub struct KernelXmlArgs {
     pub ports: Vec<KernelXmlPort>,
 }
 
+impl KernelXmlPort {
+    /// Physical M-AXI interface name emitted into `kernel.xml`.
+    pub(crate) fn compiled_m_axi_name(&self) -> Option<String> {
+        (self.category == PortCategory::MAxi).then(|| {
+            let base = if self.port.is_empty() {
+                &self.name
+            } else {
+                &self.port
+            };
+            format!("{M_AXI_PREFIX}{}", tapa_ir::port::sanitize_array_name(base))
+        })
+    }
+}
+
 fn xml_escape(s: &str) -> String {
     quick_xml::escape::escape(s).into_owned()
 }
@@ -111,16 +125,18 @@ fn project_kernel_xml(args: &KernelXmlArgs) -> Result<(Vec<XmlPort>, Vec<XmlArg>
                 has_s_axi_control = true;
                 let size = 8u64;
                 let host_size = 8u64;
-                let base = user_port.unwrap_or(port.name.as_str());
+                let compiled_name = port
+                    .compiled_m_axi_name()
+                    .expect("M-AXI ports always have a compiled name");
                 ports.push(XmlPort {
-                    name: format!("{M_AXI_PREFIX}{base}"),
+                    name: compiled_name.clone(),
                     mode: "master".into(),
                     range: Some("0xFFFFFFFFFFFFFFFF".into()),
                     data_width: port.width,
                     port_type: "addressable".into(),
                     base: Some("0x0".into()),
                 });
-                let pname = format!("{M_AXI_PREFIX}{base}");
+                let pname = compiled_name;
                 let off = offset;
                 offset += size + 4;
                 (1u8, size, host_size, pname, off)

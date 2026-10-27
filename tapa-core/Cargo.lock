@@ -1448,6 +1448,7 @@ dependencies = [
  "fs-err",
  "fs2",
  "hex",
+ "log",
  "nix",
  "quick-xml",
  "regex",

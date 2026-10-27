@@ -7,6 +7,20 @@ pub mod vivado;
 
 use crate::error::XilinxError;
 use crate::runtime::process::ToolOutput;
+use camino::Utf8PathBuf;
+use vitis::timing::KernelTiming;
+
+/// Artifacts and kernel-clock measurements produced by one hardware link.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LinkOutput {
+    pub bitstream: Utf8PathBuf,
+    pub requested_mhz: u32,
+    pub recorded_mhz: f64,
+    pub timing: KernelTiming,
+    pub timing_report: Utf8PathBuf,
+    pub stdout: String,
+    pub stderr: String,
+}
 
 /// Map a failed (non-zero-exit) tool run into a
 /// [`XilinxError::ToolFailure`], folding the output streams so the

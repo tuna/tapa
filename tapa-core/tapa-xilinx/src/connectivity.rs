@@ -5,6 +5,8 @@ use std::fmt::Write as _;
 
 use tapa_ir::{MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind};
 
+use crate::platform::kernel_xml::KernelXmlPort;
+
 /// Errors produced while extracting memory assignments from a connectivity
 /// configuration.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -94,13 +96,39 @@ pub fn parse_vitis_config(input: &str) -> Result<MemoryBindings, ConnectivityPar
 }
 
 /// Resolve a single-kernel SLASH configuration to TAPA's logical top ports.
-/// The exact port mapping comes from the compiled interfaces; array names are
-/// never reconstructed by guessing which underscores used to be brackets.
+/// Physical interface names come from the typed compiled ports; array names
+/// are never reconstructed by guessing which underscores used to be brackets.
 pub fn parse_slash_config(
     input: &str,
     top: &str,
-    ports: &[&str],
+    ports: &[KernelXmlPort],
 ) -> Result<MemoryBindings, String> {
+    parse_slash(input, top, ports).map(|parsed| parsed.bindings)
+}
+
+/// Validate a SLASH configuration and add the one kernel clock when absent.
+/// Existing clock sections must all name the sole `nk` instance at exactly the
+/// requested frequency.
+pub fn prepare_slash_config(
+    input: &str,
+    top: &str,
+    ports: &[KernelXmlPort],
+    requested_hz: u64,
+) -> Result<String, String> {
+    let parsed = parse_slash(input, top, ports)?;
+    enforce_slash_clock(input, &parsed.instance, requested_hz)
+}
+
+struct ParsedSlashConfig {
+    instance: String,
+    bindings: MemoryBindings,
+}
+
+fn parse_slash(
+    input: &str,
+    top: &str,
+    ports: &[KernelXmlPort],
+) -> Result<ParsedSlashConfig, String> {
     let mut in_connectivity = false;
     let mut instance = None;
     let mut entries = Vec::new();
@@ -145,7 +173,8 @@ pub fn parse_slash_config(
             .ok_or_else(|| format!("unknown kernel instance in `{entry}`"))?;
         let logical = ports
             .iter()
-            .find(|port| format!("m_axi_{}", tapa_ir::port::sanitize_array_name(port)) == physical)
+            .find(|port| port.compiled_m_axi_name().as_deref() == Some(physical))
+            .map(|port| &port.name)
             .ok_or_else(|| format!("SLASH port `{physical}` is not a compiled top interface"))?;
         let (kind, index) = target
             .trim()
@@ -155,7 +184,94 @@ pub fn parse_slash_config(
             .ok_or_else(|| format!("unsupported SLASH memory `{target}`"))?;
         writeln!(normalized, "sp={top}.{logical}:{kind}[{index}]").expect("write String");
     }
-    parse_vitis_config(&normalized).map_err(|error| error.to_string())
+    let bindings = parse_vitis_config(&normalized).map_err(|error| error.to_string())?;
+    Ok(ParsedSlashConfig {
+        instance: instance.to_string(),
+        bindings,
+    })
+}
+
+fn enforce_slash_clock(input: &str, instance: &str, requested_hz: u64) -> Result<String, String> {
+    if requested_hz == 0 {
+        return Err("SLASH clock must be positive".to_string());
+    }
+    let mut in_clock = false;
+    let mut saw_clock = false;
+    let mut clock_kernel: Option<String> = None;
+    let mut clock_frequency: Option<String> = None;
+
+    for original in input.lines() {
+        let line = strip_comment(original).trim();
+        if line.starts_with('[') {
+            validate_clock_section(
+                in_clock,
+                clock_kernel.as_deref(),
+                clock_frequency.as_deref(),
+                instance,
+                requested_hz,
+            )?;
+            in_clock = line.eq_ignore_ascii_case("[clock]");
+            saw_clock |= in_clock;
+            clock_kernel = None;
+            clock_frequency = None;
+            continue;
+        }
+        if !in_clock || line.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("invalid SLASH [clock] entry `{line}`"));
+        };
+        match key.trim().to_ascii_lowercase().as_str() {
+            "krnl" => clock_kernel = Some(value.trim().to_string()),
+            "freqhz" => clock_frequency = Some(value.trim().to_string()),
+            _ => {}
+        }
+    }
+    validate_clock_section(
+        in_clock,
+        clock_kernel.as_deref(),
+        clock_frequency.as_deref(),
+        instance,
+        requested_hz,
+    )?;
+
+    let mut output = input.to_string();
+    if !saw_clock {
+        if !output.is_empty() && !output.ends_with('\n') {
+            output.push('\n');
+        }
+        if !output.is_empty() {
+            output.push('\n');
+        }
+        writeln!(output, "[clock]\nkrnl={instance}\nfreqhz={requested_hz}").expect("write String");
+    }
+    Ok(output)
+}
+
+fn validate_clock_section(
+    saw_section: bool,
+    kernel: Option<&str>,
+    frequency: Option<&str>,
+    instance: &str,
+    requested_hz: u64,
+) -> Result<(), String> {
+    if !saw_section {
+        return Ok(());
+    }
+    let actual_kernel =
+        kernel.ok_or_else(|| "incomplete SLASH [clock]: missing `krnl`".to_string())?;
+    let actual_frequency = frequency
+        .ok_or_else(|| "incomplete SLASH [clock]: missing `freqhz`".to_string())?
+        .parse::<u64>()
+        .map_err(|_| "invalid SLASH [clock] `freqhz`".to_string())?;
+    if actual_kernel != instance || actual_frequency != requested_hz {
+        return Err(format!(
+            "SLASH [clock] must be `krnl={instance}` and `freqhz={requested_hz}`, \
+             found `krnl={actual_kernel}` and `freqhz={actual_frequency}`"
+        ));
+    }
+    Ok(())
 }
 
 fn strip_comment(line: &str) -> &str {
@@ -295,6 +411,53 @@ fn parse_bank(value: &str, line: usize) -> Result<MemoryBank, ConnectivityParseE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn slash_port(name: &str) -> KernelXmlPort {
+        KernelXmlPort {
+            name: name.to_string(),
+            category: crate::PortCategory::MAxi,
+            width: 512,
+            port: String::new(),
+            ctype: "int*".to_string(),
+        }
+    }
+
+    #[test]
+    fn slash_config_uses_typed_compiled_ports_and_appends_clock() {
+        let input = "[connectivity]\nnk=VecAdd:1:VecAdd_0\nsp=VecAdd_0.m_axi_a:HBM0\n";
+        let prepared = prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
+            .expect("valid SLASH config");
+        assert!(prepared.ends_with("[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n"));
+        let bindings = parse_slash_config(&prepared, "VecAdd", &[slash_port("a")])
+            .expect("typed port resolves");
+        assert_eq!(
+            bindings.get("VecAdd", "a"),
+            Some(MemoryBank {
+                kind: MemoryKind::Hbm,
+                index: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn slash_config_accepts_matching_clock_and_rejects_drift() {
+        let input =
+            "[connectivity]\nnk=VecAdd:1:VecAdd_0\n\n[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n";
+        assert_eq!(
+            prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
+                .expect("matching clock"),
+            input,
+        );
+        prepare_slash_config(input, "VecAdd", &[slash_port("a")], 200_000_000)
+            .expect_err("different requested clock must fail");
+        prepare_slash_config(
+            "[connectivity]\nnk=VecAdd:1:VecAdd_0\nsp=VecAdd_0.m_axi_missing:HBM0\n",
+            "VecAdd",
+            &[slash_port("a")],
+            300_000_000,
+        )
+        .expect_err("unknown compiled port must fail");
+    }
 
     #[test]
     fn parses_whitespace_comments_sections_and_repeated_entries() {

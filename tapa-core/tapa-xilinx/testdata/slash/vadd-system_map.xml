@@ -1,0 +1,40 @@
+<SystemMap>
+  <Platform>Hardware</Platform>
+  <ClockFrequency>300000000</ClockFrequency>
+  <ServiceLayer>
+    <Ethernet enabled="false">
+    </Ethernet>
+    <VIRT>
+      <interface index="0" connection="unused" />
+      <interface index="1" connection="unused" />
+      <interface index="2" connection="unused" />
+      <interface index="3" connection="unused" />
+    </VIRT>
+  </ServiceLayer>
+  <Kernel>
+    <Name>VecAdd_0</Name>
+    <BaseAddress>0x20200000000</BaseAddress>
+    <Range>0x1000</Range>
+    <register offset="0" name="CTRL" access="RW" description="" range="32" />
+    <register offset="0x4" name="GIER" access="RW" description="" range="32" />
+    <register offset="0x8" name="IP_IER" access="RW" description="" range="32" />
+    <register offset="0xc" name="IP_ISR" access="RW" description="" range="32" />
+    <register offset="0x10" name="a_0" access="RW" description="" range="32" />
+    <register offset="0x14" name="a_1" access="RW" description="" range="32" />
+    <register offset="0x1c" name="b_0" access="RW" description="" range="32" />
+    <register offset="0x20" name="b_1" access="RW" description="" range="32" />
+    <register offset="0x28" name="c_0" access="RW" description="" range="32" />
+    <register offset="0x2c" name="c_1" access="RW" description="" range="32" />
+    <register offset="0x34" name="n_0" access="RW" description="" range="32" />
+    <register offset="0x38" name="n_1" access="RW" description="" range="32" />
+    <functional_args>
+      <arg idx="0" name="a" type="buffer" offset="0x10" range="64" r="1" w="1" port="m_axi_a" />
+      <arg idx="1" name="b" type="buffer" offset="0x1c" range="64" r="1" w="1" port="m_axi_b" />
+      <arg idx="2" name="c" type="buffer" offset="0x28" range="64" r="1" w="1" port="m_axi_c" />
+      <arg idx="3" name="n" type="scalar" offset="0x34" range="64" r="1" w="1" />
+    </functional_args>
+    <connection port="m_axi_a" target="HBM0" />
+    <connection port="m_axi_b" target="HBM1" />
+    <connection port="m_axi_c" target="HBM2" />
+  </Kernel>
+</SystemMap>

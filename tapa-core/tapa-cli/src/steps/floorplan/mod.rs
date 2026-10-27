@@ -447,7 +447,13 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
                     .map_err(|error| CliError::InvalidArg(error.to_string()))?;
                 let ports = interfaces
                     .iter()
-                    .map(|i| i.endpoint.top_port.as_str())
+                    .map(|interface| tapa_xilinx::KernelXmlPort {
+                        name: interface.endpoint.top_port.clone(),
+                        category: tapa_xilinx::PortCategory::MAxi,
+                        width: interface.data_width,
+                        port: String::new(),
+                        ctype: String::new(),
+                    })
                     .collect::<Vec<_>>();
                 let bindings = tapa_xilinx::connectivity::parse_slash_config(
                     text,

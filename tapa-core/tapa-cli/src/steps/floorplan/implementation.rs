@@ -9,7 +9,7 @@ use tapa_floorplan::device::select::select_device;
 use tapa_floorplan::ExactDseResourceCaps;
 use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{FloorplanResult, Target, WorkState};
-use tapa_xilinx::{run_vitis_link, target_frequency_mhz, KernelTiming, ToolRunner, VitisLinkJob};
+use tapa_xilinx::{run_vitis_link, target_frequency_mhz, LinkOutput, ToolRunner, VitisLinkJob};
 
 use crate::error::{CliError, Result};
 use crate::state::json;
@@ -299,7 +299,10 @@ fn implement_one(
         target,
         &candidate,
     ) {
-        Ok(output) if output.timing.fmax_mhz.is_finite() && output.timing.wns_ns >= 0.0 => {
+        Ok(output)
+            if output.timing.fmax_mhz.is_finite()
+                && (target.flow == Target::XilinxSlash || output.timing.wns_ns >= 0.0) =>
+        {
             CandidateOutcome::Success(ImplementationWinner { candidate, output })
         }
         Ok(output) => CandidateOutcome::Failure {
@@ -342,7 +345,7 @@ fn try_implement_one(
     connectivity: Option<&[u8]>,
     target: &ImplementationTarget,
     candidate: &PlannedCandidate,
-) -> Result<ImplementationOutput> {
+) -> Result<LinkOutput> {
     let paths = CandidatePaths::new(work_dir, candidate.index, &projection.flat.top);
     paths.recreate()?;
 
@@ -384,24 +387,19 @@ fn try_implement_one(
         let result = tapa_xilinx::tools::slash::link(
             runner,
             &tapa_xilinx::tools::slash::SlashLinkJob {
-                xo: crate::util::utf8(xo),
+                package: crate::util::utf8(xo),
                 config: crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY)),
                 output: crate::util::utf8(paths.vbin.clone()),
                 work_dir: crate::util::utf8(paths.link.clone()),
                 slashkit: "slashkit".to_string(),
                 vivado: "vivado".to_string(),
                 jobs: target.vivado_threads,
-                clock_hz: u64::from(target.target_mhz) * 1_000_000,
+                target_mhz: target.target_mhz,
                 floorplan_xdc: Some(crate::util::utf8(paths.constraints.join(FLOORPLAN_XDC))),
+                mode: tapa_xilinx::tools::slash::SlashLinkMode::Hardware,
             },
         )?;
-        return Ok(ImplementationOutput {
-            bitstream: crate::util::utf8(paths.vbin.clone()),
-            timing_report: result.timing_report,
-            timing: result.timing,
-            stdout: result.stdout,
-            stderr: result.stderr,
-        });
+        return Ok(result);
     }
 
     log::info!(
@@ -428,22 +426,7 @@ fn try_implement_one(
         )
         .build();
     let output = run_vitis_link(runner, &job)?;
-    Ok(ImplementationOutput {
-        bitstream: crate::util::utf8(paths.xclbin.clone()),
-        timing_report: output.timing_report,
-        timing: output.timing,
-        stdout: output.stdout,
-        stderr: output.stderr,
-    })
-}
-
-#[derive(Debug)]
-struct ImplementationOutput {
-    bitstream: camino::Utf8PathBuf,
-    timing_report: camino::Utf8PathBuf,
-    timing: KernelTiming,
-    stdout: String,
-    stderr: String,
+    Ok(output)
 }
 
 #[derive(Debug)]
@@ -459,7 +442,7 @@ enum CandidateOutcome {
 #[derive(Debug)]
 pub(super) struct ImplementationWinner {
     candidate: PlannedCandidate,
-    output: ImplementationOutput,
+    output: LinkOutput,
 }
 
 impl ImplementationWinner {
@@ -488,6 +471,7 @@ impl ImplementationWinner {
             wns_ns: self.output.timing.wns_ns,
             achieved_period_ns: self.output.timing.achieved_period_ns,
             fmax_mhz: self.output.timing.fmax_mhz,
+            timing_closed: self.output.timing.wns_ns >= 0.0,
             timing_report: IMPLEMENTATION_TIMING_REPORT,
         };
         let mut bytes = serde_json::to_vec_pretty(&metrics)?;
@@ -650,6 +634,7 @@ struct CandidateDiagnostic {
     status: CandidateStatus,
     fmax_mhz: Option<f64>,
     achieved_period_ns: Option<f64>,
+    timing_closed: Option<bool>,
     error: Option<String>,
 }
 
@@ -663,6 +648,7 @@ impl CandidateDiagnostic {
                 status: CandidateStatus::Succeeded,
                 fmax_mhz: Some(success.output.timing.fmax_mhz),
                 achieved_period_ns: Some(success.output.timing.achieved_period_ns),
+                timing_closed: Some(success.output.timing.wns_ns >= 0.0),
                 error: None,
             },
             CandidateOutcome::Failure { candidate, error } => Self {
@@ -672,6 +658,7 @@ impl CandidateDiagnostic {
                 status: CandidateStatus::Failed,
                 fmax_mhz: None,
                 achieved_period_ns: None,
+                timing_closed: None,
                 error: Some(error.clone()),
             },
         }
@@ -685,6 +672,7 @@ impl CandidateDiagnostic {
             status: CandidateStatus::Infeasible,
             fmax_mhz: None,
             achieved_period_ns: None,
+            timing_closed: None,
             error: Some("exact planning infeasible".to_string()),
         }
     }
@@ -702,6 +690,7 @@ struct WinnerMetrics<'a> {
     wns_ns: f64,
     achieved_period_ns: f64,
     fmax_mhz: f64,
+    timing_closed: bool,
     timing_report: &'a str,
 }
 
@@ -830,8 +819,10 @@ mod tests {
                 realized_max_utilization: 0.8,
                 floorplan: floorplan(),
             },
-            output: ImplementationOutput {
+            output: LinkOutput {
                 bitstream: format!("candidate_{index:03}.vbin").into(),
+                requested_mhz: 333,
+                recorded_mhz: 333.0,
                 timing_report: format!("candidate_{index:03}.rpt").into(),
                 timing: tapa_xilinx::KernelTiming {
                     reported_target_period_ns: 3.0,

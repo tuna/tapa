@@ -123,23 +123,48 @@ pub(super) fn upload_batch(
     Ok(())
 }
 
-/// Download the contents of a remote directory into `dest` via
-/// `ssh … tar -czf - -C <remote_dir> .` decoded in-process with
-/// `flate2`/`tar`. SSH stderr is captured so transient mux failures
-/// surface in the returned error and the outer retry path can classify
-/// them.
-pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Result<()> {
-    std::fs::create_dir_all(dest).map_err(|e| {
-        XilinxError::RemoteTransfer(format!("cannot create `{}`: {e}", dest.display()))
+/// Download one remote file or directory into the same caller-facing path.
+/// The tar contains just the source basename and is unpacked into the local
+/// parent, so both forms use one transport without downloading sibling files.
+pub fn download_path(session: &SshSession, remote_path: &str, dest: &Path) -> Result<()> {
+    let remote = Path::new(remote_path);
+    let remote_parent = remote.parent().ok_or_else(|| {
+        XilinxError::RemoteTransfer(format!("remote download `{remote_path}` has no parent"))
     })?;
-    let remote_cmd = format!("tar -czf - -C {} .", shell_quote(remote_dir));
+    let remote_name = remote.file_name().ok_or_else(|| {
+        XilinxError::RemoteTransfer(format!("remote download `{remote_path}` has no basename"))
+    })?;
+    let remote_parent = remote_parent.to_str().ok_or_else(|| {
+        XilinxError::RemoteTransfer(format!(
+            "remote download parent is not UTF-8: `{remote_path}`"
+        ))
+    })?;
+    let remote_name = remote_name.to_str().ok_or_else(|| {
+        XilinxError::RemoteTransfer(format!(
+            "remote download name is not UTF-8: `{remote_path}`"
+        ))
+    })?;
+    let dest_parent = dest
+        .parent()
+        .filter(|path| !path.as_os_str().is_empty())
+        .unwrap_or_else(|| Path::new("."));
+    std::fs::create_dir_all(dest_parent).map_err(|e| {
+        XilinxError::RemoteTransfer(format!("cannot create `{}`: {e}", dest_parent.display()))
+    })?;
+    let remote_cmd = format!(
+        "tar -czf - -C {} {}",
+        shell_quote(remote_parent),
+        shell_quote(remote_name),
+    );
     let mut ssh_child = session
         .exec_cmd(&remote_cmd)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| {
-            XilinxError::RemoteTransfer(format!("cannot spawn ssh to download `{remote_dir}`: {e}"))
+            XilinxError::RemoteTransfer(format!(
+                "cannot spawn ssh to download `{remote_path}`: {e}"
+            ))
         })?;
 
     let ssh_out = ssh_child
@@ -159,23 +184,22 @@ pub fn download_tree(session: &SshSession, remote_dir: &str, dest: &Path) -> Res
 
     let unpack_result = {
         let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(ssh_out));
-        archive.unpack(dest)
+        archive.unpack(dest_parent)
     };
 
     let ssh_status = ssh_child.wait().map_err(|e| {
         XilinxError::RemoteTransfer(format!("cannot wait for the ssh download: {e}"))
     })?;
     let stderr_bytes = stderr_handle.join().unwrap_or_default();
-    let stderr = String::from_utf8_lossy(&stderr_bytes).into_owned();
+    let stderr = String::from_utf8_lossy(&stderr_bytes);
     if !ssh_status.success() {
         return Err(XilinxError::RemoteTransfer(format!(
-            "remote tar -cz failed (exit {}): {}",
+            "remote tar -cz failed (exit {}): {stderr}",
             ssh_status.code().unwrap_or(-1),
-            stderr.trim()
         )));
     }
     unpack_result.map_err(|e| {
-        XilinxError::RemoteTransfer(format!("cannot unpack the downloaded archive: {e}"))
+        XilinxError::RemoteTransfer(format!("cannot unpack the downloaded path: {e}"))
     })?;
     Ok(())
 }

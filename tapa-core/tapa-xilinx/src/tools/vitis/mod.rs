@@ -10,7 +10,8 @@ use crate::runtime::process::{ToolInvocation, ToolRunner};
 
 pub mod timing;
 
-use self::timing::{parse_kernel_timing_summary, KernelTiming};
+use self::timing::parse_kernel_timing_summary;
+use super::LinkOutput;
 
 const TIMING_REPORT_NAME: &str = "timing_summary.rpt";
 const FINAL_TIMING_HOOK_NAME: &str = "final_timing.tcl";
@@ -82,14 +83,6 @@ pub struct VitisLinkJob {
     /// `--vivado.synth.jobs`. Acts as the per-link thread budget.
     #[builder(default = 2)]
     pub vivado_threads: u32,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct VitisLinkOutput {
-    pub timing_report: Utf8PathBuf,
-    pub timing: KernelTiming,
-    pub stdout: String,
-    pub stderr: String,
 }
 
 #[derive(Debug)]
@@ -298,7 +291,7 @@ fn build_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
 }
 
 /// Run one hardware link and return its kernel-clock timing result.
-pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<VitisLinkOutput> {
+pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<LinkOutput> {
     let resolved = ResolvedJob::new(job)?;
     validate_input(&resolved.xo, "XO")?;
     if let Some(xdc) = &resolved.floorplan_xdc {
@@ -334,9 +327,12 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Vit
     let timing_text = fs_err::read_to_string(&resolved.timing_report)?;
     let timing = parse_kernel_timing_summary(&timing_text, Some(job.target_mhz))?;
 
-    Ok(VitisLinkOutput {
-        timing_report: resolved.timing_report,
+    Ok(LinkOutput {
+        bitstream: resolved.output_xclbin,
+        requested_mhz: job.target_mhz,
+        recorded_mhz: f64::from(job.target_mhz),
         timing,
+        timing_report: resolved.timing_report,
         stdout: tool_output.stdout,
         stderr: tool_output.stderr,
     })
