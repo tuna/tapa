@@ -64,8 +64,29 @@ pub struct SlashLinkJob {
 /// warning, and fixed-shell timing never fails the link.
 pub fn link(runner: &dyn ToolRunner, job: &SlashLinkJob) -> Result<LinkOutput> {
     let prepared = prepare_link(job)?;
-    let tool_output = runner.run(&build_invocation(job, &prepared))?;
+    let vivado = resolve_tool_host_program(runner, &job.vivado)?;
+    let tool_output = runner.run(&build_invocation(job, &prepared, &vivado))?;
     finish_link(job, prepared, tool_output)
+}
+
+fn resolve_tool_host_program(runner: &dyn ToolRunner, program: &str) -> Result<String> {
+    if Utf8Path::new(program).is_absolute() {
+        return Ok(program.to_string());
+    }
+    let output = runner.run(&ToolInvocation::new("which").arg(program))?;
+    if output.exit_code != 0 {
+        return Err(slash_error(format!(
+            "cannot resolve `{program}` on the tool host: {}",
+            output.stderr.trim()
+        )));
+    }
+    let resolved = output.stdout.trim();
+    if !Utf8Path::new(resolved).is_absolute() {
+        return Err(slash_error(format!(
+            "tool-host resolution of `{program}` did not return an absolute path: `{resolved}`"
+        )));
+    }
+    Ok(resolved.to_string())
 }
 
 #[derive(Debug)]
@@ -151,13 +172,13 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     })
 }
 
-fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink) -> ToolInvocation {
+fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink, vivado: &str) -> ToolInvocation {
     let mut invocation = ToolInvocation::new(job.slashkit.clone())
         .arg("link")
         .arg("-p")
         .arg(job.mode.slashkit_name())
         .arg("--vivado")
-        .arg(job.vivado.clone())
+        .arg(vivado)
         .arg("--jobs")
         .arg(job.jobs.to_string())
         .arg("-c")
@@ -437,6 +458,14 @@ mod tests {
         };
         let runner = MockToolRunner::new();
         runner.push_ok(
+            "which",
+            ToolOutput {
+                exit_code: 0,
+                stdout: "/tool-host/bin/vivado\n".into(),
+                stderr: String::new(),
+            },
+        );
+        runner.push_ok(
             &job.slashkit,
             ToolOutput {
                 exit_code: 0,
@@ -472,16 +501,17 @@ mod tests {
         let calls = runner.calls();
         assert_eq!(
             calls.len(),
-            1,
-            "only slashkit runs; no Python/finalize/verify"
+            2,
+            "tool-host resolution and slashkit; no Python/finalize/verify"
         );
-        let call = &calls[0];
+        assert_eq!(calls[0].program, "which");
+        let call = &calls[1];
         assert_eq!(call.program, "/tool-host/bin/slashkit");
         let args = call.local_args();
         assert!(args.windows(2).any(|pair| pair == ["-p", "hw"]));
         assert!(args
             .windows(2)
-            .any(|pair| pair == ["--vivado", "vivado-on-tool-host"]));
+            .any(|pair| pair == ["--vivado", "/tool-host/bin/vivado"]));
         assert_eq!(call.downloads, vec![output_path, report_path.clone()]);
         assert_eq!(call.uploads.len(), 6);
         assert!(call.uploads.contains(&work.join("floorplan.xdc")));
@@ -528,7 +558,7 @@ mod tests {
             mode: SlashLinkMode::Simulation,
         };
         let prepared = prepare_link(&job).expect("prepare simulation link");
-        let invocation = build_invocation(&job, &prepared);
+        let invocation = build_invocation(&job, &prepared, &job.vivado);
         assert_eq!(invocation.program, "slashkit-not-on-local-path");
         assert!(invocation
             .local_args()
