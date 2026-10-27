@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 use super::*;
-use crate::device::model::{DirCaps, Slot};
+use crate::device::model::{DirCaps, PlacementStyle, PlannedResources, Slot};
 use crate::device::select::select_device;
 use crate::solver::{LpSolution, VarKind};
 use crate::ExactInt;
@@ -408,7 +408,9 @@ fn one_slot_device_with_area(area: Area) -> Device {
         platform_name: None,
         rows: 1,
         cols: 1,
-        is_versal: false,
+        placement: PlacementStyle::default(),
+        planned_resources: PlannedResources::default(),
+        usage_ceiling: None,
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![Slot {
@@ -447,7 +449,9 @@ fn two_slot_golden_device() -> Device {
         platform_name: None,
         rows: 2,
         cols: 1,
-        is_versal: false,
+        placement: PlacementStyle::default(),
+        planned_resources: PlannedResources::default(),
+        usage_ceiling: None,
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![slot(0, 0), slot(1, 150)],
@@ -848,7 +852,9 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
         platform_name: None,
         rows: 2,
         cols: 2,
-        is_versal: false,
+        placement: PlacementStyle::default(),
+        planned_resources: PlannedResources::default(),
+        usage_ceiling: None,
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![
@@ -1211,7 +1217,9 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         platform_name: None,
         rows: 1,
         cols: 3,
-        is_versal: false,
+        placement: PlacementStyle::default(),
+        planned_resources: PlannedResources::default(),
+        usage_ceiling: None,
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![mk_slot(0, 0), mk_slot(1, 1), mk_slot(2, 4)],

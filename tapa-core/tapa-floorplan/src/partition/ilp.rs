@@ -220,7 +220,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
 fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {
     let by_resource: BTreeMap<_, _> = Resource::ALL
         .into_iter()
-        .filter(|resource| device.constrains_resource(*resource) && !resource.is_logic())
+        .filter(|resource| device.plans_resource(*resource) && !resource.is_logic())
         .map(|resource| (resource, block_limit))
         .collect();
     let max_resource_limits = row_regions(device)
@@ -673,7 +673,7 @@ fn describe_demand(
 ) -> String {
     let mut worst: Option<(Resource, u64, u64)> = None;
     for resource in Resource::ALL {
-        if !device.constrains_resource(resource) {
+        if !device.plans_resource(resource) {
             continue;
         }
         let demand: u64 = graph
@@ -949,7 +949,7 @@ fn area_fits(required: Area, available: Area) -> bool {
 fn area_fits_on_device(device: &Device, required: Area, available: Area) -> bool {
     Resource::ALL
         .into_iter()
-        .filter(|resource| device.constrains_resource(*resource))
+        .filter(|resource| device.plans_resource(*resource))
         .all(|resource| resource.amount(&required) <= resource.amount(&available))
 }
 
@@ -1279,7 +1279,7 @@ fn add_resource_constraints(
             .get(&region)
             .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
         for resource in Resource::ALL {
-            if !device.constrains_resource(resource) {
+            if !device.plans_resource(resource) {
                 // V80 BRAM/URAM legality is delegated to Vivado.
                 // V80 的 BRAM/URAM 合法放置交由 Vivado 决定。
                 continue;

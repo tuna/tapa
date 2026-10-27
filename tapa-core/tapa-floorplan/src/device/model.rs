@@ -116,8 +116,100 @@ pub struct DeviceAnchor {
     pub y_offset_quarters: i64,
 }
 
+/// How the floorplan XDC constrains a placed region's cells.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlacementStyle {
+    /// Per-region soft pblocks scoping cells to the slots' physical ranges.
+    #[default]
+    Pblock,
+    /// Vivado `USER_SLR_ASSIGNMENT` on matched hierarchies, without slot
+    /// pblocks that would clip the reconfigurable module's usable capacity.
+    SlrAssignment,
+}
+
+/// The resource classes a device table budgets in its placement capacity.
+///
+/// The wire form is the list of lowercase class names (`lut`, `ff`, `dsp`,
+/// `bram_18k`, `uram`); an omitted field plans all five. [`Resource`] itself
+/// has no serde form, so this wrapper owns the table naming.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlannedResources(Vec<Resource>);
+
+/// The table wire names of the resource classes, in canonical order.
+const RESOURCE_TABLE_NAMES: [(&str, Resource); 5] = [
+    ("lut", Resource::Lut),
+    ("ff", Resource::Ff),
+    ("dsp", Resource::Dsp),
+    ("bram_18k", Resource::Bram18k),
+    ("uram", Resource::Uram),
+];
+
+impl PlannedResources {
+    /// Every class — the value an omitted table field means.
+    fn all() -> Self {
+        Self(
+            RESOURCE_TABLE_NAMES
+                .iter()
+                .map(|&(_, resource)| resource)
+                .collect(),
+        )
+    }
+
+    /// Whether this table budgets `resource` for placement.
+    #[must_use]
+    pub fn contains(&self, resource: Resource) -> bool {
+        self.0.contains(&resource)
+    }
+}
+
+impl Default for PlannedResources {
+    fn default() -> Self {
+        Self::all()
+    }
+}
+
+impl Serialize for PlannedResources {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.0.iter().map(|&resource| table_name(resource)))
+    }
+}
+
+/// The wire name of `resource`; every [`Resource`] has one.
+fn table_name(resource: Resource) -> &'static str {
+    RESOURCE_TABLE_NAMES
+        .iter()
+        .find(|&(_, candidate)| *candidate == resource)
+        .expect("every Resource has a table name")
+        .0
+}
+
+impl<'de> Deserialize<'de> for PlannedResources {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Vec::<String>::deserialize(deserializer)?
+            .iter()
+            .map(|name| {
+                RESOURCE_TABLE_NAMES
+                    .iter()
+                    .find(|&&(wire, _)| wire == name)
+                    .map(|&(_, resource)| resource)
+                    .ok_or_else(|| {
+                        serde::de::Error::invalid_value(
+                            serde::de::Unexpected::Str(name),
+                            &"a planned resource name: lut, ff, dsp, bram_18k, uram",
+                        )
+                    })
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(Self)
+    }
+}
+
 /// A precollected FPGA device: its grid, per-slot resources, and geometry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+///
+/// Not `Eq`: the [`f64`](Device::usage_ceiling) ceiling makes equality
+/// partial.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Short key, e.g. `"u280"`.
@@ -131,10 +223,25 @@ pub struct Device {
     pub rows: u32,
     /// Number of grid columns.
     pub cols: u32,
-    /// Whether this is a Versal part. Fixed NoC terminals may be anchored, but
-    /// the device model does not represent NoC topology or latency.
+    /// How the floorplan XDC constrains placed cells.
     #[serde(default)]
-    pub is_versal: bool,
+    pub placement: PlacementStyle,
+    /// The resource classes this table budgets for placement.
+    #[serde(default)]
+    pub planned_resources: PlannedResources,
+    /// Per-slot utilization ceiling the planner retries up to, in place of
+    /// the caller-derived cap. Absent keeps the caller's ladder.
+    ///
+    /// V80 pins 1.0: its SLASH service-shell pblock has a discrete URAM
+    /// constraint — the Callipepla kernel needs sixteen 32-URAM task
+    /// instances, while the two usable SLR slots expose 216 and 328 URAM
+    /// sites. The aggregate 512 sites fit, but a 0.95 derating leaves only
+    /// 205 and 311 sites, which cannot hold seven and nine instances. V80
+    /// therefore uses the exact shell capacity; the table still contains the
+    /// physical counts and Vivado remains the final placement/timing
+    /// authority.
+    #[serde(default)]
+    pub usage_ceiling: Option<f64>,
     /// User pblock name the floorplan XDC scopes cells under, if any.
     #[serde(default)]
     pub user_pblock_name: Option<String>,
@@ -263,8 +370,8 @@ impl Device {
     /// V80 的 BRAM/URAM 站点可以列入 Vivado DFX 物理 pblock 范围，
     /// 但不限制 TAPA 的 placement 容量预算。
     #[must_use]
-    pub fn constrains_resource(&self, resource: Resource) -> bool {
-        !(self.key == "v80" && matches!(resource, Resource::Bram18k | Resource::Uram))
+    pub fn plans_resource(&self, resource: Resource) -> bool {
+        self.planned_resources.contains(resource)
     }
 
     /// Validate the table values interpolated into implementation Tcl and the
@@ -611,7 +718,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots: vec![

@@ -653,7 +653,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::device::model::{DirCaps, Slot};
+    use crate::device::model::{DirCaps, PlacementStyle, PlannedResources, Slot};
     use crate::device::select::select_device;
     use crate::solver::{CbcSolver, LpSolution, LpStatus};
     use tapa_ir::Area;
@@ -750,7 +750,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots,
@@ -883,7 +885,9 @@ mod tests {
             platform_name: None,
             rows: 3,
             cols: 3,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots,

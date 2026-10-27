@@ -134,6 +134,8 @@ pub fn select_device(part_num: &str) -> Result<Device, SelectError> {
 mod tests {
     use super::*;
 
+    use crate::device::model::PlacementStyle;
+
     #[test]
     fn every_table_parses_and_covers_its_grid() {
         for device in DeviceRegistry::embedded()
@@ -182,7 +184,13 @@ mod tests {
     #[test]
     fn u280_reference_slot_matches_upstream() {
         let device = select_device("u280").expect("u280 resolves");
-        assert!(!device.is_versal);
+        // Absent policy fields keep the shared defaults: pblock placement,
+        // every resource budgeted, the caller-derived ceiling.
+        assert_eq!(device.placement, PlacementStyle::Pblock);
+        for resource in tapa_ir::Resource::ALL {
+            assert!(device.plans_resource(resource));
+        }
+        assert_eq!(device.usage_ceiling, None);
         assert_eq!((device.cols, device.rows), (2, 3));
         let slot = device.slot(0, 0).expect("slot (0,0)");
         assert_eq!(slot.area.lut, 220_800);
@@ -239,7 +247,8 @@ mod tests {
     #[test]
     fn v80_models_slash_service_shell_slr_resources() {
         let device = select_device("v80").expect("v80 resolves");
-        assert!(device.is_versal);
+        assert_eq!(device.placement, PlacementStyle::SlrAssignment);
+        assert_eq!(device.usage_ceiling, Some(1.0));
         assert_eq!((device.cols, device.rows), (1, 3));
         assert_eq!(device.platform_name.as_deref(), Some("slash_v80_service"));
         assert_eq!(device.user_pblock_name.as_deref(), Some("pblock_slash"));
@@ -261,9 +270,11 @@ mod tests {
         assert_eq!(slr1.area.uram, 216);
         // BRAM/URAM remain inventory data, not TAPA capacity constraints.
         // BRAM/URAM 保留为库存数据，不作为 TAPA 容量约束。
-        assert!(!device.constrains_resource(tapa_ir::Resource::Bram18k));
-        assert!(!device.constrains_resource(tapa_ir::Resource::Uram));
-        assert!(device.constrains_resource(tapa_ir::Resource::Lut));
+        assert!(!device.plans_resource(tapa_ir::Resource::Bram18k));
+        assert!(!device.plans_resource(tapa_ir::Resource::Uram));
+        assert!(device.plans_resource(tapa_ir::Resource::Lut));
+        assert!(device.plans_resource(tapa_ir::Resource::Ff));
+        assert!(device.plans_resource(tapa_ir::Resource::Dsp));
         assert_eq!(slr1.wire_cap.south, 18_870);
         assert_eq!(slr1.wire_cap.north, 18_870);
         assert_eq!(slr1.pblock_ranges, ["CLOCKREGION_X0Y5:CLOCKREGION_X9Y7"]);
@@ -413,7 +424,6 @@ mod tests {
             device.user_pblock_name.as_deref(),
             Some("pblock_dynamic_region")
         );
-        assert!(!device.is_versal);
         for index in 0..32 {
             let tag = format!("HBM[{index}]");
             let slots = device.slots_with_tag(&tag).collect::<Vec<_>>();
@@ -581,7 +591,6 @@ mod tests {
     #[test]
     fn vck190_external_interfaces_have_exact_unique_slots() {
         let device = select_device("vck190").expect("vck190 resolves");
-        assert!(device.is_versal);
         assert_eq!(
             device.platform_name.as_deref(),
             Some("xilinx_vck190_base_202410_1")

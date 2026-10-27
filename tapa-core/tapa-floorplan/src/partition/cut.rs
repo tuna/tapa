@@ -142,7 +142,9 @@ fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::device::model::{usable_wire_capacity, DirCaps, Slot, WIRE_CAPACITY_INF};
+    use crate::device::model::{
+        usable_wire_capacity, DirCaps, PlacementStyle, PlannedResources, Slot, WIRE_CAPACITY_INF,
+    };
     use crate::device::select::select_device;
     use tapa_ir::Area;
 
@@ -216,7 +218,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             // Each physical cell-pair boundary is governed by the *smaller* of
@@ -259,7 +263,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 3,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots: vec![
@@ -311,7 +317,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots: vec![
@@ -355,7 +363,9 @@ mod tests {
             platform_name: None,
             rows: 2,
             cols: 2,
-            is_versal: false,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
             user_pblock_name: None,
             anchors: Vec::new(),
             slots: vec![

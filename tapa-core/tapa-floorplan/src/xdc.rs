@@ -12,7 +12,7 @@ use tapa_ir::{
     PipelineScheme, RoutedChannel,
 };
 
-use crate::device::model::{Coor, Device};
+use crate::device::model::{Coor, Device, PlacementStyle};
 
 const BATCHED_CELL_MATCH_THRESHOLD: usize = 16;
 
@@ -158,10 +158,11 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
 
     let mut lines: Vec<String> = Vec::new();
     for (region, matches) in &by_region {
-        if device.key == "v80" {
-            add_region_slr_assignment(&mut lines, region, matches);
-        } else {
-            add_region_pblock(&mut lines, region, matches, device);
+        match device.placement {
+            PlacementStyle::SlrAssignment => {
+                add_region_slr_assignment(&mut lines, region, matches);
+            }
+            PlacementStyle::Pblock => add_region_pblock(&mut lines, region, matches, device),
         }
     }
 
@@ -195,13 +196,12 @@ fn validate_result(result: &FloorplanResult, device: &Device) -> Result<(), XdcE
     }
     for region in result.regions.values() {
         validate_region_rectangle(device, region)?;
-        if device.key == "v80" {
+        if device.placement == PlacementStyle::SlrAssignment {
             let coor = Coor::from_region_or_slot_name(region).expect("validated region");
             if coor.width() != 1 || coor.height() != 1 {
                 return Err(XdcError::InvalidRegion {
                     region: region.clone(),
-                    detail: "V80 SLR-only placement requires one atomic SLR per instance"
-                        .to_string(),
+                    detail: "SLR-only placement requires one atomic SLR per instance".to_string(),
                 });
             }
         }

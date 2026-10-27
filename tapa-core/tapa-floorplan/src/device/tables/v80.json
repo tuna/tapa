@@ -416,9 +416,14 @@
         }
     ],
     "cols": 1,
-    "is_versal": true,
     "key": "v80",
     "part_num": "xcv80-lsva4737-2MHP-e-S",
+    "placement": "slr_assignment",
+    "planned_resources": [
+        "lut",
+        "ff",
+        "dsp"
+    ],
     "platform_name": "slash_v80_service",
     "rows": 3,
     "slots": [
@@ -557,5 +562,6 @@
             "y": 2
         }
     ],
+    "usage_ceiling": 1.0,
     "user_pblock_name": "pblock_slash"
 }
