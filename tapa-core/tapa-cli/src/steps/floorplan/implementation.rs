@@ -120,7 +120,7 @@ pub(super) struct ImplementationTarget {
     platform: String,
     target_mhz: u32,
     vivado_threads: u32,
-    slash: bool,
+    flow: Target,
 }
 
 impl ImplementationTarget {
@@ -134,9 +134,11 @@ pub(super) fn validate_target(
     state: &WorkState,
     vivado_threads: u32,
 ) -> Result<ImplementationTarget> {
-    if state.graph.target != Target::XilinxVitis {
+    let flow = state.graph.target;
+    if !matches!(flow, Target::XilinxVitis | Target::XilinxSlash) {
         return Err(CliError::InvalidArg(
-            "`--run-impl` and `--dse` require the `xilinx-vitis` target".to_string(),
+            "`--run-impl` and `--dse` require the `xilinx-vitis` or `xilinx-slash` target"
+                .to_string(),
         ));
     }
 
@@ -145,20 +147,14 @@ pub(super) fn validate_target(
             "implementation requires a synthesized target part; rerun `tapa synth`".to_string(),
         )
     })?;
-    let device = select_device(part_num).map_err(|error| CliError::Floorplan(error.to_string()))?;
+    select_device(part_num).map_err(|error| CliError::Floorplan(error.to_string()))?;
     let platform = state.flow.platform.as_deref().ok_or_else(|| {
         CliError::InvalidArg(
             "implementation requires synthesis with `--platform <installed-platform-name>`"
                 .to_string(),
         )
     })?;
-    let slash = device.is_versal;
-    if slash && platform != "slash_v80_service" {
-        return Err(CliError::InvalidArg(format!(
-            "Versal implementation requires the SLASH service-shell platform `slash_v80_service`, got `{platform}`",
-        )));
-    }
-    if !slash && !is_logical_platform_name(platform) {
+    if flow == Target::XilinxVitis && !is_logical_platform_name(platform) {
         return Err(CliError::InvalidArg(format!(
             "implementation platform `{platform}` must be an installed platform name, not a path",
         )));
@@ -177,7 +173,7 @@ pub(super) fn validate_target(
         platform: platform.to_string(),
         target_mhz,
         vivado_threads,
-        slash,
+        flow,
     })
 }
 
@@ -375,7 +371,7 @@ fn try_implement_one(
     );
     let xo = package_prepared_vitis_rtl(runner, &candidate_state, &paths.rtl, &paths.xo, None)?;
 
-    if target.slash {
+    if target.flow == Target::XilinxSlash {
         log::info!(
             "floorplan candidate_{:03} [3/3]: running SLASH service-shell implementation",
             candidate.index,
@@ -1025,7 +1021,7 @@ mod tests {
     }
 
     #[test]
-    fn implementation_target_requires_vitis_named_alveo_platform_and_clock() {
+    fn implementation_target_dispatches_by_flow_and_validates_platform_and_clock() {
         let graph = tapa_ir::TaskGraph::from_json(
             r#"{
                 "schema_version": 3,
@@ -1057,15 +1053,22 @@ mod tests {
 
         state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
         state.flow.platform = Some("slash_v80_service".to_string());
-        let target = validate_target(&state, 2).expect("V80 uses the SLASH implementation path");
+        let target = validate_target(&state, 2).expect("Vitis implementation accepts V80");
+        assert_eq!(target.flow, Target::XilinxVitis);
         assert_eq!(target.platform, "slash_v80_service");
         assert_eq!(target.target_mhz, 300);
 
         state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
         state.flow.platform = Some("xilinx_vck190_base_202410_1".to_string());
-        let error = validate_target(&state, 2).expect_err("unsupported Versal platform must fail");
-        assert!(error
-            .to_string()
-            .contains("requires the SLASH service-shell platform"));
+        let target = validate_target(&state, 2).expect("Vitis implementation accepts Versal");
+        assert_eq!(target.flow, Target::XilinxVitis);
+
+        state.graph.target = Target::XilinxSlash;
+        state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
+        state.flow.platform = Some("slash_v80_service".to_string());
+        let target = validate_target(&state, 2).expect("SLASH implementation target");
+        assert_eq!(target.flow, Target::XilinxSlash);
+        assert_eq!(target.platform, "slash_v80_service");
+        assert_eq!(target.target_mhz, 300);
     }
 }

@@ -34,11 +34,13 @@ use run_tapacc::run_tapacc;
 
 /// Target flows accepted by `tapa analyze`. Kebab-case spellings match
 /// the wire strings persisted into `tapa.json` and read by `synth` /
-/// `pack` (`xilinx-vitis`, `xilinx-hls`).
+/// `pack` (`xilinx-vitis`, `xilinx-slash`, `xilinx-hls`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum AnalyzeTarget {
     #[value(name = "xilinx-vitis")]
     XilinxVitis,
+    #[value(name = "xilinx-slash")]
+    XilinxSlash,
     #[value(name = "xilinx-hls")]
     XilinxHls,
 }
@@ -48,6 +50,7 @@ impl AnalyzeTarget {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::XilinxVitis => "xilinx-vitis",
+            Self::XilinxSlash => "xilinx-slash",
             Self::XilinxHls => "xilinx-hls",
         }
     }
@@ -110,6 +113,7 @@ impl From<AnalyzeTarget> for tapa_ir::Target {
     fn from(target: AnalyzeTarget) -> Self {
         match target {
             AnalyzeTarget::XilinxVitis => Self::XilinxVitis,
+            AnalyzeTarget::XilinxSlash => Self::XilinxSlash,
             AnalyzeTarget::XilinxHls => Self::XilinxHls,
         }
     }
@@ -141,12 +145,12 @@ pub struct AnalyzeArgs {
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
 
-    /// Target flow (`xilinx-vitis`, the default, or `xilinx-hls`), or a
+    /// Target flow (`xilinx-vitis`, the default, `xilinx-slash`, or `xilinx-hls`), or a
     /// per-task mapping `TASK:TARGET` with TARGET one of `aie`, `hls`,
     /// `ignore`, which wins over the task's `[[tapa::target]]`. Repeatable;
-    /// at most one flow. Restricted to what the pipeline can drive
-    /// end-to-end so typos fail at parse time instead of producing an
-    /// unusable `tapa.json` that only blows up later in `synth` or `pack`.
+    /// at most one flow. Restricted to known flow targets so typos fail at
+    /// parse time instead of producing a `tapa.json` that only blows up
+    /// later in `synth` or `pack`.
     #[arg(long = "target", value_name = "TARGET", value_parser = parse_target_arg)]
     pub targets: Vec<TargetArg>,
 
@@ -170,8 +174,8 @@ impl AnalyzeArgs {
         let flow = flows.next().unwrap_or(AnalyzeTarget::XilinxVitis);
         if flows.next().is_some() {
             return Err(CliError::InvalidArg(
-                "`--target` names more than one flow; give one of xilinx-vitis or \
-                 xilinx-hls"
+                "`--target` names more than one flow; give one of xilinx-vitis, \
+                 xilinx-slash, or xilinx-hls"
                     .to_string(),
             ));
         }
@@ -293,6 +297,12 @@ mod tests {
         let args = parse(&["xilinx-hls", "Pe:aie", "Load:ignore"]).expect("parse");
         assert_eq!(args.flow().expect("one flow"), AnalyzeTarget::XilinxHls);
         assert_eq!(args.task_targets(), ["Pe:aie", "Load:ignore"]);
+        let args = parse(&["xilinx-slash"]).expect("parse SLASH flow");
+        assert_eq!(args.flow().expect("one flow"), AnalyzeTarget::XilinxSlash);
+        assert_eq!(
+            tapa_ir::Target::from(args.flow().expect("one flow")),
+            tapa_ir::Target::XilinxSlash,
+        );
         assert_eq!(
             parse(&["Pe:aie"])
                 .expect("parse")

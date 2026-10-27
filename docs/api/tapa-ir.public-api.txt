@@ -2259,6 +2259,7 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::synth_target::SynthTarget 
 pub mod tapa_ir::target
 pub enum tapa_ir::target::Target
 pub tapa_ir::target::Target::XilinxHls
+pub tapa_ir::target::Target::XilinxSlash
 pub tapa_ir::target::Target::XilinxVitis
 impl tapa_ir::target::Target
 pub const fn tapa_ir::target::Target::as_str(self) -> &'static str
@@ -3550,6 +3551,7 @@ pub fn tapa_ir::synth_target::SynthTarget::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::synth_target::SynthTarget where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::Target
 pub tapa_ir::Target::XilinxHls
+pub tapa_ir::Target::XilinxSlash
 pub tapa_ir::Target::XilinxVitis
 impl tapa_ir::target::Target
 pub const fn tapa_ir::target::Target::as_str(self) -> &'static str

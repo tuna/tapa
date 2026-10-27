@@ -5,24 +5,27 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 use strum::EnumString;
 
-/// Compilation flow target — the two flows the pipeline can drive.
+/// Compilation flow target — the flows the pipeline can drive.
 ///
-/// Serializes to the exact wire strings `"xilinx-vitis"` / `"xilinx-hls"`.
+/// Serializes to the exact wire strings `"xilinx-vitis"` / `"xilinx-slash"` /
+/// `"xilinx-hls"`.
 /// [`crate::TaskGraph::target`] is its single home — it is deliberately not
 /// duplicated into the flow settings block alongside it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString)]
 #[strum(serialize_all = "kebab-case")]
 pub enum Target {
     XilinxVitis,
+    XilinxSlash,
     XilinxHls,
 }
 
 impl Target {
-    /// Canonical wire string (`"xilinx-vitis"` / `"xilinx-hls"`).
+    /// Canonical wire string (`"xilinx-vitis"` / `"xilinx-slash"` / `"xilinx-hls"`).
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::XilinxVitis => "xilinx-vitis",
+            Self::XilinxSlash => "xilinx-slash",
             Self::XilinxHls => "xilinx-hls",
         }
     }
@@ -43,7 +46,7 @@ impl<'de> Deserialize<'de> for Target {
             // — it owes the user the list of flows that do work.
             serde::de::Error::custom(format!(
                 "unsupported target `{s}`; \
-                 supported flows are `xilinx-vitis` and `xilinx-hls`"
+                 supported flows are `xilinx-vitis`, `xilinx-slash`, and `xilinx-hls`"
             ))
         })
     }
@@ -62,6 +65,14 @@ mod tests {
     }
 
     #[test]
+    fn xilinx_slash_round_trips() {
+        let json = serde_json::to_string(&Target::XilinxSlash).expect("serialize");
+        assert_eq!(json, r#""xilinx-slash""#);
+        let back: Target = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back, Target::XilinxSlash);
+    }
+
+    #[test]
     fn xilinx_hls_round_trips() {
         let json = serde_json::to_string(&Target::XilinxHls).expect("serialize");
         assert_eq!(json, r#""xilinx-hls""#);
@@ -72,6 +83,7 @@ mod tests {
     #[test]
     fn as_str_matches_wire_form() {
         assert_eq!(Target::XilinxVitis.as_str(), "xilinx-vitis");
+        assert_eq!(Target::XilinxSlash.as_str(), "xilinx-slash");
         assert_eq!(Target::XilinxHls.as_str(), "xilinx-hls");
     }
 
@@ -80,6 +92,10 @@ mod tests {
         assert_eq!(
             Target::from_str("xilinx-vitis").expect("parse"),
             Target::XilinxVitis,
+        );
+        assert_eq!(
+            Target::from_str("xilinx-slash").expect("parse"),
+            Target::XilinxSlash,
         );
         assert_eq!(
             Target::from_str("xilinx-hls").expect("parse"),

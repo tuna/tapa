@@ -17,7 +17,7 @@ use tapa_ir::Target;
 #[must_use]
 pub fn top_stream_needs_axis_adapter(target: Target) -> bool {
     match target {
-        Target::XilinxVitis => true,
+        Target::XilinxVitis | Target::XilinxSlash => true,
         Target::XilinxHls => false,
     }
 }

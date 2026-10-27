@@ -187,7 +187,7 @@ impl Port {
     /// keeps the boundary name unless a nonzero channel count requests fan-out.
     #[must_use]
     pub fn kernel_arg_names(&self, target: crate::Target) -> Vec<String> {
-        use crate::Target::{XilinxHls, XilinxVitis};
+        use crate::Target::{XilinxHls, XilinxSlash, XilinxVitis};
         let base = sanitize_array_name(&self.name);
         let channels = match (target, self.cat) {
             (XilinxHls, ArgCategory::Scalar) => None,
@@ -204,7 +204,7 @@ impl Port {
                 | ArgCategory::Immap
                 | ArgCategory::Ommap,
             ) => self.chan_count,
-            (XilinxVitis, _) => self.chan_count.filter(|count| *count > 0),
+            (XilinxVitis | XilinxSlash, _) => self.chan_count.filter(|count| *count > 0),
         };
         match channels {
             Some(count) => (0..count).map(|i| format!("{base}_{i}")).collect(),

@@ -101,6 +101,9 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     // match is the dispatch site a new `Target` variant would break.
     match state.graph.target {
         Target::XilinxVitis => pack_vitis(args, ctx, &state),
+        Target::XilinxSlash => Err(CliError::InvalidArg(
+            "`pack` does not yet support the `xilinx-slash` target".to_string(),
+        )),
         Target::XilinxHls => pack_hls_zip(args, ctx, &state),
     }
 }
