@@ -122,6 +122,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     src: &Path,
 ) -> Result<(KernelSpec, tempfile::TempDir)> {
     let mut kernel_xml = None;
+    let mut part_num = None;
     let mut scalar_register_map = HashMap::new();
     let mut files = ExtractedFiles::default();
 
@@ -142,6 +143,12 @@ fn load_xo_spec<R: Read + std::io::Seek>(
             kernel_xml = Some(std::fs::read_to_string(&path)?);
             continue;
         }
+        if name.ends_with(tapa_ir::work_state::FILE_NAME) {
+            let state = tapa_ir::WorkState::from_json(&std::fs::read_to_string(&path)?)
+                .map_err(|error| CosimError::Metadata(error.to_string()))?;
+            part_num = state.flow.part_num;
+            continue;
+        }
         // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
         // may use the legacy `s_axi_control.v` name.
         if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
@@ -154,6 +161,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         CosimError::Metadata(format!("no kernel.xml found in `{}`", src.display()))
     })?;
     let mut spec = xo::parse_kernel_xml(&xml, extract_dir.path())?;
+    spec.part_num = part_num;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;

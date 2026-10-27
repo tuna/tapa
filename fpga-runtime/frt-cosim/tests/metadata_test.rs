@@ -448,6 +448,18 @@ fn slash_zip_dispatches_to_the_xo_loader_by_content() {
     archive
         .write_all(KERNEL_XML.as_bytes())
         .expect("write kernel.xml");
+    let mut state = tapa_ir::WorkState::new(task_graph(vec![]));
+    state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_owned());
+    archive
+        .start_file("tapa.json", options)
+        .expect("state entry");
+    archive
+        .write_all(
+            serde_json::to_string(&state)
+                .expect("state JSON")
+                .as_bytes(),
+        )
+        .expect("write state");
     archive
         .start_file("impl/ip/hdl/vadd.v", options)
         .expect("RTL entry");
@@ -460,6 +472,7 @@ fn slash_zip_dispatches_to_the_xo_loader_by_content() {
     assert_eq!(spec.mode, Mode::Vitis);
     assert_eq!(spec.top_name, "vadd");
     assert_eq!(spec.args.len(), 3);
+    assert_eq!(spec.part_num.as_deref(), Some("xcv80-lsva4737-2MHP-e-S"));
     assert_eq!(spec.verilog_files.len(), 1);
     assert!(spec.verilog_files[0].starts_with(extracted.path()));
 }
