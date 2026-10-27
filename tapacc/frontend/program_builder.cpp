@@ -121,6 +121,7 @@ const char* SynthStr(SynthTarget target) {
       return "aie";
     case SynthTarget::kXilinxHls:
     case SynthTarget::kXilinxVitis:
+    case SynthTarget::kXilinxSlash:
       return "hls";
   }
   // Unreachable for a valid enumerator; keeps -Wswitch (not -Wswitch-default)
@@ -131,8 +132,18 @@ const char* SynthStr(SynthTarget target) {
 // Wire string for the root-level vendor flow. Kebab-case, unlike the
 // per-task policy above.
 const char* FlowStr(SynthTarget default_target) {
-  return default_target == SynthTarget::kXilinxVitis ? "xilinx-vitis"
-                                                     : "xilinx-hls";
+  switch (default_target) {
+    case SynthTarget::kXilinxHls:
+      return "xilinx-hls";
+    case SynthTarget::kXilinxVitis:
+      return "xilinx-vitis";
+    case SynthTarget::kXilinxSlash:
+      return "xilinx-slash";
+    case SynthTarget::kIgnore:
+    case SynthTarget::kAie:
+      break;
+  }
+  return "xilinx-hls";
 }
 
 nlohmann::json PortJson(const Port& port) {

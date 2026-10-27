@@ -32,7 +32,8 @@
 //
 // Two distinct notions of "target" live in that schema, and the tapa-ir
 // crate parses both as closed enums with deny_unknown_fields:
-//   - root "target": the vendor FLOW, kebab-case "xilinx-vitis"/"xilinx-hls".
+//   - root "target": the vendor FLOW, kebab-case
+//     "xilinx-vitis"/"xilinx-slash"/"xilinx-hls".
 //   - per-task "synth": the synthesis POLICY, "hls"/"ignore"/"aie" -- it
 //     answers how the task is built: HLS, skipped, or on the AI Engine. The
 //     internal SynthTarget still carries the flow per task so the right
@@ -90,13 +91,14 @@ llvm::cl::opt<std::string> g_emit_dir(
     llvm::cl::desc("Directory to write rewritten sources to"),
     llvm::cl::value_desc("dir"), llvm::cl::cat(g_category));
 
-enum class CliTarget { kHls, kVitis };
+enum class CliTarget { kHls, kVitis, kSlash };
 llvm::cl::opt<CliTarget> g_target(
     "target", llvm::cl::desc("Target flow (default xilinx-hls)"),
     llvm::cl::init(CliTarget::kHls), llvm::cl::cat(g_category),
     llvm::cl::values(
         clEnumValN(CliTarget::kHls, "xilinx-hls", "Xilinx HLS (default)"),
-        clEnumValN(CliTarget::kVitis, "xilinx-vitis", "Xilinx Vitis")));
+        clEnumValN(CliTarget::kVitis, "xilinx-vitis", "Xilinx Vitis"),
+        clEnumValN(CliTarget::kSlash, "xilinx-slash", "Xilinx SLASH")));
 
 // Per-task target mappings from `tapa analyze --target TASK:T`; they win
 // over the source attribute so one source builds both PL-only and PL+AIE.
@@ -202,9 +204,10 @@ int main(int argc, const char** argv) {
   for (const std::string& source : sources) {
     main_files.push_back(CanonicalPath(source));
   }
-  const bool is_vitis = g_target == CliTarget::kVitis;
   const SynthTarget flow =
-      is_vitis ? SynthTarget::kXilinxVitis : SynthTarget::kXilinxHls;
+      g_target == CliTarget::kVitis   ? SynthTarget::kXilinxVitis
+      : g_target == CliTarget::kSlash ? SynthTarget::kXilinxSlash
+                                      : SynthTarget::kXilinxHls;
   std::map<std::string, SynthTarget> task_targets;
   for (const std::string& mapping : g_task_targets) {
     const size_t colon = mapping.rfind(':');

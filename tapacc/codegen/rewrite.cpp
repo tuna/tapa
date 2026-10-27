@@ -435,6 +435,7 @@ const Backend& BackendFor(SynthTarget target, const Backends& backends) {
     case SynthTarget::kXilinxHls:
       return backends.hls;
     case SynthTarget::kXilinxVitis:
+    case SynthTarget::kXilinxSlash:
       return backends.vitis;
     case SynthTarget::kIgnore:
       return backends.ignore;

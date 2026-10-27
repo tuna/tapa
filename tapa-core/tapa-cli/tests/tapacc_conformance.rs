@@ -54,7 +54,7 @@ struct Kernel {
     top: &'static str,
     /// Tasks `tapacc` must report.
     expected_tasks: &'static [&'static str],
-    /// Which flows to test (vadd tests both; the rest test hls only).
+    /// Which flows to test (vadd tests all three; the rest test hls only).
     flows: &'static [&'static str],
 }
 
@@ -66,7 +66,7 @@ const KERNELS: &[Kernel] = &[
         env: "TAPA_CONFORMANCE_VADD",
         top: "VecAdd",
         expected_tasks: &["Add", "Mmap2Stream", "Stream2Mmap", "VecAdd"],
-        flows: &["xilinx-hls", "xilinx-vitis"],
+        flows: &["xilinx-hls", "xilinx-vitis", "xilinx-slash"],
     },
     Kernel {
         env: "TAPA_CONFORMANCE_ASYNC_MMAP",

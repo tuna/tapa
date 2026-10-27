@@ -19,9 +19,15 @@ enum class TaskLevel { kUpper, kLower };
 
 // The synthesis target resolved for a task: the tool-wide `--target` unless a
 // `[[tapa::target(...)]]` attribute or a `--task-target` mapping overrides
-// it. Vendors are grouped, so xilinx-hls and xilinx-vitis are distinct values
-// handled by one backend. `kAie` puts the task on the AI Engine array.
-enum class SynthTarget { kXilinxHls, kXilinxVitis, kIgnore, kAie };
+// it. The Xilinx flows have distinct values but share one Vitis backend.
+// `kAie` puts the task on the AI Engine array.
+enum class SynthTarget {
+  kXilinxHls,
+  kXilinxVitis,
+  kXilinxSlash,
+  kIgnore,
+  kAie
+};
 
 // One external port of a task (an entry in the emitted task graph's "ports").
 struct Port {
