@@ -256,15 +256,17 @@ pub fn render_slash_registers(args: &KernelXmlArgs) -> Result<String> {
     }
     let entries = registers
         .iter()
-        .map(|(name, offset)| format!("{{{name} {offset:#x}}}"))
+        .map(|(name, offset)| format!("{{{name} {offset}}}"))
         .collect::<Vec<_>>()
         .join(" ");
     Ok(format!(
         "set tapa_control_block [ipx::get_address_blocks reg0 -of_objects \
          [ipx::get_memory_maps s_axi_control -of_objects [ipx::current_core]]]\n\
-         foreach {{tapa_register_name tapa_register_offset}} {{{entries}}} {{\n\
+         foreach tapa_register_entry {{{entries}}} {{\n\
+         \x20 lassign $tapa_register_entry tapa_register_name tapa_register_offset\n\
          \x20 set tapa_register [ipx::add_register $tapa_register_name $tapa_control_block]\n\
          \x20 set_property address_offset $tapa_register_offset $tapa_register\n\
+         \x20 set_property display_name $tapa_register_name $tapa_register\n\
          \x20 set_property size 32 $tapa_register\n\
          \x20 set_property access read-write $tapa_register\n\
          }}\n"
@@ -502,18 +504,19 @@ mod tests {
 
         let registers = render_slash_registers(&args).unwrap();
         for entry in [
-            "{CTRL 0x0}",
-            "{GIER 0x4}",
-            "{IP_IER 0x8}",
-            "{IP_ISR 0xc}",
-            "{a_0 0x10}",
-            "{a_1 0x14}",
-            "{n_0 0x1c}",
-            "{n_1 0x20}",
+            "{CTRL 0}",
+            "{GIER 4}",
+            "{IP_IER 8}",
+            "{IP_ISR 12}",
+            "{a_0 16}",
+            "{a_1 20}",
+            "{n_0 28}",
+            "{n_1 32}",
         ] {
             assert!(registers.contains(entry), "missing {entry}: {registers}");
         }
         assert!(registers.contains("ipx::add_register"));
+        assert!(registers.contains("set_property display_name $tapa_register_name"));
         assert!(registers.contains("set_property size 32"));
 
         let data: serde_json::Value =

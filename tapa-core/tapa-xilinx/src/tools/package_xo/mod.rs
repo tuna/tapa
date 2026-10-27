@@ -655,8 +655,9 @@ mod tests {
                 let tcl = std::fs::read_to_string(source).expect("read Tcl");
                 assert!(tcl.contains("ipx::save_core"));
                 assert!(tcl.contains("ipx::add_register"));
-                assert!(tcl.contains("{gmem0_0 0x10}"));
-                assert!(tcl.contains("{gmem0_1 0x14}"));
+                assert!(tcl.contains("lassign $tapa_register_entry"));
+                assert!(tcl.contains("{gmem0_0 16}"));
+                assert!(tcl.contains("{gmem0_1 20}"));
                 assert!(!tcl.contains("package_xo"));
                 let ip = inv.cwd.as_ref().expect("scratch cwd").join("tmp_ip_dir");
                 std::fs::create_dir_all(ip.join("hdl")).expect("IP hdl");
