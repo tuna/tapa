@@ -48,6 +48,9 @@ pub enum XilinxError {
     #[error("invalid implementation frequency: {0}")]
     InvalidFrequency(String),
 
+    #[error("link output carries no routed hardware timing; simulation links produce none")]
+    MissingHardwareTiming,
+
     #[error("Vitis link error: {0}")]
     VitisLink(String),
 

@@ -61,7 +61,9 @@ pub struct SlashLinkJob {
 
 /// Link a K5 ZIP without Python, base-address relocation, or finalization.
 /// Producing a vbin is success; a missed kernel period is recorded with a
-/// warning, and fixed-shell timing never fails the link.
+/// warning, and fixed-shell timing never fails the link. A simulation link
+/// records the requested clock unchanged: slashkit emits no routed timing
+/// report in `sim` mode, so there is nothing to parse or derate from.
 pub fn link(runner: &dyn ToolRunner, job: &SlashLinkJob) -> Result<LinkOutput> {
     let prepared = prepare_link(job)?;
     let vivado = resolve_tool_host_program(runner, &job.vivado)?;
@@ -99,7 +101,9 @@ struct PreparedLink {
     hook: Utf8PathBuf,
     clock_xdc: Utf8PathBuf,
     floorplan_xdc: Option<Utf8PathBuf>,
-    timing_report: Utf8PathBuf,
+    /// Routed timing report to download; `None` in simulation mode, where
+    /// slashkit produces no routed timing report.
+    timing_report: Option<Utf8PathBuf>,
 }
 
 fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
@@ -158,7 +162,10 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
             Ok::<_, XilinxError>(destination)
         })
         .transpose()?;
-    let timing_report = routed_timing_report(&output)?;
+    let timing_report = match job.mode {
+        SlashLinkMode::Hardware => Some(routed_timing_report(&output)?),
+        SlashLinkMode::Simulation => None,
+    };
     Ok(PreparedLink {
         output,
         work,
@@ -202,7 +209,10 @@ fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink, vivado: &str) -
     if let Some(xdc) = &prepared.floorplan_xdc {
         invocation.uploads.push(xdc.clone());
     }
-    invocation.downloads = vec![prepared.output.clone(), prepared.timing_report.clone()];
+    invocation.downloads = vec![prepared.output.clone()];
+    if let Some(timing_report) = &prepared.timing_report {
+        invocation.downloads.push(timing_report.clone());
+    }
     invocation
 }
 
@@ -215,7 +225,6 @@ fn finish_link(
         return Err(super::tool_failure(&job.slashkit, tool_output));
     }
     validate_input(&prepared.output, "SLASH vbin output")?;
-    validate_input(&prepared.timing_report, "SLASH routed timing report")?;
 
     let system_map = vbin::read_system_map(&prepared.output)?;
     if system_map.platform != job.mode.system_map_platform() {
@@ -226,51 +235,65 @@ fn finish_link(
             job.mode.system_map_platform(),
         )));
     }
-    let report = fs_err::read_to_string(&prepared.timing_report)?;
-    let timing = parse_named_clock_timing_summary(&report, KERNEL_CLOCK)?;
-    let fixed_wns_ns = parse_named_clock_wns(&report, FIXED_CLOCK)?;
-    let kernel_whs_ns = parse_named_clock_whs(&report, KERNEL_CLOCK)?;
     let requested_hz = requested_hz(job.target_mhz);
-    let clock_hz = recorded_clock_hz(requested_hz, &timing)?;
-    if system_map.clock_hz != clock_hz {
-        vbin::rewrite_clock(&prepared.output, clock_hz)?;
-    }
-    if clock_hz < requested_hz {
-        log::warn!(
-            "SLASH routed kernel timing did not meet {} MHz; recording {:.6} MHz in `{}`",
-            job.target_mhz,
-            hz_to_mhz(clock_hz),
-            prepared.output,
-        );
-    }
-    if kernel_whs_ns < 0.0 {
-        log::warn!(
-            "SLASH kernel clock `{KERNEL_CLOCK}` has hold WHS {kernel_whs_ns:.3} ns; \
-             the vbin is retained without clock derating",
-        );
-    }
-    if fixed_wns_ns < 0.0 {
-        log::warn!(
-            "SLASH fixed 400 MHz domain `{FIXED_CLOCK}` has WNS {fixed_wns_ns:.3} ns; \
-             leaving shell timing unchanged",
-        );
-    }
+    let (timing, timing_report, fixed_wns_ns, recorded_mhz) = match job.mode {
+        SlashLinkMode::Hardware => {
+            let timing_report = prepared.timing_report.clone().ok_or_else(|| {
+                slash_error("hardware link preparation produced no routed timing report path")
+            })?;
+            validate_input(&timing_report, "SLASH routed timing report")?;
+            let report = fs_err::read_to_string(&timing_report)?;
+            let timing = parse_named_clock_timing_summary(&report, KERNEL_CLOCK)?;
+            let fixed_wns_ns = parse_named_clock_wns(&report, FIXED_CLOCK)?;
+            let kernel_whs_ns = parse_named_clock_whs(&report, KERNEL_CLOCK)?;
+            let clock_hz = recorded_clock_hz(requested_hz, &timing)?;
+            if system_map.clock_hz != clock_hz {
+                vbin::rewrite_clock(&prepared.output, clock_hz)?;
+            }
+            if clock_hz < requested_hz {
+                log::warn!(
+                    "SLASH routed kernel timing did not meet {} MHz; recording {:.6} MHz in `{}`",
+                    job.target_mhz,
+                    hz_to_mhz(clock_hz),
+                    prepared.output,
+                );
+            }
+            if kernel_whs_ns < 0.0 {
+                log::warn!(
+                    "SLASH kernel clock `{KERNEL_CLOCK}` has hold WHS {kernel_whs_ns:.3} ns; \
+                     the vbin is retained without clock derating",
+                );
+            }
+            if fixed_wns_ns < 0.0 {
+                log::warn!(
+                    "SLASH fixed 400 MHz domain `{FIXED_CLOCK}` has WNS {fixed_wns_ns:.3} ns; \
+                     leaving shell timing unchanged",
+                );
+            }
+            (
+                Some(timing),
+                Some(timing_report),
+                Some(fixed_wns_ns),
+                hz_to_mhz(clock_hz),
+            )
+        }
+        SlashLinkMode::Simulation => (None, None, None, hz_to_mhz(requested_hz)),
+    };
 
-    let recorded_mhz = hz_to_mhz(clock_hz);
     write_metrics(
         &prepared.work.join(METRICS_NAME),
-        &prepared.timing_report,
         job.target_mhz,
         recorded_mhz,
-        &timing,
+        timing.as_ref(),
         fixed_wns_ns,
+        timing_report.as_deref(),
     )?;
     Ok(LinkOutput {
         bitstream: prepared.output,
         requested_mhz: job.target_mhz,
         recorded_mhz,
         timing,
-        timing_report: prepared.timing_report,
+        timing_report,
         stdout: tool_output.stdout,
         stderr: tool_output.stderr,
     })
@@ -364,33 +387,41 @@ fn hz_to_mhz(hz: u64) -> f64 {
     (hz as f64 / 1_000_000.0)
 }
 
+/// Link record shared by both modes: the pinned commit and the clock request
+/// versus recording are always written; the routed-timing fields exist only
+/// for hardware links, which are the only links with a routed timing report.
 #[derive(Debug, Serialize)]
 struct LinkMetrics<'a> {
     slash_commit: &'static str,
     requested_mhz: u32,
     recorded_mhz: f64,
-    kernel_wns_ns: f64,
-    kernel_fmax_mhz: f64,
-    timing_closed: bool,
-    fixed_domain_wns_ns: f64,
-    timing_report: &'a Utf8Path,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kernel_wns_ns: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kernel_fmax_mhz: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timing_closed: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fixed_domain_wns_ns: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    timing_report: Option<&'a Utf8Path>,
 }
 
 fn write_metrics(
     path: &Utf8Path,
-    timing_report: &Utf8Path,
     requested_mhz: u32,
     recorded_mhz: f64,
-    timing: &KernelTiming,
-    fixed_domain_wns_ns: f64,
+    timing: Option<&KernelTiming>,
+    fixed_domain_wns_ns: Option<f64>,
+    timing_report: Option<&Utf8Path>,
 ) -> Result<()> {
     let metrics = LinkMetrics {
         slash_commit: SLASH_COMMIT,
         requested_mhz,
         recorded_mhz,
-        kernel_wns_ns: timing.wns_ns,
-        kernel_fmax_mhz: timing.fmax_mhz,
-        timing_closed: timing.wns_ns >= 0.0,
+        kernel_wns_ns: timing.map(|timing| timing.wns_ns),
+        kernel_fmax_mhz: timing.map(|timing| timing.fmax_mhz),
+        timing_closed: timing.map(|timing| timing.wns_ns >= 0.0),
         fixed_domain_wns_ns,
         timing_report,
     };
@@ -485,8 +516,9 @@ mod tests {
         );
 
         let result = link(&runner, &job).expect("negative kernel/fixed slack still links");
-        let expected_recorded =
-            recorded_clock_hz(300_000_000, &result.timing).expect("recorded clock");
+        assert_eq!(result.timing_report, Some(report_path.clone()));
+        let timing = result.hardware_timing().expect("hardware timing");
+        let expected_recorded = recorded_clock_hz(300_000_000, timing).expect("recorded clock");
         assert_eq!(result.bitstream, output_path);
         assert_eq!(result.recorded_mhz, hz_to_mhz(expected_recorded));
         assert_eq!(result.stdout, "linked");
@@ -571,7 +603,85 @@ mod tests {
             .local_args()
             .windows(2)
             .any(|pair| pair == ["--vivado", "vivado-not-on-local-path"]));
-        assert_eq!(invocation.downloads[0], output);
+        assert_eq!(invocation.downloads, vec![output]);
+    }
+
+    #[test]
+    fn simulation_finish_link_needs_no_timing_report() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = crate::util::utf8(temp.path());
+        let work = root.join("work").join("link");
+        fs_err::create_dir_all(&work).expect("link work directory");
+        let output = root.join("vadd.sim.vbin");
+        fs_err::copy(fixture("vadd-sim.vbin"), &output).expect("stage simulation vbin");
+        let job = SlashLinkJob {
+            package: root.join("vadd-package.zip"),
+            config: root.join("vadd-config.cfg"),
+            output: output.clone(),
+            work_dir: work.clone(),
+            slashkit: "/tool-host/bin/slashkit".into(),
+            vivado: "vivado".into(),
+            jobs: 1,
+            target_mhz: 300,
+            floorplan_xdc: None,
+            mode: SlashLinkMode::Simulation,
+        };
+        let prepared = PreparedLink {
+            output: output.clone(),
+            work: work.clone(),
+            ip: work.join("ip"),
+            hls_data: root.join("work").join("hls_data.json"),
+            config: work.join("config.cfg"),
+            hook: work.join(hooks::HOOK_NAME),
+            clock_xdc: work.join(hooks::CLOCK_XDC_NAME),
+            floorplan_xdc: None,
+            timing_report: None,
+        };
+
+        let result = finish_link(
+            &job,
+            prepared,
+            ToolOutput {
+                exit_code: 0,
+                stdout: "simulated".into(),
+                stderr: String::new(),
+            },
+        )
+        .expect("simulation link needs no routed timing report");
+
+        assert_eq!(result.bitstream, output);
+        assert_eq!(result.requested_mhz, 300);
+        assert_eq!(result.recorded_mhz, 300.0);
+        assert_eq!(result.timing, None);
+        assert_eq!(result.timing_report, None);
+        assert_eq!(result.stdout, "simulated");
+        assert_eq!(
+            vbin::read_system_map(&result.bitstream)
+                .expect("simulation map")
+                .clock_hz,
+            300_000_000,
+            "the simulation vbin is recorded at the requested clock, not derated",
+        );
+
+        let metrics: serde_json::Value = serde_json::from_slice(
+            &fs_err::read(work.join(METRICS_NAME)).expect("read link metrics"),
+        )
+        .expect("metrics JSON");
+        assert_eq!(metrics["slash_commit"], SLASH_COMMIT);
+        assert_eq!(metrics["requested_mhz"], 300);
+        assert_eq!(metrics["recorded_mhz"], 300.0);
+        for field in [
+            "kernel_wns_ns",
+            "kernel_fmax_mhz",
+            "timing_closed",
+            "fixed_domain_wns_ns",
+            "timing_report",
+        ] {
+            assert!(
+                metrics.get(field).is_none(),
+                "simulation metrics must omit `{field}`",
+            );
+        }
     }
 
     #[test]

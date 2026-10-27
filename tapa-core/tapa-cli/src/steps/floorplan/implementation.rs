@@ -10,7 +10,8 @@ use tapa_floorplan::ExactDseResourceCaps;
 use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{FloorplanResult, Target, WorkState};
 use tapa_xilinx::{
-    run_vitis_link, target_frequency_mhz, LinkOutput, ToolRunner, VitisLinkJob, VitisLinkMode,
+    run_vitis_link, target_frequency_mhz, KernelTiming, LinkOutput, ToolRunner, VitisLinkJob,
+    VitisLinkMode,
 };
 
 use crate::error::{CliError, Result};
@@ -301,19 +302,7 @@ fn implement_one(
         target,
         &candidate,
     ) {
-        Ok(output)
-            if output.timing.fmax_mhz.is_finite()
-                && (target.flow == Target::XilinxSlash || output.timing.wns_ns >= 0.0) =>
-        {
-            CandidateOutcome::Success(ImplementationWinner { candidate, output })
-        }
-        Ok(output) => CandidateOutcome::Failure {
-            candidate,
-            error: format!(
-                "implementation reported non-finite Fmax `{}` MHz",
-                output.timing.fmax_mhz
-            ),
-        },
+        Ok(output) => ImplementationWinner::from_link(candidate, output, target.flow),
         Err(error) => CandidateOutcome::Failure {
             candidate,
             error: error.to_string(),
@@ -323,7 +312,7 @@ fn implement_one(
         CandidateOutcome::Success(success) => log::info!(
             "floorplan candidate_{:03}: implementation completed at {:.3} MHz",
             success.candidate.index,
-            success.output.timing.fmax_mhz,
+            success.timing.fmax_mhz,
         ),
         CandidateOutcome::Failure { candidate, .. } => log::warn!(
             "floorplan candidate_{:03}: implementation failed; diagnostics will be stored in {}",
@@ -465,16 +454,48 @@ enum CandidateOutcome {
 pub(super) struct ImplementationWinner {
     candidate: PlannedCandidate,
     output: LinkOutput,
+    /// Routed kernel timing, resolved once at this boundary: floorplan
+    /// candidates always implement hardware links, so concrete hardware
+    /// timing is required rather than optional.
+    timing: KernelTiming,
 }
 
 impl ImplementationWinner {
+    /// Accept one completed implementation into DSE, or explain why it cannot
+    /// rank: concrete hardware timing with finite Fmax is required, and setup
+    /// timing must be met except for SLASH, which ranks by Fmax alone.
+    fn from_link(
+        candidate: PlannedCandidate,
+        output: LinkOutput,
+        flow: Target,
+    ) -> CandidateOutcome {
+        let error = match output.hardware_timing() {
+            Ok(timing)
+                if timing.fmax_mhz.is_finite()
+                    && (flow == Target::XilinxSlash || timing.wns_ns >= 0.0) =>
+            {
+                return CandidateOutcome::Success(Self {
+                    timing: *timing,
+                    candidate,
+                    output,
+                });
+            }
+            Ok(timing) => format!(
+                "implementation reported non-finite Fmax `{}` MHz",
+                timing.fmax_mhz
+            ),
+            Err(error) => error.to_string(),
+        };
+        CandidateOutcome::Failure { candidate, error }
+    }
+
     pub(super) fn floorplan(&self) -> &FloorplanResult {
         &self.candidate.floorplan
     }
 
     pub(super) fn publish_artifacts(&self, work_dir: &Path, target_mhz: u32) -> Result<()> {
         atomic_copy(
-            &self.output.timing_report,
+            self.output.hardware_timing_report()?,
             &work_dir.join(IMPLEMENTATION_TIMING_REPORT),
         )?;
         let bitstream_name = if self.output.bitstream.extension() == Some("xclbin") {
@@ -488,12 +509,12 @@ impl ImplementationWinner {
             caps: self.candidate.caps,
             realized_max_utilization: self.candidate.realized_max_utilization,
             target_mhz,
-            reported_target_period_ns: self.output.timing.reported_target_period_ns,
-            reported_target_mhz: self.output.timing.reported_target_mhz,
-            wns_ns: self.output.timing.wns_ns,
-            achieved_period_ns: self.output.timing.achieved_period_ns,
-            fmax_mhz: self.output.timing.fmax_mhz,
-            timing_closed: self.output.timing.wns_ns >= 0.0,
+            reported_target_period_ns: self.timing.reported_target_period_ns,
+            reported_target_mhz: self.timing.reported_target_mhz,
+            wns_ns: self.timing.wns_ns,
+            achieved_period_ns: self.timing.achieved_period_ns,
+            fmax_mhz: self.timing.fmax_mhz,
+            timing_closed: self.timing.wns_ns >= 0.0,
             timing_report: IMPLEMENTATION_TIMING_REPORT,
         };
         let mut bytes = serde_json::to_vec_pretty(&metrics)?;
@@ -507,7 +528,7 @@ impl ImplementationWinner {
             self.candidate.index,
             self.candidate.caps.summary(3),
             self.candidate.realized_max_utilization,
-            self.output.timing.fmax_mhz,
+            self.timing.fmax_mhz,
             work_dir.join(IMPLEMENTATION_METRICS).display(),
         );
     }
@@ -531,7 +552,7 @@ fn winner_index(outcomes: &[CandidateOutcome]) -> Option<usize> {
         let CandidateOutcome::Success(success) = outcome else {
             continue;
         };
-        let fmax = success.output.timing.fmax_mhz;
+        let fmax = success.timing.fmax_mhz;
         if !fmax.is_finite() {
             continue;
         }
@@ -668,9 +689,9 @@ impl CandidateDiagnostic {
                 caps: success.candidate.caps,
                 realized_max_utilization: Some(success.candidate.realized_max_utilization),
                 status: CandidateStatus::Succeeded,
-                fmax_mhz: Some(success.output.timing.fmax_mhz),
-                achieved_period_ns: Some(success.output.timing.achieved_period_ns),
-                timing_closed: Some(success.output.timing.wns_ns >= 0.0),
+                fmax_mhz: Some(success.timing.fmax_mhz),
+                achieved_period_ns: Some(success.timing.achieved_period_ns),
+                timing_closed: Some(success.timing.wns_ns >= 0.0),
                 error: None,
             },
             CandidateOutcome::Failure { candidate, error } => Self {
@@ -850,6 +871,13 @@ mod tests {
     }
 
     fn success(index: usize, fmax_mhz: f64) -> CandidateOutcome {
+        let timing = KernelTiming {
+            reported_target_period_ns: 3.0,
+            reported_target_mhz: 333.0,
+            wns_ns: 0.0,
+            achieved_period_ns: 1000.0 / fmax_mhz,
+            fmax_mhz,
+        };
         CandidateOutcome::Success(ImplementationWinner {
             candidate: PlannedCandidate {
                 index,
@@ -861,17 +889,12 @@ mod tests {
                 bitstream: format!("candidate_{index:03}.vbin").into(),
                 requested_mhz: 333,
                 recorded_mhz: 333.0,
-                timing_report: format!("candidate_{index:03}.rpt").into(),
-                timing: tapa_xilinx::KernelTiming {
-                    reported_target_period_ns: 3.0,
-                    reported_target_mhz: 333.0,
-                    wns_ns: 0.0,
-                    achieved_period_ns: 1000.0 / fmax_mhz,
-                    fmax_mhz,
-                },
+                timing_report: Some(format!("candidate_{index:03}.rpt").into()),
+                timing: Some(timing),
                 stdout: String::new(),
                 stderr: String::new(),
             },
+            timing,
         })
     }
 
@@ -1055,7 +1078,7 @@ mod tests {
         };
         winner.candidate.caps = CandidateCaps::relaxing(0.7);
         winner.candidate.realized_max_utilization = 0.82;
-        winner.output.timing_report = crate::util::utf8(source_timing);
+        winner.output.timing_report = Some(crate::util::utf8(source_timing));
         winner.output.bitstream = crate::util::utf8(source_bitstream);
 
         winner

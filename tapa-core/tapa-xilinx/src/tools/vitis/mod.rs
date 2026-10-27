@@ -473,8 +473,8 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         bitstream: resolved.output_xclbin,
         requested_mhz: job.target_mhz,
         recorded_mhz: f64::from(job.target_mhz),
-        timing,
-        timing_report: resolved.timing_report,
+        timing: Some(timing),
+        timing_report: Some(resolved.timing_report),
         stdout,
         stderr,
     })
@@ -602,7 +602,7 @@ ap_clk             -0.100       -1.000
         let output = run_vitis_link(&runner, &fixture.job).expect("link succeeds");
         assert_eq!(output.stdout, "linked");
         assert_eq!(output.stderr, "warning");
-        assert_eq!(output.timing_report, fixture.timing_report());
+        assert_eq!(output.timing_report, Some(fixture.timing_report()));
         assert!(!fixture.job.output_xclbin.exists());
 
         let calls = runner.calls();
@@ -711,7 +711,7 @@ ap_clk             -0.100       -1.000
         assert_eq!(calls[0].program, "custom-vpp");
         assert!(!calls[0].local_args().iter().any(|arg| arg == "--to_step"));
         assert!(calls[0].downloads.contains(&fixture.job.output_xclbin));
-        assert_eq!(output.timing_report, fixture.timing_report());
+        assert_eq!(output.timing_report, Some(fixture.timing_report()));
     }
 
     #[test]
