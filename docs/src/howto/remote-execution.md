@@ -24,15 +24,21 @@ TAPA splits work between local and remote:
 |------|------------|
 | `tapa analyze` (runs `tapacc`) | Always local |
 | `tapa synth` (Vitis HLS synthesis) | Remote when `--remote-host` is set |
-| `tapa floorplan` with `--run-impl` or `--dse` (`v++ --link`) | Remote when `--remote-host` is set |
-| `tapa pack` for `xilinx-vitis` (XO packaging) | Remote when `--remote-host` is set |
+| `tapa floorplan` with `--run-impl` or `--dse` (`v++ --link` or SLASH) | Remote when `--remote-host` is set |
+| `tapa pack` for `xilinx-vitis` or `xilinx-slash` (XO / SLASH packaging) | Remote when `--remote-host` is set |
 | `tapa pack` for `xilinx-hls` (ZIP assembly) | Always local |
+| `tapa link` (`v++` for Vitis, `slashkit`/Vivado for SLASH) | Remote when `--remote-host` is set |
 | Remote job inputs and outputs | Transferred automatically by TAPA |
 
 Planning-only `tapa floorplan` (no `--run-impl`, no `--dse`) needs no vendor tool and always runs locally, using the local `cbc` solver.
 
 TAPA stages each remote job's inputs and returns its outputs automatically.
-You do not need to copy source trees or compiler artifacts by hand.
+You do not need to copy source trees or compiler artifacts by hand. The
+linker programs (`v++`, `slashkit`, `vivado`) are looked up by name on the
+remote host — never on your local `PATH` — and `tapa link`'s `--vpp`,
+`--slashkit`, and `--vivado` flags rename them there. A SLASH link needs the
+V80 static shell installed wherever `slashkit` runs; see
+[Alveo V80 with SLASH](v80.md).
 
 ```admonish warning
 Remote execution applies to the **`tapa` compiler only**. TAPA does not

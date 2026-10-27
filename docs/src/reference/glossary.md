@@ -76,6 +76,15 @@ A task that contains only computation and does not call `.invoke()`. Leaf tasks 
 
 ---
 
+**link**
+
+The `tapa link` step. Turns a packaged kernel (`.xo` for `xilinx-vitis`,
+`.zip` for `xilinx-slash`) into a bitstream: `v++ --link` produces an
+`.xclbin`, SLASH's `slashkit` produces a `.vbin`. Runs on the tool host,
+including remotely via `--remote-host`.
+
+---
+
 **mmap**
 
 Memory-mapped region. A contiguous block of host memory exposed to the kernel
@@ -94,8 +103,9 @@ An array of N mmap regions (`tapa::mmaps<T, N>`) passed as a single argument. Th
 **pack**
 
 The `tapa pack` step. Packages RTL produced by `tapa synth` into one XO for
-`v++ --link` and fast cosim, or one ZIP for direct RTL consumers and fast
-cosim.
+`tapa link` and fast cosim, one SLASH `.zip` package (IP directory,
+`kernel.xml`, `hls_data.json`) for `tapa link` and fast cosim, or one
+`xilinx-hls` ZIP for direct RTL consumers and fast cosim.
 
 ---
 
@@ -105,6 +115,17 @@ Offloading vendor-tool steps to a remote Linux host over SSH, configured
 with `--remote-host`. Analysis and planning-only floorplanning stay local;
 synthesis, Vitis XO packaging, and implementation floorplanning can run
 remotely. TAPA transfers each job's sources and outputs automatically.
+
+---
+
+**SLASH**
+
+The open shell and runtime stack the `xilinx-slash` target builds against on
+the Alveo V80: a static service shell over the V80's HBM and control
+infrastructure, the `slashkit` linker, and the `vrtd` daemon with VRT. TAPA
+calls SLASH only through the `slashkit` subprocess and the dlopen'd
+`libvrtd`/`libzmq`; nothing SLASH-specific builds into TAPA. See
+[Alveo V80 with SLASH](../howto/v80.md).
 
 ---
 
@@ -159,9 +180,28 @@ child interfaces and control logic together.
 
 ---
 
+**VRT**
+
+SLASH's C++ runtime layer above `vrtd`. TAPA's host runtime reimplements the
+pieces it needs in Rust over `libvrtd` (hardware) and `libzmq` (simulation),
+so a vbin runs with the unchanged host program and no SLASH host library
+installed.
+
+---
+
 **work directory**
 
 The directory where TAPA stores all intermediate artifacts between pipeline steps. Set with `--work-dir`. The default is `work.out/` in the current directory. See [Output Files](output-files.md) for the full directory structure.
+
+---
+
+**vbin**
+
+SLASH's bitstream container, produced by `tapa link` on the `xilinx-slash`
+target. Carries the partial PDI (or the `vpp_sim` simulator model) and
+`system_map.xml` with the kernel's register map and recorded clock. The host
+executable runs it through VRT — on the board with `--vrt_bdf`, or in
+simulation after `tapa link --sim`.
 
 ---
 
@@ -179,12 +219,13 @@ The Verilog simulator that ships with Vivado, and the default backend for TAPA f
 
 **xclbin**
 
-Xilinx container produced by `v++ --link` from an XO. An `hw.xclbin`
-contains an on-board bitstream; an `hw_emu.xclbin` contains the hardware-
-emulation model. The host loads either through XRT/FRT as appropriate.
+Xilinx container produced from an XO by the `v++ --link` step that `tapa
+link` drives. An `hw.xclbin` contains an on-board bitstream; an
+`hw_emu.xclbin` contains the hardware-emulation model. The host loads either
+through XRT/FRT as appropriate.
 
 ---
 
 **xo**
 
-Xilinx object file. The intermediate artifact produced by `tapa pack`, containing all per-task RTL and metadata in a ZIP archive. The XO is the input to `v++ --link` for bitstream generation, and is also passed as `--bitstream` to the host executable for fast hardware cosimulation.
+Xilinx object file. The intermediate artifact produced by `tapa pack`, containing all per-task RTL and metadata in a ZIP archive. The XO is the input to `tapa link` for bitstream generation, and is also passed as `--bitstream` to the host executable for fast hardware cosimulation.

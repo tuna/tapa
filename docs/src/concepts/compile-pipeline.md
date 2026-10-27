@@ -33,8 +33,9 @@ per-task RTL (Verilog)
     ▼  tapa floorplan (optional; supported multi-SLR devices)
 placement + timing constraints
     │
-    ▼  tapa pack      (XO packaging can run remotely)
-    ├─ .xo (xilinx-vitis) ─v++ --link (Vitis)→ .xclbin
+    ▼  tapa pack      (XO/SLASH packaging can run remotely)
+    ├─ .xo (xilinx-vitis) ── tapa link (v++ --link) → .xclbin
+    ├─ .zip (xilinx-slash) ─ tapa link (slashkit) → .vbin
     └─ .zip (xilinx-hls) → fast cosim or a downstream RTL flow
 ```
 
@@ -58,12 +59,20 @@ timing; see [Floorplan for Timing Closure](../howto/floorplan.md) for when it
 helps and how to run it.
 
 **`tapa pack`** — Combines the generated RTL into an `.xo` for the default
-`xilinx-vitis` target or a `.zip` for `xilinx-hls`. An XO feeds `v++ --link`;
-the ZIP is for direct RTL consumers and fast cosimulation.
+`xilinx-vitis` target, a `.zip` SLASH package for `xilinx-slash`, or a
+`.zip` for `xilinx-hls`. The XO and the SLASH package feed `tapa link`; the
+`xilinx-hls` ZIP is for direct RTL consumers and fast cosimulation.
 
 **Shortcut:** `tapa compile` runs analyze, synth, and pack in the correct
-order in a single command. It does not floorplan — for that, run the steps
-separately with `tapa floorplan` between `synth` and `pack`.
+order in a single command. It does not floorplan or link — for those, run
+`tapa floorplan` between `synth` and `pack`, and `tapa link` on the package.
+
+**`tapa link`** — Links a package into a bitstream on the tool host: `v++`
+for `xilinx-vitis` (`.xclbin`, including AI Engine designs) or SLASH's
+`slashkit` for `xilinx-slash` (`.vbin`). See [CLI Commands — tapa
+link](../reference/cli.md#tapa-link), [Build & Run on
+Board](../howto/build-and-run.md), and [Alveo V80 with
+SLASH](../howto/v80.md).
 
 ---
 
@@ -127,7 +136,7 @@ tapa --work-dir work.out pack \
 ## Rules
 
 - `tapa analyze` **always runs locally**, even when `--remote-host` is set.
-- `tapa synth` and Vitis XO packaging run on the remote host when
+- `tapa synth`, packaging, and `tapa link` run on the remote host when
   `--remote-host` is provided, as does `tapa floorplan` when it is measuring an
   implementation (`--run-impl` / `--dse`). Planning-only floorplanning and HLS
   ZIP assembly remain local.
@@ -169,10 +178,11 @@ tapa compile --top VecAdd --part-num xcu250-figd2104-2L-e \
 ## Hardware implementation
 
 ```admonish note
-For the `xilinx-vitis` target, the `v++ --link` step that produces `.xclbin`
-is performed by Xilinx Vitis, not TAPA. TAPA's input to that step is the `.xo`
-file. See [Build & Run on Board](../howto/build-and-run.md) for the full linking
-workflow.
+The linking step runs the vendor toolchain: `v++ --link` for `xilinx-vitis`
+and SLASH's `slashkit` for `xilinx-slash`. `tapa link` stages the package,
+connectivity, and floorplan constraints, invokes the tool, and reports the
+achieved clock. See [Build & Run on Board](../howto/build-and-run.md) and
+[Alveo V80 with SLASH](../howto/v80.md) for the full workflows.
 ```
 
 ---

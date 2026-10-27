@@ -12,24 +12,10 @@
 - An Alveo board installed in the system for the final execution step
 - Several hours of compute time for full implementation
 
-For the V80 SLASH service shell, `tapa link` produces a `.vbin` for VRT;
-the XRT flow below produces an `.xclbin` for U-series devices.
-
-The VRT runtime is selected by the `.vbin` suffix. Build the optional VRT
-adapter against the installed SLASH headers, then select the board and kernel
-instance through the existing TAPA host flags:
-
-```bash
-cmake -S fpga-runtime/frt/vrt -B build/frt-vrt
-cmake --build build/frt-vrt
-./callipepla --bitstream=callipepla.vbin \
-  --vrt_bdf=0000:a1:00 --vrt_kernel=Callipepla_0 \
-  --vrt_library=$PWD/build/frt-vrt/libfrt_vrt.so matrix.mtx 16
-```
-
-`tapa link --xo ... --connectivity ... --output ... --clock-hz 100000000`
-invokes SLASH and rejects a VBIN whose final routed timing report is below the
-requested clock.
+For the V80 SLASH service shell, `tapa link` produces a `.vbin` that the
+host program runs through VRT with `--vrt_bdf`; see
+[Alveo V80 with SLASH](v80.md) for that flow. The XRT flow below produces an
+`.xclbin` for U-series devices.
 
 ## Stage 1: Compile the kernel with TAPA
 
@@ -48,18 +34,23 @@ tapa \
   -o vadd.$platform.hw.xo
 ```
 
-The `.xo` file feeds `v++ --link` on U-series devices or `tapa link` on V80.
+The `.xo` file feeds `tapa link`, which drives `v++ --link`.
 
 ## Stage 2: Link into an FPGA bitstream
 
 ```bash
-v++ -o vadd.$platform.hw.xclbin \
-  --link \
-  --target hw \
-  --kernel VecAdd \
-  --platform $platform \
-  vadd.$platform.hw.xo
+tapa \
+  --work-dir work.out \
+  link \
+  --package vadd.$platform.hw.xo \
+  -o vadd.$platform.hw.xclbin
 ```
+
+`tapa link` runs `v++ --link` on the tool host with the kernel name and
+platform recorded inside the package, so they cannot drift from what
+`tapa compile` targeted. Pass `--connectivity` for a design with direct M-AXI
+ports, and `--floorplan-xdc work.out/floorplan.xdc` when you floorplanned;
+`--clock-mhz` overrides the synthesized clock.
 
 ```admonish warning
 This step takes **several hours** depending on design complexity and host machine performance. Plan accordingly and consider running it on a dedicated build server (see [Remote Execution](remote-execution.md)).
@@ -68,12 +59,10 @@ This step takes **several hours** depending on design complexity and host machin
 The output artifact is `vadd.$platform.hw.xclbin` — this is the bitstream loaded onto the FPGA.
 
 Key alignment rules:
-- `--kernel VecAdd` must match the top-level function name in your TAPA source, the same name you passed to `tapa compile --top`.
-- `--platform $platform` must name a platform built for the same device that
-  `tapa compile` targeted; a mismatch fails at link time. The example passes
-  the same platform to both commands, so TAPA and `v++` derive consistent
-  device settings.
-- The input `.xo` filename (`vadd.$platform.hw.xo`) must be the file produced by `tapa compile`.
+- The input package (`vadd.$platform.hw.xo`) must be the file produced by
+  `tapa compile`; the link reads its target and kernel metadata from it.
+- The output extension selects the backend's artifact: `.xclbin` for the
+  `xilinx-vitis` target, `.vbin` for `xilinx-slash`.
 
 ## Stage 3: Execute on the FPGA
 

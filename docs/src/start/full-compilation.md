@@ -85,25 +85,28 @@ reaching for it.
 
 ## V80 service-shell path
 
-The Vitis `v++` and XRT stages below are for U-series Alveo cards. V80 uses
-SLASH and VRT, so keep floorplanning in TAPA's explicit pipeline and use
-`tapa link` for the final `.vbin`:
+The Vitis `v++` and XRT stages below are for U-series Alveo cards. The V80
+goes through SLASH instead: select the `xilinx-slash` target at analysis,
+synthesize against the service shell, and link the `.zip` package with
+`tapa link`:
 
 ```bash
-tapa -w work analyze --top Callipepla --input callipepla.cpp
-tapa -w work synth --platform slash_v80_service --clock-period 10
-tapa -w work floorplan --connectivity callipepla.cfg \
-  --partition-strategy multi-level --pp-scheme double
-tapa -w work pack --output callipepla.xo --connectivity callipepla.cfg
-tapa -w work link --xo callipepla.xo --connectivity callipepla.cfg \
-  --output callipepla.vbin --clock-hz 100000000 \
-  --floorplan-xdc work/floorplan.xdc
+tapa -w work analyze --top VecAdd --input vadd.cpp \
+  --target xilinx-slash
+tapa -w work synth --platform slash_v80_service
+tapa -w work floorplan --connectivity v80.cfg
+tapa -w work pack --output vecadd.zip
+tapa -w work link --package vecadd.zip \
+  --connectivity v80.cfg --output vecadd.vbin
 ```
 
-This runs HLS, TAPA's SLR placement and crossing-pipeline insertion, then
-SLASH/Vivado implementation. `tapa link` rejects an image that misses the
-requested clock. Run the resulting `.vbin` through VRT; the [board guide](../howto/build-and-run.md)
-shows the VRT host flags.
+`slash_v80_service` supplies part `xcv80-lsva4737-2MHP-e-S` and a 3.33 ns
+(300 MHz) default clock. This runs HLS, optionally TAPA's SLR placement and
+crossing-pipeline insertion, then SLASH/Vivado implementation. If routing
+misses the requested clock, the link warns and records the achieved frequency
+in the vbin instead of failing. Run the resulting `.vbin` through VRT with
+`--vrt_bdf`; see [Alveo V80 with SLASH](../howto/v80.md) for prerequisites
+and the full flow.
 
 ## Stage 3 — Link to xclbin
 

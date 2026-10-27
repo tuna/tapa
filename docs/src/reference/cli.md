@@ -56,12 +56,12 @@ documented for those three stages.
 
 | Flag | Description |
 |------|-------------|
-| `--output FILE` / `-o FILE` | Output path (default: `work.xo`, or `work.zip` for the `xilinx-hls` target). |
+| `--output FILE` / `-o FILE` | Output path (default: `work.xo`, or `work.zip` for the `xilinx-hls` and `xilinx-slash` targets). |
 | `--part-num PART` | Target FPGA part number (e.g., `xcu250-figd2104-2L-e`). |
 | `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name. Alternative to `--part-num`. |
 | `--clock-period NS` | Target clock period in nanoseconds. |
 | `--cflags FLAG` / `-c FLAG` | Compiler flag for the kernel (e.g., `-Iinclude`). Repeat the flag for multiple. |
-| `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). Also takes `TASK:TARGET` mappings, see `analyze`. |
+| `--target {xilinx-vitis,xilinx-slash,xilinx-hls}` | Output target (default: `xilinx-vitis`). Also takes `TASK:TARGET` mappings, see `analyze`. |
 | `-j N` / `--jobs N` | Number of parallel HLS jobs. |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeatable. |
 
@@ -97,7 +97,7 @@ This stage always runs locally and does not require vendor tools. See
 | Flag | Description |
 |------|-------------|
 | `--cflags FLAG` / `-c FLAG` | Compiler flag passed through to the kernel frontend, such as an include path. Repeat the flag for multiple. |
-| `--target {xilinx-vitis,xilinx-hls}` | Output target (default: `xilinx-vitis`). Controls the synthesis flow. |
+| `--target {xilinx-vitis,xilinx-slash,xilinx-hls}` | Output target (default: `xilinx-vitis`). Controls the synthesis and linking flow; `xilinx-slash` builds for the SLASH service shell, see [Alveo V80 with SLASH](../howto/v80.md). |
 | `--target TASK:TARGET` | Build task `TASK` as `aie`, `hls` or `ignore`, overriding its `[[tapa::target]]`. Repeatable; an unknown task is an error. See [AI Engine Tasks](../howto/aie.md). |
 | `--flatten-hierarchy` | Emit flattened RTL while preserving task behavior. The stored task graph remains hierarchical. |
 | `--keep-hierarchy` | Preserve the task hierarchy. This is the default. |
@@ -137,7 +137,7 @@ This stage can run on a remote host via `--remote-host`.
 | Flag | Description |
 |------|-------------|
 | `--part-num PART` | Target FPGA part number. Required if `--platform` is not set. |
-| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name or directory. Required if `--part-num` is not set. A name is looked up under `platforms/` of `/opt/xilinx` and `$XILINX_VITIS`, and under `$XILINX_VITIS/base_platforms/` for the base platforms Vitis ships (for example `xilinx_vck190_base_202520_1`). |
+| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name or directory. Required if `--part-num` is not set. A name is looked up under `platforms/` of `/opt/xilinx` and `$XILINX_VITIS`, and under `$XILINX_VITIS/base_platforms/` for the base platforms Vitis ships (for example `xilinx_vck190_base_202520_1`). The built-in SLASH shells resolve from a typed table instead of a platform directory: `slash_v80_service` builds part `xcv80-lsva4737-2MHP-e-S` at a 3.33 ns default clock and requires the `xilinx-slash` target, which in turn accepts no other platform. |
 
 ### Optional flags
 
@@ -215,8 +215,9 @@ When the top task has direct M-AXI ports, synthesize with the exact
 placement is platform-specific, and a different platform is rejected.
 `--part-num` is sufficient only when there are no direct M-AXI ports.
 
-The `--run-impl` and `--dse` flows also require the `xilinx-vitis` target and
-a platform accepted by the installed `v++`.
+The `--run-impl` and `--dse` flows also require the `xilinx-vitis` or
+`xilinx-slash` target and a platform accepted by the installed `v++` or
+SLASH.
 
 ### Optional flags (planning)
 
@@ -251,11 +252,14 @@ sp=Bandwidth.chan[0]:DDR[0]
 sp=Bandwidth.chan[1]:DDR[1]
 ```
 
-The same `sp=` file feeds floorplanning and hardware linking. U-series devices pass it to `v++ --link`; V80 passes it through TAPA's SLASH adapter.
+The same `sp=` file feeds floorplanning and hardware linking; `tapa link`
+passes it to `v++ --link` for U-series devices. On V80, write slashkit's own
+configuration instead (`nk=`, `sp=<instance>.m_axi_x:HBMn`, optional
+`[clock]`); see [Alveo V80 with SLASH](../howto/v80.md#the-slash-configuration).
 
 ### Optional flags (implementation / DSE)
 
-These run the floorplanned design through the device's implementation backend to measure Fmax. U-series devices use `v++ --link`; V80 uses SLASH to build the service-shell `.vbin`. They require a `xilinx-vitis` TAPA target, the exact platform used at synthesis, and Vivado plus either Vitis or SLASH on the tool host.
+These run the floorplanned design through the device's implementation backend to measure Fmax. U-series devices use `v++ --link`; V80 uses SLASH to build the service-shell `.vbin`. They require a `xilinx-vitis` or `xilinx-slash` TAPA target, the exact platform used at synthesis, and Vivado plus either Vitis or SLASH (`slashkit`) on the tool host.
 
 | Flag | Description |
 |------|-------------|
@@ -287,23 +291,70 @@ the work directory; pass them to `tapa link` (`--floorplan-xdc`,
 ## tapa pack
 
 Package RTL from the work directory into a single output artifact: an XO for
-the default `xilinx-vitis` target or a ZIP for `xilinx-hls`. Reads RTL
-produced by `tapa synth`. A design with AI Engine tasks also gets
-`<name>.libadf.a` and `<name>.aie.cfg` next to the XO; see
-[AI Engine Tasks](../howto/aie.md). The packaged artifact feeds `tapa link`,
+the default `xilinx-vitis` target, or a ZIP for `xilinx-hls` and
+`xilinx-slash`. Reads RTL produced by `tapa synth`. A design with AI Engine
+tasks also gets `<name>.libadf.a` and `<name>.aie.cfg` next to the XO; see
+[AI Engine Tasks](../howto/aie.md). On `xilinx-slash`, the ZIP carries the
+packaged IP directory, `kernel.xml`, and `hls_data.json` for slashkit, and
+fast cosim loads it unchanged. The packaged artifact feeds `tapa link`,
 which produces the `.xclbin` (or `.vbin`) bitstream.
 
 ### Optional flags
 
 | Flag | Description |
 |------|-------------|
-| `--output FILE` / `-o FILE` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for other targets). |
+| `--output FILE` / `-o FILE` | Output file path (default: `work.xo` for the Vitis target, `work.zip` for the other targets). |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeat the flag for multiple paths. Not available after `tapa floorplan`. |
 
 ### Example
 
 ```bash
 tapa --work-dir work.out pack -o vadd.xo
+```
+
+---
+
+## tapa link
+
+Link a packaged TAPA kernel into a hardware or simulation bitstream. The
+package's recorded flow target picks the backend: `xilinx-vitis` runs
+`v++ --link` (and `v++ --package` with AI Engine sidecars), `xilinx-slash`
+runs SLASH's `slashkit` against the service shell. Both run through the tool
+runner, so they execute on the `--remote-host` machine when one is configured.
+`xilinx-hls` has no link backend. See [Build & Run on Board](../howto/build-and-run.md)
+and [Alveo V80 with SLASH](../howto/v80.md) for the guided workflows.
+
+### Required flags
+
+| Flag | Description |
+|------|-------------|
+| `--package FILE` | Packaged TAPA kernel: `.xo` for `xilinx-vitis`, `.zip` for `xilinx-slash`. |
+| `--output FILE` / `-o FILE` | Bitstream output: `.xclbin` for `xilinx-vitis`, `.vbin` for `xilinx-slash`. |
+| `--connectivity FILE` | Connectivity configuration. Required for `xilinx-slash` (slashkit's `nk=`/`sp=` file); for `xilinx-vitis`, the standard `sp=` config passed to `v++ --config`. |
+
+### Optional flags
+
+| Flag | Description |
+|------|-------------|
+| `--clock-mhz MHZ` | Requested kernel clock. Defaults to the clock period the package's flow was synthesized with. A SLASH `[clock]` section in the config must match this value; TAPA appends one when absent. |
+| `--floorplan-xdc FILE` | Floorplan constraints (`tapa floorplan`'s `floorplan.xdc`) applied during implementation. |
+| `-j N` / `--jobs N` | Vivado parallelism per link (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `8`). |
+| `--sim` | Produce a SLASH simulation vbin instead of a hardware image (`xilinx-slash` only). |
+| `--vpp PROGRAM` | Vitis linker/packager on the tool host (default `v++`; Vitis links only). |
+| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; SLASH links only). |
+| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; SLASH links only). |
+
+A SLASH link succeeds whenever slashkit produces a vbin: a missed kernel
+clock derates the recorded frequency with a warning instead of failing, and
+`link-metrics.json` records requested versus recorded MHz, the kernel WNS,
+and the pinned SLASH commit. A Vitis link reports the routed kernel timing
+from its post-route report either way.
+
+### Example
+
+```bash
+tapa --work-dir work.out link --package vadd.zip \
+  --connectivity v80.cfg -o vadd.vbin
 ```
 
 ---

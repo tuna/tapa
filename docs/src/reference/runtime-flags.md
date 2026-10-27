@@ -1,7 +1,8 @@
 # Runtime Flags
 
 This page covers environment variables and host executable flags that control
-software simulation, fast cosimulation, and XRT execution.
+software simulation, fast cosimulation, and on-board execution (XRT or, for
+SLASH vbins, VRT).
 
 ---
 
@@ -22,6 +23,9 @@ is not a supported way to reconfigure execution.
 | `FRT_COSIM_TIMEOUT_SECONDS` | `0` (disabled) | Maximum wall-clock time for a fast-cosim simulator process. On expiry, TAPA terminates the simulator process group and reports a timeout. Set a positive integer to enable it. |
 | `FRT_XSIM_LEGACY` | `0` | Set to `1` to use the legacy xelab command-line format for older Vivado versions. |
 | `FRT_XOCL_BDF` | (unset) | PCIe Bus:Device:Function for XRT device selection. Equivalent to the `-xocl_bdf` gflag. Without it, devices are tried in index order until one accepts the xclbin; set it on multi-device hosts. |
+| `FRT_VRT_BDF` | (unset) | PCIe Bus:Device:Function of the V80 to open through vrtd for a hardware `.vbin`. Equivalent to the `-vrt_bdf` gflag; one of the two is required — the VRT backend does not scan for boards. See [Alveo V80 with SLASH](../howto/v80.md). |
+| `FRT_VRTD_LIBRARY` | (unset) | Explicit path to SLASH's `libvrtd.so.1` for hardware vbins, tried before the loader's search path and SLASH's documented install prefixes. Set it when libvrtd is installed outside them. |
+| `FRT_ZMQ_LIBRARY` | (unset) | Explicit path to `libzmq.so.5` for SLASH simulation vbins, tried before the loader's search path. |
 | `TAPA_HOME` | (unset) | TAPA installation prefix used to locate runtime libraries. `install.sh` sets it automatically. Override it after relocating an installation or moving a host binary to a machine where the original path is unavailable. |
 
 ### Example: single-worker simulation
@@ -62,6 +66,7 @@ compiler. Gflags accepts both `-cosim_work_dir` and `--cosim_work_dir`.
 | `-cosim_resume_from_post_sim` | Skip re-running the simulation and jump directly to post-simulation checks. Use after a completed simulation to re-run checks without re-simulating. |
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running multiple concurrent simulations, preventing work directory collisions. |
 | `-xocl_bdf <BDF>` | Select the XRT device by PCIe Bus:Device:Function. Equivalent to `FRT_XOCL_BDF`; used for hardware emulation or on-board execution, not fast cosim. |
+| `-vrt_bdf <BDF>` | Select the V80 for a hardware `.vbin` by PCIe Bus:Device:Function. Equivalent to `FRT_VRT_BDF`; required for VRT execution, not fast cosim. |
 
 ### Example: save waveforms from a named work directory
 

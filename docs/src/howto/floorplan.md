@@ -18,8 +18,10 @@ needed when the design already meets timing.
 - A [supported device and platform](../reference/cli.md#supported-devices).
 - For a kernel with direct M-AXI ports: synthesis with the exact supported
   `--platform`, plus a connectivity file assigning every port to a memory bank.
-- For `--run-impl` or `--dse`: the `xilinx-vitis` target, Vitis/Vivado,
-  and a platform accepted by the installed `v++`.
+- For `--run-impl` or `--dse`: the `xilinx-vitis` or `xilinx-slash` target,
+  and the matching toolchain — Vitis/Vivado with a platform the installed
+  `v++` accepts, or SLASH's `slashkit` with the V80 static shell for
+  `slash_v80_service` (see [Alveo V80 with SLASH](v80.md)).
 
 For tighter designs, consider `tapa synth --enable-synth-util` before
 floorplanning. It provides more accurate per-task resource estimates at the
@@ -53,7 +55,9 @@ sources or rerun `synth`, run `floorplan` again before `pack`.
 ## Assign memory banks
 
 For this example, `connectivity.ini` assigns VecAdd's three direct M-AXI
-parameters to separate HBM banks:
+parameters to separate HBM banks. On the V80 the same role is played by
+slashkit's own configuration (`nk=`/`sp=`), described in
+[Alveo V80 with SLASH](v80.md#the-slash-configuration):
 
 ```ini
 [connectivity]
@@ -97,7 +101,8 @@ measurements for that.
 ## Measure a plan with `--run-impl`
 
 Planning alone does not prove that the design closes timing. To package one
-plan and run `v++ --link` for implementation feedback:
+plan and run the device's implementation backend (`v++ --link` on U-series,
+SLASH on V80) for feedback:
 
 ```bash
 tapa --work-dir work.out floorplan \
@@ -111,6 +116,8 @@ Review:
 - `work.out/floorplan-metrics.json` for the selected plan's utilization and
   achieved frequency.
 - `work.out/floorplan-timing.rpt` for the post-implementation timing details.
+- `work.out/floorplan.xclbin` (Vitis) or `work.out/floorplan.vbin` (SLASH),
+  the implemented bitstream of the measured plan.
 
 If implementation fails inside one task's combinational logic, change the HLS
 source rather than increasing floorplan effort. Add pipelining or split the
@@ -119,7 +126,8 @@ operation across cycles, then rerun synthesis and floorplanning.
 ## Explore plans with `--dse`
 
 Design-space exploration sweeps utilization targets and keeps the candidate
-with the highest measured frequency:
+with the highest measured frequency. The ranking backend is the device's own:
+`v++ --link` on U-series boards, SLASH on the V80:
 
 ```bash
 tapa --work-dir work.out floorplan \
