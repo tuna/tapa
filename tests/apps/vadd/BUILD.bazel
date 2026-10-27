@@ -7,7 +7,7 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:tapa_rules_test.bzl", "tapa_fixture_rules_test")
-load("//bazel:test_rules.bzl", "tapa_app_test")
+load("//bazel:test_rules.bzl", "tapa_app_test", "tapa_v80_recipes")
 
 exports_files(
     [
@@ -37,6 +37,26 @@ tapa_app_test(
     macos_sim_args = ["1000"],
     top_name = "VecAdd",
     xo_visibility = ["//tests/functional:__subpackages__"],
+)
+
+tapa_v80_recipes(
+    name = "vadd-v80",
+    board_tests = {
+        "1": ["1"],
+        "7": ["7"],
+        "16": ["16"],
+        "4097": ["4097"],
+        "65537": ["65537"],
+        "13": ["13"],
+    },
+    connectivity = "v80.cfg",
+    host = ":vadd-host",
+    host_args = ["1000"],
+    jobs = 8,
+    kernel_hdrs = ["vadd.h"],
+    kernel_includes = ["."],
+    kernel_srcs = ["vadd.cpp"],
+    top_name = "VecAdd",
 )
 
 sh_test(

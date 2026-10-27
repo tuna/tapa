@@ -10,7 +10,7 @@ cosimulation.
 
 load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
-load("//bazel:test_rules.bzl", "regression_xosim")
+load("//bazel:test_rules.bzl", "regression_xosim", "tapa_v80_recipes")
 
 cc_test(
     name = "sparse-fixture-test",
@@ -376,6 +376,28 @@ regression_xosim(
         "16",
     ],
     xo = ":sextans-xo",
+)
+
+tapa_v80_recipes(
+    name = "callipepla-v80",
+    board_tests = {
+        "spd-14": [
+            "$(rootpath testdata/spd-14.mtx)",
+            "16",
+        ],
+    },
+    connectivity = "callipepla/tapa/src_noconst/v80.cfg",
+    extra_test_data = ["testdata/spd-14.mtx"],
+    host = ":callipepla-host",
+    host_args = [
+        "$(rootpath testdata/spd-14.mtx)",
+        "16",
+    ],
+    jobs = 1,
+    kernel_hdrs = ["callipepla/tapa/src_noconst/callipepla.h"],
+    kernel_srcs = ["callipepla/tapa/src_noconst/callipepla.cpp"],
+    other_hls_configs = "config_op dadd -impl fabric -latency 4",
+    top_name = "Callipepla",
 )
 
 filegroup(

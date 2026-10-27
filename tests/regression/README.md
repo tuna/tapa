@@ -33,3 +33,22 @@ and performance evaluation. For small learning examples, start with
 
 See the [examples catalog](https://tapa.readthedocs.io/en/latest/tutorials/examples-catalog.html)
 for feature summaries and links to the corresponding publications.
+
+## Manual V80 recipes
+
+The vadd and Callipepla V80 flows use the same target suffixes. Every target
+is `manual`; none is part of the nightly regression or an automatic CI tier.
+
+| Recipe | vadd target | Callipepla target |
+|---|---|---|
+| Compile the 3.33 ns `xilinx-slash` package | `//tests/apps/vadd:vadd-v80-zip` | `//tests/regression:callipepla-v80-zip` |
+| Run TAPA fast cosim on the `.zip` | `//tests/apps/vadd:vadd-v80-zipsim` | `//tests/regression:callipepla-v80-zipsim` |
+| Build the SLASH `.sim.vbin` | `//tests/apps/vadd:vadd-v80-sim-vbin` | `//tests/regression:callipepla-v80-sim-vbin` |
+| Run the host with the `.sim.vbin` | `//tests/apps/vadd:vadd-v80-sim` | `//tests/regression:callipepla-v80-sim` |
+| Build the hardware `.vbin` and `link-metrics.json` | `//tests/apps/vadd:vadd-v80-vbin` | `//tests/regression:callipepla-v80-vbin` |
+| Run the board hand-off suite | `//tests/apps/vadd:vadd-v80-board` | `//tests/regression:callipepla-v80-board` |
+
+The vadd board suite checks lengths 1, 7, 16, 4097, 65537, and 13.
+Callipepla runs `spd-14.mtx 16`. Hardware link outputs are written below the
+corresponding Bazel package as `<name>.vbin` and
+`<name>-vbin/link-metrics.json`.

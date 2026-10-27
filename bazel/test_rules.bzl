@@ -10,7 +10,7 @@ attributes.
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@vars//:vars.bzl", "HAS_XRT", "XILINX_HW_EMU_PLATFORM")
-load("//bazel:tapa_rules.bzl", "tapa_xo")
+load("//bazel:tapa_rules.bzl", "tapa_slash_link", "tapa_xo")
 load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
 _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
@@ -354,4 +354,135 @@ def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], 
             "cpu:2",
             "manual",
         ],
+    )
+
+def tapa_v80_recipes(
+        name,
+        top_name,
+        kernel_srcs,
+        kernel_hdrs,
+        host,
+        connectivity,
+        host_args,
+        board_tests,
+        kernel_includes = [],
+        extra_test_data = [],
+        jobs = 1,
+        other_hls_configs = ""):
+    """Declare the manual V80 package, simulation, link, and board recipes.
+
+    `<name>-zip` compiles for SLASH at 3.33 ns; `<name>-zipsim` runs TAPA fast
+    cosim on that package. `<name>-sim-vbin` and `<name>-sim` link and run the
+    SLASH simulation model. `<name>-vbin` performs the hardware link and emits
+    both the VBIN and link-metrics.json. `<name>-board` is a manual suite of
+    `<name>-board-<suffix>` runtime tests using the hardware VBIN.
+
+    Args:
+        name: Prefix for every generated target.
+        top_name: Kernel top function name.
+        kernel_srcs: Existing kernel translation units.
+        kernel_hdrs: Existing kernel headers.
+        host: Existing TAPA host binary label.
+        connectivity: SLASH connectivity configuration.
+        host_args: Arguments for package and SLASH simulation runs.
+        board_tests: Dict from target-name suffix to one board run's arguments.
+        kernel_includes: Include directories forwarded to `tapa analyze`.
+        extra_test_data: Runtime data shared by every simulation/board test.
+        jobs: Parallel HLS and SLASH linker jobs.
+        other_hls_configs: Extra Tcl appended to every HLS script.
+    """
+    package = ":%s-zip" % name
+    sim_vbin = ":%s-sim-vbin" % name
+    hardware_vbin = ":%s-vbin" % name
+    runtime_data = extra_test_data + [host, _CARGO_RELEASE_ARTIFACTS]
+
+    tapa_xo(
+        name = "%s-zip" % name,
+        srcs = kernel_srcs,
+        hdrs = kernel_hdrs,
+        include = kernel_includes,
+        target = "xilinx-slash",
+        platform_name = "slash_v80_service",
+        clock_period = "3.33",
+        jobs = jobs,
+        other_hls_configs = other_hls_configs,
+        tags = ["manual"],
+        top_name = top_name,
+    )
+
+    sh_test(
+        name = "%s-zipsim" % name,
+        size = "enormous",
+        timeout = "moderate",
+        srcs = ["//bazel:v++_env.sh"],
+        args = [
+            "$(rootpath %s)" % host,
+            "--bitstream=$(rootpath %s)" % package,
+        ] + host_args,
+        data = runtime_data + [package],
+        tags = [
+            "cpu:2",
+            "manual",
+        ],
+    )
+
+    tapa_slash_link(
+        name = "%s-sim-vbin" % name,
+        package = package,
+        connectivity = connectivity,
+        output_name = "%s.sim.vbin" % name,
+        jobs = jobs,
+        sim = True,
+        tags = ["manual"],
+    )
+
+    sh_test(
+        name = "%s-sim" % name,
+        size = "enormous",
+        timeout = "moderate",
+        srcs = ["//bazel:sim_env.sh"],
+        args = [
+            "$(rootpath %s)" % host,
+            "--bitstream=$(rootpath %s)" % sim_vbin,
+        ] + host_args,
+        data = runtime_data + [sim_vbin],
+        tags = [
+            "cpu:2",
+            "manual",
+        ],
+    )
+
+    tapa_slash_link(
+        name = "%s-vbin" % name,
+        package = package,
+        connectivity = connectivity,
+        output_name = "%s.vbin" % name,
+        jobs = jobs,
+        tags = ["manual"],
+    )
+
+    board_targets = []
+    for suffix, args in board_tests.items():
+        target = ":%s-board-%s" % (name, suffix)
+        board_targets.append(target)
+        sh_test(
+            name = target[1:],
+            size = "enormous",
+            srcs = ["//bazel:sim_env.sh"],
+            args = [
+                "$(rootpath %s)" % host,
+                "--bitstream=$(rootpath %s)" % hardware_vbin,
+            ] + args,
+            data = runtime_data + [hardware_vbin],
+            tags = [
+                "cpu:2",
+                "exclusive",
+                "manual",
+            ],
+        )
+
+    native.test_suite(
+        name = "%s-board" % name,
+        tests = board_targets,
+        tags = ["manual"],
     )

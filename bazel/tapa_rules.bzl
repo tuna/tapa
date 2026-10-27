@@ -40,6 +40,22 @@ def _remote_xilinx_settings():
         return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
     return ""
 
+def _remote_tapa_args(ctx):
+    remote_args = []
+    remote_host = _remote_host_flag()
+    if remote_host:
+        remote_args.extend(["--remote-host", remote_host])
+        if ctx.file.ssh_key:
+            remote_args.extend(["--remote-key-file", ctx.file.ssh_key.path])
+        xilinx_settings = _remote_xilinx_settings()
+        if xilinx_settings:
+            remote_args.extend(["--remote-xilinx-settings", xilinx_settings])
+        if REMOTE_SSH_CONTROL_DIR:
+            remote_args.extend(["--remote-ssh-control-dir", REMOTE_SSH_CONTROL_DIR])
+        if REMOTE_SSH_CONTROL_PERSIST:
+            remote_args.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
+    return remote_args
+
 # Peak RSS of one Vitis HLS process, in MB. Measured across the regression
 # designs; wide 512-bit sparse tasks sit at the top of that range.
 _HLS_JOB_MB = 2048
@@ -85,7 +101,7 @@ def _with_tool_constraints(target, kwargs):
     # either. The .xo packager remains the only fixture-path vendor gate.
     fixtures = bool(kwargs.get("hls_fixtures"))
     needs_hls_runner = not fixtures and not VITIS_HLS_RUNNER_AVAILABLE
-    needs_vivado = target == "xilinx-vitis" and not VIVADO_AVAILABLE
+    needs_vivado = target in ["xilinx-vitis", "xilinx-slash"] and not VIVADO_AVAILABLE
     if (needs_hls_runner or needs_vivado) and "@platforms//:incompatible" not in constraints:
         constraints.append("@platforms//:incompatible")
     kwargs["target_compatible_with"] = constraints
@@ -182,27 +198,16 @@ def _tapa_xo_impl(ctx):
     output_file = ctx.outputs.output_file
     if output_file == None and ctx.attr.target == "xilinx-vitis":
         output_file = ctx.actions.declare_file(ctx.attr.name + ".xo")
-    if output_file == None and ctx.attr.target == "xilinx-hls":
+    if output_file == None and ctx.attr.target in ["xilinx-hls", "xilinx-slash"]:
         output_file = ctx.actions.declare_file(ctx.attr.name + ".zip")
-    if ctx.attr.target not in ["xilinx-vitis", "xilinx-hls"]:
+    if ctx.attr.target not in ["xilinx-vitis", "xilinx-hls", "xilinx-slash"]:
         fail("Unsupported target: {}".format(ctx.attr.target))
     aie_output_dir = None
     if ctx.attr.target == "xilinx-vitis":
         aie_output_dir = ctx.actions.declare_directory(ctx.attr.name + ".aie-sidecars")
 
-    remote_args = []
     remote_host = _remote_host_flag()
-    if remote_host:
-        remote_args.extend(["--remote-host", remote_host])
-        if ctx.file.ssh_key:
-            remote_args.extend(["--remote-key-file", ctx.file.ssh_key.path])
-        xilinx_settings = _remote_xilinx_settings()
-        if xilinx_settings:
-            remote_args.extend(["--remote-xilinx-settings", xilinx_settings])
-        if REMOTE_SSH_CONTROL_DIR:
-            remote_args.extend(["--remote-ssh-control-dir", REMOTE_SSH_CONTROL_DIR])
-        if REMOTE_SSH_CONTROL_PERSIST:
-            remote_args.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
+    remote_args = _remote_tapa_args(ctx)
 
     analyze_cmd = [tapa_cli.path, "--work-dir", analysis_dir.path] + remote_args + ["analyze"]
     for src in srcs:
@@ -247,6 +252,8 @@ def _tapa_xo_impl(ctx):
         synth_cmd.extend(["--part-num", ctx.attr.part_num])
     if not ctx.attr.platform_name and not ctx.attr.clock_period and not ctx.attr.part_num:
         synth_cmd.extend(["--part-num", XILINX_PART_NUM, "--clock-period", "3.33"])
+    if ctx.attr.other_hls_configs:
+        synth_cmd.extend(["--other-hls-configs", ctx.attr.other_hls_configs])
     if ctx.attr.enable_synth_util:
         synth_cmd.extend(["--enable-synth-util"])
     if ctx.files.hls_fixtures:
@@ -315,17 +322,7 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
 
     tapa_prefix = [tapa_cli.path, "--work-dir", work_dir.path]
     remote_host = _remote_host_flag()
-    if remote_host:
-        tapa_prefix.extend(["--remote-host", remote_host])
-        if ctx.file.ssh_key:
-            tapa_prefix.extend(["--remote-key-file", ctx.file.ssh_key.path])
-        xilinx_settings = _remote_xilinx_settings()
-        if xilinx_settings:
-            tapa_prefix.extend(["--remote-xilinx-settings", xilinx_settings])
-        if REMOTE_SSH_CONTROL_DIR:
-            tapa_prefix.extend(["--remote-ssh-control-dir", REMOTE_SSH_CONTROL_DIR])
-        if REMOTE_SSH_CONTROL_PERSIST:
-            tapa_prefix.extend(["--remote-ssh-control-persist", REMOTE_SSH_CONTROL_PERSIST])
+    tapa_prefix.extend(_remote_tapa_args(ctx))
 
     include_flags = []
     for inc in ctx.files.include:
@@ -437,6 +434,9 @@ _tapa_xo = rule(
                   "CPU and memory to match; do not add a cpu:N tag, which " +
                   "would override that.",
         ),
+        "other_hls_configs": attr.string(
+            doc = "Extra Tcl appended verbatim to every generated HLS script.",
+        ),
         "enable_synth_util": attr.bool(),
         "flatten_hierarchy": attr.bool(),
         "hls_fixtures": attr.label_list(
@@ -461,6 +461,96 @@ _tapa_xo = rule(
         ),
     },
 )
+
+def _tapa_slash_link_impl(ctx):
+    if ctx.attr.jobs < 1:
+        fail("jobs must be >= 1, got {}".format(ctx.attr.jobs))
+    if not ctx.attr.output_name.endswith(".vbin"):
+        fail("output_name must end in .vbin")
+
+    tapa_cli = ctx.executable.tapa_cli
+    package = ctx.file.package
+    connectivity = ctx.file.connectivity
+    work_dir = ctx.actions.declare_directory(ctx.attr.name + ".tapa")
+    vbin = ctx.actions.declare_file(ctx.attr.output_name)
+    metrics = ctx.actions.declare_file(ctx.attr.name + "/link-metrics.json")
+    remote_host = _remote_host_flag()
+    command = [tapa_cli.path, "--work-dir", work_dir.path] + _remote_tapa_args(ctx) + [
+        "link",
+        "--package",
+        package.path,
+        "--connectivity",
+        connectivity.path,
+        "--output",
+        vbin.path,
+        "--jobs",
+        str(ctx.attr.jobs),
+    ]
+    if ctx.attr.sim:
+        command.append("--sim")
+
+    inputs = [package, connectivity]
+    if ctx.file.ssh_key:
+        inputs.append(ctx.file.ssh_key)
+    ctx.actions.run_shell(
+        outputs = [work_dir, vbin, metrics],
+        inputs = inputs,
+        tools = [tapa_cli, ctx.executable.vitis_hls_env],
+        command = "set -euo pipefail\n{}\nmkdir -p {}\ncp {} {}".format(
+            " ".join([sh_quote(arg) for arg in [ctx.executable.vitis_hls_env.path] + command]),
+            sh_quote(metrics.dirname),
+            sh_quote(work_dir.path + "/link/link-metrics.json"),
+            sh_quote(metrics.path),
+        ),
+        mnemonic = "TapaSlashLink",
+        use_default_shell_env = True,
+        execution_requirements = {"requires-network": "1"} if remote_host else {
+            "resources:cpu:{}".format(ctx.attr.jobs): "",
+            "resources:memory:{}".format(8192 if ctx.attr.sim else 24576): "",
+        },
+    )
+    return [
+        DefaultInfo(files = depset([vbin])),
+        OutputGroupInfo(link_metrics = depset([metrics])),
+    ]
+
+_tapa_slash_link = rule(
+    implementation = _tapa_slash_link_impl,
+    attrs = {
+        "package": attr.label(allow_single_file = True, mandatory = True),
+        "connectivity": attr.label(allow_single_file = True, mandatory = True),
+        "output_name": attr.string(mandatory = True),
+        "sim": attr.bool(),
+        "jobs": attr.int(default = 1),
+        "tapa_cli": attr.label(
+            cfg = "exec",
+            default = Label("//tapa-core:tapa"),
+            executable = True,
+        ),
+        "ssh_key": attr.label(
+            allow_single_file = True,
+            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
+        ),
+        "vitis_hls_env": attr.label(
+            cfg = "exec",
+            default = Label("//bazel:vitis_hls_env"),
+            executable = True,
+        ),
+    },
+)
+
+def tapa_slash_link(name, **kwargs):
+    """Run `tapa link` and expose its VBIN and link-metrics.json outputs.
+
+    Args:
+      name: Target name.
+      **kwargs: Attributes forwarded to the underlying rule.
+    """
+    constraints = list(kwargs.get("target_compatible_with", []))
+    if not VIVADO_AVAILABLE and "@platforms//:incompatible" not in constraints:
+        constraints.append("@platforms//:incompatible")
+    kwargs["target_compatible_with"] = constraints
+    _tapa_slash_link(name = name, **kwargs)
 
 def tapa_reuse_work_dir_xo(name, **kwargs):
     """Build the work-dir reuse fixture when XO tools are available.
