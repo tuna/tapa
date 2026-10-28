@@ -438,14 +438,11 @@ l_rp:
 
     // cout << "PE = " << pe_idx << endl;
   write_C_outer:
-    [[tapa::pipeline(1)]] [[tapa::tripcount(
-        1, 1800)]] for (int i = 0, c_idx = 0; i < num_v_out; ++i) {
-      double out_v = local_C[c_idx][i >> 3];
+    [[tapa::pipeline(1)]] [[tapa::tripcount(1, 1800)]] for (int i = 0;
+                                                            i < num_v_out;
+                                                            ++i) {
+      double out_v = local_C[i & 7][i >> 3];
       fifo_Y_out.write(out_v);
-      ++c_idx;
-      if (c_idx == 8) {
-        c_idx = 0;
-      }
     }
 
     tapa::wait();
