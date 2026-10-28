@@ -27,6 +27,9 @@ pub(super) fn pre_place_hook(has_floorplan: bool) -> String {
 pub(super) fn pre_synth_hook() -> String {
     "# TAPA: one generated hook for implementation constraints.\n\
      set tapa_hook_dir [file dirname [file normalize [info script]]]\n\
+     # Match slashkit's implementation strategy before installing hooks. Its\n\
+     # later assignment of the same strategy then preserves these properties.\n\
+     set_property strategy Congestion_SSI_SpreadLogic_high [get_runs impl_1]\n\
      # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
      set tapa_place_hook [file join $tapa_hook_dir tapa_pre_place.tcl]\n\
      add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
@@ -59,6 +62,7 @@ mod tests {
     #[test]
     fn hooks_register_pre_place_and_implementation_clock() {
         let hook = pre_synth_hook();
+        assert!(hook.contains("strategy Congestion_SSI_SpreadLogic_high"));
         assert!(hook.contains("add_files -fileset utils_1"));
         assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
         assert!(hook.contains("[get_files [file tail $tapa_place_hook]]"));
