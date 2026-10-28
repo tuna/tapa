@@ -264,13 +264,11 @@ mod tests {
         assert_eq!(slr1.area.ff, 259_520);
         assert_eq!(slr1.area.dsp, 752);
         assert_eq!(slr1.area.bram_18k, 408);
-        // The SLASH RM pblock exposes 216 URAM288 sites in SLR1:
-        // X1Y156:X7Y179 (168), X6Y144:X7Y155 (24), and
-        // X2Y144:X3Y155 (24).
-        assert_eq!(slr1.area.uram, 216);
-        // BRAM/URAM remain inventory data, not TAPA capacity constraints.
-        assert!(!device.plans_resource(tapa_ir::Resource::Bram18k));
-        assert!(!device.plans_resource(tapa_ir::Resource::Uram));
+        // The SLASH RM pblock exposes 96 URAM288 sites in SLR1.
+        assert_eq!(slr1.area.uram, 96);
+        // BRAM/URAM are physical placement capacities on V80 as well.
+        assert!(device.plans_resource(tapa_ir::Resource::Bram18k));
+        assert!(device.plans_resource(tapa_ir::Resource::Uram));
         assert!(device.plans_resource(tapa_ir::Resource::Lut));
         assert!(device.plans_resource(tapa_ir::Resource::Ff));
         assert!(device.plans_resource(tapa_ir::Resource::Dsp));
@@ -283,9 +281,8 @@ mod tests {
         assert_eq!(slr2.area.ff, 1_415_616);
         assert_eq!(slr2.area.dsp, 3_120);
         assert_eq!(slr2.area.bram_18k, 1_950);
-        // SLR2 is restricted by the service shell to X0Y180:X7Y220:
-        // 8 columns * 41 rows = 328 URAM288 sites.
-        assert_eq!(slr2.area.uram, 328);
+        // The remaining 496 URAM288 sites are in SLR2 (592 total).
+        assert_eq!(slr2.area.uram, 496);
         assert_eq!(slr2.wire_cap.south, 18_870);
         assert_eq!(
             slr2.pblock_ranges,

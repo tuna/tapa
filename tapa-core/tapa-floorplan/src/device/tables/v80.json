@@ -419,11 +419,6 @@
     "key": "v80",
     "part_num": "xcv80-lsva4737-2MHP-e-S",
     "placement": "slr_assignment",
-    "planned_resources": [
-        "lut",
-        "ff",
-        "dsp"
-    ],
     "platform_name": "slash_v80_service",
     "rows": 3,
     "slots": [
@@ -453,7 +448,7 @@
                 "dsp": 752,
                 "ff": 259520,
                 "lut": 129760,
-                "uram": 216
+                "uram": 96
             },
             "centroid_x": 0,
             "centroid_y": 150,
@@ -476,7 +471,7 @@
                 "dsp": 3120,
                 "ff": 1415616,
                 "lut": 707808,
-                "uram": 328
+                "uram": 496
             },
             "centroid_x": 0,
             "centroid_y": 300,

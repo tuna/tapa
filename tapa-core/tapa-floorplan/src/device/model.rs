@@ -364,8 +364,8 @@ pub enum DeviceValidationError {
 impl Device {
     /// Whether the floorplanner should enforce this resource class.
     ///
-    /// V80's BRAM/URAM sites may appear in physical pblock ranges for Vivado
-    /// DFX legality, but they do not limit TAPA placement capacity.
+    /// Tables may exclude a resource only when its capacity is not a
+    /// placement constraint on that platform. V80 budgets all five classes.
     #[must_use]
     pub fn plans_resource(&self, resource: Resource) -> bool {
         self.planned_resources.contains(resource)
