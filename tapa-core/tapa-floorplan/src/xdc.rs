@@ -302,6 +302,21 @@ enum CellPlacement<'a> {
 }
 
 impl CellPlacement<'_> {
+    fn pattern(self, pattern: &str) -> String {
+        match self {
+            Self::Pblock(_) => pattern.to_string(),
+            // A hierarchy assignment already covers its descendants. Select
+            // only the root so nested RAM hierarchies are not constrained and
+            // accounted for a second time.
+            Self::Slr(_) => format!(
+                "{}$",
+                pattern
+                    .strip_suffix("(/.*)?$")
+                    .expect("cell patterns include descendants")
+            ),
+        }
+    }
+
     fn hierarchical_cells_only(self) -> bool {
         matches!(self, Self::Slr(_))
     }
@@ -358,8 +373,7 @@ fn add_cell_matches(lines: &mut Vec<String>, matches: &[CellMatch], placement: C
     }
 
     for cell_match in matches {
-        // `USER_SLR_ASSIGNMENT` is a hierarchy property in Vivado. Keep the
-        // broader query for PBlocks and filter to hierarchy cells for V80.
+        // PBlocks include descendants; SLR assignments belong on roots only.
         let hierarchy_filter = if placement.hierarchical_cells_only() {
             " && IS_PRIMITIVE == 0"
         } else {
@@ -367,7 +381,7 @@ fn add_cell_matches(lines: &mut Vec<String>, matches: &[CellMatch], placement: C
         };
         lines.push(format!(
             "set cells [get_cells -quiet -hierarchical -regexp -filter {{NAME =~ \"{}\"{hierarchy_filter}}}]",
-            cell_match.pattern
+            placement.pattern(&cell_match.pattern)
         ));
         lines.push(format!(
             "if {{![llength $cells]}} {{ error \"TAPA floorplan ERROR: expected cell `{}` was not found\" }}",
@@ -417,8 +431,9 @@ fn add_batched_cell_matches(
 ) {
     let patterns = matches
         .iter()
-        .map(|cell_match| cell_match.pattern.as_str())
+        .map(|cell_match| placement.pattern(&cell_match.pattern))
         .collect::<Vec<_>>();
+    let patterns = patterns.iter().map(String::as_str).collect::<Vec<_>>();
     append_batched_cell_query(
         lines,
         "cells",
@@ -855,6 +870,12 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
 
         assert!(xdc.contains("IS_PRIMITIVE == 0"));
         assert!(xdc.contains("set_property USER_SLR_ASSIGNMENT SLR2 $cells"));
+        let query = xdc
+            .lines()
+            .find(|line| line.starts_with("set cells "))
+            .expect("placement query");
+        assert!(query.contains("(_fifo)?$"), "{query}");
+        assert!(!query.contains("(/.*)?$"), "{query}");
         assert!(!xdc.contains("create_pblock"));
         assert!(!xdc.contains("resize_pblock"));
         assert!(!xdc.contains("add_cells_to_pblock"));
@@ -896,6 +917,13 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
             );
         }
         assert!(xdc.contains("set_property USER_SLL_REG TRUE $sll_regs"));
+        for line in xdc.lines().filter(|line| line.starts_with("set cells ")) {
+            assert!(!line.contains("(/.*)?$"), "stage roots only: {line}");
+        }
+        assert!(xdc
+            .lines()
+            .filter(|line| line.starts_with("set sll_cells "))
+            .all(|line| line.contains("(/.*)?$")));
         assert!(!xdc.contains("create_pblock"));
         assert!(!xdc.contains("resize_pblock"));
     }
