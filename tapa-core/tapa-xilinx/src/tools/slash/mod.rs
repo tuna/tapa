@@ -99,6 +99,7 @@ struct PreparedLink {
     hls_data: Utf8PathBuf,
     config: Utf8PathBuf,
     hook: Utf8PathBuf,
+    place_hook: Utf8PathBuf,
     clock_xdc: Utf8PathBuf,
     floorplan_xdc: Option<Utf8PathBuf>,
     /// Routed timing report to download; `None` in simulation mode, where
@@ -150,9 +151,11 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
 
     let config = work.join("config.cfg");
     let hook = work.join(hooks::HOOK_NAME);
+    let place_hook = work.join(hooks::PLACE_HOOK_NAME);
     let clock_xdc = work.join(hooks::CLOCK_XDC_NAME);
     fs_err::write(&config, config_text)?;
-    fs_err::write(&hook, hooks::pre_synth_hook(floorplan_xdc.is_some()))?;
+    fs_err::write(&hook, hooks::pre_synth_hook())?;
+    fs_err::write(&place_hook, hooks::pre_place_hook(floorplan_xdc.is_some()))?;
     fs_err::write(&clock_xdc, hooks::user_clock_xdc(job.target_mhz))?;
     let floorplan_xdc = floorplan_xdc
         .as_ref()
@@ -173,6 +176,7 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
         hls_data,
         config,
         hook,
+        place_hook,
         clock_xdc,
         floorplan_xdc,
         timing_report,
@@ -204,6 +208,7 @@ fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink, vivado: &str) -
         prepared.hls_data.clone(),
         prepared.config.clone(),
         prepared.hook.clone(),
+        prepared.place_hook.clone(),
         prepared.clock_xdc.clone(),
     ];
     if let Some(xdc) = &prepared.floorplan_xdc {
@@ -447,6 +452,16 @@ mod tests {
         ))
     }
 
+    fn assert_registered_placement_hooks(work: &Utf8Path) {
+        let hook = fs_err::read_to_string(work.join("tapa_pre_synth.tcl")).expect("hook");
+        assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
+        assert!(hook.contains("add_files -fileset utils_1"));
+        let place_hook =
+            fs_err::read_to_string(work.join("tapa_pre_place.tcl")).expect("placement hook");
+        assert!(place_hook.contains("USER_SLR_ASSIGNMENT SLR2"));
+        assert!(place_hook.contains("source [file join $tapa_place_hook_dir floorplan.xdc]"));
+    }
+
     #[test]
     fn parses_real_kernel_and_fixed_rows_without_global_timing_failure() {
         let vadd = fs_err::read_to_string(fixture("vadd-routed-timing.rpt")).expect("vadd report");
@@ -548,8 +563,9 @@ mod tests {
             .windows(2)
             .any(|pair| pair == ["--vivado", "/tool-host/bin/vivado"]));
         assert_eq!(call.downloads, vec![output_path, report_path.clone()]);
-        assert_eq!(call.uploads.len(), 6);
+        assert_eq!(call.uploads.len(), 7);
         assert!(call.uploads.contains(&work.join("floorplan.xdc")));
+        assert!(call.uploads.contains(&work.join("tapa_pre_place.tcl")));
         assert!(call.uploads.contains(&work.join("ip")));
         assert!(call
             .uploads
@@ -560,8 +576,7 @@ mod tests {
         assert!(config.contains("[user_region]\npre_synth=tapa_pre_synth.tcl"));
         assert!(config.contains("freqhz=300000000"));
         assert!(work.join("ip").join("component.xml").is_file());
-        let hook = fs_err::read_to_string(work.join("tapa_pre_synth.tcl")).expect("hook");
-        assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
+        assert_registered_placement_hooks(&work);
         let metrics: serde_json::Value = serde_json::from_slice(
             &fs_err::read(work.join(METRICS_NAME)).expect("read link metrics"),
         )
@@ -633,6 +648,7 @@ mod tests {
             hls_data: root.join("work").join("hls_data.json"),
             config: work.join("config.cfg"),
             hook: work.join(hooks::HOOK_NAME),
+            place_hook: work.join(hooks::PLACE_HOOK_NAME),
             clock_xdc: work.join(hooks::CLOCK_XDC_NAME),
             floorplan_xdc: None,
             timing_report: None,

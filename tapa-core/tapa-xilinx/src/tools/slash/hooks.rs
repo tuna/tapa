@@ -2,6 +2,7 @@
 
 pub(super) const HOOK_NAME: &str = "tapa_pre_synth.tcl";
 pub(super) const CLOCK_XDC_NAME: &str = "tapa_user_clock.xdc";
+pub(super) const PLACE_HOOK_NAME: &str = "tapa_pre_place.tcl";
 pub(super) const FLOORPLAN_XDC_NAME: &str = "floorplan.xdc";
 
 pub(super) fn user_clock_xdc(target_mhz: u32) -> String {
@@ -15,22 +16,26 @@ pub(super) fn user_clock_xdc(target_mhz: u32) -> String {
     )
 }
 
-pub(super) fn pre_synth_hook(has_floorplan: bool) -> String {
-    let floorplan = has_floorplan.then_some(
-        "# Apply TAPA placement after the RM is linked and before placement.\n\
-         set tapa_floorplan_xdc [file join $tapa_hook_dir floorplan.xdc]\n\
-         set_property STEPS.PLACE_DESIGN.TCL.PRE [list $tapa_floorplan_xdc] [get_runs impl_1]\n",
-    );
-    format!(
-        "# TAPA: one generated hook for implementation constraints.\n\
-         set tapa_hook_dir [file dirname [file normalize [info script]]]\n\
-         {}\
-         set tapa_user_clock_xdc [file join $tapa_hook_dir tapa_user_clock.xdc]\n\
-         add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
-         set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
-         set_property USED_IN_IMPLEMENTATION true [get_files $tapa_user_clock_xdc]\n",
-        floorplan.unwrap_or_default()
-    )
+pub(super) fn pre_place_hook(has_floorplan: bool) -> String {
+    let mut hook = include_str!("pre_place.tcl").to_owned();
+    if has_floorplan {
+        hook.push_str("\nsource [file join $tapa_place_hook_dir floorplan.xdc]\n");
+    }
+    hook
+}
+
+pub(super) fn pre_synth_hook() -> String {
+    "# TAPA: one generated hook for implementation constraints.\n\
+     set tapa_hook_dir [file dirname [file normalize [info script]]]\n\
+     # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
+     set tapa_place_hook [file join $tapa_hook_dir tapa_pre_place.tcl]\n\
+     add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
+     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files $tapa_place_hook]] [get_runs impl_1]\n\
+     set tapa_user_clock_xdc [file join $tapa_hook_dir tapa_user_clock.xdc]\n\
+     add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
+     set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
+     set_property USED_IN_IMPLEMENTATION true [get_files $tapa_user_clock_xdc]\n"
+        .to_string()
 }
 
 #[cfg(test)]
@@ -52,15 +57,22 @@ mod tests {
     }
 
     #[test]
-    fn one_hook_adds_implementation_xdc_and_optional_place_hook() {
-        let hook = pre_synth_hook(true);
+    fn hooks_register_pre_place_and_implementation_clock() {
+        let hook = pre_synth_hook();
+        assert!(hook.contains("add_files -fileset utils_1"));
         assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
+        assert!(hook.contains("[get_files $tapa_place_hook]"));
         assert!(!hook.contains("STEPS.OPT_DESIGN.TCL.PRE"));
         assert!(hook.contains("add_files -fileset constrs_1"));
         assert!(hook.contains("USED_IN_SYNTHESIS false"));
         assert!(hook.contains("USED_IN_IMPLEMENTATION true"));
         assert!(!hook.contains("assign_bd_address"));
         assert!(!hook.contains("020200010000"));
-        assert!(!pre_synth_hook(false).contains("PLACE_DESIGN"));
+
+        let placement = pre_place_hook(true);
+        assert!(placement.contains("USER_SLR_ASSIGNMENT SLR2"));
+        assert!(placement.contains("tapa_rm_uram_used > $tapa_rm_uram_capacity"));
+        assert!(placement.ends_with("source [file join $tapa_place_hook_dir floorplan.xdc]\n"));
+        assert!(!pre_place_hook(false).contains("floorplan.xdc"));
     }
 }
