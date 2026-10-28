@@ -30,7 +30,7 @@ pub(super) fn pre_synth_hook() -> String {
      # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
      set tapa_place_hook [file join $tapa_hook_dir tapa_pre_place.tcl]\n\
      add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
-     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files $tapa_place_hook]] [get_runs impl_1]\n\
+     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files [file tail $tapa_place_hook]]] [get_runs impl_1]\n\
      set tapa_user_clock_xdc [file join $tapa_hook_dir tapa_user_clock.xdc]\n\
      add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
      set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
@@ -61,7 +61,7 @@ mod tests {
         let hook = pre_synth_hook();
         assert!(hook.contains("add_files -fileset utils_1"));
         assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
-        assert!(hook.contains("[get_files $tapa_place_hook]"));
+        assert!(hook.contains("[get_files [file tail $tapa_place_hook]]"));
         assert!(!hook.contains("STEPS.OPT_DESIGN.TCL.PRE"));
         assert!(hook.contains("add_files -fileset constrs_1"));
         assert!(hook.contains("USED_IN_SYNTHESIS false"));
