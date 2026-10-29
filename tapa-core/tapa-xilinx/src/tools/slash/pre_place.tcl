@@ -15,3 +15,13 @@ if {$tapa_rm_uram_used > $tapa_rm_uram_capacity} {
   error "TAPA V80 RM needs $tapa_rm_uram_used URAM primitives, but the shell exposes $tapa_rm_uram_capacity sites"
 }
 puts "TAPA V80 RM URAM preflight: $tapa_rm_uram_used/$tapa_rm_uram_capacity; [llength $tapa_hbm_bridges] HBM bridges assigned to SLR2"
+
+# Place generated HBM slices and their reset synchronizer with the bridges.
+set tapa_hbm_slices [get_cells -quiet -hierarchical -regexp -filter {IS_PRIMITIVE == 0 && NAME =~ "^(.*/)?slash/tapa_hbm_slice_[0-9]+$"}]
+if {[llength $tapa_hbm_slices]} {
+  set_property USER_SLR_ASSIGNMENT SLR2 $tapa_hbm_slices
+}
+set tapa_hbm_reset [get_cells -quiet -hierarchical -regexp -filter {IS_PRIMITIVE == 0 && NAME =~ "^(.*/)?slash/tapa_hbm_reset$"}]
+if {[llength $tapa_hbm_reset] == 1} {
+  set_property USER_SLR_ASSIGNMENT SLR2 $tapa_hbm_reset
+}

@@ -137,6 +137,17 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let metadata = package::extract_package(&package, &ip, &hls_data)?;
 
     let input_config_text = fs_err::read_to_string(input_config)?;
+    let bindings = crate::connectivity::parse_slash_config(
+        &input_config_text,
+        &metadata.top_name,
+        &metadata.ports,
+    )
+    .map_err(XilinxError::SlashLink)?;
+    let hbm_indices = bindings
+        .iter()
+        .filter(|binding| binding.bank.kind == tapa_ir::MemoryKind::Hbm)
+        .map(|binding| binding.bank.index)
+        .collect::<Vec<_>>();
     let mut config_text = crate::connectivity::prepare_slash_config(
         &input_config_text,
         &metadata.top_name,
@@ -154,7 +165,7 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let place_hook = work.join(hooks::PLACE_HOOK_NAME);
     let clock_xdc = work.join(hooks::CLOCK_XDC_NAME);
     fs_err::write(&config, config_text)?;
-    fs_err::write(&hook, hooks::pre_synth_hook())?;
+    fs_err::write(&hook, hooks::pre_synth_hook(&hbm_indices))?;
     fs_err::write(&place_hook, hooks::pre_place_hook(floorplan_xdc.is_some()))?;
     fs_err::write(&clock_xdc, hooks::user_clock_xdc(job.target_mhz))?;
     let floorplan_xdc = floorplan_xdc
@@ -456,6 +467,7 @@ mod tests {
         let hook = fs_err::read_to_string(work.join("tapa_pre_synth.tcl")).expect("hook");
         assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
         assert!(hook.contains("add_files -fileset utils_1"));
+        assert!(hook.contains("set selected [list 0 1 2]"));
         let place_hook =
             fs_err::read_to_string(work.join("tapa_pre_place.tcl")).expect("placement hook");
         assert!(place_hook.contains("USER_SLR_ASSIGNMENT SLR2"));

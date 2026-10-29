@@ -91,11 +91,13 @@ options.
 
 `floorplan` writes `floorplan.xdc`. For `xilinx-vitis`, `pack` applies that
 file and the staged connectivity configuration automatically, so no extra
-flags are required. For `xilinx-slash`, `link` registers a generated pre-place
-script with Vivado: it anchors the shell-facing HBM bridges to SLR2, checks
-optimized URAM demand against the RM inventory, and then sources the staged
-floorplan. Registering the script in `utils_1` ensures that the separate
-`impl_1` process executes it.
+flags are required. For `xilinx-slash`, `link` inserts Full register slices on
+each HBM interface selected by the connectivity map, then registers a generated
+pre-place script with Vivado. It anchors the HBM bridges, slices and reset
+synchronizer to SLR2, checks optimized URAM demand against the RM inventory,
+sources the staged floorplan, and requests clock-region replication for
+eligible high-fanout fabric controls. Registering the script in `utils_1`
+ensures that the separate `impl_1` process executes it.
 
 Pipelining can add latency across SLR boundaries but should not change the
 results. Run fast cosimulation again to check functionality. Fast cosim does
