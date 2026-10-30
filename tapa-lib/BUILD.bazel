@@ -22,6 +22,7 @@ config_setting(
 
 _PUBLIC_HEADERS = [
     "tapa.h",
+    "tapa/aie/frame.h",
     "tapa/aie/stream.h",
     "tapa/aie/tapa.h",
     "tapa/aie/vec.h",

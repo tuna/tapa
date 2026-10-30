@@ -10,6 +10,7 @@
 #include <aie_api/aie.hpp>
 #include <aie_api/aie_adf.hpp>
 
+#include "tapa/aie/frame.h"
 #include "tapa/aie/vec.h"
 
 // TAPA stream ports on the AI Engine. Every ADF port TAPA generates carries
@@ -194,9 +195,7 @@ namespace aie {
 template <typename T, int N>
 class iframe {
  public:
-  using buffer =
-      adf::input_async_buffer<int32,
-                              adf::extents<N * internal::aie::kWords<T>>>;
+  using buffer = input_frame<int32, N * internal::aie::kWords<T>>;
   TAPA_AIE_INLINE explicit iframe(buffer& buf) : buf_(buf) {}
   TAPA_AIE_INLINE T read() {
     if (pos_ == 0) buf_.acquire();
@@ -225,9 +224,7 @@ class iframe {
 template <typename T, int N>
 class oframe {
  public:
-  using buffer =
-      adf::output_async_buffer<int32,
-                               adf::extents<N * internal::aie::kWords<T>>>;
+  using buffer = output_frame<int32, N * internal::aie::kWords<T>>;
   TAPA_AIE_INLINE explicit oframe(buffer& buf) : buf_(buf) {}
   TAPA_AIE_INLINE void write(const T& value) {
     if (pos_ == 0) buf_.acquire();
