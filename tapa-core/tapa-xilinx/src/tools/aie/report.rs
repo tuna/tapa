@@ -3,7 +3,7 @@
 //! `compiler_report.json` is used instead of the mapping-analysis text: it
 //! carries the same placements as numbers and directly associates PLIO
 //! logical names and directions with block instance IDs. Program sizes come
-//! from `report_pm.txt`, whose header declares byte units.
+//! from each tile's Chess linker map, whose PM section declares 8-bit units.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -53,7 +53,8 @@ pub enum PlioDirection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct AieKernelReport {
     pub tile: AieTile,
-    /// Used program memory in bytes, from `PM Size Used` for this tile.
+    /// Used program memory in bytes, from the `Used` count in this tile's
+    /// 8-bit-wide PM linker-map section.
     pub program_bytes: u64,
     /// Per-kernel data memory in bytes. The supported compiler reports do
     /// not define this unambiguously, so this is currently always `None`;
@@ -78,25 +79,21 @@ pub fn read_report(graph_dir: &Utf8Path) -> Result<AieReport> {
             detail,
         })?;
 
-    let pm_path = reports.join("report_pm.txt");
-    let pm_text = read_text(&pm_path)?;
-    let program_sizes =
-        parse_program_sizes(&pm_text).map_err(|detail| XilinxError::AieReportParse {
-            path: pm_path.clone(),
-            detail,
-        })?;
     let mut per_kernel = BTreeMap::new();
     for kernel in kernels {
+        let tile = format!("{}_{}", kernel.tile.column, kernel.tile.row);
+        let pm_path = graph_dir
+            .join("Work")
+            .join("aie")
+            .join(&tile)
+            .join("Release")
+            .join(format!("{tile}.map"));
+        let pm_text = read_text(&pm_path)?;
         let program_bytes =
-            *program_sizes
-                .get(&kernel.tile)
-                .ok_or_else(|| XilinxError::AieReportParse {
-                    path: pm_path.clone(),
-                    detail: format!(
-                        "no PM Size Used for kernel `{}` at CR({},{})",
-                        kernel.name, kernel.tile.column, kernel.tile.row
-                    ),
-                })?;
+            parse_program_size(&pm_text).map_err(|detail| XilinxError::AieReportParse {
+                path: pm_path,
+                detail,
+            })?;
         per_kernel.insert(
             kernel.name,
             AieKernelReport {
@@ -276,77 +273,52 @@ fn required_name(
     }
 }
 
-fn parse_program_sizes(text: &str) -> std::result::Result<BTreeMap<AieTile, u64>, String> {
-    if !text
-        .lines()
-        .any(|line| line.trim() == "Note: All sizes are in bytes")
-    {
-        return Err("missing `Note: All sizes are in bytes` unit declaration".into());
-    }
-    let mut sizes = BTreeMap::new();
-    let mut current: Option<(AieTile, Option<u64>)> = None;
+fn parse_program_size(text: &str) -> std::result::Result<u64, String> {
+    let mut in_pm = false;
+    let mut found_pm = false;
+    let mut byte_units = false;
+    let mut used = None;
     for line in text.lines().map(str::trim) {
-        if let Some(coordinate) = line.strip_prefix("Core ") {
-            finish_core(&mut current, &mut sizes)?;
-            current = Some((parse_core(coordinate)?, None));
-        } else if let Some(value) = line.strip_prefix("PM Size Used = ") {
-            let (tile, used) = current
-                .as_mut()
-                .ok_or_else(|| "PM Size Used appears before a Core heading".to_string())?;
-            if used.is_some() {
-                return Err(format!(
-                    "duplicate PM Size Used for CR({},{})",
-                    tile.column, tile.row
-                ));
+        if line == "Memory map for memory 'PM':" {
+            if found_pm {
+                return Err("duplicate PM memory map".into());
             }
-            *used = Some(
-                value
-                    .parse::<u64>()
-                    .map_err(|error| format!("invalid PM Size Used `{value}`: {error}"))?,
-            );
+            found_pm = true;
+            in_pm = true;
+            continue;
+        }
+        if in_pm && line.starts_with("Memory map for memory '") {
+            break;
+        }
+        if !in_pm {
+            continue;
+        }
+        let fields = line.split_whitespace().collect::<Vec<_>>();
+        match fields.as_slice() {
+            ["Width", "=", "8", "bits"] => byte_units = true,
+            ["Width", "=", ..] => {
+                return Err(format!("PM width is not 8 bits: `{line}`"));
+            }
+            ["Used", "=", value] => {
+                if used.is_some() {
+                    return Err("duplicate Used count in PM memory map".into());
+                }
+                used = Some(
+                    value
+                        .parse::<u64>()
+                        .map_err(|error| format!("invalid PM Used count `{value}`: {error}"))?,
+                );
+            }
+            _ => {}
         }
     }
-    finish_core(&mut current, &mut sizes)?;
-    Ok(sizes)
-}
-
-fn parse_core(coordinate: &str) -> std::result::Result<AieTile, String> {
-    let (column, row) = coordinate
-        .split_once('_')
-        .ok_or_else(|| format!("invalid Core coordinate `{coordinate}`; expected `column_row`"))?;
-    if row.contains('_') {
-        return Err(format!(
-            "invalid Core coordinate `{coordinate}`; expected `column_row`"
-        ));
+    if !found_pm {
+        return Err("missing PM memory map".into());
     }
-    let parse = |value: &str| {
-        value
-            .parse::<u32>()
-            .map_err(|error| format!("invalid Core coordinate `{coordinate}`: `{value}`: {error}"))
-    };
-    Ok(AieTile {
-        column: parse(column)?,
-        row: parse(row)?,
-    })
-}
-
-fn finish_core(
-    current: &mut Option<(AieTile, Option<u64>)>,
-    sizes: &mut BTreeMap<AieTile, u64>,
-) -> std::result::Result<(), String> {
-    let Some((tile, used)) = current.take() else {
-        return Ok(());
-    };
-    let used = used.ok_or_else(|| {
-        format!(
-            "Core heading CR({},{}) has no PM Size Used",
-            tile.column, tile.row
-        )
-    })?;
-    if sizes.insert(tile, used).is_some() {
-        return Err(format!("duplicate Core CR({},{})", tile.column, tile.row));
+    if !byte_units {
+        return Err("PM memory map does not declare its 8-bit units".into());
     }
-    Ok(())
+    used.ok_or_else(|| "PM memory map has no Used count".into())
 }
 
 #[cfg(test)]
@@ -376,17 +348,24 @@ mod tests {
       }}
     }"#;
 
-    const PM: &str = "Note: All sizes are in bytes\n\n\
-                      Core 25_1\n\tPM Size Used = 11668\n\
-                      Core 23_0\n\tPM Size Used = 0\n";
+    fn linker_map(program_bytes: u64) -> String {
+        format!(
+            "Memory map for memory 'DM_bankA':\n  Width = 8 bits\n  Used = 36\n\n\
+             Memory map for memory 'PM':\n  Size = 16384\n  Width = 8 bits\n  \
+             Used = {program_bytes}\n\nSection summary for memory 'PM':\n"
+        )
+    }
 
-    fn write_reports(compiler: &str, pm: Option<&str>) -> tempfile::TempDir {
+    fn write_reports(compiler: &str, maps: &[(&str, &str)]) -> tempfile::TempDir {
         let temp = tempfile::tempdir().expect("temporary graph directory");
         let reports = temp.path().join("Work/reports");
         fs_err::create_dir_all(&reports).expect("report directory");
         fs_err::write(reports.join("compiler_report.json"), compiler).expect("compiler report");
-        if let Some(pm) = pm {
-            fs_err::write(reports.join("report_pm.txt"), pm).expect("program-memory report");
+        for (tile, map) in maps {
+            let release = temp.path().join("Work/aie").join(tile).join("Release");
+            fs_err::create_dir_all(&release).expect("tile release directory");
+            fs_err::write(release.join(format!("{tile}.map")), map)
+                .expect("program-memory linker map");
         }
         temp
     }
@@ -397,7 +376,10 @@ mod tests {
 
     #[test]
     fn report_associates_names_tiles_directions_and_bytes_deterministically() {
-        let temp = write_reports(COMPILER, Some(PM));
+        let temp = write_reports(
+            COMPILER,
+            &[("25_1", &linker_map(11668)), ("23_0", &linker_map(0))],
+        );
         let report = read_report(graph_dir(&temp)).expect("parse report");
         assert_eq!(report.tiles_used, 2, "two distinct core tiles");
         assert_eq!(
@@ -466,17 +448,23 @@ mod tests {
             other => panic!("unexpected error: {other}"),
         }
 
-        let temp = write_reports(COMPILER, Some("Note: All sizes are in bits\n"));
+        let temp = write_reports(
+            COMPILER,
+            &[
+                ("25_1", &linker_map(11668).replace("8 bits", "16 bits")),
+                ("23_0", &linker_map(0)),
+            ],
+        );
         let error = read_report(graph_dir(&temp)).expect_err("wrong program-memory units");
         match error {
             XilinxError::AieReportParse { path, detail } => {
-                assert!(path.ends_with("Work/reports/report_pm.txt"), "{path}");
-                assert!(detail.contains("unit declaration"), "{detail}");
+                assert!(path.ends_with("Work/aie/25_1/Release/25_1.map"), "{path}");
+                assert!(detail.contains("not 8 bits"), "{detail}");
             }
             other => panic!("unexpected error: {other}"),
         }
 
-        let temp = write_reports("{not JSON", Some(PM));
+        let temp = write_reports("{not JSON", &[]);
         let error = read_report(graph_dir(&temp)).expect_err("malformed JSON");
         assert!(matches!(
             error,

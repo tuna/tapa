@@ -491,8 +491,8 @@ mod tests {
             .to_vec(),
         );
         runner.attach_download(
-            crate::util::utf8(reports.join("report_pm.txt")),
-            format!("Note: All sizes are in bytes\nCore 1_0\nPM Size Used = {program_bytes}\n")
+            crate::util::utf8(work.join("aie/hw/Work/aie/1_0/Release/1_0.map")),
+            format!("Memory map for memory 'PM':\n  Width = 8 bits\n  Used = {program_bytes}\n")
                 .into_bytes(),
         );
         runner
