@@ -259,8 +259,11 @@ PL kernel is done and is then stopped; the next `tapa::invoke` resets it, so
 its tasks start again from the top. The reported kernel time is still the PL
 kernel's, from start to done.
 
-VCK190 uses XRT's native graph API. On VCK5000, FRT instead sends one command
-buffer per control action to `tapa_aie_control` on the card's APU, where the
-same graph operations execute. The host does not call `xrtGraphOpen` on x86;
-that API is not supported by the VCK5000's PCIe runtime. APU control is used
-only for the short graph commands and does not reserve the APU for TAPA.
+VCK190 uses XRT's native graph API. On VCK5000, FRT instead sends register
+writes to `tapa_aie_pl_control` in the PL: runtime parameters and the iteration
+count before the PL kernel starts, then core-disable after it completes. No
+APU control program or host `xrtGraphOpen` call is used. The control packets
+broadcast to per-kernel packet controllers. FRT requires a shared iteration
+register and non-colliding, single-buffered RTP addresses, and rejects a graph
+layout that does not satisfy these rules rather than controlling it
+ambiguously.

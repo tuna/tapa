@@ -1,5 +1,5 @@
 #!/bin/bash
-# VCK5000 hardware: build the graph and PL, insert APU control, run twice.
+# VCK5000 hardware: build the graph, PL and PL controller, then run twice.
 #
 # usage: run_vck5000.sh TAPA HOST KERNEL PLATFORM BDF
 set -euo pipefail

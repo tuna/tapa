@@ -5,7 +5,7 @@ use super::api::{
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, parse_embedded_xml, AieGraph,
 };
-use super::ps_control::{self, PsControl};
+use super::pl_control::{self, PlControl};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::kernel_xml::{KernelXml, XclbinTarget};
@@ -38,7 +38,7 @@ enum ExecutionState {
 /// The AI Engine graph an xclbin carries, open for control.
 struct Graph {
     handle: Handle,
-    ps_control: Option<PsControl>,
+    pl_control: Option<PlControl>,
     meta: AieGraph,
     /// Whether it ran since the xclbin was loaded: a run-forever graph is
     /// reset before it runs again, so its kernels restart from their entry.
@@ -188,10 +188,10 @@ impl XrtDevice {
         let run = unsafe { (api.run_open)(this.kernel) };
         this.run = non_null(run, "create a kernel run")?;
         if let Some(meta) = parse_aie_graph(&bytes)? {
-            let (handle, control) = if this.meta.aie_ps_control {
+            let (handle, control) = if this.meta.aie_pl_control {
                 (
                     std::ptr::null_mut(),
-                    Some(PsControl::open(api, this.device, &uuid)?),
+                    Some(PlControl::open(api, this.device, &uuid)?),
                 )
             } else {
                 let name = CString::new(meta.name.clone())
@@ -205,7 +205,7 @@ impl XrtDevice {
             };
             this.graph = Some(Graph {
                 handle,
-                ps_control: control,
+                pl_control: control,
                 meta,
                 has_run: false,
             });
@@ -222,8 +222,8 @@ impl XrtDevice {
             return Ok(());
         };
         let reset = graph.meta.run_forever && graph.has_run;
-        if let Some(control) = &graph.ps_control {
-            let command = ps_control::start(&graph.meta, values, reset)?;
+        if let Some(control) = &graph.pl_control {
+            let command = pl_control::start(&graph.meta, values, reset)?;
             control.execute(&command)?;
             graph.has_run = true;
             return Ok(());
@@ -269,8 +269,8 @@ impl XrtDevice {
         let Some(graph) = &self.graph else {
             return Ok(());
         };
-        if let Some(control) = &graph.ps_control {
-            return control.execute(&ps_control::stop(graph.meta.run_forever));
+        if let Some(control) = &graph.pl_control {
+            return control.execute(&pl_control::stop()?);
         }
         let cycles = u64::from(graph.meta.run_forever);
         // SAFETY: live graph handle.
@@ -285,8 +285,8 @@ impl XrtDevice {
         let Some(graph) = &self.graph else {
             return Ok(());
         };
-        if let Some(control) = &graph.ps_control {
-            return control.execute(&ps_control::abort());
+        if let Some(control) = &graph.pl_control {
+            return control.execute(&pl_control::abort()?);
         }
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_reset)(graph.handle) };
@@ -302,7 +302,7 @@ impl Drop for XrtDevice {
                 // SAFETY: live native graph handle.
                 unsafe { (self.api.graph_close)(graph.handle) };
             }
-            if let Some(control) = graph.ps_control.take() {
+            if let Some(control) = graph.pl_control.take() {
                 drop(control);
             }
         }

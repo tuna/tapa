@@ -116,6 +116,7 @@ pub struct AieGraph {
     /// `tapa_aie`, or `tapa_aie_forever` when some kernel never returns.
     pub name: String,
     pub run_forever: bool,
+    pub iteration_addresses: Vec<u32>,
     pub rtps: Vec<AieRtp>,
 }
 
@@ -127,6 +128,17 @@ pub struct AieRtp {
     /// The PL kernel argument whose value it carries.
     pub arg: u32,
     pub bytes: usize,
+    pub ping_address: u32,
+    pub pong_address: u32,
+}
+
+fn aie_u32(value: &serde_json::Value, field: &str) -> Result<u32> {
+    value
+        .as_str()
+        .and_then(|text| text.parse::<u64>().ok())
+        .or_else(|| value.as_u64())
+        .and_then(|number| u32::try_from(number).ok())
+        .ok_or_else(|| FrtError::MetadataParse(format!("invalid AIE {field}")))
 }
 
 /// The TAPA graph in the xclbin's `AIE_METADATA`, if it has one.
@@ -138,15 +150,26 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
     let json: serde_json::Value = serde_json::from_slice(text)
         .map_err(|e| FrtError::MetadataParse(format!("AIE_METADATA is not JSON: {e}")))?;
     let meta = &json["aie_metadata"];
-    let Some(name) = meta["graphs"]
+    let Some(graph) = meta["graphs"]
         .as_object()
         .into_iter()
         .flat_map(serde_json::Map::values)
-        .filter_map(|graph| graph["name"].as_str())
-        .find(|name| *name == "tapa_aie" || *name == "tapa_aie_forever")
+        .find(|graph| {
+            matches!(
+                graph["name"].as_str(),
+                Some("tapa_aie" | "tapa_aie_forever")
+            )
+        })
     else {
         return Ok(None);
     };
+    let name = graph["name"].as_str().expect("matched graph name");
+    let iteration_addresses = graph["iteration_memory_addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|value| aie_u32(value, "iteration-memory address"))
+        .collect::<Result<Vec<_>>>()?;
     let prefix = format!("{name}.rtp_");
     let mut rtps = Vec::new();
     for rtp in meta["RTPs"]
@@ -179,11 +202,14 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
             alias: alias.to_owned(),
             arg,
             bytes,
+            ping_address: aie_u32(&rtp["ping_buffer_address"], "RTP ping address")?,
+            pong_address: aie_u32(&rtp["pong_buffer_address"], "RTP pong address")?,
         });
     }
     Ok(Some(AieGraph {
         name: name.to_owned(),
         run_forever: name == "tapa_aie_forever",
+        iteration_addresses,
         rtps,
     }))
 }
@@ -222,11 +248,13 @@ mod tests {
     #[test]
     fn the_aie_graph_and_its_runtime_parameters_come_from_aie_metadata() {
         let json = br#"{"aie_metadata": {
-            "graphs": {"graph0": {"id": "0", "name": "tapa_aie_forever"}},
+            "graphs": {"graph0": {"id": "0", "name": "tapa_aie_forever",
+                "iteration_memory_addresses": ["8196"]}},
             "RTPs": {
                 "rtp0": {"alias_name": "tapa_aie_forever.rtp_3_Scale_0_factor",
                          "port_name": "tapa_aie_forever.k_Scale_0.in[1]",
-                         "number_of_bytes": "4"},
+                         "number_of_bytes": "4",
+                         "ping_buffer_address": 8160, "pong_buffer_address": 8160},
                 "rtp1": {"alias_name": "other.rtp_0_x", "number_of_bytes": "8"}
             }}}"#;
         let mut payload = json.to_vec();
@@ -239,10 +267,13 @@ mod tests {
             AieGraph {
                 name: "tapa_aie_forever".into(),
                 run_forever: true,
+                iteration_addresses: vec![0x2004],
                 rtps: vec![AieRtp {
                     alias: "tapa_aie_forever.rtp_3_Scale_0_factor".into(),
                     arg: 3,
                     bytes: 4,
+                    ping_address: 0x1fe0,
+                    pong_address: 0x1fe0,
                 }],
             }
         );
