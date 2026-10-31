@@ -3,6 +3,11 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
+exports_files(
+    ["run_hybrid.sh"],
+    visibility = ["//visibility:public"],
+)
+
 cc_binary(
     name = "aie-vadd-host",
     srcs = glob(

@@ -49,6 +49,30 @@ sh_test(
     tags = ["manual"],
 )
 
+# Hybrid cosimulation: both PL stages in xsim, both AIE stages in software.
+sh_test(
+    name = "aie-roundtrip-hybrid",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //tests/functional/aie-vadd:run_hybrid.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-roundtrip-host)",
+        "$(rootpath roundtrip.cpp)",
+        "xilinx_vck190_base_202520_1",
+        "RoundTrip",
+    ],
+    data = [
+        "roundtrip.cpp",
+        "roundtrip.h",
+        ":aie-roundtrip-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+        "//tests/functional/aie-vadd:run_hybrid.sh",
+    ],
+    tags = ["manual"],
+)
+
 # Cycle-accurate AI Engine simulation of the same two-kernel graph.
 sh_test(
     name = "aie-roundtrip-aiesim",
