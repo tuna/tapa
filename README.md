@@ -25,6 +25,7 @@ Published results: 2× higher frequency on average versus Vivado
 
 | | Sponsor | Contribution |
 | :---: | --- | --- |
+| <img src="https://vast.cs.ucla.edu/sites/default/themes/CADlab_cadlab/images/logo.png" alt="UCLA VAST Laboratory" width="96"> | [UCLA VAST Laboratory](https://vast.cs.ucla.edu/) | Original research and development; FPGA board access |
 | <img src="https://tuna.moe/assets/img/logo-small-dark@2x.png" alt="TUNA" width="96"> | [Tsinghua University TUNA Association](https://tuna.moe/) | Compute infrastructure and community maintenance |
 | <img src="https://upload.wikimedia.org/wikipedia/en/8/87/Kimi-logo-2025.png" alt="Moonshot Kimi" width="96"> | [Moonshot AI — Kimi](https://www.moonshot.ai/) | AI model tokens for development |
 
