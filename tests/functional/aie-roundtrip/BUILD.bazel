@@ -1,0 +1,24 @@
+"""PL to AIE to PL to AIE to PL round trip."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+cc_binary(
+    name = "aie-roundtrip-host",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+sh_test(
+    name = "aie-roundtrip",
+    size = "small",
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(rootpath :aie-roundtrip-host)"],
+    data = [":aie-roundtrip-host"],
+)
