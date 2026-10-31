@@ -98,3 +98,26 @@ sh_test(
     ],
     tags = ["manual"],
 )
+
+# Physical VCK5000 with PL graph control and two complete invocations.
+sh_test(
+    name = "aie-roundtrip-vck5000-hw",
+    size = "enormous",
+    srcs = ["//tests/functional/aie-vadd:run_vck5000.sh"],
+    args = [
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-roundtrip-host)",
+        "$(rootpath roundtrip.cpp)",
+        "xilinx_vck5000_gen4x8_qdma_2_202220_1",
+        "c1:00.1",
+        "RoundTrip",
+    ],
+    data = [
+        "roundtrip.cpp",
+        "roundtrip.h",
+        ":aie-roundtrip-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+    ],
+    tags = ["manual"],
+)

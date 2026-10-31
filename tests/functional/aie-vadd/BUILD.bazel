@@ -4,7 +4,10 @@ load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 
 exports_files(
-    ["run_hybrid.sh"],
+    [
+        "run_hybrid.sh",
+        "run_vck5000.sh",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -126,8 +129,8 @@ sh_test(
     tags = ["manual"],
 )
 
-# VCK5000 hardware with APU graph control and two bounded invocations.
-# Developer-run on an allocated card with Vitis 2022.2 and the APU SDK.
+# VCK5000 hardware with PL graph control and two bounded invocations.
+# Developer-run on an allocated card with Vitis 2022.2.
 sh_test(
     name = "aie-vadd-vck5000-hw",
     size = "enormous",

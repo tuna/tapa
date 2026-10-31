@@ -7,6 +7,8 @@ connection. Software simulation is unchanged: an AI Engine task runs as an
 ordinary task.
 
 The working example is `tests/functional/aie-vadd/`.
+`tests/functional/aie-roundtrip/` exercises two AIE stages separated by a PL
+stage, covering PL → AIE → PL → AIE → PL data movement.
 
 ## Marking a task
 
