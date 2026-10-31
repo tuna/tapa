@@ -22,3 +22,29 @@ sh_test(
     args = ["$(rootpath :aie-roundtrip-host)"],
     data = [":aie-roundtrip-host"],
 )
+
+# The AI Engine graph on x86sim, replaying the software-simulation streams.
+# Developer-run (needs Vitis with aiecompiler): not part of `bazel test //...`.
+sh_test(
+    name = "aie-roundtrip-x86sim",
+    size = "medium",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //bazel:run_aiesim.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-roundtrip-host)",
+        "$(rootpath roundtrip.cpp)",
+        "RoundTrip",
+        "--",
+        "--arg=n=64",
+        "--part-num=xcvc1902-vsva2197-2MP-e-S",
+    ],
+    data = [
+        "roundtrip.cpp",
+        "roundtrip.h",
+        ":aie-roundtrip-host",
+        "//bazel:run_aiesim.sh",
+        "//tapa-core:tapa",
+    ],
+    tags = ["manual"],
+)
