@@ -205,9 +205,13 @@ tapa link --package vadd.xo -o vadd.xclbin
 - `tapa pack` writes the PL kernel as `vadd.xo` and, next to it, the graph as
   `vadd.libadf.a` and the PLIO connectivity as `vadd.aie.cfg`, one
   `stream_connect` per boundary stream between the kernel's compute unit
-  (named after the top task) and `ai_engine_0`.
-- `tapa link` finds the sidecars next to the `.xo`, links the three into an
-  `.xsa`, and packages that into the `.xclbin`.
+  (named after the top task) and `ai_engine_0`. A VCK5000 build also writes
+  `vadd.aie_control.so`, an aarch64 PS kernel that controls the graph on the
+  card's APU. It is built with `EDGE_COMMON_SW` when set, or with the matching
+  SDK installed by the card's XRT-APU firmware package.
+- `tapa link` finds the sidecars next to the `.xo`, links the graph, PL XO and
+  connectivity into an `.xsa`, and packages that into the `.xclbin`. VCK5000
+  link then inserts the APU control kernel with `xclbinutil --add-pskernel`.
 
 ### Iterating on the AI Engine only
 
@@ -257,4 +261,8 @@ PL kernel is done and is then stopped; the next `tapa::invoke` resets it, so
 its tasks start again from the top. The reported kernel time is still the PL
 kernel's, from start to done.
 
-This control path has not yet run on an AI Engine device.
+VCK190 uses XRT's native graph API. On VCK5000, FRT instead sends one command
+buffer per control action to `tapa_aie_control` on the card's APU, where the
+same graph operations execute. The host does not call `xrtGraphOpen` on x86;
+that API is not supported by the VCK5000's PCIe runtime. APU control is used
+only for the short graph commands and does not reserve the APU for TAPA.

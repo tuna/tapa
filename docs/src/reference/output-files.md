@@ -13,7 +13,9 @@ The `--target` selected during analysis determines the output format.
 `tapa pack` produces an `.xo` file. Use it for fast cosimulation or run
 `tapa link --package <name>.xo` on it to build an `.xclbin` bitstream. For
 an AI Engine design, pack also writes `<name>.libadf.a` and `<name>.aie.cfg`
-next to the XO, and `tapa link` links and packages all three.
+next to the XO, and `tapa link` links and packages all three. A VCK5000 build
+adds `<name>.aie_control.so`; link inserts that APU control library into the
+final xclbin with `xclbinutil --add-pskernel`.
 
 ### `xilinx-slash`
 

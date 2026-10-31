@@ -120,3 +120,27 @@ sh_test(
     ],
     tags = ["manual"],
 )
+
+# VCK5000 hardware with APU graph control and two bounded invocations.
+# Developer-run on an allocated card with Vitis 2022.2 and the APU SDK.
+sh_test(
+    name = "aie-vadd-vck5000-hw",
+    size = "enormous",
+    srcs = ["run_vck5000.sh"],
+    args = [
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-detach-host)",
+        "$(rootpath vadd.cpp)",
+        "xilinx_vck5000_gen4x8_qdma_2_202220_1",
+        "c1:00.1",
+    ],
+    data = [
+        "run_vck5000.sh",
+        "vadd.cpp",
+        "vadd.h",
+        ":aie-detach-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+    ],
+    tags = ["manual"],
+)

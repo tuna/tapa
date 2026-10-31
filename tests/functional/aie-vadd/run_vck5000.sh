@@ -1,0 +1,18 @@
+#!/bin/bash
+# VCK5000 hardware: build the graph and PL, insert APU control, run twice.
+#
+# usage: run_vck5000.sh TAPA HOST KERNEL PLATFORM BDF
+set -euo pipefail
+
+tapa="$1"
+host="$2"
+kernel="$3"
+platform="$4"
+bdf="${5:-c1:00.1}"
+
+work="$(mktemp -d "${TEST_TMPDIR:-/tmp}/aie-vck5000.XXXXXX")"
+"${tapa}" --work-dir "${work}/work" compile -f "${kernel}" -t VecAdd \
+  --platform "${platform}" -o "${work}/vadd.xo"
+"${tapa}" --work-dir "${work}/work" link --package "${work}/vadd.xo" \
+  -o "${work}/vadd.xclbin"
+"${host}" --bitstream="${work}/vadd.xclbin" --xocl_bdf="${bdf}" 64
