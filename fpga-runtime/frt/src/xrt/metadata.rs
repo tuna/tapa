@@ -17,39 +17,24 @@ pub fn parse_embedded_xml(xml: &str) -> Result<KernelXml> {
 
 pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
     const MAGIC: &[u8; 8] = b"xclbin2\0";
+    const EMBEDDED_METADATA: u32 = 2;
 
     if xclbin.len() < 8 || &xclbin[..8] != MAGIC {
         return Err(FrtError::MetadataParse("not an xclbin2 file".into()));
     }
-
-    // The EMBEDDED_METADATA section is an XML document embedded in the xclbin.
-    // Rather than depending on the exact struct layout (which varies across
-    // xclbin versions), scan for the XML header and extract the document.
-    let xml_header = b"<?xml";
-    for start in xclbin
-        .windows(xml_header.len())
-        .enumerate()
-        .filter_map(|(i, w)| (w == xml_header).then_some(i))
-    {
-        // Find the end of this XML document (null terminator or end of valid UTF-8)
-        let remaining = &xclbin[start..];
-        let end = remaining
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(remaining.len());
-        let candidate = &remaining[..end];
-        // The EMBEDDED_METADATA XML contains a <project> or <root> element with
-        // kernel metadata. Ignore other XML fragments (e.g., IP catalog data).
-        if let Ok(text) = std::str::from_utf8(candidate) {
-            if text.contains("<kernel") {
-                return Ok(text.to_owned());
-            }
-        }
+    let section = xclbin_section(xclbin, EMBEDDED_METADATA).ok_or_else(|| {
+        FrtError::MetadataParse("EMBEDDED_METADATA section not found in xclbin".into())
+    })?;
+    let xml = section.split(|byte| *byte == 0).next().unwrap_or_default();
+    let text = std::str::from_utf8(xml).map_err(|error| {
+        FrtError::MetadataParse(format!("EMBEDDED_METADATA is not UTF-8: {error}"))
+    })?;
+    if !text.contains("<kernel") {
+        return Err(FrtError::MetadataParse(
+            "EMBEDDED_METADATA contains no kernel".into(),
+        ));
     }
-
-    Err(FrtError::MetadataParse(
-        "EMBEDDED_METADATA section not found in xclbin".into(),
-    ))
+    Ok(text.to_owned())
 }
 
 /// Extract the platform VBNV string from the xclbin2 binary header.
@@ -218,17 +203,6 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
 mod tests {
     use super::*;
 
-    /// An xclbin2 container holding `sections` as NUL-separated blobs.
-    fn xclbin_with(sections: &[&str]) -> Vec<u8> {
-        let mut buf = b"xclbin2\0".to_vec();
-        buf.resize(416, 0);
-        for section in sections {
-            buf.extend_from_slice(section.as_bytes());
-            buf.push(0);
-        }
-        buf
-    }
-
     /// An xclbin whose table of contents holds one section.
     fn xclbin_with_section(kind: u32, payload: &[u8]) -> Vec<u8> {
         let mut buf = b"xclbin2\0".to_vec();
@@ -282,25 +256,16 @@ mod tests {
     }
 
     #[test]
-    fn embedded_metadata_is_picked_out_of_the_container() {
+    fn embedded_metadata_stops_at_its_section_boundary() {
         const METADATA: &str = r#"<?xml version="1.0"?><project><kernel name="vadd"/></project>"#;
-        let xclbin = xclbin_with(&[METADATA]);
-        assert_eq!(extract_embedded_xml(&xclbin).expect("extract"), METADATA);
-    }
-
-    #[test]
-    fn other_embedded_xml_sections_are_skipped() {
-        // An xclbin also carries IP-catalog and system-diagram XML; only the
-        // section describing a kernel is the metadata we want.
-        const IP_LAYOUT: &str = r#"<?xml version="1.0"?><ip_catalog><ip name="axi"/></ip_catalog>"#;
-        const METADATA: &str = r#"<?xml version="1.0"?><project><kernel name="vadd"/></project>"#;
-        let xclbin = xclbin_with(&[IP_LAYOUT, METADATA]);
+        let mut xclbin = xclbin_with_section(2, METADATA.as_bytes());
+        xclbin.extend_from_slice(br#"{"trailing": "<kernel is not metadata>"}"#);
         assert_eq!(extract_embedded_xml(&xclbin).expect("extract"), METADATA);
     }
 
     #[test]
     fn a_container_without_metadata_is_an_error() {
-        let xclbin = xclbin_with(&[r#"<?xml version="1.0"?><ip_catalog/>"#]);
+        let xclbin = xclbin_with_section(25, br#"<?xml version="1.0"?><ip_catalog/>"#);
         let err = extract_embedded_xml(&xclbin).expect_err("no kernel section");
         assert!(err.to_string().contains("EMBEDDED_METADATA"), "{err}");
     }
