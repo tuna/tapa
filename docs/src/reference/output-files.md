@@ -14,8 +14,8 @@ The `--target` selected during analysis determines the output format.
 `tapa link --package <name>.xo` on it to build an `.xclbin` bitstream. For
 an AI Engine design, pack also writes `<name>.libadf.a` and `<name>.aie.cfg`
 next to the XO, and `tapa link` links and packages all three. A VCK5000 build
-adds `<name>.aie_control.so`; link inserts that APU control library into the
-final xclbin with `xclbinutil --add-pskernel`.
+also writes `<name>.aie_control.xo`, a PL kernel that controls the AI Engine
+graph through a dedicated PLIO; link includes it in the same hardware image.
 
 ### `xilinx-slash`
 

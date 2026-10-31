@@ -239,8 +239,14 @@ pub fn warn_narrow_boundaries(partition: &AiePartition) {
 /// The `v++ --link` connectivity of the PLIOs: each PL kernel AXIS port is
 /// wired to the PLIO of the same name. The compute unit is named after the
 /// top task, matching the `--connectivity.nk` naming `tapa link` uses.
-pub fn link_config(top: &str, partition: &AiePartition) -> String {
+pub fn link_config(top: &str, partition: &AiePartition, pl_control: bool) -> String {
     let mut out = String::from("[connectivity]\n");
+    if pl_control {
+        out.push_str(
+            "nk=tapa_aie_pl_control:1:controller_1\n\
+             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n",
+        );
+    }
     for stream in &partition.streams {
         if let tapa_ir::AieStreamKind::Plio { input, .. } = stream.kind {
             let pl = format!("{top}.{}", stream.name);
@@ -258,9 +264,9 @@ pub fn sidecars(xo: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
     (xo.with_extension("libadf.a"), xo.with_extension("aie.cfg"))
 }
 
-/// The APU control-kernel sidecar used on VCK5000.
-pub fn ps_control_sidecar(xo: &Path) -> std::path::PathBuf {
-    xo.with_extension("aie_control.so")
+/// The PL control-kernel sidecar used on VCK5000.
+pub fn pl_control_sidecar(xo: &Path) -> std::path::PathBuf {
+    xo.with_extension("aie_control.xo")
 }
 
 #[cfg(test)]

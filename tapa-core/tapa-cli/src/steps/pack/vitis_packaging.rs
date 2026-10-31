@@ -30,7 +30,8 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
     // Keep state validation ahead of custom-RTL overlays: malformed persisted
     // state must not mutate the canonical RTL tree before packaging fails.
     resolve_top_task(design)?;
-    resolve_device_settings(&ctx.work_dir, &state.flow)?;
+    let (_, clock_period) = resolve_device_settings(&ctx.work_dir, &state.flow)?;
+    let target_mhz = tapa_xilinx::tools::vitis::target_frequency_mhz(clock_period.nanoseconds())?;
 
     let hdl_dir = ctx.work_dir.join("rtl");
     if !hdl_dir.is_dir() {
@@ -47,16 +48,19 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
     let output_path = enforce_xo_suffix(args.output.as_ref());
     ctx.with_tool_runner(|runner| {
         package_prepared_vitis_rtl(runner, state, &hdl_dir, &output_path, Some(&ctx.work_dir))?;
-        if write_aie_sidecars(&ctx.work_dir, design, state.flow.skip_aie, &output_path)?.is_some() {
-            write_aie_ps_control(
-                runner,
-                &ctx.work_dir,
-                state.flow.platform.as_deref().unwrap_or_default(),
-                design,
-                &output_path,
-            )?;
+        let platform = state.flow.platform.as_deref().unwrap_or_default();
+        if write_aie_sidecars(
+            &ctx.work_dir,
+            design,
+            state.flow.skip_aie,
+            platform,
+            &output_path,
+        )?
+        .is_some()
+        {
+            write_aie_pl_control(runner, &ctx.work_dir, platform, target_mhz, &output_path)?;
         } else {
-            remove_aie_ps_control(&output_path)?;
+            remove_aie_control(&output_path)?;
         }
         Ok(())
     })
@@ -504,10 +508,14 @@ fn is_report_table_rule(line: &str) -> bool {
     !line.is_empty() && line.starts_with('+') && line.chars().all(|c| c == '+' || c == '-')
 }
 
-fn remove_aie_ps_control(xo: &Path) -> Result<()> {
-    let path = crate::aie::ps_control_sidecar(xo);
-    if path.exists() {
-        fs_err::remove_file(path)?;
+fn remove_aie_control(xo: &Path) -> Result<()> {
+    for path in [
+        crate::aie::pl_control_sidecar(xo),
+        xo.with_extension("aie_control.so"),
+    ] {
+        if path.exists() {
+            fs_err::remove_file(path)?;
+        }
     }
     Ok(())
 }
@@ -522,34 +530,29 @@ fn remove_aie_sidecars(xo: &Path) -> Result<()> {
     if cfg.exists() {
         fs_err::remove_file(cfg)?;
     }
-    remove_aie_ps_control(xo)
+    remove_aie_control(xo)
 }
 
-fn write_aie_ps_control(
+fn write_aie_pl_control(
     runner: &dyn ToolRunner,
     work_dir: &Path,
     platform: &str,
-    design: &Design,
+    target_mhz: u32,
     xo: &Path,
 ) -> Result<Option<PathBuf>> {
-    if !tapa_xilinx::tools::aie::ps_control::required(platform) {
-        remove_aie_ps_control(xo)?;
+    if !tapa_xilinx::tools::aie::pl_control::required(platform) {
+        remove_aie_control(xo)?;
         return Ok(None);
     }
-    let Some(partition) = tapa_ir::AiePartition::derive(design)? else {
-        return Ok(None);
-    };
-    let output = crate::aie::ps_control_sidecar(xo);
-    let job = tapa_xilinx::tools::aie::ps_control::AiePsControlJob::builder()
-        .graph_name(
-            tapa_xilinx::tools::aie::graph::graph_instance(partition.run_forever).to_string(),
-        )
-        .sdk(tapa_xilinx::tools::aie::ps_control::AiePsSdk::from_environment())
-        .work_dir(crate::aie::dir(work_dir, "ps-control"))
+    let output = crate::aie::pl_control_sidecar(xo);
+    let job = tapa_xilinx::tools::aie::pl_control::AiePlControlJob::builder()
+        .platform(platform.to_string())
+        .target_mhz(target_mhz)
+        .work_dir(crate::aie::dir(work_dir, "pl-control"))
         .output(crate::util::utf8(&output))
         .build();
-    tapa_xilinx::tools::aie::ps_control::compile(runner, &job)?;
-    log::info!("AI Engine APU control: {}", output.display());
+    tapa_xilinx::tools::aie::pl_control::compile(runner, &job)?;
+    log::info!("AI Engine PL control: {}", output.display());
     Ok(Some(output))
 }
 
@@ -557,6 +560,7 @@ fn write_aie_sidecars(
     work_dir: &Path,
     design: &Design,
     skip_aie: bool,
+    platform: &str,
     xo: &Path,
 ) -> Result<Option<(PathBuf, PathBuf)>> {
     let Some(partition) = tapa_ir::AiePartition::derive(design)? else {
@@ -580,7 +584,14 @@ fn write_aie_sidecars(
     }
     let (libadf_out, cfg_out) = crate::aie::sidecars(xo);
     fs_err::copy(&libadf, &libadf_out)?;
-    fs_err::write(&cfg_out, crate::aie::link_config(&design.top, &partition))?;
+    fs_err::write(
+        &cfg_out,
+        crate::aie::link_config(
+            &design.top,
+            &partition,
+            tapa_xilinx::tools::aie::pl_control::required(platform),
+        ),
+    )?;
     log::info!(
         "AI Engine graph: {} and {}",
         libadf_out.display(),
@@ -688,8 +699,15 @@ mod tests {
         let (libadf, cfg) = crate::aie::sidecars(xo);
         fs_err::write(libadf, "stale graph").expect("write stale graph");
         fs_err::write(cfg, "stale connectivity").expect("write stale connectivity");
-        fs_err::write(crate::aie::ps_control_sidecar(xo), "stale control")
+        fs_err::write(crate::aie::pl_control_sidecar(xo), "stale control")
             .expect("write stale control");
+        fs_err::write(xo.with_extension("aie_control.so"), "stale APU control")
+            .expect("write stale APU control");
+    }
+
+    fn assert_no_aie_control(xo: &Path) {
+        assert!(!crate::aie::pl_control_sidecar(xo).exists());
+        assert!(!xo.with_extension("aie_control.so").exists());
     }
 
     #[test]
@@ -699,7 +717,7 @@ mod tests {
             let xo = dir.path().join("k.xo");
             write_stale_sidecars(&xo);
             let state = aie_state(skip_aie);
-            let result = write_aie_sidecars(dir.path(), &state.graph, skip_aie, &xo);
+            let result = write_aie_sidecars(dir.path(), &state.graph, skip_aie, "", &xo);
             if skip_aie {
                 assert!(result.expect("intentional skip").is_none());
             } else {
@@ -707,19 +725,19 @@ mod tests {
             }
             let (libadf, cfg) = crate::aie::sidecars(&xo);
             assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
-            assert!(!crate::aie::ps_control_sidecar(&xo).exists());
+            assert_no_aie_control(&xo);
         }
 
         let dir = tempfile::tempdir().expect("tempdir");
         let xo = dir.path().join("k.xo");
         write_stale_sidecars(&xo);
         let state = pl_only_state();
-        assert!(write_aie_sidecars(dir.path(), &state.graph, false, &xo)
+        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
             .expect("PL-only package")
             .is_none());
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
-        assert!(!crate::aie::ps_control_sidecar(&xo).exists());
+        assert_no_aie_control(&xo);
     }
 
     #[test]
@@ -730,7 +748,7 @@ mod tests {
         fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
         let xo = dir.path().join("k.xo");
         let state = aie_state(false);
-        let (libadf, cfg) = write_aie_sidecars(dir.path(), &state.graph, false, &xo)
+        let (libadf, cfg) = write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
             .expect("package graph")
             .expect("sidecars");
         assert_eq!(
@@ -741,6 +759,31 @@ mod tests {
             fs_err::read_to_string(cfg).expect("read connectivity"),
             "[connectivity]
 "
+        );
+    }
+
+    #[test]
+    fn vck5000_sidecars_include_pl_control_connectivity() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let graph_dir = dir.path().join("aie").join("hw");
+        fs_err::create_dir_all(&graph_dir).expect("create graph directory");
+        fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
+        let xo = dir.path().join("k.xo");
+        let state = aie_state(false);
+        let (_, cfg) = write_aie_sidecars(
+            dir.path(),
+            &state.graph,
+            false,
+            "xilinx_vck5000_gen4x8_qdma_2_202220_1",
+            &xo,
+        )
+        .expect("package graph")
+        .expect("sidecars");
+        assert_eq!(
+            fs_err::read_to_string(cfg).expect("read connectivity"),
+            "[connectivity]\n\
+             nk=tapa_aie_pl_control:1:controller_1\n\
+             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n"
         );
     }
 

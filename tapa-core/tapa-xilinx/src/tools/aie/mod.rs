@@ -5,7 +5,6 @@
 pub mod graph;
 pub mod pl_control;
 pub mod plio;
-pub mod ps_control;
 pub mod report;
 
 use camino::{Utf8Path, Utf8PathBuf};

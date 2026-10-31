@@ -66,7 +66,7 @@ pub enum VitisLinkMode {
 struct AieInputs {
     libadf: Utf8PathBuf,
     config: Utf8PathBuf,
-    ps_control: Option<Utf8PathBuf>,
+    pl_control: Option<Utf8PathBuf>,
 }
 
 /// One portable Vitis hardware-link job.
@@ -220,17 +220,7 @@ impl<'a> ResolvedJob<'a> {
         } else {
             output_xclbin.clone()
         };
-        let package_output = if aie
-            .as_ref()
-            .is_some_and(|inputs| inputs.ps_control.is_some())
-        {
-            let stem = output_xclbin
-                .file_stem()
-                .ok_or_else(|| XilinxError::VitisLink("xclbin path has no file stem".into()))?;
-            artifacts_dir.join(format!("{stem}.without_ps_control.xclbin"))
-        } else {
-            output_xclbin.clone()
-        };
+        let package_output = output_xclbin.clone();
         let package_temp_dir = Utf8PathBuf::from(format!("{temp_dir}.package"));
         let timing_hook = artifacts_dir.join(FINAL_TIMING_HOOK_NAME);
         let timing_report = artifacts_dir.join(TIMING_REPORT_NAME);
@@ -265,20 +255,20 @@ fn discover_aie_inputs(xo: &Utf8Path) -> Result<Option<AieInputs>> {
         .ok_or_else(|| XilinxError::VitisLink("XO path has no file stem".into()))?;
     let libadf = parent.join(format!("{stem}.libadf.a"));
     let config = parent.join(format!("{stem}.aie.cfg"));
-    let ps_control = parent.join(format!("{stem}.aie_control.so"));
-    if !libadf.exists() && !config.exists() && !ps_control.exists() {
+    let pl_control = parent.join(format!("{stem}.aie_control.xo"));
+    if !libadf.exists() && !config.exists() && !pl_control.exists() {
         return Ok(None);
     }
     validate_input(&libadf, "AI Engine graph (`<name>.libadf.a`)")?;
     validate_input(&config, "AI Engine connectivity (`<name>.aie.cfg`)")?;
-    let ps_control = ps_control.exists().then_some(ps_control);
-    if let Some(path) = &ps_control {
-        validate_input(path, "AI Engine APU control (`<name>.aie_control.so`)")?;
+    let pl_control = pl_control.exists().then_some(pl_control);
+    if let Some(path) = &pl_control {
+        validate_input(path, "AI Engine PL control (`<name>.aie_control.xo`)")?;
     }
     Ok(Some(AieInputs {
         libadf,
         config,
-        ps_control,
+        pl_control,
     }))
 }
 
@@ -377,6 +367,9 @@ fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         ))
         .arg(ToolValue::path(&resolved.xo));
     if let Some(aie) = &resolved.aie {
+        if let Some(control) = &aie.pl_control {
+            inv = inv.arg(ToolValue::path(control));
+        }
         inv = inv.arg(ToolValue::path(&aie.libadf));
     }
 
@@ -394,6 +387,9 @@ fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     if let Some(aie) = &resolved.aie {
         inv.uploads.push(aie.libadf.clone());
         inv.uploads.push(aie.config.clone());
+        if let Some(control) = &aie.pl_control {
+            inv.uploads.push(control.clone());
+        }
     }
     inv.downloads.push(resolved.artifacts_dir.clone());
     if job.mode == VitisLinkMode::Full && !resolved.link_output.starts_with(&resolved.artifacts_dir)
@@ -430,29 +426,6 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     if !resolved.package_output.starts_with(&resolved.artifacts_dir) {
         inv.downloads.push(resolved.package_output.clone());
     }
-    inv
-}
-
-fn build_ps_control_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
-    let aie = resolved
-        .aie
-        .as_ref()
-        .expect("PS-control invocation is only built for AIE links");
-    let ps_control = aie
-        .ps_control
-        .as_ref()
-        .expect("PS-control invocation requires its sidecar");
-    let mut inv = ToolInvocation::new("xclbinutil")
-        .arg("--input")
-        .arg(ToolValue::path(&resolved.package_output))
-        .arg("--add-pskernel")
-        .arg(ToolValue::path(ps_control))
-        .arg("--output")
-        .arg(ToolValue::path(&resolved.output_xclbin))
-        .arg("--force");
-    inv.cwd = Some(resolved.work_dir.clone());
-    inv.uploads = vec![resolved.package_output.clone(), ps_control.clone()];
-    inv.downloads.push(resolved.output_xclbin.clone());
     inv
 }
 
@@ -498,26 +471,16 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         ));
     }
 
-    let (stdout, stderr) = if let Some(aie) = &resolved.aie {
+    let (stdout, stderr) = if resolved.aie.is_some() {
         let package_output = runner.run(&build_package_invocation(&resolved))?;
         if package_output.exit_code != 0 {
             return Err(super::tool_failure(&job.vpp, package_output));
         }
-        validate_input(&resolved.package_output, "packaged xclbin")?;
-        let mut stdout = merge_tool_text(link_output.stdout, package_output.stdout);
-        let mut stderr = merge_tool_text(link_output.stderr, package_output.stderr);
-        if aie.ps_control.is_some() {
-            let control_output = runner.run(&build_ps_control_invocation(&resolved))?;
-            if control_output.exit_code != 0 {
-                return Err(super::tool_failure("xclbinutil", control_output));
-            }
-            validate_input(&resolved.output_xclbin, "PS-controlled xclbin")?;
-            stdout = merge_tool_text(stdout, control_output.stdout);
-            stderr = merge_tool_text(stderr, control_output.stderr);
-        } else {
-            validate_input(&resolved.output_xclbin, "packaged xclbin")?;
-        }
-        (stdout, stderr)
+        validate_input(&resolved.output_xclbin, "packaged xclbin")?;
+        (
+            merge_tool_text(link_output.stdout, package_output.stdout),
+            merge_tool_text(link_output.stderr, package_output.stderr),
+        )
     } else {
         (link_output.stdout, link_output.stderr)
     };
@@ -850,59 +813,42 @@ packaged"
     }
 
     #[test]
-    fn ps_control_is_added_after_the_normal_aie_package() {
+    fn pl_control_is_linked_and_uploaded_with_aie_inputs() {
         let mut fixture = Fixture::new();
         fixture.job.mode = VitisLinkMode::Full;
         let parent = fixture.job.xo.parent().expect("XO parent");
         let libadf = parent.join("kernel.libadf.a");
         let aie_config = parent.join("kernel.aie.cfg");
-        let ps_control = parent.join("kernel.aie_control.so");
+        let control = parent.join("kernel.aie_control.xo");
         fs_err::write(&libadf, b"adf").expect("write libadf");
         fs_err::write(&aie_config, b"aie config").expect("write AIE config");
-        fs_err::write(&ps_control, b"ps control").expect("write PS control");
+        fs_err::write(&control, b"PL control").expect("write PL control");
         let xsa = fixture
             .job
             .output_xclbin
             .parent()
             .expect("output parent")
             .join("Top.xsa");
-        let packaged = fixture
-            .job
-            .output_xclbin
-            .parent()
-            .expect("output parent")
-            .join("Top.without_ps_control.xclbin");
         let runner = MockToolRunner::new();
         runner.push_ok("v++", ToolOutput::default());
         runner.attach_download(&xsa, b"xsa".to_vec());
         runner.attach_download(fixture.timing_report(), timing_report());
         runner.push_ok("v++", ToolOutput::default());
-        runner.attach_download(&packaged, b"packaged".to_vec());
-        runner.push_ok("xclbinutil", ToolOutput::default());
         runner.attach_download(&fixture.job.output_xclbin, b"controlled".to_vec());
 
-        run_vitis_link(&runner, &fixture.job).expect("PS-controlled AIE link succeeds");
+        run_vitis_link(&runner, &fixture.job).expect("PL-controlled AIE link succeeds");
 
         let calls = runner.calls();
-        assert_eq!(calls.len(), 3);
+        assert_eq!(calls.len(), 2);
+        let link_args = calls[0].local_args();
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == [fixture.job.xo.as_str(), control.as_str()]));
+        assert!(calls[0].uploads.contains(&control));
         assert!(calls[1]
             .local_args()
             .windows(2)
-            .any(|args| args == ["--output", packaged.as_str()]));
-        assert_eq!(calls[2].program, "xclbinutil");
-        assert_eq!(
-            calls[2].local_args(),
-            [
-                "--input",
-                packaged.as_str(),
-                "--add-pskernel",
-                ps_control.as_str(),
-                "--output",
-                fixture.job.output_xclbin.as_str(),
-                "--force",
-            ]
-        );
-        assert_eq!(calls[2].uploads, vec![packaged, ps_control]);
+            .any(|args| args == ["--output", fixture.job.output_xclbin.as_str()]));
     }
 
     #[test]

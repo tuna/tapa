@@ -206,12 +206,10 @@ tapa link --package vadd.xo -o vadd.xclbin
   `vadd.libadf.a` and the PLIO connectivity as `vadd.aie.cfg`, one
   `stream_connect` per boundary stream between the kernel's compute unit
   (named after the top task) and `ai_engine_0`. A VCK5000 build also writes
-  `vadd.aie_control.so`, an aarch64 PS kernel that controls the graph on the
-  card's APU. It is built with `EDGE_COMMON_SW` when set, or with the matching
-  SDK installed by the card's XRT-APU firmware package.
-- `tapa link` finds the sidecars next to the `.xo`, links the graph, PL XO and
-  connectivity into an `.xsa`, and packages that into the `.xclbin`. VCK5000
-  link then inserts the APU control kernel with `xclbinutil --add-pskernel`.
+  `vadd.aie_control.xo`, a PL kernel that controls the graph through a
+  dedicated PLIO; no APU control program is needed.
+- `tapa link` finds the sidecars next to the `.xo`, links the graph, PL XOs and
+  connectivity into an `.xsa`, and packages that into the `.xclbin`.
 
 ### Iterating on the AI Engine only
 
