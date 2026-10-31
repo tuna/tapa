@@ -320,7 +320,7 @@ fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("3");
     if resolved.aie.is_some() {
         inv = inv
-            .arg("--clock.default_freqhz")
+            .arg("--clock.defaultFreqHz")
             .arg((u64::from(job.target_mhz) * 1_000_000).to_string());
     } else {
         inv = inv
@@ -769,7 +769,7 @@ packaged"
             .any(|args| args == ["--output", xsa.as_str()]));
         assert!(link_args
             .windows(2)
-            .any(|args| args == ["--clock.default_freqhz", "300000000"]));
+            .any(|args| args == ["--clock.defaultFreqHz", "300000000"]));
         assert!(!link_args.iter().any(|arg| arg == "--kernel_frequency"));
         assert!(link_args
             .windows(2)
