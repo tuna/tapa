@@ -106,6 +106,7 @@ pub struct GraphBuild {
     pub target: AieTarget,
     pub device: AieDevice,
     pub pl_freq_mhz: Option<f64>,
+    pub pl_control: bool,
     pub sim: Option<SimMain>,
 }
 
@@ -122,6 +123,7 @@ pub fn prepare(
         target,
         device,
         pl_freq_mhz,
+        pl_control,
         sim,
     } = build;
     let dir = dir.as_path();
@@ -130,6 +132,7 @@ pub fn prepare(
         sources: kernel_sources(&tree, graph, partition)?,
         rtp_args: rtp_args(graph, partition)?,
         plio_mhz: pl_freq_mhz,
+        pl_control,
         sim,
     };
     let files = render_graph(partition, &options)?;
@@ -189,6 +192,7 @@ pub fn prepare(
         .include_dirs(include_dirs)
         .defines(defines)
         .pl_freq_mhz(pl_freq_mhz)
+        .pl_control(pl_control)
         .build())
 }
 

@@ -56,6 +56,8 @@ pub struct GraphOptions {
     pub rtp_args: BTreeMap<String, u32>,
     /// The PL clock driving every PLIO, in MHz.
     pub plio_mhz: Option<f64>,
+    /// Drive graph control through a PLIO and per-kernel packet controllers.
+    pub pl_control: bool,
     /// The simulator `main` that writes the runtime parameters and runs the
     /// graph; without it, `main` only initializes and ends the graph.
     pub sim: Option<SimMain>,
@@ -310,6 +312,14 @@ impl GraphText {
                         self.body,
                         "    adf::connect<adf::parameter>({rtp}, adf::async({k}.in[{inputs}]));"
                     );
+                    if options.pl_control {
+                        let _ = writeln!(
+                            self.body,
+                            "    adf::single_buffer({k}.in[{inputs}]);\n    \
+                             adf::location<adf::buffer>({k}.in[{inputs}]) = \
+                             adf::location<adf::kernel>({k});"
+                        );
+                    }
                     inputs += 1;
                 }
                 AiePortKind::Scalar { .. } => {}
@@ -339,6 +349,28 @@ impl GraphText {
                 frame: false,
             },
         );
+    }
+
+    fn pl_control(&mut self, kernels: &[AieKernel], freq: &str) {
+        let _ = writeln!(self.members, "  adf::input_plio p_tapa_ctrl;");
+        let _ = writeln!(
+            self.body,
+            "    p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", \
+             adf::plio_32_bits, \"data/tapa_ctrl.txt\"{freq});"
+        );
+        for kernel in kernels {
+            let control = format!("control_{}", kernel.name);
+            let _ = writeln!(self.members, "  adf::pktcontrol {control};");
+            let _ = writeln!(
+                self.body,
+                "    {control} = adf::pktcontrol::create();\n    \
+                 adf::connect<adf::pktstream, adf::pktstream> n_{control}\
+                 (p_tapa_ctrl.out[0], {control}.in[0]);\n    \
+                 adf::location<adf::interconnect>({control}) = \
+                 adf::location<adf::kernel>(k_{});",
+                kernel.name
+            );
+        }
     }
 
     fn connect(&mut self, index: usize, stream: &AieStream) -> Result<()> {
@@ -375,6 +407,9 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
         .plio_mhz
         .map(|mhz| format!(", {mhz}"))
         .unwrap_or_default();
+    if options.pl_control {
+        text.pl_control(&partition.kernels, &freq);
+    }
     for (index, stream) in partition.streams.iter().enumerate() {
         if let AieStreamKind::Plio { input, width } = stream.kind {
             text.plio(index, stream, input, width, &freq);
@@ -550,7 +585,7 @@ mod tests {
         }
     }
 
-    fn render(sim: Option<SimMain>) -> BTreeMap<String, String> {
+    fn render_with_control(sim: Option<SimMain>, pl_control: bool) -> BTreeMap<String, String> {
         let source = |task: &str| KernelSource {
             tu: "design.cpp".into(),
             defines: vec![format!("TAPA_TASK_DEF_{task}")],
@@ -562,9 +597,14 @@ mod tests {
             ]),
             rtp_args: BTreeMap::from([("n".into(), 3)]),
             plio_mhz: Some(312.5),
+            pl_control,
             sim,
         };
         render_graph(&partition(), &options).expect("render")
+    }
+
+    fn render(sim: Option<SimMain>) -> BTreeMap<String, String> {
+        render_with_control(sim, false)
     }
 
     #[test]
@@ -612,6 +652,27 @@ mod tests {
             !graph.contains("fifo_depth(n_a_q)"),
             "a PLIO takes no depth"
         );
+    }
+
+    #[test]
+    fn pl_control_broadcasts_to_tile_local_packet_controllers() {
+        let graph = &render_with_control(None, true)["graph.cpp"];
+        for line in [
+            "p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", adf::plio_32_bits, \
+             \"data/tapa_ctrl.txt\", 312.5);",
+            "control_Fan_0 = adf::pktcontrol::create();",
+            "control_Join_0 = adf::pktcontrol::create();",
+            "n_control_Fan_0(p_tapa_ctrl.out[0], control_Fan_0.in[0]);",
+            "n_control_Join_0(p_tapa_ctrl.out[0], control_Join_0.in[0]);",
+            "adf::location<adf::interconnect>(control_Join_0) = \
+             adf::location<adf::kernel>(k_Join_0);",
+            "adf::single_buffer(k_Join_0.in[2]);",
+            "adf::location<adf::buffer>(k_Join_0.in[2]) = \
+             adf::location<adf::kernel>(k_Join_0);",
+        ] {
+            assert!(graph.contains(line), "missing `{line}` in:\n{graph}");
+        }
+        assert!(!render(None)["graph.cpp"].contains("tapa_ctrl"));
     }
 
     #[test]

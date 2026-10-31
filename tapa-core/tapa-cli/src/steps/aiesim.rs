@@ -192,6 +192,7 @@ fn run_with(
             target,
             device: device(platform, part)?,
             pl_freq_mhz: pl_freq_mhz(&state),
+            pl_control: false,
             sim: Some(sim),
         },
     )?;

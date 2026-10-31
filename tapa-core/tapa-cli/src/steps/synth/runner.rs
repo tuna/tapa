@@ -245,6 +245,7 @@ fn build_aie(
             target: tapa_xilinx::tools::aie::AieTarget::Hw,
             device: device(args.platform.as_deref(), args.part_num.as_deref())?,
             pl_freq_mhz: Some(1000.0 / clock_period.nanoseconds()),
+            pl_control: false,
             sim: None,
         },
     )?;

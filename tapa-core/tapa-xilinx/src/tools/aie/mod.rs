@@ -3,6 +3,7 @@
 //! `aiesimulator` against PLIO stimulus.
 
 pub mod graph;
+pub mod pl_control;
 pub mod plio;
 pub mod ps_control;
 pub mod report;
@@ -59,6 +60,9 @@ pub struct AieCompileJob {
     /// The PL clock in MHz, which every PLIO runs at.
     #[builder(default)]
     pub pl_freq_mhz: Option<f64>,
+    /// PL control writes RTP storage directly, without AIE lock operations.
+    #[builder(default)]
+    pub pl_control: bool,
 }
 
 /// Compile the graph; on success the graph directory holds `Work/` and, for
@@ -80,6 +84,9 @@ pub fn compile(runner: &dyn ToolRunner, job: &AieCompileJob) -> Result<()> {
     }
     if let Some(mhz) = job.pl_freq_mhz {
         inv = inv.arg(format!("--pl-freq={mhz}"));
+    }
+    if job.pl_control {
+        inv = inv.arg("-use-async-rtp-locks=false");
     }
     inv = inv.arg("graph.cpp");
     run_in(runner, inv, &job.graph_dir, "aiecompiler")
