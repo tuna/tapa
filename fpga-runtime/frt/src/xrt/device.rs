@@ -5,6 +5,7 @@ use super::api::{
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, parse_embedded_xml, AieGraph,
 };
+use super::ps_control::{self, PsControl};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::kernel_xml::{KernelXml, XclbinTarget};
@@ -37,6 +38,7 @@ enum ExecutionState {
 /// The AI Engine graph an xclbin carries, open for control.
 struct Graph {
     handle: Handle,
+    ps_control: Option<PsControl>,
     meta: AieGraph,
     /// Whether it ran since the xclbin was loaded: a run-forever graph is
     /// reset before it runs again, so its kernels restart from their entry.
@@ -66,7 +68,7 @@ pub struct XrtDevice {
 unsafe impl Send for XrtDevice {}
 
 /// Fails with what XRT was asked to do when a call returns non-zero.
-fn check(rc: c_int, action: &str) -> Result<()> {
+pub(super) fn check(rc: c_int, action: &str) -> Result<()> {
     if rc == 0 {
         Ok(())
     } else {
@@ -76,7 +78,7 @@ fn check(rc: c_int, action: &str) -> Result<()> {
     }
 }
 
-fn non_null(handle: Handle, action: &str) -> Result<Handle> {
+pub(super) fn non_null(handle: Handle, action: &str) -> Result<Handle> {
     if handle.is_null() {
         Err(FrtError::Xrt(format!("cannot {action}")))
     } else {
@@ -186,13 +188,24 @@ impl XrtDevice {
         let run = unsafe { (api.run_open)(this.kernel) };
         this.run = non_null(run, "create a kernel run")?;
         if let Some(meta) = parse_aie_graph(&bytes)? {
-            let name = CString::new(meta.name.clone())
-                .map_err(|e| FrtError::Xrt(format!("graph name: {e}")))?;
-            // SAFETY: live device, the UUID it reported, a valid C string.
-            let handle = unsafe { (api.graph_open)(this.device, uuid.as_ptr(), name.as_ptr()) };
-            let handle = non_null(handle, &format!("open the AI Engine graph `{}`", meta.name))?;
+            let (handle, control) = if this.meta.aie_ps_control {
+                (
+                    std::ptr::null_mut(),
+                    Some(PsControl::open(api, this.device, &uuid)?),
+                )
+            } else {
+                let name = CString::new(meta.name.clone())
+                    .map_err(|e| FrtError::Xrt(format!("graph name: {e}")))?;
+                // SAFETY: live device, the UUID it reported, a valid C string.
+                let handle = unsafe { (api.graph_open)(this.device, uuid.as_ptr(), name.as_ptr()) };
+                (
+                    non_null(handle, &format!("open the AI Engine graph `{}`", meta.name))?,
+                    None,
+                )
+            };
             this.graph = Some(Graph {
                 handle,
+                ps_control: control,
                 meta,
                 has_run: false,
             });
@@ -208,7 +221,14 @@ impl XrtDevice {
         let Some(graph) = &mut self.graph else {
             return Ok(());
         };
-        if graph.meta.run_forever && graph.has_run {
+        let reset = graph.meta.run_forever && graph.has_run;
+        if let Some(control) = &graph.ps_control {
+            let command = ps_control::start(&graph.meta, values, reset)?;
+            control.execute(&command)?;
+            graph.has_run = true;
+            return Ok(());
+        }
+        if reset {
             // SAFETY: live graph handle.
             let rc = unsafe { (self.api.graph_reset)(graph.handle) };
             check(rc, "reset the AI Engine graph")?;
@@ -249,6 +269,9 @@ impl XrtDevice {
         let Some(graph) = &self.graph else {
             return Ok(());
         };
+        if let Some(control) = &graph.ps_control {
+            return control.execute(&ps_control::stop(graph.meta.run_forever));
+        }
         let cycles = u64::from(graph.meta.run_forever);
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_wait)(graph.handle, cycles) };
@@ -262,6 +285,9 @@ impl XrtDevice {
         let Some(graph) = &self.graph else {
             return Ok(());
         };
+        if let Some(control) = &graph.ps_control {
+            return control.execute(&ps_control::abort());
+        }
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_reset)(graph.handle) };
         check(rc, "reset the AI Engine graph after a kernel failure")
@@ -271,9 +297,14 @@ impl XrtDevice {
 impl Drop for XrtDevice {
     fn drop(&mut self) {
         // Each handle is live or null and closed once, children first.
-        if let Some(graph) = &self.graph {
-            // SAFETY: live graph handle.
-            unsafe { (self.api.graph_close)(graph.handle) };
+        if let Some(graph) = &mut self.graph {
+            if !graph.handle.is_null() {
+                // SAFETY: live native graph handle.
+                unsafe { (self.api.graph_close)(graph.handle) };
+            }
+            if let Some(control) = graph.ps_control.take() {
+                drop(control);
+            }
         }
         if !self.run.is_null() {
             // SAFETY: live run handle.

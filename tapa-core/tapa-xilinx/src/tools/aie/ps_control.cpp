@@ -9,6 +9,7 @@
 struct xrtHandles {
   xclDeviceHandle device;
   xrtGraphHandle graph;
+  xuid_t uuid;
 };
 
 namespace {
@@ -76,40 +77,45 @@ extern "C" {
 
 __attribute__((visibility("default"))) xrtHandles* tapa_aie_control_init(
     xclDeviceHandle device, const xuid_t xclbin_uuid) {
-  auto* handles = new (std::nothrow) xrtHandles{device, nullptr};
+  auto* handles = new (std::nothrow) xrtHandles{device, nullptr, {}};
   if (handles == nullptr) return nullptr;
-  handles->graph = xrtGraphOpen(device, xclbin_uuid, kGraphName);
-  if (handles->graph == nullptr) {
-    delete handles;
-    return nullptr;
-  }
+  std::memcpy(handles->uuid, xclbin_uuid, sizeof(xuid_t));
   return handles;
 }
 
 __attribute__((visibility("default"))) int tapa_aie_control(
-    const uint8_t* commands, uint32_t bytes, xrtHandles* handles) {
-  if (commands == nullptr || handles == nullptr || handles->graph == nullptr) {
-    return EINVAL;
-  }
-  const uint8_t* cursor = commands;
-  const uint8_t* end = commands + bytes;
-  bool valid = true;
-  const uint32_t action = read_u32(cursor, end, valid);
-  if (!valid) return EINVAL;
-  switch (action) {
-    case kStart:
-      return start(cursor, end, handles);
-    case kStop: {
-      const uint64_t cycles = read_u64(cursor, end, valid);
-      if (!valid || cursor != end) return EINVAL;
-      return xrtGraphWait(handles->graph, cycles);
+    uint8_t* commands, uint32_t bytes, xrtHandles* handles) {
+  const int rc = [&]() {
+    if (commands == nullptr || handles == nullptr) return EINVAL;
+    if (handles->graph == nullptr) {
+      handles->graph = xrtGraphOpen(handles->device, handles->uuid, kGraphName);
+      if (handles->graph == nullptr) return EIO;
     }
-    case kAbort:
-      if (cursor != end) return EINVAL;
-      return xrtGraphReset(handles->graph);
-    default:
-      return EINVAL;
+    const uint8_t* cursor = commands;
+    const uint8_t* end = commands + bytes;
+    bool valid = true;
+    const uint32_t action = read_u32(cursor, end, valid);
+    if (!valid) return EINVAL;
+    switch (action) {
+      case kStart:
+        return start(cursor, end, handles);
+      case kStop: {
+        const uint64_t cycles = read_u64(cursor, end, valid);
+        if (!valid || cursor != end) return EINVAL;
+        return xrtGraphWait(handles->graph, cycles);
+      }
+      case kAbort:
+        if (cursor != end) return EINVAL;
+        return xrtGraphReset(handles->graph);
+      default:
+        return EINVAL;
+    }
+  }();
+  if (commands != nullptr && bytes >= sizeof(uint32_t)) {
+    const uint32_t status = static_cast<uint32_t>(rc);
+    std::memcpy(commands, &status, sizeof(status));
   }
+  return rc;
 }
 
 __attribute__((visibility("default"))) int tapa_aie_control_fini(

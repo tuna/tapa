@@ -29,6 +29,8 @@ pub struct KernelXml {
     /// `kernel.xml` inside an `.xo` does).
     pub platform: String,
     pub target: XclbinTarget,
+    /// The xclbin carries TAPA's APU graph-control PS kernel.
+    pub aie_ps_control: bool,
     pub args: Vec<ArgSpec>,
     /// Each argument's C type as the XML states it (`int`, `float`,
     /// `uint64_t`, ...), by argument id: XRT reads a scalar by it.
@@ -137,6 +139,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
     let mut kernel: Option<RawKernel> = None;
     let mut platform = String::new();
     let mut target = XclbinTarget::Flat;
+    let mut aie_ps_control = false;
 
     loop {
         let start = reader.buffer_position() as usize;
@@ -146,9 +149,17 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
                     let is_aie = e.attributes().flatten().any(|a| {
                         a.key.0 == "vlnv" && a.value.as_ref() == "xilinx.com:ip:ai_engine:1.0"
                     });
+                    let is_ps_control = e
+                        .attributes()
+                        .flatten()
+                        .any(|a| a.key.0 == "name" && a.value.as_ref() == "tapa_aie_control");
                     reader
                         .read_to_end(e.name())
                         .map_err(|e| CosimError::Metadata(e.to_string()))?;
+                    if is_ps_control {
+                        aie_ps_control = true;
+                        continue;
+                    }
                     if is_aie {
                         continue;
                     }
@@ -216,6 +227,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         top_name: kernel.name,
         platform,
         target,
+        aie_ps_control,
         args,
         host_types,
     })
@@ -408,6 +420,27 @@ mod tests {
         )
         .expect_err("two <kernel> elements must not merge into one arg list");
         assert!(err.to_string().contains("multiple <kernel>"), "{err}");
+    }
+
+    #[test]
+    fn aie_ps_control_is_auxiliary_not_a_second_user_kernel() {
+        let parsed = parse(
+            r#"<?xml version="1.0"?>
+<project>
+  <kernel name="vadd"><args>
+    <arg name="n" addressQualifier="0" id="0" dataWidth="32"/>
+  </args></kernel>
+  <kernel name="tapa_aie_control" language="c" type="ps"><args>
+    <arg name="commands" addressQualifier="1" id="0" type="const uint8_t*"/>
+    <arg name="bytes" addressQualifier="0" id="1" dataWidth="32"/>
+  </args></kernel>
+</project>"#,
+        )
+        .expect("parse PS-controlled xclbin");
+        assert_eq!(parsed.top_name, "vadd");
+        assert!(parsed.aie_ps_control);
+        assert_eq!(parsed.args.len(), 1);
+        assert_eq!(parsed.args[0].name, "n");
     }
 
     #[test]

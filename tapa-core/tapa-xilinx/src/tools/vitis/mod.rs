@@ -452,9 +452,7 @@ fn build_ps_control_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--force");
     inv.cwd = Some(resolved.work_dir.clone());
     inv.uploads = vec![resolved.package_output.clone(), ps_control.clone()];
-    if !resolved.output_xclbin.starts_with(&resolved.artifacts_dir) {
-        inv.downloads.push(resolved.output_xclbin.clone());
-    }
+    inv.downloads.push(resolved.output_xclbin.clone());
     inv
 }
 
