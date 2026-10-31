@@ -265,7 +265,6 @@ VCK190 uses XRT's native graph API. On VCK5000, FRT instead sends register
 writes to `tapa_aie_pl_control` in the PL: runtime parameters and the iteration
 count before the PL kernel starts, then core-disable after it completes. No
 APU control program or host `xrtGraphOpen` call is used. The control packets
-broadcast to per-kernel packet controllers. FRT requires a shared iteration
-register and non-colliding, single-buffered RTP addresses, and rejects a graph
-layout that does not satisfy these rules rather than controlling it
-ambiguously.
+broadcast to per-kernel packet controllers. FRT writes every distinct
+iteration-register address, requires single-buffered RTPs, and rejects
+colliding register addresses rather than controlling an ambiguous layout.

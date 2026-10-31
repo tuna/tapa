@@ -111,21 +111,16 @@ fn encode(writes: &[(u32, u32)]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
-fn validate_memory_map(graph: &AieGraph) -> Result<u32> {
-    let Some(&iterations) = graph.iteration_addresses.first() else {
-        return Err(FrtError::Xrt("AIE graph has no iteration register".into()));
-    };
-    if graph
+fn validate_memory_map(graph: &AieGraph) -> Result<BTreeSet<u32>> {
+    let iterations = graph
         .iteration_addresses
         .iter()
-        .any(|address| *address != iterations)
-    {
-        return Err(FrtError::Xrt(format!(
-            "AIE PL control requires one shared iteration-register address, got {:?}",
-            graph.iteration_addresses
-        )));
+        .copied()
+        .collect::<BTreeSet<_>>();
+    if iterations.is_empty() {
+        return Err(FrtError::Xrt("AIE graph has no iteration register".into()));
     }
-    let mut addresses = BTreeSet::from([iterations]);
+    let mut addresses = iterations.clone();
     for rtp in &graph.rtps {
         if rtp.ping_address != rtp.pong_address {
             return Err(FrtError::Xrt(format!(
@@ -172,7 +167,10 @@ pub(super) fn start(
             writes.push((address, u32::from_le_bytes(word)));
         }
     }
-    writes.push((iterations, if graph.run_forever { u32::MAX } else { 1 }));
+    let count = if graph.run_forever { u32::MAX } else { 1 };
+    for address in iterations {
+        writes.push((address, count));
+    }
     writes.push((CORE_CONTROL, CORE_ENABLE));
     encode(&writes)
 }
@@ -275,14 +273,20 @@ mod tests {
     }
 
     #[test]
-    fn unsafe_broadcast_memory_maps_are_rejected() {
+    fn distinct_iteration_addresses_are_each_programmed() {
         let mut graph = graph(false);
         graph.iteration_addresses.push(4);
-        assert!(start(&graph, &HashMap::new(), false)
-            .unwrap_err()
-            .to_string()
-            .contains("shared iteration-register"));
-        graph.iteration_addresses.pop();
+        let program = start(&graph, &HashMap::from([(3, vec![64])]), false)
+            .expect("encode multi-kernel start");
+        assert_eq!(
+            words(&program),
+            [8, 0x1fe0, 64, 4, 1, 0x2004, 1, CORE_CONTROL, CORE_ENABLE]
+        );
+    }
+
+    #[test]
+    fn unsafe_memory_maps_are_rejected() {
+        let mut graph = graph(false);
         graph.rtps[0].pong_address = 0x2000;
         assert!(start(&graph, &HashMap::new(), false)
             .unwrap_err()
