@@ -48,3 +48,29 @@ sh_test(
     ],
     tags = ["manual"],
 )
+
+# Cycle-accurate AI Engine simulation of the same two-kernel graph.
+sh_test(
+    name = "aie-roundtrip-aiesim",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //bazel:run_aiesim.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-roundtrip-host)",
+        "$(rootpath roundtrip.cpp)",
+        "RoundTrip",
+        "--",
+        "--arg=n=64",
+        "--part-num=xcvc1902-vsva2197-2MP-e-S",
+        "--cycle-accurate",
+    ],
+    data = [
+        "roundtrip.cpp",
+        "roundtrip.h",
+        ":aie-roundtrip-host",
+        "//bazel:run_aiesim.sh",
+        "//tapa-core:tapa",
+    ],
+    tags = ["manual"],
+)
