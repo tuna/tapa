@@ -49,7 +49,7 @@ sh_test(
     tags = ["manual"],
 )
 
-# Hybrid cosimulation: both PL stages in xsim, both AIE stages in software.
+# Hybrid cosimulation: the PL tasks in xsim, both AIE stages in software.
 sh_test(
     name = "aie-roundtrip-hybrid",
     size = "enormous",
