@@ -65,6 +65,11 @@ pub struct AieKernelReport {
 
 /// Read the mapping report from `graph_dir`, which must contain `Work/`.
 pub fn read_report(graph_dir: &Utf8Path) -> Result<AieReport> {
+    read_report_with_control(graph_dir, false)
+}
+
+/// Read a graph report, excluding the reserved PL-control PLIO when present.
+pub fn read_report_with_control(graph_dir: &Utf8Path, pl_control: bool) -> Result<AieReport> {
     let reports = graph_dir.join("Work").join("reports");
     let compiler_path = reports.join("compiler_report.json");
     let compiler_text = read_text(&compiler_path)?;
@@ -74,7 +79,7 @@ pub fn read_report(graph_dir: &Utf8Path) -> Result<AieReport> {
             source,
         })?;
     let (tiles, plio_map, kernels) =
-        parse_compiler(compiler).map_err(|detail| XilinxError::AieReportParse {
+        parse_compiler(compiler, pl_control).map_err(|detail| XilinxError::AieReportParse {
             path: compiler_path,
             detail,
         })?;
@@ -176,7 +181,10 @@ type CompilerPieces = (
     Vec<KernelPlacement>,
 );
 
-fn parse_compiler(report: CompilerReport) -> std::result::Result<CompilerPieces, String> {
+fn parse_compiler(
+    report: CompilerReport,
+    pl_control: bool,
+) -> std::result::Result<CompilerPieces, String> {
     let mut tiles = BTreeSet::new();
     let mut kernel_tiles = BTreeMap::new();
     let mut kernels = Vec::new();
@@ -232,6 +240,9 @@ fn parse_compiler(report: CompilerReport) -> std::result::Result<CompilerPieces,
             }
             "plio" => {
                 let name = required_name(instance.logical_name, "logicalName", &id)?;
+                if pl_control && name == "tapa_ctrl" {
+                    continue;
+                }
                 let mapping = report
                     .mapping
                     .block_instance_mapping
@@ -432,6 +443,28 @@ mod tests {
             .per_kernel
             .values()
             .all(|kernel| kernel.data_bytes.is_none()));
+    }
+
+    #[test]
+    fn pl_control_report_excludes_only_its_reserved_plio() {
+        let compiler = COMPILER
+            .replace(
+                "\"ps_i10\"",
+                "\"ctrl\": {\"blockType\": \"in\", \"logicalName\": \"tapa_ctrl\"},\n        \"ps_i10\"",
+            )
+            .replace(
+                "\"i7\": {\"plioInfo\": {\"column\": 26, \"direction\": \"pl2aie\"}}",
+                "\"i7\": {\"plioInfo\": {\"column\": 26, \"direction\": \"pl2aie\"}},\n        \"ctrl\": {\"plioInfo\": {\"column\": 6, \"direction\": \"pl2aie\"}}",
+            );
+        let temp = write_reports(
+            &compiler,
+            &[("25_1", &linker_map(11668)), ("23_0", &linker_map(0))],
+        );
+        let report = read_report_with_control(graph_dir(&temp), true).expect("control report");
+        assert!(!report.plio_map.contains_key("tapa_ctrl"));
+        assert_eq!(report.plio_map.len(), 2);
+        let native = read_report(graph_dir(&temp)).expect("native report");
+        assert!(native.plio_map.contains_key("tapa_ctrl"));
     }
 
     #[test]

@@ -257,8 +257,9 @@ fn build_aie(
         job.graph_dir.join("libadf.a")
     );
     tapa_xilinx::tools::aie::compile(runner, &job)?;
-    Ok(tapa_xilinx::tools::aie::report::read_report(
+    Ok(tapa_xilinx::tools::aie::report::read_report_with_control(
         &job.graph_dir,
+        job.pl_control,
     )?)
 }
 
