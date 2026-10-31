@@ -30,27 +30,30 @@ inline constexpr int kWords = (::tapa::widthof<T>() + 31) / 32;
 
 // Word-wise fallback for any trivially copyable whole-word element. Native
 // vector specializations below retain their single-instruction fast path.
+// Chess lowers std::memcpy to a byte-wise libc call; plain word loops are
+// faster and do not grow program memory through forced unrolling. Bit casts
+// preserve the element's object representation without type-punning pointers.
 template <typename T>
 struct word_io {
+  using words_t = std::array<int32, kWords<T>>;
+
   static TAPA_AIE_INLINE T read(input_stream<int32>* s) {
-    std::array<int32, kWords<T>> words{};
+    words_t words;
     for (auto& word : words) word = readincr(s);
-    T value{};
-    std::memcpy(&value, words.data(), sizeof(T));
-    return value;
+    return __builtin_bit_cast(T, words);
   }
   static TAPA_AIE_INLINE void write(output_stream<int32>* s, const T& value) {
-    std::array<int32, kWords<T>> words{};
-    std::memcpy(words.data(), &value, sizeof(T));
+    auto words = __builtin_bit_cast(words_t, value);
     for (const auto word : words) writeincr(s, word);
   }
   static TAPA_AIE_INLINE T load(const int32* p) {
-    T value{};
-    std::memcpy(&value, p, sizeof(T));
-    return value;
+    words_t words;
+    for (auto& word : words) word = *p++;
+    return __builtin_bit_cast(T, words);
   }
   static TAPA_AIE_INLINE void store(int32* p, const T& value) {
-    std::memcpy(p, &value, sizeof(T));
+    auto words = __builtin_bit_cast(words_t, value);
+    for (const auto word : words) *p++ = word;
   }
 };
 
