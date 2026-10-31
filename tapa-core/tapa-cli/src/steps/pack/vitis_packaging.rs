@@ -46,11 +46,20 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
 
     let output_path = enforce_xo_suffix(args.output.as_ref());
     ctx.with_tool_runner(|runner| {
-        package_prepared_vitis_rtl(runner, state, &hdl_dir, &output_path, Some(&ctx.work_dir))
-    })?;
-    write_aie_sidecars(&ctx.work_dir, design, state.flow.skip_aie, &output_path)?;
-
-    Ok(())
+        package_prepared_vitis_rtl(runner, state, &hdl_dir, &output_path, Some(&ctx.work_dir))?;
+        if write_aie_sidecars(&ctx.work_dir, design, state.flow.skip_aie, &output_path)?.is_some() {
+            write_aie_ps_control(
+                runner,
+                &ctx.work_dir,
+                state.flow.platform.as_deref().unwrap_or_default(),
+                design,
+                &output_path,
+            )?;
+        } else {
+            remove_aie_ps_control(&output_path)?;
+        }
+        Ok(())
+    })
 }
 
 /// Package an already prepared RTL tree into an explicit `.xo` path.
@@ -495,6 +504,14 @@ fn is_report_table_rule(line: &str) -> bool {
     !line.is_empty() && line.starts_with('+') && line.chars().all(|c| c == '+' || c == '-')
 }
 
+fn remove_aie_ps_control(xo: &Path) -> Result<()> {
+    let path = crate::aie::ps_control_sidecar(xo);
+    if path.exists() {
+        fs_err::remove_file(path)?;
+    }
+    Ok(())
+}
+
 /// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
 /// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`.
 fn remove_aie_sidecars(xo: &Path) -> Result<()> {
@@ -505,7 +522,35 @@ fn remove_aie_sidecars(xo: &Path) -> Result<()> {
     if cfg.exists() {
         fs_err::remove_file(cfg)?;
     }
-    Ok(())
+    remove_aie_ps_control(xo)
+}
+
+fn write_aie_ps_control(
+    runner: &dyn ToolRunner,
+    work_dir: &Path,
+    platform: &str,
+    design: &Design,
+    xo: &Path,
+) -> Result<Option<PathBuf>> {
+    if !tapa_xilinx::tools::aie::ps_control::required(platform) {
+        remove_aie_ps_control(xo)?;
+        return Ok(None);
+    }
+    let Some(partition) = tapa_ir::AiePartition::derive(design)? else {
+        return Ok(None);
+    };
+    let output = crate::aie::ps_control_sidecar(xo);
+    let job = tapa_xilinx::tools::aie::ps_control::AiePsControlJob::builder()
+        .graph_name(
+            tapa_xilinx::tools::aie::graph::graph_instance(partition.run_forever).to_string(),
+        )
+        .sdk(tapa_xilinx::tools::aie::ps_control::AiePsSdk::from_environment())
+        .work_dir(crate::aie::dir(work_dir, "ps-control"))
+        .output(crate::util::utf8(&output))
+        .build();
+    tapa_xilinx::tools::aie::ps_control::compile(runner, &job)?;
+    log::info!("AI Engine APU control: {}", output.display());
+    Ok(Some(output))
 }
 
 fn write_aie_sidecars(
@@ -643,6 +688,8 @@ mod tests {
         let (libadf, cfg) = crate::aie::sidecars(xo);
         fs_err::write(libadf, "stale graph").expect("write stale graph");
         fs_err::write(cfg, "stale connectivity").expect("write stale connectivity");
+        fs_err::write(crate::aie::ps_control_sidecar(xo), "stale control")
+            .expect("write stale control");
     }
 
     #[test]
@@ -660,6 +707,7 @@ mod tests {
             }
             let (libadf, cfg) = crate::aie::sidecars(&xo);
             assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
+            assert!(!crate::aie::ps_control_sidecar(&xo).exists());
         }
 
         let dir = tempfile::tempdir().expect("tempdir");
@@ -671,6 +719,7 @@ mod tests {
             .is_none());
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
+        assert!(!crate::aie::ps_control_sidecar(&xo).exists());
     }
 
     #[test]

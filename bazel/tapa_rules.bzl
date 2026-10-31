@@ -174,7 +174,7 @@ def _stage_aie_sidecars(output_file, destination):
     """Expose any sidecars pack wrote beside the XO as a declared directory."""
     stem = output_file.basename[:-3]
     lines = ["mkdir -p {}".format(sh_quote(destination.path))]
-    for extension in ["libadf.a", "aie.cfg"]:
+    for extension in ["libadf.a", "aie.cfg", "aie_control.so"]:
         source = output_file.dirname + "/" + stem + "." + extension
         lines.append("if [ -f {src} ]; then cp -aL {src} {dest}/; fi".format(
             src = sh_quote(source),

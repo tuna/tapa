@@ -66,6 +66,7 @@ pub enum VitisLinkMode {
 struct AieInputs {
     libadf: Utf8PathBuf,
     config: Utf8PathBuf,
+    ps_control: Option<Utf8PathBuf>,
 }
 
 /// One portable Vitis hardware-link job.
@@ -120,6 +121,7 @@ struct ResolvedJob<'a> {
     connectivity_config: Option<Utf8PathBuf>,
     aie: Option<AieInputs>,
     link_output: Utf8PathBuf,
+    package_output: Utf8PathBuf,
     package_temp_dir: Utf8PathBuf,
     timing_hook: Utf8PathBuf,
     timing_report: Utf8PathBuf,
@@ -218,6 +220,17 @@ impl<'a> ResolvedJob<'a> {
         } else {
             output_xclbin.clone()
         };
+        let package_output = if aie
+            .as_ref()
+            .is_some_and(|inputs| inputs.ps_control.is_some())
+        {
+            let stem = output_xclbin
+                .file_stem()
+                .ok_or_else(|| XilinxError::VitisLink("xclbin path has no file stem".into()))?;
+            artifacts_dir.join(format!("{stem}.without_ps_control.xclbin"))
+        } else {
+            output_xclbin.clone()
+        };
         let package_temp_dir = Utf8PathBuf::from(format!("{temp_dir}.package"));
         let timing_hook = artifacts_dir.join(FINAL_TIMING_HOOK_NAME);
         let timing_report = artifacts_dir.join(TIMING_REPORT_NAME);
@@ -235,6 +248,7 @@ impl<'a> ResolvedJob<'a> {
             connectivity_config,
             aie,
             link_output,
+            package_output,
             package_temp_dir,
             timing_hook,
             timing_report,
@@ -251,12 +265,21 @@ fn discover_aie_inputs(xo: &Utf8Path) -> Result<Option<AieInputs>> {
         .ok_or_else(|| XilinxError::VitisLink("XO path has no file stem".into()))?;
     let libadf = parent.join(format!("{stem}.libadf.a"));
     let config = parent.join(format!("{stem}.aie.cfg"));
-    if !libadf.exists() && !config.exists() {
+    let ps_control = parent.join(format!("{stem}.aie_control.so"));
+    if !libadf.exists() && !config.exists() && !ps_control.exists() {
         return Ok(None);
     }
     validate_input(&libadf, "AI Engine graph (`<name>.libadf.a`)")?;
     validate_input(&config, "AI Engine connectivity (`<name>.aie.cfg`)")?;
-    Ok(Some(AieInputs { libadf, config }))
+    let ps_control = ps_control.exists().then_some(ps_control);
+    if let Some(path) = &ps_control {
+        validate_input(path, "AI Engine APU control (`<name>.aie_control.so`)")?;
+    }
+    Ok(Some(AieInputs {
+        libadf,
+        config,
+        ps_control,
+    }))
 }
 
 fn platform_looks_like_path(platform: &str) -> bool {
@@ -396,7 +419,7 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--temp_dir")
         .arg(ToolValue::path(&resolved.package_temp_dir))
         .arg("--output")
-        .arg(ToolValue::path(&resolved.output_xclbin))
+        .arg(ToolValue::path(&resolved.package_output))
         .arg(ToolValue::path(&resolved.link_output))
         .arg(ToolValue::path(&aie.libadf));
     inv.cwd = Some(resolved.work_dir.clone());
@@ -404,6 +427,31 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .insert("HOME".into(), ToolValue::path(&resolved.work_dir));
     inv.uploads = vec![resolved.link_output.clone(), aie.libadf.clone()];
     inv.downloads = vec![resolved.artifacts_dir.clone()];
+    if !resolved.package_output.starts_with(&resolved.artifacts_dir) {
+        inv.downloads.push(resolved.package_output.clone());
+    }
+    inv
+}
+
+fn build_ps_control_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
+    let aie = resolved
+        .aie
+        .as_ref()
+        .expect("PS-control invocation is only built for AIE links");
+    let ps_control = aie
+        .ps_control
+        .as_ref()
+        .expect("PS-control invocation requires its sidecar");
+    let mut inv = ToolInvocation::new("xclbinutil")
+        .arg("--input")
+        .arg(ToolValue::path(&resolved.package_output))
+        .arg("--add-pskernel")
+        .arg(ToolValue::path(ps_control))
+        .arg("--output")
+        .arg(ToolValue::path(&resolved.output_xclbin))
+        .arg("--force");
+    inv.cwd = Some(resolved.work_dir.clone());
+    inv.uploads = vec![resolved.package_output.clone(), ps_control.clone()];
     if !resolved.output_xclbin.starts_with(&resolved.artifacts_dir) {
         inv.downloads.push(resolved.output_xclbin.clone());
     }
@@ -433,6 +481,11 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
     if resolved.link_output != resolved.output_xclbin {
         remove_stale_output(&resolved.link_output)?;
     }
+    if resolved.package_output != resolved.output_xclbin
+        && resolved.package_output != resolved.link_output
+    {
+        remove_stale_output(&resolved.package_output)?;
+    }
     remove_stale_output(&resolved.timing_report)?;
     fs_err::write(&resolved.timing_hook, final_timing_tcl().as_bytes())?;
 
@@ -447,16 +500,26 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         ));
     }
 
-    let (stdout, stderr) = if resolved.aie.is_some() {
+    let (stdout, stderr) = if let Some(aie) = &resolved.aie {
         let package_output = runner.run(&build_package_invocation(&resolved))?;
         if package_output.exit_code != 0 {
             return Err(super::tool_failure(&job.vpp, package_output));
         }
-        validate_input(&resolved.output_xclbin, "packaged xclbin")?;
-        (
-            merge_tool_text(link_output.stdout, package_output.stdout),
-            merge_tool_text(link_output.stderr, package_output.stderr),
-        )
+        validate_input(&resolved.package_output, "packaged xclbin")?;
+        let mut stdout = merge_tool_text(link_output.stdout, package_output.stdout);
+        let mut stderr = merge_tool_text(link_output.stderr, package_output.stderr);
+        if aie.ps_control.is_some() {
+            let control_output = runner.run(&build_ps_control_invocation(&resolved))?;
+            if control_output.exit_code != 0 {
+                return Err(super::tool_failure("xclbinutil", control_output));
+            }
+            validate_input(&resolved.output_xclbin, "PS-controlled xclbin")?;
+            stdout = merge_tool_text(stdout, control_output.stdout);
+            stderr = merge_tool_text(stderr, control_output.stderr);
+        } else {
+            validate_input(&resolved.output_xclbin, "packaged xclbin")?;
+        }
+        (stdout, stderr)
     } else {
         (link_output.stdout, link_output.stderr)
     };
@@ -786,6 +849,62 @@ packaged"
         assert!(!package_args.iter().any(|arg| arg.contains("kernel_image")));
         assert!(!package_args.iter().any(|arg| arg.contains("rootfs")));
         assert!(!package_args.iter().any(|arg| arg.contains("sd_file")));
+    }
+
+    #[test]
+    fn ps_control_is_added_after_the_normal_aie_package() {
+        let mut fixture = Fixture::new();
+        fixture.job.mode = VitisLinkMode::Full;
+        let parent = fixture.job.xo.parent().expect("XO parent");
+        let libadf = parent.join("kernel.libadf.a");
+        let aie_config = parent.join("kernel.aie.cfg");
+        let ps_control = parent.join("kernel.aie_control.so");
+        fs_err::write(&libadf, b"adf").expect("write libadf");
+        fs_err::write(&aie_config, b"aie config").expect("write AIE config");
+        fs_err::write(&ps_control, b"ps control").expect("write PS control");
+        let xsa = fixture
+            .job
+            .output_xclbin
+            .parent()
+            .expect("output parent")
+            .join("Top.xsa");
+        let packaged = fixture
+            .job
+            .output_xclbin
+            .parent()
+            .expect("output parent")
+            .join("Top.without_ps_control.xclbin");
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(&xsa, b"xsa".to_vec());
+        runner.attach_download(fixture.timing_report(), timing_report());
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(&packaged, b"packaged".to_vec());
+        runner.push_ok("xclbinutil", ToolOutput::default());
+        runner.attach_download(&fixture.job.output_xclbin, b"controlled".to_vec());
+
+        run_vitis_link(&runner, &fixture.job).expect("PS-controlled AIE link succeeds");
+
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 3);
+        assert!(calls[1]
+            .local_args()
+            .windows(2)
+            .any(|args| args == ["--output", packaged.as_str()]));
+        assert_eq!(calls[2].program, "xclbinutil");
+        assert_eq!(
+            calls[2].local_args(),
+            [
+                "--input",
+                packaged.as_str(),
+                "--add-pskernel",
+                ps_control.as_str(),
+                "--output",
+                fixture.job.output_xclbin.as_str(),
+                "--force",
+            ]
+        );
+        assert_eq!(calls[2].uploads, vec![packaged, ps_control]);
     }
 
     #[test]

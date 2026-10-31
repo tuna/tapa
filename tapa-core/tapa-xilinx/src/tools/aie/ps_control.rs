@@ -37,6 +37,12 @@ impl AiePsSdk {
     }
 }
 
+/// Whether this platform controls its AIE graph through an APU PS kernel.
+#[must_use]
+pub fn required(platform: &str) -> bool {
+    platform.contains("vck5000")
+}
+
 /// One design-specific APU graph-control shared-library build.
 #[derive(Debug, Clone, TypedBuilder)]
 pub struct AiePsControlJob {
@@ -84,7 +90,6 @@ pub fn compile(runner: &dyn ToolRunner, job: &AiePsControlJob) -> Result<()> {
                 .arg("-d")
                 .arg(ToolValue::path(&sdk_dir));
             inv.cwd = Some(job.work_dir.clone());
-            inv.uploads.push(installer.clone());
             run(runner, &inv, "sh")?;
             sdk_dir.join(SYSROOT)
         }
@@ -93,6 +98,7 @@ pub fn compile(runner: &dyn ToolRunner, job: &AiePsControlJob) -> Result<()> {
     let mut inv = ToolInvocation::new("aarch64-linux-gnu-g++")
         .arg("-std=c++17")
         .arg("-O2")
+        .arg("-g")
         .arg("-fPIC")
         .arg("-fvisibility=hidden")
         .arg("-D__PS_ENABLE_AIE__")
@@ -143,6 +149,13 @@ mod tests {
     }
 
     #[test]
+    fn only_vck5000_requests_ps_control() {
+        assert!(required("xilinx_vck5000_gen4x8_qdma_2_202220_1"));
+        assert!(!required("xilinx_vck190_base_202520_1"));
+        assert!(!required("xcvc1902-vsva2197-2MP-e-S"));
+    }
+
+    #[test]
     fn an_existing_sysroot_builds_one_shared_library() {
         let dir = tempfile::tempdir().expect("tempdir");
         let root = crate::util::utf8(dir.path());
@@ -159,6 +172,7 @@ mod tests {
         for expected in [
             "--sysroot=/common/sysroots/cortexa72-cortexa53-xilinx-linux",
             "-D__PS_ENABLE_AIE__",
+            "-g",
             "-shared",
             "-lxrt_coreutil",
         ] {

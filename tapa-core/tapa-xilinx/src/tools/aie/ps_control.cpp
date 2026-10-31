@@ -6,17 +6,17 @@
 #include <new>
 #include <string>
 
+struct xrtHandles {
+  xclDeviceHandle device;
+  xrtGraphHandle graph;
+};
+
 namespace {
 
 constexpr char kGraphName[] = "@GRAPH_NAME@";
 constexpr uint32_t kStart = 0;
 constexpr uint32_t kStop = 1;
 constexpr uint32_t kAbort = 2;
-
-struct xrtHandles {
-  xclDeviceHandle device;
-  xrtGraphHandle graph;
-};
 
 uint32_t read_u32(const uint8_t*& cursor, const uint8_t* end, bool& valid) {
   if (static_cast<size_t>(end - cursor) < sizeof(uint32_t)) {

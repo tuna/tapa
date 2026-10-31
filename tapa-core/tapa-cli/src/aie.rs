@@ -254,6 +254,11 @@ pub fn sidecars(xo: &Path) -> (std::path::PathBuf, std::path::PathBuf) {
     (xo.with_extension("libadf.a"), xo.with_extension("aie.cfg"))
 }
 
+/// The APU control-kernel sidecar used on VCK5000.
+pub fn ps_control_sidecar(xo: &Path) -> std::path::PathBuf {
+    xo.with_extension("aie_control.so")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
