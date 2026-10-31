@@ -97,6 +97,7 @@ const XILINX_TOOL_ENVS: &[(&str, &[&str])] = &[
     ("aiecompiler", &["XILINX_VITIS"]),
     ("x86simulator", &["XILINX_VITIS"]),
     ("aiesimulator", &["XILINX_VITIS"]),
+    ("aarch64-linux-gnu-g++", &["XILINX_VITIS"]),
 ];
 
 /// The tool a program string names, normalized: an invocation may spell it
