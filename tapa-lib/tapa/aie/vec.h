@@ -231,6 +231,13 @@ struct vec_t<T, N, false> {
   }
 };
 
+template <typename To, typename From>
+TAPA_AIE_INLINE
+    typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
+    bit_cast(From from) noexcept {
+  return __builtin_bit_cast(To, from);
+}
+
 template <int N, typename T>
 TAPA_AIE_INLINE vec_t<T, N> make_vec(T value) {
   if constexpr (requires {
