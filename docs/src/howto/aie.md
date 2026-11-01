@@ -88,6 +88,10 @@ These habits decide AI Engine performance:
   loop, and in the hot loop it costs more than the arithmetic it feeds.
   `tests/apps/cannon` keeps the rows of B as vectors and sends them around its
   ring whole.
+- A lane that only feeds a multiply is the exception: `acc += x[k] * b`
+  broadcasts lane `k` of a non-const native `x` inside the
+  multiply-accumulate, with no extract. Copy `x` out of its array into a
+  local first, so it is loaded once for all its lanes.
 
 ## Knobs
 

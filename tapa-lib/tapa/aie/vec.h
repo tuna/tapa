@@ -16,7 +16,9 @@
 // register and single vector instructions. Other whole-word shapes use an
 // array with the same API and scalar operations. `acc += a * b` lowers to one
 // `aie::mac` on native shapes: `operator*` returns a lazy product that
-// `+=`/`-=` consume, and that otherwise converts to a vector.
+// `+=`/`-=` consume, and that otherwise converts to a vector. So does
+// `acc += x[k] * b` with `x` a non-const native vector: the multiply
+// broadcasts lane `k` of `x` in place, without extracting it.
 
 namespace tapa {
 
@@ -40,6 +42,24 @@ struct vec_product<T, N, true> {
     decltype(::aie::mul(lhs, rhs)) a;
     a.from_vector(acc);
     a = sub ? ::aie::msc(a, lhs, rhs) : ::aie::mac(a, lhs, rhs);
+    return a.template to_vector<T>();
+  }
+};
+
+// `x[k] * v`, with `x[k]` a lane of an `M`-lane native vector.
+template <typename T, int N, unsigned M>
+struct vec_lane_product {
+  ::aie::vector_elem_ref<T, M> lane;
+  ::aie::vector<T, N> vec;
+
+  TAPA_AIE_INLINE ::aie::vector<T, N> eval() const {
+    return ::aie::mul(lane, vec).template to_vector<T>();
+  }
+  TAPA_AIE_INLINE ::aie::vector<T, N> mac(const ::aie::vector<T, N>& acc,
+                                          bool sub) const {
+    decltype(::aie::mul(lane, vec)) a;
+    a.from_vector(acc);
+    a = sub ? ::aie::msc(a, lane, vec) : ::aie::mac(a, lane, vec);
     return a.template to_vector<T>();
   }
 };
@@ -83,6 +103,9 @@ struct vec_t<T, N, true> {
   vec_t() = default;
   TAPA_AIE_INLINE vec_t(const vector_type& x) : v(x) {}
   TAPA_AIE_INLINE vec_t(const internal::vec_product<T, N>& p) : v(p.eval()) {}
+  template <unsigned M>
+  TAPA_AIE_INLINE vec_t(const internal::vec_lane_product<T, N, M>& p)
+      : v(p.eval()) {}
   TAPA_AIE_INLINE operator vector_type() const { return v; }
 
   TAPA_AIE_INLINE T operator[](int pos) const { return v.get(pos); }
@@ -119,6 +142,16 @@ struct vec_t<T, N, true> {
                                                                const vec_t& b) {
     return {::aie::broadcast<T, N>(a), b.v};
   }
+  template <unsigned M>
+  friend TAPA_AIE_INLINE internal::vec_lane_product<T, N, M> operator*(
+      ::aie::vector_elem_ref<T, M> a, const vec_t& b) {
+    return {a, b.v};
+  }
+  template <unsigned M>
+  friend TAPA_AIE_INLINE internal::vec_lane_product<T, N, M> operator*(
+      const vec_t& a, ::aie::vector_elem_ref<T, M> b) {
+    return {b, a.v};
+  }
   TAPA_AIE_INLINE vec_t operator-() const { return ::aie::neg(v); }
 
   TAPA_AIE_INLINE vec_t& operator+=(const vec_t& o) {
@@ -138,6 +171,18 @@ struct vec_t<T, N, true> {
     return *this;
   }
   TAPA_AIE_INLINE vec_t& operator-=(const internal::vec_product<T, N>& p) {
+    v = p.mac(v, /*sub=*/true);
+    return *this;
+  }
+  template <unsigned M>
+  TAPA_AIE_INLINE vec_t& operator+=(
+      const internal::vec_lane_product<T, N, M>& p) {
+    v = p.mac(v, /*sub=*/false);
+    return *this;
+  }
+  template <unsigned M>
+  TAPA_AIE_INLINE vec_t& operator-=(
+      const internal::vec_lane_product<T, N, M>& p) {
     v = p.mac(v, /*sub=*/true);
     return *this;
   }
