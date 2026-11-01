@@ -44,6 +44,7 @@ sh_test(
         "$(rootpath cannon.cpp)",
         "Cannon",
         "--target=ProcElem:aie",
+        "--cflags=-DTAPA_CANNON_LANES=8",
         "--",
         "--part-num=xcvc1902-vsva2197-2MP-e-S",
     ],

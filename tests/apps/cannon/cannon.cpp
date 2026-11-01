@@ -11,7 +11,7 @@
 // schedule and 8 for native AIE FP32 vectors; other widths are design-space
 // exploration points.
 #ifndef TAPA_CANNON_LANES
-#define TAPA_CANNON_LANES 8
+#define TAPA_CANNON_LANES 1
 #endif
 constexpr int kLanes = TAPA_CANNON_LANES;
 constexpr int kBoundaryLanes = kLanes < 4 ? kLanes : 4;
