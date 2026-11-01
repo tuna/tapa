@@ -93,7 +93,7 @@ inline __attribute__((always_inline)) void ExchangeBlock(
     }
     j_prev.write(tapa::bit_cast<tapa::vec_t<float, N>>(a_row));
   }
-  tapa::aie::stream_fence();
+  tapa::fence();
   for (int v = 0; v < kVecs; ++v) {
     b[v] = i_next.read();
     const auto a_row = tapa::bit_cast<row_t>(j_next.read());

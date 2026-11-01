@@ -149,6 +149,15 @@ Array of `N` read-only or write-only stream views. Always passed by reference in
 All stream types (`istream`, `ostream`, `istreams`, `ostreams`) must be passed **by reference** in task signatures. Passing by value is a compile error.
 ```
 
+### `tapa::fence()`
+
+Keeps every stream access after the call behind every one before it. Place it
+between a loop that writes a stream cycle and the loop that reads it. It is a
+scheduling fence on the AI Engine, whose compiler may otherwise issue a read
+ahead of a write in an earlier loop, and a no-op in software simulation and
+HLS, which run separate loops in order. See
+[AI Engine Tasks](../howto/aie.md).
+
 ---
 
 ## Memory (mmap)

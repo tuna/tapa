@@ -25,16 +25,14 @@ struct [[gnu::packed]] elem_t {
 
 }  // namespace internal
 
-namespace aie {
-
-// A phase-level stream-ordering fence. A no-op on targets that do not need
-// explicit scheduler ordering.
+// Keeps every stream access after the fence behind every one before it. The
+// AI Engine compiler may move a read ahead of a write in an earlier loop
+// (`tapa/aie/stream.h`); HLS and software simulation run separate loops in
+// order, so there the fence is a no-op.
 #if defined(TAPA_TARGET_AIE_)
-void stream_fence();
+void fence();
 #else
-inline void stream_fence() {}
+inline void fence() {}
 #endif
-
-}  // namespace aie
 
 }  // namespace tapa
