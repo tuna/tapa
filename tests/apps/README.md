@@ -11,15 +11,12 @@ This directory contains multiple small example TAPA designs:
 | Example | Demonstrates |
 |---|---|
 | `vadd` | The core model: streams, `mmap`, and a four-task graph |
-| `async_mmap` | Decoupled memory access with `tapa::async_mmap` |
 | `bandwidth` | HBM bandwidth over many `async_mmap` channels |
 | `cannon` | Cannon's matrix multiply on a 2D array of stream-connected PEs |
 | `gemv` | Matrix-vector multiply |
 | `graph` | Graph traversal with a large per-task local buffer |
-| `ignore` | `[[tapa::target("ignore")]]` for custom-RTL replacement |
 | `jacobi` | Stencil computation with end-of-transaction (`close()`) |
 | `network` | Packet switching with `peek` and detached tasks |
-| `templated` | Templated leaf tasks |
 
 For large and complex designs, refer to the `tests/regression` directory.
 

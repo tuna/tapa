@@ -6,6 +6,12 @@
 
 load("//bazel:test_rules.bzl", "tapa_functional_test")
 
+# The tapacc conformance test analyzes this kernel.
+exports_files(
+    ["vadd.cpp"],
+    visibility = ["//tapa-core:__pkg__"],
+)
+
 tapa_functional_test(
     name = "async-mmap",
     host_srcs = glob([

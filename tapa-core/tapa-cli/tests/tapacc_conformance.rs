@@ -58,9 +58,10 @@ struct Kernel {
     flows: &'static [&'static str],
 }
 
-/// The full corpus. vadd is the original; the rest close coverage gaps:
-/// `async_mmap`, template-specialization (`readable_name != name`), and
-/// `synth: "ignore"` (custom-RTL policy).
+/// The full corpus. vadd is the original; the rest are the functional tests
+/// of the features that close coverage gaps: `async_mmap`,
+/// template-specialization (`readable_name != name`), and `synth: "ignore"`
+/// (custom-RTL policy).
 const KERNELS: &[Kernel] = &[
     Kernel {
         env: "TAPA_CONFORMANCE_VADD",
@@ -70,26 +71,34 @@ const KERNELS: &[Kernel] = &[
     },
     Kernel {
         env: "TAPA_CONFORMANCE_ASYNC_MMAP",
-        top: "AsyncTop",
-        expected_tasks: &["AsyncReader", "AsyncTop", "Writer"],
-        // Both flows: this kernel is also the examples-catalog entry for
-        // `async_mmap`, so the `xilinx-vitis` target the docs tell users to
+        top: "VecAdd",
+        expected_tasks: &["Add", "Mmap2Stream", "Stream2Mmap", "VecAdd"],
+        // Both flows: the examples catalog points `async_mmap` readers at
+        // this kernel, so the `xilinx-vitis` target the docs tell users to
         // compile with has to parse too. (This test stops at `tapa analyze`;
         // whether Vitis HLS accepts the shape is not covered here.)
         flows: &["xilinx-hls", "xilinx-vitis"],
     },
     Kernel {
         env: "TAPA_CONFORMANCE_TEMPLATED",
-        top: "TemplatedTop",
-        expected_tasks: &["Mmap2Stream", "Stream2Mmap", "TemplatedTop"],
+        top: "VecAdd",
+        // Every child is a template specialization: tapacc keys it by its
+        // mangled name and reports `Add<1>` and the like as `readable_name`.
+        expected_tasks: &[
+            "VecAdd",
+            "tapa_mangled_Z3AddILi1EEvRN4tapa7istreamIfEERNS1_IiEERNS0_7ostreamIfEEm",
+            "tapa_mangled_Z11Mmap2StreamIKffEvN4tapa4mmapIT_EEmRNS1_7ostreamIT0_EE",
+            "tapa_mangled_Z11Mmap2StreamIKfiEvN4tapa4mmapIT_EEmRNS1_7ostreamIT0_EE",
+            "tapa_mangled_Z11Stream2MmapIN4tapa4mmapIfEEfLin1EEvRNS0_7istreamIT0_EET_m",
+        ],
         flows: &["xilinx-hls"],
     },
     Kernel {
         env: "TAPA_CONFORMANCE_IGNORE",
-        top: "IgnoreTop",
+        top: "VecAdd",
         // `Add` is NOT here: tapcc does not descend into `synth: "ignore"`
         // tasks (their children are user-provided custom RTL).
-        expected_tasks: &["IgnoreUpper", "Mmap2Stream", "Stream2Mmap", "IgnoreTop"],
+        expected_tasks: &["Add_Upper", "Mmap2Stream", "Stream2Mmap", "VecAdd"],
         flows: &["xilinx-hls"],
     },
 ];

@@ -430,7 +430,7 @@ TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
 
 TEST(InvokeParser, MultiDeclaratorStreamDeclCollectsEveryDeclarator) {
   // `tapa::stream<float> a("a"), b("b");` is user-exercised (see
-  // tests/apps/templated); every declarator must be collected, where the
+  // tests/functional/multi-file); every declarator must be collected, where the
   // old single-decl restriction silently dropped the whole statement.
   constexpr char kCode[] = R"cpp(
     void Producer(tapa::ostream<float>& out) {}

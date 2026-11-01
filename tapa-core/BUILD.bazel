@@ -252,9 +252,9 @@ cargo_test(
         # `RUNFILES_DIR` / `TEST_SRCDIR`.
         "TAPA_CONFORMANCE_TAPA": "tapa-core/tapa",
         "TAPA_CONFORMANCE_VADD": "tests/apps/vadd/vadd.cpp",
-        "TAPA_CONFORMANCE_ASYNC_MMAP": "tests/apps/async_mmap/async_mmap.cpp",
-        "TAPA_CONFORMANCE_TEMPLATED": "tests/apps/templated/templated.cpp",
-        "TAPA_CONFORMANCE_IGNORE": "tests/apps/ignore/ignore.cpp",
+        "TAPA_CONFORMANCE_ASYNC_MMAP": "tests/functional/async-mmap/vadd.cpp",
+        "TAPA_CONFORMANCE_TEMPLATED": "tests/functional/template-tasks/vadd.cpp",
+        "TAPA_CONFORMANCE_IGNORE": "tests/functional/custom-rtl/vadd.cpp",
     },
     data = [
         # Brings `//tapacc` and the system includes along as
@@ -264,9 +264,11 @@ cargo_test(
         # Included by vadd.cpp; must sit beside it in the runfiles tree.
         "//tests/apps/vadd:vadd.h",
         # Conformance corpus: async_mmap, template-specialization, ignore.
-        "//tests/apps/async_mmap:async_mmap.cpp",
-        "//tests/apps/templated:templated.cpp",
-        "//tests/apps/ignore:ignore.cpp",
+        "//tests/functional/async-mmap:vadd.cpp",
+        "//tests/functional/template-tasks:vadd.cpp",
+        # Included by its vadd.cpp; must sit beside it in the runfiles tree.
+        "//tests/functional/template-tasks:vadd.h",
+        "//tests/functional/custom-rtl:vadd.cpp",
     ],
     manifest = "Cargo.toml",
     tags = [

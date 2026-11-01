@@ -12,21 +12,20 @@ under software simulation with no FPGA and no vendor tools.
 | Example | Problem type | Key TAPA feature | Location |
 |---------|-------------|-----------------|----------|
 | vadd | Vector addition | Basic streams + mmap | `tests/apps/vadd` |
-| async\_mmap | Vector addition, decoupled memory | `async_mmap` request/response channels | `tests/apps/async_mmap` |
 | bandwidth | Memory bandwidth benchmark | `async_mmap` over many HBM channels | `tests/apps/bandwidth` |
 | cannon | Cannon's matrix multiply | 2D stream arrays, systolic | `tests/apps/cannon` |
 | gemv | Matrix-vector multiply | Stream reduction | `tests/apps/gemv` |
 | graph | Graph traversal | Large per-task local buffers | `tests/apps/graph` |
-| ignore | Custom-RTL placeholder | `[[tapa::target("ignore")]]` | `tests/apps/ignore` |
 | jacobi | Stencil computation | End-of-transaction (`close()`) | `tests/apps/jacobi` |
 | network | Packet switching | `peek`, detached tasks, hierarchical tasks | `tests/apps/network` |
-| templated | Parameterized kernels | Templated leaf tasks | `tests/apps/templated` |
 
 ```admonish tip
 `tests/functional/` holds smaller single-feature designs used as regression
-tests — `shared-mmap`, `detached`, `eot`, `peek`, `custom-rtl`, `multi-file`,
-`parallel-emulation`, and others. They are the shortest working reference
-for one specific feature.
+tests — `async-mmap` (`async_mmap` request/response channels), `custom-rtl`
+(`[[tapa::target("ignore")]]`), `template-tasks` (templated leaf tasks),
+`shared-mmap`, `detached`, `eot`, `peek`, `multi-file`, `parallel-emulation`,
+and others. They are the shortest working reference for one specific
+feature.
 ```
 
 ---
