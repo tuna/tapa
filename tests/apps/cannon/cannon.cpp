@@ -64,9 +64,9 @@ constexpr int kVecs = kB * kRowVecs;
 static_assert(kB % kLanes == 0, "a block row must be whole vectors");
 
 // The rows each PE sends to its neighbors before it reads from the others,
-// and the depth of the ring streams in vectors. Keep 16 floats per phase on
-// every target: two vectors on AIE, or sixteen scalars on PL.
-constexpr int kRingWords = 16;
+// and the depth of the ring streams in vectors. AIE exchanges one whole block
+// per phase; PL uses its original nonblocking schedule instead.
+constexpr int kRingWords = kB * kB;
 constexpr int kRing = kRingWords / kLanes;
 static_assert(kRingWords % kLanes == 0, "ring phase must be whole vectors");
 static_assert(kVecs % kRing == 0, "a block must be whole ring chunks");
