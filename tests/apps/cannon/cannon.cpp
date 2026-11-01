@@ -180,6 +180,9 @@ outer:
         }
         j_prev.write(tapa::bit_cast<vec_t>(a_row));
       }
+#if defined(__AIENGINE__) && defined(TAPA_AIE_PHASE_ORDERED_STREAMS)
+      chess_separator_scheduler();
+#endif
       for (int v = v0; v < v0 + kRing; ++v) {
         b[v] = i_next.read();
         const auto a_row = tapa::bit_cast<row_t>(j_next.read());

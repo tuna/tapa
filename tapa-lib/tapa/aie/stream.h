@@ -118,13 +118,16 @@ struct elem_io<vec_t<E, N>> {
 
 // Keeps every later operation behind a stream write in a kernel a stream
 // cycle runs through (the graph defines `TAPA_AIE_ORDERED_STREAMS` for it).
+// Defining `TAPA_AIE_PHASE_ORDERED_STREAMS` suppresses these per-write fences;
+// the kernel must then place its own fence between each write and read phase.
 // The AI Engine compiler otherwise issues a read of another port ahead of an
 // earlier write, which such a cycle turns into a deadlock where software
 // simulation, running in program order, makes progress. Elsewhere the
 // overlap is safe and worth keeping: the fence makes each element of a
 // pipelined read-compute-write loop take about 60% longer.
 TAPA_AIE_INLINE void after_write() {
-#if defined(__AIENGINE__) && defined(TAPA_AIE_ORDERED_STREAMS)
+#if defined(__AIENGINE__) && defined(TAPA_AIE_ORDERED_STREAMS) && \
+    !defined(TAPA_AIE_PHASE_ORDERED_STREAMS)
   chess_separator_scheduler();
 #endif
 }

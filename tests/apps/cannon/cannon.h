@@ -7,6 +7,10 @@
 #include <cassert>
 #include <cstdint>
 
+// AIE exchanges full blocks, so one scheduler fence between each write and
+// read phase is sufficient; per-write fences are unnecessary overhead.
+#define TAPA_AIE_PHASE_ORDERED_STREAMS
+
 #include <tapa.h>
 
 #ifndef TAPA_CANNON_P
