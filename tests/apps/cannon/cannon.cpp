@@ -2,45 +2,57 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
+// Each PE fences its own ring traffic (`tapa::fence()` below), so an
+// AI Engine build need not also fence every stream write.
+#define TAPA_AIE_PHASE_ORDERED_STREAMS
+
 #include <array>
-#include <type_traits>
 
 #include "cannon.h"
 
-// Logical values per vector operation. Use 1 for the pre-AIE-style PL
-// schedule and 8 for native AIE FP32 vectors; other widths are design-space
-// exploration points.
+// The one design-space knob: floats per vector operation. Every value runs
+// the same source. 1 suits PL, where HLS unrolls a block row into kB
+// multiply-accumulates per cycle; 8 fills an AI Engine's fp32 vector unit
+// (`--target ProcElem:aie`).
 #ifndef TAPA_CANNON_LANES
 #define TAPA_CANNON_LANES 1
 #endif
+
 constexpr int kLanes = TAPA_CANNON_LANES;
-constexpr int kBoundaryLanes = kLanes < 4 ? kLanes : 4;
-using boundary_t = tapa::vec_t<float, kBoundaryLanes>;
-using row4_t = std::array<float, kBoundaryLanes>;
+constexpr int kB = kN / p;             // edge of a PE's block
+constexpr int kRowVecs = kB / kLanes;  // vectors in a block row
+constexpr int kVecs = kB * kRowVecs;   // vectors in a block
+static_assert(kB % kLanes == 0, "a block row must be whole vectors");
+using vec_t = tapa::vec_t<float, kLanes>;
+
+// A stream between the PL and the AI Engine carries at most 128 bits, so a
+// vector crosses a PE's boundary as kParts parts of at most four floats.
+constexpr int kIoLanes = kLanes < 4 ? kLanes : 4;
+constexpr int kParts = kLanes / kIoLanes;
+constexpr int kIoVecs = kVecs * kParts;
+using io_t = tapa::vec_t<float, kIoLanes>;
+using parts_t = std::array<io_t, kParts>;
 
 // Scatter n*n matrix into p*p blocks, each block.
 void Scatter(tapa::mmap<const float> matrix_ptr,
-             tapa::ostreams<boundary_t, p * p>& block) {
-  const uint64_t kNumElems = (kN / p) * (kN / p) / kBoundaryLanes;
+             tapa::ostreams<io_t, p * p>& block) {
   for (int j = 0; j < p * p; ++j) {
-    for (uint64_t i = 0; i < kNumElems; ++i) {
-      row4_t value;
-      for (int lane = 0; lane < kBoundaryLanes; ++lane) {
+    for (int i = 0; i < kIoVecs; ++i) {
+      io_t value;
+      for (int lane = 0; lane < kIoLanes; ++lane) {
         value[lane] = *matrix_ptr;
         ++matrix_ptr;
       }
-      block[j].write(tapa::bit_cast<boundary_t>(value));
+      block[j].write(value);
     }
   }
 }
 
-void Gather(tapa::mmap<float> matrix_ptr,
-            tapa::istreams<boundary_t, p * p>& block) {
-  const uint64_t kNumElems = (kN / p) * (kN / p) / kBoundaryLanes;
+void Gather(tapa::mmap<float> matrix_ptr, tapa::istreams<io_t, p * p>& block) {
   for (int j = 0; j < p * p; ++j) {
-    for (uint64_t i = 0; i < kNumElems; ++i) {
-      const auto value = tapa::bit_cast<row4_t>(block[j].read());
-      for (int lane = 0; lane < kBoundaryLanes; ++lane) {
+    for (int i = 0; i < kIoVecs; ++i) {
+      const io_t value = block[j].read();
+      for (int lane = 0; lane < kIoLanes; ++lane) {
         *matrix_ptr = value[lane];
         ++matrix_ptr;
       }
@@ -48,116 +60,64 @@ void Gather(tapa::mmap<float> matrix_ptr,
   }
 }
 
-// Each PE holds one kB x kB block of A, B, and C: A as a flat scalar
-// array and B and C as native-width vectors, in HLS and on the AI Engine
-// alike (`--target ProcElem:aie`). An output vector accumulates in one
-// register, one vector multiply-accumulate per k, using the loop schedule
-// appropriate to the target. A and B ring as whole rows. Boundary frames use
-// at most 128 bits on the AI Engine, leaving
-// its two input and two output stream ports to the ring.
-using vec_t = std::conditional_t<TAPA_CANNON_LANES == 1, float,
-                                 tapa::vec_t<float, TAPA_CANNON_LANES>>;
-using row_t = std::array<float, kLanes>;
-constexpr int kB = kN / p;
-constexpr int kRowVecs = kB / kLanes;
-constexpr int kVecs = kB * kRowVecs;
-static_assert(kB % kLanes == 0, "a block row must be whole vectors");
-
-inline __attribute__((always_inline)) void ExchangeBlock(
-    tapa::ostream<float>& i_prev, tapa::istream<float>& i_next,
-    tapa::ostream<float>& j_prev, tapa::istream<float>& j_next,
-    float (&a)[kB * kB], float (&b)[kVecs]) {
-  [[tapa::pipeline(1)]] [[tapa::tripcount(
-      kVecs, kVecs)]] [[tapa::dependence("a")]] [[tapa::dependence("b")]]
-  for (uint64_t a_wr = 0, b_wr = 0, a_rd = 0, b_rd = 0;
-       a_wr < kVecs || b_wr < kVecs || a_rd < kVecs || b_rd < kVecs;) {
-    if (b_wr < kVecs && i_prev.try_write(b[b_wr])) ++b_wr;
-    if (a_wr < kVecs && j_prev.try_write(a[a_wr])) ++a_wr;
-    if (b_rd < b_wr && i_next.try_read(b[b_rd])) ++b_rd;
-    if (a_rd < a_wr && j_next.try_read(a[a_rd])) ++a_rd;
-  }
-}
-
-template <int N>
-inline __attribute__((always_inline)) void ExchangeBlock(
-    tapa::ostream<tapa::vec_t<float, N>>& i_prev,
-    tapa::istream<tapa::vec_t<float, N>>& i_next,
-    tapa::ostream<tapa::vec_t<float, N>>& j_prev,
-    tapa::istream<tapa::vec_t<float, N>>& j_next, float (&a)[kB * kB],
-    tapa::vec_t<float, N> (&b)[kVecs]) {
-  for (int v = 0; v < kVecs; ++v) {
-    i_prev.write(b[v]);
-    row_t a_row;
-    for (int lane = 0; lane < kLanes; ++lane) {
-      a_row[lane] = a[v * kLanes + lane];
-    }
-    j_prev.write(tapa::bit_cast<tapa::vec_t<float, N>>(a_row));
-  }
-  tapa::fence();
-  for (int v = 0; v < kVecs; ++v) {
-    b[v] = i_next.read();
-    const auto a_row = tapa::bit_cast<row_t>(j_next.read());
-    for (int lane = 0; lane < kLanes; ++lane) {
-      a[v * kLanes + lane] = a_row[lane];
-    }
-  }
-}
-
-void ProcElem(
-    [[tapa::aie_frame(kB * kB /
-                      kBoundaryLanes)]] tapa::istream<boundary_t>& a_fifo,
-    [[tapa::aie_frame(kB * kB /
-                      kBoundaryLanes)]] tapa::istream<boundary_t>& b_fifo,
-    [[tapa::aie_frame(kB * kB /
-                      kBoundaryLanes)]] tapa::ostream<boundary_t>& c_fifo,
-    tapa::ostream<vec_t>& i_prev, tapa::istream<vec_t>& i_next,
-    tapa::ostream<vec_t>& j_prev, tapa::istream<vec_t>& j_next) {
-  [[tapa::partition("cyclic", 32)]] float a[kB * kB];
-  [[tapa::partition("block", 32)]] vec_t b[kVecs];
-  [[tapa::partition("cyclic", 32)]] vec_t c[kVecs];
+// Each PE holds one kB x kB block of A, B and C, row-major in vectors. Per
+// round it adds A * B to C, one vector of C at a time: lane k of A's row i
+// times vector j of B's row k. While computing it sends each vector of A
+// and B on to its neighbors; it receives theirs once it is done, so a ring
+// stream holds a whole block. On the AI Engine the blocks arrive as frames
+// (`aie_frame`, ignored on PL), leaving the core's stream ports to the ring.
+void ProcElem([[tapa::aie_frame(kIoVecs)]] tapa::istream<io_t>& a_fifo,
+              [[tapa::aie_frame(kIoVecs)]] tapa::istream<io_t>& b_fifo,
+              [[tapa::aie_frame(kIoVecs)]] tapa::ostream<io_t>& c_fifo,
+              tapa::ostream<vec_t>& i_prev, tapa::istream<vec_t>& i_next,
+              tapa::ostream<vec_t>& j_prev, tapa::istream<vec_t>& j_next) {
+  [[tapa::partition("cyclic", kRowVecs)]] vec_t a[kVecs];
+  [[tapa::partition("block", kB)]] vec_t b[kVecs];
+  [[tapa::partition("cyclic", kRowVecs)]] vec_t c[kVecs];
 
 init:
   for (int v = 0; v < kVecs; ++v) {
-    row_t b_row;
-    for (int half = 0; half < kLanes / kBoundaryLanes; ++half) {
-      const auto a_row = tapa::bit_cast<row4_t>(a_fifo.read());
-      [[tapa::unroll]] for (int lane = 0; lane < kBoundaryLanes; ++lane) {
-        a[v * kLanes + half * kBoundaryLanes + lane] = a_row[lane];
-      }
-      const auto b_row4 = tapa::bit_cast<row4_t>(b_fifo.read());
-      for (int lane = 0; lane < kBoundaryLanes; ++lane) {
-        b_row[half * kBoundaryLanes + lane] = b_row4[lane];
-      }
+    parts_t a_parts, b_parts;
+    for (int part = 0; part < kParts; ++part) {
+      a_parts[part] = a_fifo.read();
+      b_parts[part] = b_fifo.read();
     }
-    b[v] = tapa::bit_cast<vec_t>(b_row);
+    a[v] = tapa::bit_cast<vec_t>(a_parts);
+    b[v] = tapa::bit_cast<vec_t>(b_parts);
     c[v] = 0.f;
   }
 
 outer:
   for (int l = 0; l < p; ++l) {
+  compute:
     [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
     for (int ij = 0; ij < kVecs; ++ij) {
+      i_prev.write(b[ij]);
+      j_prev.write(a[ij]);
       const int i = ij / kRowVecs;
-      const int jv = ij % kRowVecs;
+      const int j = ij % kRowVecs;
       vec_t acc = c[ij];
-      for (int k = 0; k < kB; ++k) {
-        acc += tapa::make_vec<kLanes>(a[i * kB + k]) * b[k * kRowVecs + jv];
+      for (int kv = 0; kv < kRowVecs; ++kv) {
+        vec_t a_ik = a[i * kRowVecs + kv];
+        for (int lane = 0; lane < kLanes; ++lane) {
+          const int k = kv * kLanes + lane;
+          acc += a_ik[lane] * b[k * kRowVecs + j];
+        }
       }
       c[ij] = acc;
     }
-    ExchangeBlock(i_prev, i_next, j_prev, j_next, a, b);
+    tapa::fence();  // every send of the round before any receive
+  receive:
+    [[tapa::pipeline(1)]] for (int v = 0; v < kVecs; ++v) {
+      b[v] = i_next.read();
+      a[v] = j_next.read();
+    }
   }
 
 finalize:
   for (int v = 0; v < kVecs; ++v) {
-    const auto c_row = tapa::bit_cast<row_t>(c[v]);
-    for (int half = 0; half < kLanes / kBoundaryLanes; ++half) {
-      row4_t out;
-      [[tapa::unroll]] for (int lane = 0; lane < kBoundaryLanes; ++lane) {
-        out[lane] = c_row[half * kBoundaryLanes + lane];
-      }
-      c_fifo.write(tapa::bit_cast<boundary_t>(out));
-    }
+    const auto parts = tapa::bit_cast<parts_t>(c[v]);
+    for (int part = 0; part < kParts; ++part) c_fifo.write(parts[part]);
   }
 }
 
@@ -166,9 +126,9 @@ void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
   assert(kN % p == 0);
   assert(n <= kN);
 
-  tapa::streams<boundary_t, p * p> a("a");
-  tapa::streams<boundary_t, p * p> b("b");
-  tapa::streams<boundary_t, p * p> c("c");
+  tapa::streams<io_t, p * p> a("a");
+  tapa::streams<io_t, p * p> b("b");
+  tapa::streams<io_t, p * p> c("c");
   tapa::stream<vec_t, kVecs> fifo_00_01("PE00->PE01");
   tapa::stream<vec_t, kVecs> fifo_01_00("PE01->PE00");
   tapa::stream<vec_t, kVecs> fifo_10_11("PE10->PE11");

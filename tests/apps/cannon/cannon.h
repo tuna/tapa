@@ -7,10 +7,6 @@
 #include <cassert>
 #include <cstdint>
 
-// AIE exchanges full blocks, so one scheduler fence between each write and
-// read phase is sufficient; per-write fences are unnecessary overhead.
-#define TAPA_AIE_PHASE_ORDERED_STREAMS
-
 #include <tapa.h>
 
 #ifndef TAPA_CANNON_P
@@ -20,8 +16,9 @@
 // p x p PEs
 constexpr int p = TAPA_CANNON_P;
 
-// Each PE's block edge; a multiple of the PE's 8-lane vectors. Raise it with
-// `-DTAPA_CANNON_B=32` to give AI Engine PEs enough work to measure.
+// Each PE's block edge; a multiple of the PE's vector width
+// (`TAPA_CANNON_LANES`). Raise it with `-DTAPA_CANNON_B=32` to give AI Engine
+// PEs enough work to measure.
 #ifndef TAPA_CANNON_B
 #define TAPA_CANNON_B 8
 #endif

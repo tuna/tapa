@@ -68,15 +68,18 @@ cycle turns into a deadlock. The price is less overlap between the loop
 iterations of that task; tasks off any cycle keep it. HLS keeps no such order
 for a PL task, and within a pipelined loop may issue a read ahead of an
 earlier write. A ring that also builds for PL puts its writes and its reads in
-separate loops, writing no more at a time than its streams hold, as
-`tests/apps/cannon` does.
+separate loops, writing no more at a time than its streams hold.
 
 `tapa::fence()` keeps every stream access after it behind every one
 before it. On the AI Engine it is a scheduling fence; elsewhere, where
 separate loops already run in order, it is a no-op. A source whose tasks
 place one between each loop that writes a cycle and the loop that reads it
 may define `TAPA_AIE_PHASE_ORDERED_STREAMS` before including `tapa.h`; those
-tasks then skip the fence after every write.
+tasks then skip the fence after every write, which is what lets a loop that
+computes also write the cycle at full speed. `tests/apps/cannon` sends its
+blocks around its ring while it multiplies them, fences, and then receives
+the next ones. Every PE sends a whole block before any PE receives, so its
+ring streams hold a whole block.
 
 These habits decide AI Engine performance:
 
@@ -92,12 +95,12 @@ These habits decide AI Engine performance:
 - Move whole vectors rather than single lanes. Reading or writing one lane of
   a `vec_t` costs several instructions and a branch, even in an unrolled
   loop, and in the hot loop it costs more than the arithmetic it feeds.
-  `tests/apps/cannon` keeps the rows of B as vectors and sends them around its
-  ring whole.
 - A lane that only feeds a multiply is the exception: `acc += x[k] * b`
   broadcasts lane `k` of a non-const native `x` inside the
   multiply-accumulate, with no extract. Copy `x` out of its array into a
-  local first, so it is loaded once for all its lanes.
+  local first, so it is loaded once for all its lanes. `tests/apps/cannon`
+  keeps A, B and C as rows of vectors and multiplies each row of B by one lane
+  of A this way.
 
 ## Knobs
 
