@@ -289,6 +289,31 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
   EXPECT_TRUE(AnyDiagContains(top, "cannot be an AI Engine task"));
 }
 
+TEST(AieTest, BulkReadsBlockWhereNonBlockingReadsAreRejected) {
+  const TreePipelineRun bulk =
+      Analyze("bulk", Design(R"cpp(
+                [[tapa::target("aie")]]
+                void Add([[tapa::aie_frame(64)]] tapa::istream<float>& a,
+                         tapa::ostream<float>& c, int n) {
+                  float block[64];
+                  a.read(block, 64);
+                  c.write(block, 64);
+                }
+              )cpp"));
+  EXPECT_TRUE(bulk.ok) << (bulk.diags.empty() ? "" : bulk.diags.front());
+
+  const TreePipelineRun nonblocking = Analyze(
+      "nonblocking", Design(R"cpp(
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          c.write(a.read(nullptr));
+        }
+      )cpp"));
+  EXPECT_FALSE(nonblocking.ok);
+  EXPECT_TRUE(
+      AnyDiagContains(nonblocking, "AI Engine stream reads are blocking"));
+}
+
 TEST(AieTest, MixedTemplateTargetsGetIndependentBackends) {
   const TreePipelineRun run = Analyze("mixed_template", R"cpp(
     template <typename T>

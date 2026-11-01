@@ -507,6 +507,13 @@ class istream : virtual public internal::basic_stream<T> {
     return val;
   }
 
+  /// Blocking read of @p n values of @c U into @p dst, lined up with the
+  /// elements byte for byte (see `internal::bulk_layout`).
+  template <typename U>
+  void read(U* dst, int n) {
+    internal::bulk_read<T>(*this, dst, n);
+  }
+
   /// Non-blocking consume of an EoT token; returns true if consumed.
   bool try_open() {
     if (!empty()) {
@@ -576,6 +583,13 @@ class ostream : virtual public internal::basic_stream<T> {
   ostream& operator<<(const T& value) {
     write(value);
     return *this;
+  }
+
+  /// Blocking write of @p n values of @c U from @p src, lined up with the
+  /// elements byte for byte (see `internal::bulk_layout`).
+  template <typename U>
+  void write(const U* src, int n) {
+    internal::bulk_write<T>(*this, src, n);
   }
 
   /// Non-blocking write of an EoT token; returns true on success.

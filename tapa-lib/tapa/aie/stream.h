@@ -12,6 +12,7 @@
 
 #include "tapa/aie/frame.h"
 #include "tapa/aie/vec.h"
+#include "tapa/base/stream.h"
 
 // TAPA stream ports on the AI Engine. Every ADF port TAPA generates carries
 // 32-bit words (`input_stream<int32>`); an element is read and written as its
@@ -156,6 +157,10 @@ class istream {
     value = read();
     return *this;
   }
+  template <typename U>
+  TAPA_AIE_INLINE void read(U* dst, int n) {
+    internal::bulk_read<T>(*this, dst, n);
+  }
 
  private:
   input_stream<int32>* port_;
@@ -176,6 +181,10 @@ class ostream {
   TAPA_AIE_INLINE ostream& operator<<(const T& value) {
     write(value);
     return *this;
+  }
+  template <typename U>
+  TAPA_AIE_INLINE void write(const U* src, int n) {
+    internal::bulk_write<T>(*this, src, n);
   }
 
  private:
@@ -236,6 +245,34 @@ class iframe {
     value = read();
     return *this;
   }
+  // Copies straight out of the frame buffers, a frame's worth per boundary
+  // test instead of one test per element; a value must not straddle frames.
+  template <typename U>
+  TAPA_AIE_INLINE void read(U* dst, int n) {
+    constexpr int kElemWords = internal::aie::kWords<T>;
+    constexpr int kValueWords = internal::aie::kWords<U>;
+    static_assert(N * kElemWords % kValueWords == 0,
+                  "a frame must hold a whole number of values");
+    while (n > 0) {
+      if (pos_ == 0) {
+        buf_.acquire();
+        ptr_ = buf_.data();
+      }
+      const int room = (N - pos_) * kElemWords / kValueWords;
+      const int m = n < room ? n : room;
+      for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
+          dst[i] = internal::aie::elem_io<U>::load(ptr_);
+          ptr_ += kValueWords;
+        }
+      dst += m;
+      n -= m;
+      pos_ += m * kValueWords / kElemWords;
+      if (pos_ == N) {
+        buf_.release();
+        pos_ = 0;
+      }
+    }
+  }
   // A final frame may be padded; unread padding is discarded on release.
   ~iframe() {
     if (pos_ != 0) buf_.release();
@@ -267,6 +304,34 @@ class oframe {
   TAPA_AIE_INLINE oframe& operator<<(const T& value) {
     write(value);
     return *this;
+  }
+  // Copies straight into the frame buffers, a frame's worth per boundary test
+  // instead of one test per element; a value must not straddle frames.
+  template <typename U>
+  TAPA_AIE_INLINE void write(const U* src, int n) {
+    constexpr int kElemWords = internal::aie::kWords<T>;
+    constexpr int kValueWords = internal::aie::kWords<U>;
+    static_assert(N * kElemWords % kValueWords == 0,
+                  "a frame must hold a whole number of values");
+    while (n > 0) {
+      if (pos_ == 0) {
+        buf_.acquire();
+        ptr_ = buf_.data();
+      }
+      const int room = (N - pos_) * kElemWords / kValueWords;
+      const int m = n < room ? n : room;
+      for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
+          internal::aie::elem_io<U>::store(ptr_, src[i]);
+          ptr_ += kValueWords;
+        }
+      src += m;
+      n -= m;
+      pos_ += m * kValueWords / kElemWords;
+      if (pos_ == N) {
+        buf_.release();
+        pos_ = 0;
+      }
+    }
   }
   // A final partial frame is zero-padded and released when the task returns.
   ~oframe() {

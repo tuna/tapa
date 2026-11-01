@@ -26,6 +26,8 @@ class istream {
   istream& operator>>(T& value);
   T read(bool& is_success);
   T read(std::nullptr_t);
+  template <typename U>
+  void read(U* dst, int n);
   bool try_open();
   void open();
 };
@@ -37,6 +39,8 @@ class ostream {
   bool try_write(const T& value);
   void write(const T& value);
   ostream& operator<<(const T& value);
+  template <typename U>
+  void write(const U* src, int n);
   bool try_close();
   void close();
 };

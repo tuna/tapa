@@ -234,6 +234,36 @@ TEST(StreamReadTest, EmptyReadsReturnValueInitializedElements) {
   CheckEmptyStreamReads(std::array<int, 3>{1, 2, 3});
 }
 
+// A bulk transfer lines values up with elements byte for byte, whether a value
+// spans elements, an element holds values, or the two are the same type.
+TEST(StreamBulkTest, ValuesLineUpWithElementsByteForByte) {
+  using pair_t = std::array<int, 2>;
+  const int ints[] = {1, 2, 3, 4};
+  const pair_t pairs[] = {{1, 2}, {3, 4}};
+
+  tapa::stream<int, 4> narrow("narrow");
+  narrow.write(ints, 4);
+  pair_t read_pairs[2];
+  narrow.read(read_pairs, 2);
+  EXPECT_EQ(read_pairs[0], pairs[0]);
+  EXPECT_EQ(read_pairs[1], pairs[1]);
+
+  narrow.write(pairs, 2);
+  int read_ints[4];
+  narrow.read(read_ints, 4);
+  EXPECT_THAT(read_ints, testing::ElementsAreArray(ints));
+
+  tapa::stream<pair_t, 2> wide("wide");
+  wide.write(ints, 4);
+  EXPECT_EQ(wide.read(), pairs[0]);
+  EXPECT_EQ(wide.read(), pairs[1]);
+
+  wide.write(pairs[0]);
+  wide.write(pairs[1]);
+  wide.read(read_ints, 4);
+  EXPECT_THAT(read_ints, testing::ElementsAreArray(ints));
+}
+
 TEST(StreamCompletionDeathTest, FinalTransferAfterBlockedPollRemainsUsable) {
   EXPECT_EXIT(
       {

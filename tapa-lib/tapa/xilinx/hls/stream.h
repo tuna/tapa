@@ -124,6 +124,12 @@ class tapa_stream {
     return elem.val;
   }
 
+  template <typename U>
+  void read(U* dst, int n) {
+#pragma HLS inline
+    internal::bulk_read<T>(*this, dst, n);
+  }
+
   bool try_open() {
 #pragma HLS inline
     internal::elem_t<T> elem;
@@ -157,6 +163,12 @@ class tapa_stream {
 #pragma HLS inline
     write(value);
     return *this;
+  }
+
+  template <typename U>
+  void write(const U* src, int n) {
+#pragma HLS inline
+    internal::bulk_write<T>(*this, src, n);
   }
 
   bool try_close() {

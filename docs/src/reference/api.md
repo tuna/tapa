@@ -103,6 +103,7 @@ Read-only view of a stream. Always passed by reference in task signatures: `tapa
 | `read()` | yes | yes | Blocks until an element is available, then returns it. |
 | `read(bool& ok)` | no | yes | Non-blocking read; sets `ok` to true if an element was consumed. |
 | `read(nullptr)` | no | yes | Non-blocking read that discards the success flag; returns `T()` when the stream is empty. Use after an `empty()` / `try_eot()` check has already established that data is there. |
+| `read(U* dst, int n)` | yes | yes | Reads `n` values of `U` into `dst`. The sizes of `U` and `T` must divide one another, and the values line up with the elements byte for byte: a wider `U` takes `sizeof(U) / sizeof(T)` elements per value, and a narrower one takes `sizeof(T) / sizeof(U)` values from each element, so `n` must then be a multiple of that. On an AI Engine frame port (`[[tapa::aie_frame(N)]]`) it copies whole runs of a frame. In HLS, independent bulk transfers run concurrently. |
 | `try_read(T& val)` | no | yes | Non-blocking read; returns true and writes to `val` if successful. |
 | `operator>>(T& val)` | yes | yes | Blocking read into `val`; returns the stream so reads can be chained. Equivalent to `val = read()`. |
 | `peek(bool& ok)` | no | no | Returns the next element without consuming it; sets `ok` to whether one was available. |
@@ -131,6 +132,7 @@ Write-only view of a stream. Always passed by reference in task signatures: `tap
 | Method | Blocking | Destructive | Description |
 |--------|----------|-------------|-------------|
 | `write(const T& val)` | yes | yes | Blocks until space is available, then writes `val`. |
+| `write(const U* src, int n)` | yes | yes | Writes `n` values of `U` from `src`, lined up with the elements as `read(dst, n)` lines them up. |
 | `try_write(const T& val)` | no | yes | Non-blocking write; returns true if the element was written. |
 | `operator<<(const T& val)` | yes | yes | Blocking write; returns the stream so writes can be chained. Equivalent to `write(val)`. |
 | `full()` | no | no | Returns true if the stream is full. |

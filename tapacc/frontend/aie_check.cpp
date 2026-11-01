@@ -123,7 +123,8 @@ class CloseAnalysis {
 
 // Why a stream operation has no AI Engine form, or null when it has one.
 const char* AieStreamOpProblem(llvm::StringRef op, unsigned num_args) {
-  if (op == "read" && num_args > 0) {
+  // `read(bool&)` and `read(nullptr)`; the bulk `read(dst, n)` blocks.
+  if (op == "read" && num_args == 1) {
     return "AI Engine stream reads are blocking; use read() without "
            "arguments";
   }

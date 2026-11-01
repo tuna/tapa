@@ -46,7 +46,7 @@ cannot be run through XRT.)
 | Construct | On the AI Engine |
 |---|---|
 | `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits. |
-| `read()`, `write()`, `>>`, `<<` | Yes, blocking. |
+| `read()`, `write()`, `>>`, `<<`, `read(dst, n)`, `write(src, n)` | Yes, blocking. |
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
 | `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |
 | `peek`, `empty`, `full` | No. AI Engine streams expose no occupancy. |
@@ -104,6 +104,10 @@ These habits decide AI Engine performance:
   local first, so it is loaded once for all its lanes. `tests/apps/cannon`
   keeps A, B and C as rows of vectors and multiplies each row of B by one lane
   of A this way.
+- Move a frame port's data whole, with `read(dst, n)` and `write(src, n)`.
+  They test for a frame boundary once per run of a frame, where `read()` and
+  `write()` test twice per element, and the DMA moves the frames while the
+  core computes; the core's own stream ports move only 32 bits per cycle.
 
 ## Knobs
 
