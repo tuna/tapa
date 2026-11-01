@@ -76,7 +76,7 @@ void ProcElem([[tapa::aie_frame(kIoVecs)]] tapa::istream<io_t>& a_fifo,
   [[tapa::partition("cyclic", kRowVecs)]] vec_t c[kVecs];
 
 init:
-  for (int v = 0; v < kVecs; ++v) {
+  [[tapa::pipeline(1)]] for (int v = 0; v < kVecs; ++v) {
     parts_t a_parts, b_parts;
     for (int part = 0; part < kParts; ++part) {
       a_parts[part] = a_fifo.read();
@@ -115,7 +115,7 @@ outer:
   }
 
 finalize:
-  for (int v = 0; v < kVecs; ++v) {
+  [[tapa::pipeline(1)]] for (int v = 0; v < kVecs; ++v) {
     const auto parts = tapa::bit_cast<parts_t>(c[v]);
     for (int part = 0; part < kParts; ++part) c_fifo.write(parts[part]);
   }

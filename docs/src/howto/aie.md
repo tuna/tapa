@@ -89,7 +89,9 @@ These habits decide AI Engine performance:
   multiply-accumulate. Other whole-word `vec_t` shapes use scalar operations;
   scalar loops run far slower than native vector code.
 - Use a 32-bit loop counter and `[[tapa::pipeline]]` on the hot loop. A 64-bit
-  counter keeps the loop from being software-pipelined.
+  counter keeps the loop from being software-pipelined. Pipeline the loops
+  that fill and drain local arrays too, so that a short loop nested in them,
+  such as one over the parts of a vector, is flattened as well.
 - Accumulate into a local `vec_t` variable, not an array element. The AI
   Engine compiler keeps an array in memory, so each multiply-accumulate would
   wait on a load and a store.
