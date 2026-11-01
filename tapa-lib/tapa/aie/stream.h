@@ -135,11 +135,25 @@ TAPA_AIE_INLINE void after_write() {
 }  // namespace aie
 }  // namespace internal
 
+namespace aie {
+
+TAPA_AIE_INLINE void after_writes() {
+#if defined(__AIENGINE__) && defined(TAPA_AIE_PHASE_ORDERED_STREAMS)
+  chess_separator_scheduler();
+#endif
+}
+
+}  // namespace aie
+
 template <typename T>
 class istream {
  public:
   TAPA_AIE_INLINE explicit istream(input_stream<int32>* port) : port_(port) {}
   TAPA_AIE_INLINE T read() { return internal::aie::elem_io<T>::read(port_); }
+  TAPA_AIE_INLINE bool try_read(T& value) {
+    value = read();
+    return true;
+  }
   TAPA_AIE_INLINE istream& operator>>(T& value) {
     value = read();
     return *this;
@@ -156,6 +170,10 @@ class ostream {
   TAPA_AIE_INLINE void write(const T& value) {
     internal::aie::elem_io<T>::write(port_, value);
     internal::aie::after_write();
+  }
+  TAPA_AIE_INLINE bool try_write(const T& value) {
+    write(value);
+    return true;
   }
   TAPA_AIE_INLINE ostream& operator<<(const T& value) {
     write(value);

@@ -63,13 +63,75 @@ constexpr int kRowVecs = kB / kLanes;
 constexpr int kVecs = kB * kRowVecs;
 static_assert(kB % kLanes == 0, "a block row must be whole vectors");
 
-// The rows each PE sends to its neighbors before it reads from the others,
-// and the depth of the ring streams in vectors. AIE exchanges one whole block
-// per phase; PL uses its original nonblocking schedule instead.
-constexpr int kRingWords = kB * kB;
-constexpr int kRing = kRingWords / kLanes;
-static_assert(kRingWords % kLanes == 0, "ring phase must be whole vectors");
-static_assert(kVecs % kRing == 0, "a block must be whole ring chunks");
+inline __attribute__((always_inline)) void ComputeBlock(float (&a)[kB * kB],
+                                                        float (&b)[kVecs],
+                                                        float (&c)[kVecs]) {
+  [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
+  for (int ij = 0; ij < kVecs; ++ij) {
+    const int i = ij / kRowVecs;
+    const int jv = ij % kRowVecs;
+    float acc = c[ij];
+    for (int k = 0; k < kB; ++k) {
+      acc += a[i * kB + k] * b[k * kRowVecs + jv];
+    }
+    c[ij] = acc;
+  }
+}
+
+template <int N>
+inline __attribute__((always_inline)) void ComputeBlock(
+    float (&a)[kB * kB], tapa::vec_t<float, N> (&b)[kVecs],
+    tapa::vec_t<float, N> (&c)[kVecs]) {
+  for (int i = 0; i < kB; ++i) {
+    for (int jv = 0; jv < kRowVecs; ++jv) {
+      tapa::vec_t<float, N> acc = c[i * kRowVecs + jv];
+      [[tapa::pipeline]] for (int k = 0; k < kB; ++k) {
+        acc += tapa::make_vec<N>(a[i * kB + k]) * b[k * kRowVecs + jv];
+      }
+      c[i * kRowVecs + jv] = acc;
+    }
+  }
+}
+
+inline __attribute__((always_inline)) void ExchangeBlock(
+    tapa::ostream<float>& i_prev, tapa::istream<float>& i_next,
+    tapa::ostream<float>& j_prev, tapa::istream<float>& j_next,
+    float (&a)[kB * kB], float (&b)[kVecs]) {
+  [[tapa::pipeline(1)]] [[tapa::tripcount(
+      kVecs, kVecs)]] [[tapa::dependence("a")]] [[tapa::dependence("b")]]
+  for (uint64_t a_wr = 0, b_wr = 0, a_rd = 0, b_rd = 0;
+       a_wr < kVecs || b_wr < kVecs || a_rd < kVecs || b_rd < kVecs;) {
+    if (b_wr < kVecs && i_prev.try_write(b[b_wr])) ++b_wr;
+    if (a_wr < kVecs && j_prev.try_write(a[a_wr])) ++a_wr;
+    if (b_rd < b_wr && i_next.try_read(b[b_rd])) ++b_rd;
+    if (a_rd < a_wr && j_next.try_read(a[a_rd])) ++a_rd;
+  }
+}
+
+template <int N>
+inline __attribute__((always_inline)) void ExchangeBlock(
+    tapa::ostream<tapa::vec_t<float, N>>& i_prev,
+    tapa::istream<tapa::vec_t<float, N>>& i_next,
+    tapa::ostream<tapa::vec_t<float, N>>& j_prev,
+    tapa::istream<tapa::vec_t<float, N>>& j_next, float (&a)[kB * kB],
+    tapa::vec_t<float, N> (&b)[kVecs]) {
+  for (int v = 0; v < kVecs; ++v) {
+    i_prev.write(b[v]);
+    row_t a_row;
+    for (int lane = 0; lane < kLanes; ++lane) {
+      a_row[lane] = a[v * kLanes + lane];
+    }
+    j_prev.write(tapa::bit_cast<tapa::vec_t<float, N>>(a_row));
+  }
+  tapa::aie::after_writes();
+  for (int v = 0; v < kVecs; ++v) {
+    b[v] = i_next.read();
+    const auto a_row = tapa::bit_cast<row_t>(j_next.read());
+    for (int lane = 0; lane < kLanes; ++lane) {
+      a[v * kLanes + lane] = a_row[lane];
+    }
+  }
+}
 
 void ProcElem(
     [[tapa::aie_frame(kB * kB /
@@ -80,7 +142,6 @@ void ProcElem(
                       kBoundaryLanes)]] tapa::ostream<boundary_t>& c_fifo,
     tapa::ostream<vec_t>& i_prev, tapa::istream<vec_t>& i_next,
     tapa::ostream<vec_t>& j_prev, tapa::istream<vec_t>& j_next) {
-  const uint64_t kNumElems = kB * kB;
   [[tapa::partition("cyclic", 32)]] float a[kB * kB];
   [[tapa::partition("block", 32)]] vec_t b[kVecs];
   [[tapa::partition("cyclic", 32)]] vec_t c[kVecs];
@@ -104,94 +165,8 @@ init:
 
 outer:
   for (int l = 0; l < p; ++l) {
-  compute:
-#if TAPA_CANNON_LANES == 1
-#define CANNON_COMPUTE_ATTRS [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
-    CANNON_COMPUTE_ATTRS
-    for (int ij = 0; ij < kVecs; ++ij) {
-      const int i = ij / kRowVecs;
-      const int jv = ij % kRowVecs;
-      vec_t acc = c[ij];
-      for (int k = 0; k < kB; ++k) {
-        acc += a[i * kB + k] * b[k * kRowVecs + jv];
-      }
-      c[ij] = acc;
-    }
-#else
-#define CANNON_NESTED_COMPUTE_ATTRS [[tapa::pipeline]]
-    for (int i = 0; i < kB; ++i) {
-      for (int jv = 0; jv < kRowVecs; ++jv) {
-        vec_t acc = c[i * kRowVecs + jv];
-        CANNON_NESTED_COMPUTE_ATTRS
-        for (int k = 0; k < kB; ++k) {
-          acc += tapa::make_vec<kLanes>(a[i * kB + k]) * b[k * kRowVecs + jv];
-        }
-        c[i * kRowVecs + jv] = acc;
-      }
-    }
-#endif
-#undef CANNON_NESTED_COMPUTE_ATTRS
-#undef CANNON_COMPUTE_ATTRS
-  communicate:
-#if TAPA_CANNON_LANES == 1
-#define CANNON_COMM_ATTRS                  \
-  [[tapa::pipeline(1)]] [[tapa::tripcount( \
-      kNumElems,                           \
-      kNumElems)]] [[tapa::dependence("a")]] [[tapa::dependence("b")]]
-    // Original PL nonblocking schedule, which overlaps all four operations.
-    CANNON_COMM_ATTRS
-    for (uint64_t a_wr = 0, b_wr = 0, a_rd = 0, b_rd = 0;
-         a_wr < kNumElems || b_wr < kNumElems || a_rd < kNumElems ||
-         b_rd < kNumElems;) {
-      if (b_wr < kNumElems && i_prev.try_write(b[b_wr])) ++b_wr;
-      if (a_wr < kNumElems) {
-        row_t a_row;
-        for (int lane = 0; lane < kLanes; ++lane) {
-          a_row[lane] = a[a_wr * kLanes + lane];
-        }
-        if (j_prev.try_write(tapa::bit_cast<vec_t>(a_row))) ++a_wr;
-      }
-      if (b_rd < b_wr && i_next.try_read(b[b_rd])) ++b_rd;
-      if (a_rd < a_wr) {
-        vec_t a_vec;
-        if (j_next.try_read(a_vec)) {
-          const auto a_row = tapa::bit_cast<row_t>(a_vec);
-          for (int lane = 0; lane < kLanes; ++lane) {
-            a[a_rd * kLanes + lane] = a_row[lane];
-          }
-          ++a_rd;
-        }
-      }
-    }
-#undef CANNON_COMM_ATTRS
-#else
-    // Shift B to the previous row and A to the previous column, a chunk the
-    // ring streams can hold at a time. Within a pipelined loop HLS may issue
-    // a read ahead of an earlier write to another stream, and on the ring
-    // every PE would then wait for a write no PE made, so the writes and the
-    // reads go in separate loops. On the AI Engine, TAPA keeps the PE's
-    // stream accesses in program order because the ring runs through it.
-    for (int v0 = 0; v0 < kVecs; v0 += kRing) {
-      for (int v = v0; v < v0 + kRing; ++v) {
-        i_prev.write(b[v]);
-        row_t a_row;
-        for (int lane = 0; lane < kLanes; ++lane) {
-          a_row[lane] = a[v * kLanes + lane];
-        }
-        j_prev.write(tapa::bit_cast<vec_t>(a_row));
-      }
-#if defined(__AIENGINE__) && defined(TAPA_AIE_PHASE_ORDERED_STREAMS)
-      chess_separator_scheduler();
-#endif
-      for (int v = v0; v < v0 + kRing; ++v) {
-        b[v] = i_next.read();
-        const auto a_row = tapa::bit_cast<row_t>(j_next.read());
-        for (int lane = 0; lane < kLanes; ++lane) {
-          a[v * kLanes + lane] = a_row[lane];
-        }
-      }
-    }
-#endif
+    ComputeBlock(a, b, c);
+    ExchangeBlock(i_prev, i_next, j_prev, j_next, a, b);
   }
 
 finalize:
@@ -215,14 +190,14 @@ void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
   tapa::streams<boundary_t, p * p> a("a");
   tapa::streams<boundary_t, p * p> b("b");
   tapa::streams<boundary_t, p * p> c("c");
-  tapa::stream<vec_t, kRing> fifo_00_01("PE00->PE01");
-  tapa::stream<vec_t, kRing> fifo_01_00("PE01->PE00");
-  tapa::stream<vec_t, kRing> fifo_10_11("PE10->PE11");
-  tapa::stream<vec_t, kRing> fifo_11_10("PE11->PE10");
-  tapa::stream<vec_t, kRing> fifo_00_10("PE00->PE10");
-  tapa::stream<vec_t, kRing> fifo_10_00("PE10->PE00");
-  tapa::stream<vec_t, kRing> fifo_01_11("PE01->PE11");
-  tapa::stream<vec_t, kRing> fifo_11_01("PE11->PE01");
+  tapa::stream<vec_t, kVecs> fifo_00_01("PE00->PE01");
+  tapa::stream<vec_t, kVecs> fifo_01_00("PE01->PE00");
+  tapa::stream<vec_t, kVecs> fifo_10_11("PE10->PE11");
+  tapa::stream<vec_t, kVecs> fifo_11_10("PE11->PE10");
+  tapa::stream<vec_t, kVecs> fifo_00_10("PE00->PE10");
+  tapa::stream<vec_t, kVecs> fifo_10_00("PE10->PE00");
+  tapa::stream<vec_t, kVecs> fifo_01_11("PE01->PE11");
+  tapa::stream<vec_t, kVecs> fifo_11_01("PE11->PE01");
 
   tapa::task()
       .invoke(Scatter, a_vec, a)

@@ -134,8 +134,7 @@ const char* AieStreamOpProblem(llvm::StringRef op, unsigned num_args) {
              "over an element count instead";
     }
   }
-  for (const char* nonblocking :
-       {"try_read", "try_write", "peek", "try_peek", "empty", "full"}) {
+  for (const char* nonblocking : {"peek", "try_peek", "empty", "full"}) {
     if (op == nonblocking) {
       return "AI Engine streams are blocking and expose no occupancy; use "
              "the blocking read() and write()";

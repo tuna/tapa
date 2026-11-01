@@ -25,4 +25,16 @@ struct [[gnu::packed]] elem_t {
 
 }  // namespace internal
 
+namespace aie {
+
+// A phase-level stream-ordering fence. A no-op on targets that do not need
+// explicit scheduler ordering.
+#if defined(TAPA_TARGET_AIE_)
+void after_writes();
+#else
+inline void after_writes() {}
+#endif
+
+}  // namespace aie
+
 }  // namespace tapa

@@ -48,7 +48,8 @@ cannot be run through XRT.)
 | `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits. |
 | `read()`, `write()`, `>>`, `<<` | Yes, blocking. |
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
-| `try_read`, `try_write`, `peek`, `empty`, `full` | No. AI Engine streams are blocking and expose no occupancy. |
+| `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |
+| `peek`, `empty`, `full` | No. AI Engine streams expose no occupancy. |
 | `mmap`, `async_mmap`, `mmaps`, `hmap` | No. Read memory in a PL task and stream the data in. |
 | Scalars | Yes. |
 | Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body declares. The stack must fit in the tile's 32 KB data memory. |
