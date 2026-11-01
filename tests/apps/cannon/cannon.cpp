@@ -51,9 +51,9 @@ void Gather(tapa::mmap<float> matrix_ptr,
 // Each PE holds one kB x kB block of A, B, and C: A as a flat scalar
 // array and B and C as native-width vectors, in HLS and on the AI Engine
 // alike (`--target ProcElem:aie`). An output vector accumulates in one
-// register, one vector multiply-accumulate per k, with the outer loop
-// pipelined and the inner loop flattened on both targets. A and B ring as
-// whole rows. Boundary frames use at most 128 bits on the AI Engine, leaving
+// register, one vector multiply-accumulate per k, using the loop schedule
+// appropriate to the target. A and B ring as whole rows. Boundary frames use
+// at most 128 bits on the AI Engine, leaving
 // its two input and two output stream ports to the ring.
 using vec_t = std::conditional_t<TAPA_CANNON_LANES == 1, float,
                                  tapa::vec_t<float, TAPA_CANNON_LANES>>;
@@ -105,20 +105,33 @@ init:
 outer:
   for (int l = 0; l < p; ++l) {
   compute:
-    [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
+#if TAPA_CANNON_LANES == 1
+#define CANNON_COMPUTE_ATTRS [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
+    CANNON_COMPUTE_ATTRS
     for (int ij = 0; ij < kVecs; ++ij) {
       const int i = ij / kRowVecs;
       const int jv = ij % kRowVecs;
       vec_t acc = c[ij];
       for (int k = 0; k < kB; ++k) {
-#if TAPA_CANNON_LANES == 1
         acc += a[i * kB + k] * b[k * kRowVecs + jv];
-#else
-        acc += tapa::make_vec<kLanes>(a[i * kB + k]) * b[k * kRowVecs + jv];
-#endif
       }
       c[ij] = acc;
     }
+#else
+#define CANNON_NESTED_COMPUTE_ATTRS [[tapa::pipeline]]
+    for (int i = 0; i < kB; ++i) {
+      for (int jv = 0; jv < kRowVecs; ++jv) {
+        vec_t acc = c[i * kRowVecs + jv];
+        CANNON_NESTED_COMPUTE_ATTRS
+        for (int k = 0; k < kB; ++k) {
+          acc += tapa::make_vec<kLanes>(a[i * kB + k]) * b[k * kRowVecs + jv];
+        }
+        c[i * kRowVecs + jv] = acc;
+      }
+    }
+#endif
+#undef CANNON_NESTED_COMPUTE_ATTRS
+#undef CANNON_COMPUTE_ATTRS
   communicate:
 #if TAPA_CANNON_LANES == 1
 #define CANNON_COMM_ATTRS                  \
