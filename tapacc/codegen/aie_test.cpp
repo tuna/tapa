@@ -26,6 +26,15 @@ TreePipelineRun Analyze(const std::string& name, const std::string& code,
       std::move(task_targets));
 }
 
+size_t CountOccurrences(const std::string& text, const std::string& needle) {
+  size_t count = 0, pos = 0;
+  while ((pos = text.find(needle, pos)) != std::string::npos) {
+    ++count;
+    ++pos;
+  }
+  return count;
+}
+
 bool AnyDiagContains(const TreePipelineRun& run, const std::string& needle) {
   for (const std::string& diag : run.diags) {
     if (diag.find(needle) != std::string::npos) return true;
@@ -97,6 +106,73 @@ TEST(AieTest, LeafKnobsReachTheGraphAndItsOwnVariant) {
   EXPECT_EQ(tu.find("aie_frame"), std::string::npos) << "attribute lowered";
   EXPECT_EQ(full.find("#pragma HLS"), std::string::npos)
       << "no HLS interface pragmas in the AI Engine variant: " << full;
+}
+
+TEST(AieTest, PipelineFlattensNestedLoops) {
+  const TreePipelineRun automatic = Analyze(
+      "nested_pipeline", Design(R"cpp(
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          [[tapa::pipeline]] for (int i = 0; i < n; ++i) {
+            for (int j = 0; j < 4; ++j) c.write(a.read());
+          }
+        }
+      )cpp"));
+  ASSERT_TRUE(automatic.ok)
+      << (automatic.diags.empty() ? "" : automatic.diags.front());
+  const std::string& automatic_tu = automatic.files.at("nested_pipeline.cpp");
+  EXPECT_NE(automatic_tu.find("chess_prepare_for_pipelining"),
+            std::string::npos);
+  EXPECT_EQ(CountOccurrences(automatic_tu, "chess_flatten_loop"), 1);
+
+  const TreePipelineRun explicit_unroll = Analyze(
+      "nested_explicit_unroll", Design(R"cpp(
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          [[tapa::pipeline]] for (int i = 0; i < n; ++i) {
+            [[tapa::unroll]] for (int j = 0; j < 4; ++j)
+              c.write(a.read());
+          }
+        }
+      )cpp"));
+  ASSERT_TRUE(explicit_unroll.ok)
+      << (explicit_unroll.diags.empty() ? "" : explicit_unroll.diags.front());
+  EXPECT_EQ(
+      CountOccurrences(explicit_unroll.files.at("nested_explicit_unroll.cpp"),
+                       "chess_flatten_loop"),
+      1);
+}
+
+TEST(AieTest, PlOnlyAttrsAreIgnoredWithoutChangingThePlVariant) {
+  const TreePipelineRun run = Analyze(
+      "pl_only_attrs", Design(R"cpp(
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          [[tapa::partition("complete")]] float bias[4] = {};
+          [[tapa::pipeline]] [[tapa::dependence("c")]] [[tapa::tripcount(1, 4)]]
+          for (int i = 0; i < n; ++i)
+            c.write(a.read() + bias[i % 4]);
+        }
+      )cpp"));
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  const TreePipelineRun pl = Analyze(
+      "pl_only_attrs_hls", Design(R"cpp(
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          [[tapa::partition("complete")]] float bias[4] = {};
+          [[tapa::pipeline]] [[tapa::dependence("c")]] [[tapa::tripcount(1, 4)]]
+          for (int i = 0; i < n; ++i)
+            c.write(a.read() + bias[i % 4]);
+        }
+      )cpp"),
+      {{"Add", SynthTarget::kXilinxHls}});
+  ASSERT_TRUE(pl.ok) << (pl.diags.empty() ? "" : pl.diags.front());
+  const std::string& tu = pl.files.at("pl_only_attrs_hls.cpp");
+  EXPECT_NE(tu.find("HLS array_partition"), std::string::npos) << tu;
+  EXPECT_NE(tu.find("HLS dependence"), std::string::npos) << tu;
+  EXPECT_NE(tu.find("HLS loop_tripcount"), std::string::npos) << tu;
+  EXPECT_EQ(tu.find("[[tapa::partition"), std::string::npos);
+  EXPECT_EQ(tu.find("[[tapa::dependence"), std::string::npos);
+  EXPECT_EQ(tu.find("[[tapa::tripcount"), std::string::npos);
 }
 
 TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {
@@ -183,13 +259,6 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
            for (int i = 0; i < n; ++i) c.write(a.read());
          })cpp",
        "function-level [[tapa::pipeline]] has no AI Engine lowering"},
-      {"partition", R"cpp(
-         [[tapa::target("aie")]]
-         void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
-           [[tapa::partition("complete")]] float bias[4] = {};
-           for (int i = 0; i < n; ++i) c.write(a.read() + bias[i % 4]);
-         })cpp",
-       "[[tapa::partition]] has no AI Engine lowering"},
       {"narrow", R"cpp(
          [[tapa::target("aie")]]
          void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n,

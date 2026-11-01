@@ -52,7 +52,9 @@ cannot be run through XRT.)
 | `mmap`, `async_mmap`, `mmaps`, `hmap` | No. Read memory in a PL task and stream the data in. |
 | Scalars | Yes. |
 | Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body declares. The stack must fit in the tile's 32 KB data memory. |
-| `[[tapa::pipeline]]`, `[[tapa::unroll]]` | Lowered to `chess_prepare_for_pipelining` and `chess_unroll_loop`. |
+| `[[tapa::pipeline]]` | Lowered to `chess_prepare_for_pipelining`; every nested loop is flattened automatically, as in HLS nested-loop pipelining. |
+| `[[tapa::unroll]]` | Lowered to `chess_flatten_loop` when full and `chess_unroll_loop(k)` with a factor. |
+| HLS-only attributes such as `partition`, `dependence`, and `tripcount` | Ignored with a remark; they still affect the PL build. |
 
 A PL task must not `close()` a stream that feeds an AI Engine task, because
 the end-of-transmission token would be read as data.

@@ -4,6 +4,8 @@
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
 #include "clang/AST/TypeLoc.h"
 
 #include "frontend/diag.h"
@@ -42,10 +44,57 @@ void AieBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
   }
 }
 
+namespace {
+
+bool HasUnrollAttr(const clang::Stmt* stmt) {
+  const auto* attributed = clang::dyn_cast<clang::AttributedStmt>(stmt);
+  if (attributed == nullptr) return false;
+  for (const clang::Attr* attr : attributed->getAttrs()) {
+    if (attr->getKind() == clang::attr::TapaUnroll) return true;
+  }
+  return false;
+}
+
+const clang::Stmt* LoopBody(const clang::Stmt* stmt) {
+  if (const auto* loop = clang::dyn_cast<clang::ForStmt>(stmt)) {
+    return loop->getBody();
+  }
+  if (const auto* loop = clang::dyn_cast<clang::WhileStmt>(stmt)) {
+    return loop->getBody();
+  }
+  if (const auto* loop = clang::dyn_cast<clang::DoStmt>(stmt)) {
+    return loop->getBody();
+  }
+  if (const auto* loop = clang::dyn_cast<clang::CXXForRangeStmt>(stmt)) {
+    return loop->getBody();
+  }
+  return nullptr;
+}
+
+void FlattenNestedLoops(const clang::Stmt* stmt, EditSink& edits) {
+  for (const clang::Stmt* child : stmt->children()) {
+    if (child == nullptr) continue;
+    if (HasUnrollAttr(child)) {
+      const clang::Stmt* body =
+          LoopBody(clang::cast<clang::AttributedStmt>(child)->getSubStmt());
+      if (body != nullptr) FlattenNestedLoops(body, edits);
+      continue;
+    }
+    if (const clang::Stmt* body = LoopBody(child)) {
+      edits.InsertTextBefore(body->getBeginLoc(), "chess_flatten_loop ");
+    }
+    FlattenNestedLoops(child, edits);
+  }
+}
+
+}  // namespace
+
 void AieBackend::LowerPipeline(int /*ii*/, const std::string& /*style*/,
                                const clang::Stmt* body, EditSink& edits) const {
-  // chess keywords sit between the loop header and its body.
+  // Match HLS nested-loop pipelining: the outer loop is pipelined and every
+  // inner loop is flattened, without requiring an explicit unroll attribute.
   if (body != nullptr) {
+    FlattenNestedLoops(body, edits);
     edits.InsertTextBefore(body->getBeginLoc(),
                            "chess_prepare_for_pipelining ");
   }
@@ -60,16 +109,12 @@ void AieBackend::LowerUnroll(int factor, const clang::Stmt* body,
                   : "chess_unroll_loop(" + std::to_string(factor) + ") ");
 }
 
-namespace {
-
 void ReportUnsupportedAttr(const clang::Attr& attr, EditSink& edits) {
-  ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Error,
+  ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Remark,
                    attr.getRange().getBegin(),
-                   "[[tapa::%0]] has no AI Engine lowering")
+                   "[[tapa::%0]] is ignored for the AI Engine")
       << attr.getSpelling();
 }
-
-}  // namespace
 
 void AieBackend::LowerFuncPipeline(int, const std::string&,
                                    const clang::Stmt* body,
