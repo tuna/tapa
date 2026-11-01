@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 #include "tapa/base/util.h"
 
@@ -281,6 +282,34 @@ TAPA_AIE_INLINE
     typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
     bit_cast(From from) noexcept {
   return __builtin_bit_cast(To, from);
+}
+
+// A native vector and the native vectors it splits into convert in
+// registers, where the generic bit_cast above goes through memory.
+template <typename To, typename T, int M, size_t R>
+  requires(
+      R > 1 && std::is_same_v<To, vec_t<T, int(R) * M>> &&
+      requires { typename ::aie::detail::native_vector_type_t<T, M>; } &&
+      requires { typename ::aie::detail::native_vector_type_t<T, int(R) * M>; })
+TAPA_AIE_INLINE To bit_cast(const std::array<vec_t<T, M>, R>& parts) noexcept {
+  return [&]<size_t... I>(std::index_sequence<I...>) {
+    return ::aie::concat(parts[I].v...);
+  }(std::make_index_sequence<R>{});
+}
+
+template <typename To, typename T, int N, size_t R = std::tuple_size<To>::value>
+  requires(
+      R > 1 && N % int(R) == 0 &&
+      std::is_same_v<To, std::array<vec_t<T, N / int(R)>, R>> &&
+      requires {
+        typename ::aie::detail::native_vector_type_t<T, N / int(R)>;
+      } && requires { typename ::aie::detail::native_vector_type_t<T, N>; })
+TAPA_AIE_INLINE To bit_cast(const vec_t<T, N>& vec) noexcept {
+  To parts;
+  for (int r = 0; r < int(R); ++r) {
+    parts[r] = vec.v.template extract<N / int(R)>(r);
+  }
+  return parts;
 }
 
 template <int N, typename T>

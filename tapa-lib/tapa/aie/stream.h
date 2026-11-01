@@ -220,13 +220,13 @@ class iframe {
   using buffer = input_frame<int32, N * internal::aie::kWords<T>>;
   TAPA_AIE_INLINE explicit iframe(buffer& buf) : buf_(buf) {}
   TAPA_AIE_INLINE T read() {
-    if (pos_ == 0) {
+    if (pos_ == 0) [[unlikely]] {
       buf_.acquire();
       ptr_ = buf_.data();
     }
     const T value = internal::aie::elem_io<T>::load(ptr_);
     ptr_ += internal::aie::kWords<T>;
-    if (++pos_ == N) {
+    if (++pos_ == N) [[unlikely]] {
       buf_.release();
       pos_ = 0;
     }
@@ -253,13 +253,13 @@ class oframe {
   using buffer = output_frame<int32, N * internal::aie::kWords<T>>;
   TAPA_AIE_INLINE explicit oframe(buffer& buf) : buf_(buf) {}
   TAPA_AIE_INLINE void write(const T& value) {
-    if (pos_ == 0) {
+    if (pos_ == 0) [[unlikely]] {
       buf_.acquire();
       ptr_ = buf_.data();
     }
     internal::aie::elem_io<T>::store(ptr_, value);
     ptr_ += internal::aie::kWords<T>;
-    if (++pos_ == N) {
+    if (++pos_ == N) [[unlikely]] {
       buf_.release();
       pos_ = 0;
     }
