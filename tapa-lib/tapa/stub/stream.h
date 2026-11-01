@@ -13,6 +13,10 @@ namespace tapa {
 
 template <typename T>
 class istream {
+  // As on every target, a stream needs its element type complete, so tapacc
+  // sees it complete even where a task only moves it in bulk.
+  static_assert(sizeof(T) > 0, "a stream element must be a complete type");
+
  public:
   bool empty() const;
   bool try_eot(bool& is_eot) const;
@@ -34,6 +38,10 @@ class istream {
 
 template <typename T>
 class ostream {
+  // As on every target, a stream needs its element type complete, so tapacc
+  // sees it complete even where a task only moves it in bulk.
+  static_assert(sizeof(T) > 0, "a stream element must be a complete type");
+
  public:
   bool full() const;
   bool try_write(const T& value);

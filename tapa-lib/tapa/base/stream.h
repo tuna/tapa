@@ -44,8 +44,6 @@ struct [[gnu::packed]] elem_t {
 // element holds kPer values when T is wider.
 template <typename T, typename U>
 struct bulk_layout {
-  static_assert(std::is_trivially_copyable<U>::value,
-                "a bulk transfer moves trivially copyable values");
   static_assert(sizeof(U) % sizeof(T) == 0 || sizeof(T) % sizeof(U) == 0,
                 "a bulk transfer needs the value size and the element size to "
                 "divide one another");

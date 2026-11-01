@@ -29,5 +29,16 @@ TEST(VendorStreamTest, EmptyReadsReturnDefaultAfterDrainingATransaction) {
   EXPECT_EQ(observer.peek(nullptr), 0);
 }
 
+// Vendor integers are not trivially copyable, and a bulk transfer still moves
+// them, two to an element here.
+TEST(VendorStreamTest, BulkTransfersMoveVendorIntegers) {
+  tapa_stream<ap_uint<64>> data_q;
+  const ap_uint<32> words[] = {1, 2, 3, 4};
+  data_q.write(words, 4);
+  ap_uint<32> read_back[4];
+  data_q.read(read_back, 4);
+  for (int i = 0; i < 4; ++i) EXPECT_EQ(read_back[i], words[i]);
+}
+
 }  // namespace
 }  // namespace tapa

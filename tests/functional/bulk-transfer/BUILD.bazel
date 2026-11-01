@@ -1,0 +1,11 @@
+"""Bulk stream transfers that pack and unpack every element, end to end."""
+
+load("//bazel:test_rules.bzl", "tapa_functional_test")
+
+tapa_functional_test(
+    name = "bulk-transfer",
+    host_srcs = [
+        "vadd.cpp",
+        "//tests/functional/eot:vadd-host.cpp",
+    ],
+)
