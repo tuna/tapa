@@ -4,6 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
+load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//bazel:test_rules.bzl", "tapa_app_test")
 
@@ -30,6 +31,22 @@ tapa_app_test(
     top_name = "Cannon",
 )
 
+# A block row of eight-lane vectors needs a 32-float edge for four vectors.
+cc_binary(
+    name = "cannon-aie-host",
+    srcs = [
+        "cannon.cpp",
+        "cannon.h",
+        "cannon-host.cpp",
+    ],
+    local_defines = ["TAPA_CANNON_B=32"],
+    tags = ["manual"],
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
 # The PEs on the AI Engine, on x86sim, replaying the software-simulation
 # streams. Developer-run (needs Vitis with aiecompiler): not part of
 # `bazel test //...`.
@@ -40,10 +57,11 @@ sh_test(
     args = [
         "$(rootpath //bazel:run_aiesim.sh)",
         "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :cannon-host)",
+        "$(rootpath :cannon-aie-host)",
         "$(rootpath cannon.cpp)",
         "Cannon",
         "--target=ProcElem:aie",
+        "--cflags=-DTAPA_CANNON_B=32",
         "--cflags=-DTAPA_CANNON_LANES=8",
         "--",
         "--part-num=xcvc1902-vsva2197-2MP-e-S",
@@ -51,7 +69,7 @@ sh_test(
     data = [
         "cannon.cpp",
         "cannon.h",
-        ":cannon-host",
+        ":cannon-aie-host",
         "//bazel:run_aiesim.sh",
         "//tapa-core:tapa",
     ],

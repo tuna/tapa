@@ -16,9 +16,9 @@
 // p x p PEs
 constexpr int p = TAPA_CANNON_P;
 
-// Each PE's block edge; a multiple of the PE's vector width
-// (`TAPA_CANNON_LANES`). Raise it with `-DTAPA_CANNON_B=32` to give AI Engine
-// PEs enough work to measure.
+// Each PE's block edge; a multiple of four of the PE's vectors
+// (`TAPA_CANNON_LANES` floats each). An AI Engine build with eight lanes needs
+// `-DTAPA_CANNON_B=32`, which also gives its PEs enough work to measure.
 #ifndef TAPA_CANNON_B
 #define TAPA_CANNON_B 8
 #endif

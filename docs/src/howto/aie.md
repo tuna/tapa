@@ -77,10 +77,7 @@ between its reads than its streams hold. A source whose tasks
 place one between each loop that writes a cycle and the loop that reads it
 may define `TAPA_AIE_PHASE_ORDERED_STREAMS` before including `tapa.h`; those
 tasks then skip the fence after every write, which is what lets a loop that
-computes also write the cycle at full speed. `tests/apps/cannon` sends its
-blocks around its ring while it multiplies them, fences, and then receives
-the next ones. Every PE sends a whole block before any PE receives, so its
-ring streams hold a whole block.
+computes also write the cycle at full speed.
 
 These habits decide AI Engine performance:
 
@@ -104,10 +101,18 @@ These habits decide AI Engine performance:
   local first, so it is loaded once for all its lanes. `tests/apps/cannon`
   keeps A, B and C as rows of vectors and multiplies each row of B by one lane
   of A this way.
+- Give each chain of multiply-accumulates its own accumulator. A float
+  multiply-accumulate into the result of the one before it issues every
+  second cycle; independent accumulators fill the cycles in between.
+  `tests/apps/cannon` computes four vectors of a row of C per iteration, one
+  accumulator each.
 - Move a frame port's data whole, with `read(dst, n)` and `write(src, n)`.
   They test for a frame boundary once per run of a frame, where `read()` and
   `write()` test twice per element, and the DMA moves the frames while the
   core computes; the core's own stream ports move only 32 bits per cycle.
+  `tests/apps/cannon` carries its ring in frames this way: each round, a PE
+  writes its blocks of A and B whole, multiplies, and then reads its
+  neighbors' blocks whole.
 
 ## Knobs
 
@@ -119,6 +124,15 @@ These habits decide AI Engine performance:
 
 A task built for PL ignores these attributes, so a source annotated for the AI
 Engine still builds for PL when `--target` leaves the task there.
+
+Where the two targets want different code, guard the AI Engine side with
+`#if defined(TAPA_TARGET_AIE_)`. The AI Engine compile defines it, on x86sim
+as on hardware; software simulation, tapacc and HLS compile the other branch.
+tapacc therefore neither checks nor lowers the guarded code, so it should use
+only ports and locals the other branch also uses, and loop attributes such as
+`[[tapa::pipeline]]` take no effect there. `tests/apps/cannon` guards where its
+PEs send their blocks: whole before multiplying on the AI Engine, a vector at
+a time while multiplying on PL.
 
 ## Simulating the AI Engine tasks
 
