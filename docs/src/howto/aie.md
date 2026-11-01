@@ -66,13 +66,14 @@ earlier writes, the order software simulation runs it in. The AI Engine
 compiler would otherwise issue a read ahead of an earlier write, which the
 cycle turns into a deadlock. The price is less overlap between the loop
 iterations of that task; tasks off any cycle keep it. HLS keeps no such order
-for a PL task, and within a pipelined loop may issue a read ahead of an
-earlier write. A ring that also builds for PL puts its writes and its reads in
-separate loops, writing no more at a time than its streams hold.
+for a PL task: it may issue a read in the same cycle as an earlier write, or
+ahead of it.
 
-`tapa::fence()` keeps every stream access after it behind every one
-before it. On the AI Engine it is a scheduling fence; elsewhere, where
-separate loops already run in order, it is a no-op. A source whose tasks
+`tapa::fence()` keeps every stream access after it behind every one before
+it: on the AI Engine as a scheduler barrier, in HLS as a clock boundary, and
+in software simulation, which runs in program order, as a no-op. A ring that
+also builds for PL fences its writes from its reads and writes no more
+between its reads than its streams hold. A source whose tasks
 place one between each loop that writes a cycle and the loop that reads it
 may define `TAPA_AIE_PHASE_ORDERED_STREAMS` before including `tapa.h`; those
 tasks then skip the fence after every write, which is what lets a loop that

@@ -151,11 +151,16 @@ All stream types (`istream`, `ostream`, `istreams`, `ostreams`) must be passed *
 
 ### `tapa::fence()`
 
-Keeps every stream access after the call behind every one before it. Place it
-between a loop that writes a stream cycle and the loop that reads it. It is a
-scheduling fence on the AI Engine, whose compiler may otherwise issue a read
-ahead of a write in an earlier loop, and a no-op in software simulation and
-HLS, which run separate loops in order. See
+Keeps every stream or memory access after the call behind every one before
+it. Without it, synthesis orders accesses to different ports only by their
+data: HLS may issue a read in the same cycle as an earlier write, or ahead of
+it, and the AI Engine compiler may move a read above a write in an earlier
+loop. A task whose read waits on its own earlier write, such as one in a ring,
+then deadlocks in hardware, though software simulation completes. In HLS the
+fence is a clock boundary (`ap_wait()`) that port accesses do not cross,
+while arithmetic still may; in a pipelined loop it costs a stage, not
+initiation interval. On the AI Engine it is a scheduler barrier that no
+instruction crosses. In software simulation it is a no-op. See
 [AI Engine Tasks](../howto/aie.md).
 
 ---

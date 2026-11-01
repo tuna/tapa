@@ -12,7 +12,17 @@
 
 #include <hls_stream.h>
 
+#include "tapa/xilinx/hls/util.h"
+
 namespace tapa {
+
+// A clock boundary that HLS keeps every port access on its side of, while
+// arithmetic may still cross it; in a pipelined loop it costs a stage, not
+// initiation interval.
+inline void fence() {
+#pragma HLS inline
+  ap_wait();
+}
 
 template <typename T>
 class tapa_stream {

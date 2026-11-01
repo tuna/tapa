@@ -29,6 +29,9 @@
 
 namespace tapa {
 
+// Software simulation runs every task in program order.
+inline void fence() {}
+
 template <typename T>
 class istream;
 

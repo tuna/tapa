@@ -25,14 +25,13 @@ struct [[gnu::packed]] elem_t {
 
 }  // namespace internal
 
-// Keeps every stream access after the fence behind every one before it. The
-// AI Engine compiler may move a read ahead of a write in an earlier loop
-// (`tapa/aie/stream.h`); HLS and software simulation run separate loops in
-// order, so there the fence is a no-op.
-#if defined(TAPA_TARGET_AIE_)
+// Keeps every stream or memory access after the fence behind every one
+// before it. Synthesis orders accesses to different ports only by their
+// data: HLS may issue a read in the same cycle as an earlier write, or ahead
+// of it, and the AI Engine compiler may move a read above a write in an
+// earlier loop. A task whose read waits on its own earlier write, such as
+// one in a ring, then deadlocks in hardware, though software simulation,
+// where the fence is a no-op, completes. Each target's `stream.h` defines it.
 void fence();
-#else
-inline void fence() {}
-#endif
 
 }  // namespace tapa

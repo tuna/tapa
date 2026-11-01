@@ -1,0 +1,11 @@
+"""Pins tapa::fence() in HLS: a two-task swap ring deadlocks without it."""
+
+load("//bazel:test_rules.bzl", "tapa_functional_test")
+
+tapa_functional_test(
+    name = "fence",
+    host_srcs = [
+        "vadd.cpp",
+        "//tests/functional/eot:vadd-host.cpp",
+    ],
+)
