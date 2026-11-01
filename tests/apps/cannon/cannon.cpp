@@ -63,36 +63,6 @@ constexpr int kRowVecs = kB / kLanes;
 constexpr int kVecs = kB * kRowVecs;
 static_assert(kB % kLanes == 0, "a block row must be whole vectors");
 
-inline __attribute__((always_inline)) void ComputeBlock(float (&a)[kB * kB],
-                                                        float (&b)[kVecs],
-                                                        float (&c)[kVecs]) {
-  [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
-  for (int ij = 0; ij < kVecs; ++ij) {
-    const int i = ij / kRowVecs;
-    const int jv = ij % kRowVecs;
-    float acc = c[ij];
-    for (int k = 0; k < kB; ++k) {
-      acc += a[i * kB + k] * b[k * kRowVecs + jv];
-    }
-    c[ij] = acc;
-  }
-}
-
-template <int N>
-inline __attribute__((always_inline)) void ComputeBlock(
-    float (&a)[kB * kB], tapa::vec_t<float, N> (&b)[kVecs],
-    tapa::vec_t<float, N> (&c)[kVecs]) {
-  for (int i = 0; i < kB; ++i) {
-    for (int jv = 0; jv < kRowVecs; ++jv) {
-      tapa::vec_t<float, N> acc = c[i * kRowVecs + jv];
-      [[tapa::pipeline]] for (int k = 0; k < kB; ++k) {
-        acc += tapa::make_vec<N>(a[i * kB + k]) * b[k * kRowVecs + jv];
-      }
-      c[i * kRowVecs + jv] = acc;
-    }
-  }
-}
-
 inline __attribute__((always_inline)) void ExchangeBlock(
     tapa::ostream<float>& i_prev, tapa::istream<float>& i_next,
     tapa::ostream<float>& j_prev, tapa::istream<float>& j_next,
@@ -123,7 +93,7 @@ inline __attribute__((always_inline)) void ExchangeBlock(
     }
     j_prev.write(tapa::bit_cast<tapa::vec_t<float, N>>(a_row));
   }
-  tapa::aie::after_writes();
+  tapa::aie::stream_fence();
   for (int v = 0; v < kVecs; ++v) {
     b[v] = i_next.read();
     const auto a_row = tapa::bit_cast<row_t>(j_next.read());
@@ -165,7 +135,16 @@ init:
 
 outer:
   for (int l = 0; l < p; ++l) {
-    ComputeBlock(a, b, c);
+    [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
+    for (int ij = 0; ij < kVecs; ++ij) {
+      const int i = ij / kRowVecs;
+      const int jv = ij % kRowVecs;
+      vec_t acc = c[ij];
+      for (int k = 0; k < kB; ++k) {
+        acc += tapa::make_vec<kLanes>(a[i * kB + k]) * b[k * kRowVecs + jv];
+      }
+      c[ij] = acc;
+    }
     ExchangeBlock(i_prev, i_next, j_prev, j_next, a, b);
   }
 

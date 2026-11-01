@@ -69,7 +69,8 @@ iterations of that task; tasks off any cycle keep it. HLS keeps no such order
 for a PL task, and within a pipelined loop may issue a read ahead of an
 earlier write. A ring that also builds for PL puts its writes and its reads in
 separate loops, writing no more at a time than its streams hold, as
-`tests/apps/cannon` does.
+`tests/apps/cannon` does. `tapa::stream_fence()` makes that ordering
+point explicit; on PL it is a no-op.
 
 These habits decide AI Engine performance:
 

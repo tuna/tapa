@@ -30,9 +30,9 @@ namespace aie {
 // A phase-level stream-ordering fence. A no-op on targets that do not need
 // explicit scheduler ordering.
 #if defined(TAPA_TARGET_AIE_)
-void after_writes();
+void stream_fence();
 #else
-inline void after_writes() {}
+inline void stream_fence() {}
 #endif
 
 }  // namespace aie

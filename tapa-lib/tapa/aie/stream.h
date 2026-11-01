@@ -137,7 +137,7 @@ TAPA_AIE_INLINE void after_write() {
 
 namespace aie {
 
-TAPA_AIE_INLINE void after_writes() {
+TAPA_AIE_INLINE void stream_fence() {
 #if defined(__AIENGINE__) && defined(TAPA_AIE_PHASE_ORDERED_STREAMS)
   chess_separator_scheduler();
 #endif

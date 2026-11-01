@@ -247,6 +247,12 @@ struct vec_t : protected std::array<T, N> {
   }
 };
 
+template <typename T>
+inline T& operator+=(T& lhs, const vec_t<T, 1>& rhs) {
+  TAPA_VEC_INLINE;
+  return lhs += rhs[0];
+}
+
 /// Returns vec[begin:end].
 template <int begin, int end, typename T, int N>
 inline vec_t<T, end - begin> truncated(const vec_t<T, N>& vec) {
