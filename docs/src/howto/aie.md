@@ -114,12 +114,17 @@ These habits decide AI Engine performance:
   writes its blocks of A and B whole, multiplies, and then reads its
   neighbors' blocks whole. Its blocks from and to the PL travel as two
   halves on two frame ports, so over two PLIO channels at once.
+- Better still, compute on a frame where it lies. `acquire(storage, n)`
+  returns where the next `n` values are, and `reserve(storage, n)` where the
+  next `n` go. On a frame port that is the frame in tile memory, so nothing
+  is copied; PL and software simulation copy through `storage` instead.
+  `release()` and `commit(values, n)` hand the frame back to the DMA.
 
 ## Knobs
 
 | Attribute | Where | Effect |
 |---|---|---|
-| `[[tapa::aie_frame(N)]]` | `istream`/`ostream` parameter of an AI Engine leaf | The stream arrives as frames of `N` elements in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. |
+| `[[tapa::aie_frame(N)]]` | `istream`/`ostream` parameter of an AI Engine leaf | The stream arrives as frames of `N` elements in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged; `acquire` and `reserve` let it compute on a frame in place. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. |
 | `[[tapa::aie_plio(W)]]` | `istream`/`ostream` parameter of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
 | `[[tapa::aie_location(col, row)]]` | AI Engine leaf task | Pins the task to a tile. Add a third argument to pick one instance of a task invoked several times. |
 

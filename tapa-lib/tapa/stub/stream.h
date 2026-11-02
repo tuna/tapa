@@ -32,6 +32,9 @@ class istream {
   T read(std::nullptr_t);
   template <typename U>
   void read(U* dst, int n);
+  template <typename U>
+  const U* acquire(U* storage, int n);
+  void release();
   bool try_open();
   void open();
 };
@@ -49,6 +52,10 @@ class ostream {
   ostream& operator<<(const T& value);
   template <typename U>
   void write(const U* src, int n);
+  template <typename U>
+  U* reserve(U* storage, int n);
+  template <typename U>
+  void commit(const U* values, int n);
   bool try_close();
   void close();
 };

@@ -514,6 +514,19 @@ class istream : virtual public internal::basic_stream<T> {
     internal::bulk_read<T>(*this, dst, n);
   }
 
+  /// Blocking read of the next @p n values of @c U, lined up as `read(dst, n)`
+  /// lines them up; returns where they are, valid until `release()`. Here
+  /// they are read into @p storage; an AI Engine frame port can return the
+  /// frame itself.
+  template <typename U>
+  const U* acquire(U* storage, int n) {
+    read(storage, n);
+    return storage;
+  }
+
+  /// Ends the use of the values `acquire` returned.
+  void release() {}
+
   /// Non-blocking consume of an EoT token; returns true if consumed.
   bool try_open() {
     if (!empty()) {
@@ -590,6 +603,20 @@ class ostream : virtual public internal::basic_stream<T> {
   template <typename U>
   void write(const U* src, int n) {
     internal::bulk_write<T>(*this, src, n);
+  }
+
+  /// Returns where to put the next @p n values of @c U, which `commit` then
+  /// writes. Here that is @p storage; an AI Engine frame port can return the
+  /// frame itself.
+  template <typename U>
+  U* reserve(U* storage, int /*n*/) {
+    return storage;
+  }
+
+  /// Blocking write of the @p n values `reserve` returned, at @p values.
+  template <typename U>
+  void commit(const U* values, int n) {
+    write(values, n);
   }
 
   /// Non-blocking write of an EoT token; returns true on success.

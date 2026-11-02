@@ -4,7 +4,8 @@
 
 // Every stream element packs four floats, and every task moves elements only
 // in bulk, eight floats at a time, so no task builds one itself: the bulk
-// transfers pack and unpack them.
+// transfers pack and unpack them. `Add` computes where `acquire` and
+// `reserve` put the values, which off the AI Engine is the storage it passes.
 using packed_t = tapa::vec_t<float, 4>;
 constexpr int kFloats = 8;  // per bulk transfer; divides every tested n
 
@@ -23,10 +24,13 @@ void Add(tapa::istream<packed_t>& a, tapa::istream<packed_t>& b,
     float a_floats[kFloats];
     float b_floats[kFloats];
     float c_floats[kFloats];
-    a.read(a_floats, kFloats);
-    b.read(b_floats, kFloats);
-    for (int k = 0; k < kFloats; ++k) c_floats[k] = a_floats[k] + b_floats[k];
-    c.write(c_floats, kFloats);
+    const float* a_in = a.acquire(a_floats, kFloats);
+    const float* b_in = b.acquire(b_floats, kFloats);
+    float* c_out = c.reserve(c_floats, kFloats);
+    for (int k = 0; k < kFloats; ++k) c_out[k] = a_in[k] + b_in[k];
+    a.release();
+    b.release();
+    c.commit(c_out, kFloats);
   }
 }
 
