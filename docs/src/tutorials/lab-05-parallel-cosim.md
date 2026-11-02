@@ -58,7 +58,7 @@ Each kernel is a plain TAPA task function. The Cannon matrix-multiply example fr
 
 ```cpp
 // Distribute matrix rows into per-PE stream arrays
-void Scatter(tapa::mmap<const float> matrix,
+void Scatter(tapa::mmap<const beat_t> matrix,
              tapa::ostreams<float, p * p>& block) { ... }
 
 // Each PE computes its sub-matrix tile
@@ -66,9 +66,12 @@ void ProcElem(tapa::istream<float>& a_fifo, tapa::istream<float>& b_fifo,
               tapa::ostream<float>& c_fifo, ...) { ... }
 
 // Collect PE results into the output matrix
-void Gather(tapa::mmap<float> matrix,
+void Gather(tapa::mmap<beat_t> matrix,
             tapa::istreams<float, p * p>& block) { ... }
 ```
+
+`beat_t`, declared in `cannon.h`, is a 512-bit memory beat of 16 floats, so
+each memory access moves 16 floats.
 
 The top-level function declares the shared streams and assembles the task graph using `tapa::executable`:
 
@@ -77,8 +80,8 @@ DEFINE_string(scatter_bitstream, "", "RTL archive for Scatter; empty = software 
 DEFINE_string(proc_elem_bitstream, "", "RTL archive for ProcElem; empty = software simulation");
 DEFINE_string(gather_bitstream, "", "RTL archive for Gather; empty = software simulation");
 
-void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
-            tapa::mmap<float> c_vec, uint64_t n) {
+void Cannon(tapa::mmap<const beat_t> a_vec, tapa::mmap<const beat_t> b_vec,
+            tapa::mmap<beat_t> c_vec, uint64_t n) {
   tapa::streams<float, p * p> a("a"), b("b"), c("c");
   // ... inter-PE streams ...
 

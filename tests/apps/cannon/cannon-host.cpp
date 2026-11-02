@@ -42,9 +42,10 @@ int main(int argc, char* argv[]) {
   }
 
   // reshape the matrices into pxp blocks (each has size n/p x n/p)
-  vector<float> a_buf(n * n);
-  vector<float> b_buf(n * n);
-  vector<float> c_buf(n * n);
+  // The kernel reads them in 512-bit beats, so they are aligned to one.
+  vector<float, tapa::aligned_allocator<float>> a_buf(n * n);
+  vector<float, tapa::aligned_allocator<float>> b_buf(n * n);
+  vector<float, tapa::aligned_allocator<float>> c_buf(n * n);
   auto a_block = reinterpret_cast<float (*)[p][n / p][n / p]>(a_buf.data());
   auto b_block = reinterpret_cast<float (*)[p][n / p][n / p]>(b_buf.data());
   auto c_block = reinterpret_cast<float (*)[p][n / p][n / p]>(c_buf.data());
@@ -62,9 +63,10 @@ int main(int argc, char* argv[]) {
   }
 
   int64_t kernel_time_ns = tapa::invoke(
-      Cannon, FLAGS_bitstream, tapa::read_only_mmap<const float>(a_buf),
-      tapa::read_only_mmap<const float>(b_buf),
-      tapa::write_only_mmap<float>(c_buf), n);
+      Cannon, FLAGS_bitstream,
+      tapa::read_only_mmap<const float>(a_buf).reinterpret<const beat_t>(),
+      tapa::read_only_mmap<const float>(b_buf).reinterpret<const beat_t>(),
+      tapa::write_only_mmap<float>(c_buf).reinterpret<beat_t>(), n);
 
   for (uint64_t i = 0; i < p; ++i) {
     for (uint64_t j = 0; j < p; ++j) {

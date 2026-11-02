@@ -21,35 +21,28 @@ static_assert(kRowVecs % kCols == 0,
               "a block row must be a multiple of four vectors");
 using vec_t = tapa::vec_t<float, kLanes>;
 
-// A stream between the PL and the AI Engine carries at most 128 bits, so a
-// block crosses a PE's boundary in parts of at most four floats.
-constexpr int kIoLanes = kLanes < 4 ? kLanes : 4;
-constexpr int kIoVecs = kVecs * (kLanes / kIoLanes);
-using io_t = tapa::vec_t<float, kIoLanes>;
+// A block crosses a PE's boundary in 128-bit parts of four floats, the
+// widest a stream between the PL and the AI Engine carries.
+using io_t = tapa::vec_t<float, 4>;
+constexpr int kBeats = kB * kB / kBeatFloats;  // memory beats in a block
 
-// Scatter n*n matrix into p*p blocks, each block.
-void Scatter(tapa::mmap<const float> matrix_ptr,
+// Scatter the matrix, stored block after block, into its p*p blocks.
+void Scatter(tapa::mmap<const beat_t> matrix,
              tapa::ostreams<io_t, p * p>& block) {
   for (int j = 0; j < p * p; ++j) {
-    for (int i = 0; i < kIoVecs; ++i) {
-      io_t value;
-      for (int lane = 0; lane < kIoLanes; ++lane) {
-        value[lane] = *matrix_ptr;
-        ++matrix_ptr;
-      }
-      block[j].write(value);
+    [[tapa::pipeline(kBeatFloats / 4)]] for (int i = 0; i < kBeats; ++i) {
+      const beat_t beat = matrix[j * kBeats + i];
+      block[j].write(&beat, 1);
     }
   }
 }
 
-void Gather(tapa::mmap<float> matrix_ptr, tapa::istreams<io_t, p * p>& block) {
+void Gather(tapa::mmap<beat_t> matrix, tapa::istreams<io_t, p * p>& block) {
   for (int j = 0; j < p * p; ++j) {
-    for (int i = 0; i < kIoVecs; ++i) {
-      const io_t value = block[j].read();
-      for (int lane = 0; lane < kIoLanes; ++lane) {
-        *matrix_ptr = value[lane];
-        ++matrix_ptr;
-      }
+    [[tapa::pipeline(kBeatFloats / 4)]] for (int i = 0; i < kBeats; ++i) {
+      beat_t beat;
+      block[j].read(&beat, 1);
+      matrix[j * kBeats + i] = beat;
     }
   }
 }
@@ -62,9 +55,9 @@ void Gather(tapa::mmap<float> matrix_ptr, tapa::istreams<io_t, p * p>& block) {
 // whole block. On the AI Engine every port is a frame (`aie_frame`, ignored on
 // PL): the blocks move by DMA, so the PE hands both over whole before it
 // computes. On PL it sends each vector while computing with it.
-void ProcElem([[tapa::aie_frame(kIoVecs)]] tapa::istream<io_t>& a_fifo,
-              [[tapa::aie_frame(kIoVecs)]] tapa::istream<io_t>& b_fifo,
-              [[tapa::aie_frame(kIoVecs)]] tapa::ostream<io_t>& c_fifo,
+void ProcElem([[tapa::aie_frame(kB * kB / 4)]] tapa::istream<io_t>& a_fifo,
+              [[tapa::aie_frame(kB * kB / 4)]] tapa::istream<io_t>& b_fifo,
+              [[tapa::aie_frame(kB * kB / 4)]] tapa::ostream<io_t>& c_fifo,
               [[tapa::aie_frame(kVecs)]] tapa::ostream<vec_t>& i_prev,
               [[tapa::aie_frame(kVecs)]] tapa::istream<vec_t>& i_next,
               [[tapa::aie_frame(kVecs)]] tapa::ostream<vec_t>& j_prev,
@@ -123,8 +116,8 @@ outer:
   c_fifo.write(c, kVecs);
 }
 
-void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
-            tapa::mmap<float> c_vec, uint64_t n) {
+void Cannon(tapa::mmap<const beat_t> a_vec, tapa::mmap<const beat_t> b_vec,
+            tapa::mmap<beat_t> c_vec, uint64_t n) {
   assert(kN % p == 0);
   assert(n <= kN);
 

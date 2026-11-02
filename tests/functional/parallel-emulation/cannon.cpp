@@ -13,24 +13,26 @@ DEFINE_string(gather_bitstream, "",
 DEFINE_string(proc_elem_bitstream, "",
               "path to proc_elem simulation file, run csim if empty");
 
-// Scatter n*n matrix into p*p blocks, each block.
-void Scatter(tapa::mmap<const float> matrix_ptr,
+// Scatter the matrix, stored block after block, into its p*p blocks, one
+// float of a 512-bit memory beat at a time.
+void Scatter(tapa::mmap<const beat_t> matrix,
              tapa::ostreams<float, p * p>& block) {
-  const uint64_t kNumElems = (kN / p) * (kN / p);
+  const int kNumBeats = (kN / p) * (kN / p) / kBeatFloats;
   for (int j = 0; j < p * p; ++j) {
-    for (uint64_t i = 0; i < kNumElems; ++i) {
-      block[j].write(*matrix_ptr);
-      ++matrix_ptr;
+    for (int i = 0; i < kNumBeats; ++i) {
+      const beat_t beat = matrix[j * kNumBeats + i];
+      block[j].write(&beat, 1);
     }
   }
 }
 
-void Gather(tapa::mmap<float> matrix_ptr, tapa::istreams<float, p * p>& block) {
-  const uint64_t kNumElems = (kN / p) * (kN / p);
+void Gather(tapa::mmap<beat_t> matrix, tapa::istreams<float, p * p>& block) {
+  const int kNumBeats = (kN / p) * (kN / p) / kBeatFloats;
   for (int j = 0; j < p * p; ++j) {
-    for (uint64_t i = 0; i < kNumElems; ++i) {
-      *matrix_ptr = block[j].read();
-      ++matrix_ptr;
+    for (int i = 0; i < kNumBeats; ++i) {
+      beat_t beat;
+      block[j].read(&beat, 1);
+      matrix[j * kNumBeats + i] = beat;
     }
   }
 }
@@ -86,8 +88,8 @@ finalize:
   }
 }
 
-void Cannon(tapa::mmap<const float> a_vec, tapa::mmap<const float> b_vec,
-            tapa::mmap<float> c_vec, uint64_t n) {
+void Cannon(tapa::mmap<const beat_t> a_vec, tapa::mmap<const beat_t> b_vec,
+            tapa::mmap<beat_t> c_vec, uint64_t n) {
   assert(kN % p == 0);
   assert(n <= kN);
 
