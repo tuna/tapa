@@ -110,16 +110,15 @@ These habits decide AI Engine performance:
   They test for a frame boundary once per run of a frame, where `read()` and
   `write()` test twice per element, and the DMA moves the frames while the
   core computes; the core's own stream ports move only 32 bits per cycle.
+  `tests/apps/cannon` carries its ring in frames this way: each round, a PE
+  writes its blocks of A and B whole, multiplies, and then reads its
+  neighbors' blocks whole. Its blocks from and to the PL travel as two
+  halves on two frame ports, so over two PLIO channels at once.
 - Better still, compute on a frame where it lies. `acquire(storage, n)`
   returns where the next `n` values are, and `reserve(storage, n)` where the
   next `n` go. On a frame port that is the frame in tile memory, so nothing
   is copied; PL and software simulation copy through `storage` instead.
   `release()` and `commit(values, n)` hand the frame back to the DMA.
-  `tests/apps/cannon` multiplies its blocks in the frames they arrive in and
-  accumulates C in the frames it leaves in. Each round but the last, a PE
-  first writes its blocks of A and B whole to its neighbors. Its blocks from
-  and to the PL travel as two halves on two frame ports, so over two PLIO
-  channels at once.
 
 ## Knobs
 
@@ -139,10 +138,7 @@ tapacc therefore neither checks nor lowers the guarded code, so it should use
 only ports and locals the other branch also uses, and loop attributes such as
 `[[tapa::pipeline]]` take no effect there. `tests/apps/cannon` guards where its
 PEs send their blocks: whole before multiplying on the AI Engine, a chunk at a
-time while multiplying on PL. It also guards how a PE finds a row of A and C:
-on the AI Engine the row may lie in either of two frames, while PL has both
-halves of a block in one array and indexes it, since HLS would load a value
-from each half to choose between them.
+time while multiplying on PL.
 
 ## Simulating the AI Engine tasks
 
