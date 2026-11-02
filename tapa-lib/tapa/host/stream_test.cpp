@@ -262,6 +262,16 @@ TEST(StreamBulkTest, ValuesLineUpWithElementsByteForByte) {
   wide.write(pairs[1]);
   wide.read(read_ints, 4);
   EXPECT_THAT(read_ints, testing::ElementsAreArray(ints));
+
+  // A value that is itself an array, such as a row, moves as its elements.
+  int grid[2][2];
+  wide.write(ints, 4);
+  wide.read(grid, 2);
+  EXPECT_THAT(grid, testing::ElementsAre(testing::ElementsAre(1, 2),
+                                         testing::ElementsAre(3, 4)));
+  narrow.write(grid, 2);
+  narrow.read(read_ints, 4);
+  EXPECT_THAT(read_ints, testing::ElementsAreArray(ints));
 }
 
 TEST(StreamCompletionDeathTest, FinalTransferAfterBlockedPollRemainsUsable) {

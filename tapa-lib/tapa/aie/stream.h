@@ -249,27 +249,32 @@ class iframe {
   // test instead of one test per element; a value must not straddle frames.
   template <typename U>
   TAPA_AIE_INLINE void read(U* dst, int n) {
-    constexpr int kElemWords = internal::aie::kWords<T>;
-    constexpr int kValueWords = internal::aie::kWords<U>;
-    static_assert(N * kElemWords % kValueWords == 0,
-                  "a frame must hold a whole number of values");
-    while (n > 0) {
-      if (pos_ == 0) {
-        buf_.acquire();
-        ptr_ = buf_.data();
-      }
-      const int room = (N - pos_) * kElemWords / kValueWords;
-      const int m = n < room ? n : room;
-      for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
-          dst[i] = internal::aie::elem_io<U>::load(ptr_);
-          ptr_ += kValueWords;
+    if constexpr (std::is_array<U>::value) {  // rows are contiguous
+      using E = std::remove_all_extents_t<U>;
+      read(reinterpret_cast<E*>(dst), n * int(sizeof(U) / sizeof(E)));
+    } else {
+      constexpr int kElemWords = internal::aie::kWords<T>;
+      constexpr int kValueWords = internal::aie::kWords<U>;
+      static_assert(N * kElemWords % kValueWords == 0,
+                    "a frame must hold a whole number of values");
+      while (n > 0) {
+        if (pos_ == 0) {
+          buf_.acquire();
+          ptr_ = buf_.data();
         }
-      dst += m;
-      n -= m;
-      pos_ += m * kValueWords / kElemWords;
-      if (pos_ == N) {
-        buf_.release();
-        pos_ = 0;
+        const int room = (N - pos_) * kElemWords / kValueWords;
+        const int m = n < room ? n : room;
+        for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
+            dst[i] = internal::aie::elem_io<U>::load(ptr_);
+            ptr_ += kValueWords;
+          }
+        dst += m;
+        n -= m;
+        pos_ += m * kValueWords / kElemWords;
+        if (pos_ == N) {
+          buf_.release();
+          pos_ = 0;
+        }
       }
     }
   }
@@ -309,27 +314,32 @@ class oframe {
   // instead of one test per element; a value must not straddle frames.
   template <typename U>
   TAPA_AIE_INLINE void write(const U* src, int n) {
-    constexpr int kElemWords = internal::aie::kWords<T>;
-    constexpr int kValueWords = internal::aie::kWords<U>;
-    static_assert(N * kElemWords % kValueWords == 0,
-                  "a frame must hold a whole number of values");
-    while (n > 0) {
-      if (pos_ == 0) {
-        buf_.acquire();
-        ptr_ = buf_.data();
-      }
-      const int room = (N - pos_) * kElemWords / kValueWords;
-      const int m = n < room ? n : room;
-      for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
-          internal::aie::elem_io<U>::store(ptr_, src[i]);
-          ptr_ += kValueWords;
+    if constexpr (std::is_array<U>::value) {  // rows are contiguous
+      using E = std::remove_all_extents_t<U>;
+      write(reinterpret_cast<const E*>(src), n * int(sizeof(U) / sizeof(E)));
+    } else {
+      constexpr int kElemWords = internal::aie::kWords<T>;
+      constexpr int kValueWords = internal::aie::kWords<U>;
+      static_assert(N * kElemWords % kValueWords == 0,
+                    "a frame must hold a whole number of values");
+      while (n > 0) {
+        if (pos_ == 0) {
+          buf_.acquire();
+          ptr_ = buf_.data();
         }
-      src += m;
-      n -= m;
-      pos_ += m * kValueWords / kElemWords;
-      if (pos_ == N) {
-        buf_.release();
-        pos_ = 0;
+        const int room = (N - pos_) * kElemWords / kValueWords;
+        const int m = n < room ? n : room;
+        for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
+            internal::aie::elem_io<U>::store(ptr_, src[i]);
+            ptr_ += kValueWords;
+          }
+        src += m;
+        n -= m;
+        pos_ += m * kValueWords / kElemWords;
+        if (pos_ == N) {
+          buf_.release();
+          pos_ = 0;
+        }
       }
     }
   }

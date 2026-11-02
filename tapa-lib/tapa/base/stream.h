@@ -57,7 +57,11 @@ template <typename T, typename U, typename Stream>
 void bulk_read(Stream& s, U* dst, int n) {
   TAPA_STREAM_INLINE
   using layout = bulk_layout<T, U>;
-  if constexpr (std::is_same<T, U>::value) {
+  if constexpr (std::is_array<U>::value) {
+    // A row of a multi-dimensional array moves as its elements, a row at a
+    // time, so HLS keeps the row's banks.
+    for (int i = 0; i < n; ++i) bulk_read<T>(s, dst[i], std::extent<U>::value);
+  } else if constexpr (std::is_same<T, U>::value) {
     for (int i = 0; i < n; ++i) {
       TAPA_STREAM_PIPELINE
       dst[i] = s.read();
@@ -89,7 +93,11 @@ template <typename T, typename U, typename Stream>
 void bulk_write(Stream& s, const U* src, int n) {
   TAPA_STREAM_INLINE
   using layout = bulk_layout<T, U>;
-  if constexpr (std::is_same<T, U>::value) {
+  if constexpr (std::is_array<U>::value) {
+    for (int i = 0; i < n; ++i) {
+      bulk_write<T>(s, src[i], std::extent<U>::value);
+    }
+  } else if constexpr (std::is_same<T, U>::value) {
     for (int i = 0; i < n; ++i) {
       TAPA_STREAM_PIPELINE
       s.write(src[i]);
