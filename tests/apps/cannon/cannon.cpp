@@ -64,13 +64,16 @@ void Gather(tapa::mmap<beat_t> matrix, tapa::istreams<io_t, p * p>& lo,
 // Each PE holds one kB x kB block of A, B and C, row-major in vectors. Per
 // round it adds A * B to C, kCols vectors of a C row at a time, each with its
 // own accumulator so that their multiply-accumulates overlap: lane k of A's
-// row i times vector j of B's row k. It passes its blocks of A and B on to its
-// neighbors and receives theirs once it is done, so a ring stream holds a
-// whole block. On the AI Engine every port is a frame (`aie_frame`, ignored on
-// PL): the blocks move by DMA, so the PE hands both over whole before it
-// computes. On PL it sends the chunks of A and B an iteration computes with,
-// and B has a bank per row and per vector of a chunk, so the iteration's
-// kCols * kB multiply-accumulates issue in one cycle.
+// row i times vector j of B's row k. Every round but the last it passes its
+// blocks of A and B on to its neighbors, so a ring stream holds a whole block.
+// It computes on each block where `acquire` and `reserve` put it: on the AI
+// Engine every port is a frame (`aie_frame`, ignored on PL), so that is the
+// frame in tile memory, and the PE hands its blocks over whole before it
+// computes while the DMA moves them; on PL that is the banked arrays below. A
+// block arrives and leaves as two halves, so each half of the rows of A and C
+// may lie apart. On PL the PE sends the chunks of A and B an iteration
+// computes with, and B has a bank per row and per vector of a chunk, so the
+// iteration's kCols * kB multiply-accumulates issue in one cycle.
 void ProcElem([[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
               [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_hi,
               [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& b_lo,
@@ -81,61 +84,99 @@ void ProcElem([[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
               [[tapa::aie_frame(kChunks)]] tapa::istream<chunk_t>& i_next,
               [[tapa::aie_frame(kChunks)]] tapa::ostream<chunk_t>& j_prev,
               [[tapa::aie_frame(kChunks)]] tapa::istream<chunk_t>& j_next) {
+  using row_t = vec_t[kRowVecs];
   [[tapa::partition("cyclic", kRowVecs)]] vec_t a[kVecs];
   [[tapa::partition("complete", -1, 1)]] [[tapa::partition("cyclic", kCols, 2)]]
   vec_t b[kB][kRowVecs];
   [[tapa::partition("cyclic", kRowVecs)]] vec_t c[kVecs];
 
-  a_lo.read(a, kVecs / 2);
-  a_hi.read(a + kVecs / 2, kVecs / 2);
-  b_lo.read(b, kB / 2);
-  b_hi.read(b + kB / 2, kB / 2);
-  [[tapa::pipeline(1)]] for (int v = 0; v < kVecs; v += kRowVecs) {
-    for (int t = 0; t < kRowVecs; ++t) c[v + t] = 0.f;
+  vec_t* const c_top = c_lo.reserve(c, kVecs / 2);
+  vec_t* const c_bot = c_hi.reserve(c + kVecs / 2, kVecs / 2);
+  [[tapa::unroll]] for (int h = 0; h < 2; ++h) {  // halves of the rows
+    vec_t* c_h = h == 0 ? c_top : c_bot;
+    [[tapa::pipeline(1)]] for (int v = 0; v < kVecs / 2; v += kRowVecs) {
+      for (int t = 0; t < kRowVecs; ++t) c_h[v + t] = 0.f;
+    }
   }
+  const vec_t* a_top = a_lo.acquire(a, kVecs / 2);
+  [[maybe_unused]] const vec_t* a_bot = a_hi.acquire(a + kVecs / 2, kVecs / 2);
+  const row_t* b_top = b_lo.acquire(b, kB / 2);
+  const row_t* b_bot = b_hi.acquire(b + kB / 2, kB / 2);
 
 outer:
   for (int l = 0; l < p; ++l) {
+    // After the first round, the PE computes on the blocks its neighbors
+    // passed on.
+    if (l > 0) {
+      tapa::fence();  // every send of the round before any receive
+      a_top = j_next.acquire(a, kVecs);
+      a_bot = a_top + kVecs / 2;
+      b_top = i_next.acquire(b, kB);
+      b_bot = b_top + kB / 2;
+    }
+    const bool pass = l + 1 < p;
 #if defined(TAPA_TARGET_AIE_)
-    i_prev.write(b, kB);
-    j_prev.write(a, kVecs);
+    if (pass) {
+      i_prev.write(b_top, kB / 2);
+      i_prev.write(b_bot, kB / 2);
+      j_prev.write(a_top, kVecs / 2);
+      j_prev.write(a_bot, kVecs / 2);
+    }
 #endif
-  compute:
     [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
     for (int ij = 0; ij < kVecs; ij += kCols) {
       const int i = ij / kRowVecs;
       const int j = ij % kRowVecs;
-#if !defined(TAPA_TARGET_AIE_)
-      i_prev.write(&b[i][j], kCols);
-      j_prev.write(&a[ij], kCols);
+#if defined(TAPA_TARGET_AIE_)
+      // The halves of the rows of A and C may lie in two frames.
+      const bool top = i < kB / 2;
+      const vec_t* a_i =
+          top ? a_top + i * kRowVecs : a_bot + (i - kB / 2) * kRowVecs;
+      vec_t* c_ij = top ? c_top + ij : c_bot + (ij - kVecs / 2);
+#else
+      // Elsewhere both halves were copied into one array, so the PE indexes
+      // it: a choice between the halves would cost HLS a load from each.
+      const vec_t* a_i = &a[i * kRowVecs];
+      vec_t* c_ij = &c[ij];
+      if (pass) {
+        i_prev.write(&b[i][j], kCols);
+        j_prev.write(&a[ij], kCols);
+      }
 #endif
-      vec_t c0 = c[ij];
-      vec_t c1 = c[ij + 1];
-      vec_t c2 = c[ij + 2];
-      vec_t c3 = c[ij + 3];
+      vec_t c0 = c_ij[0];
+      vec_t c1 = c_ij[1];
+      vec_t c2 = c_ij[2];
+      vec_t c3 = c_ij[3];
       int k = 0;  // B's row, walked in order
       for (int kv = 0; kv < kRowVecs; ++kv) {
-        vec_t a_ik = a[i * kRowVecs + kv];
+        vec_t a_ik = a_i[kv];
         for (int lane = 0; lane < kLanes; ++lane) {
-          c0 += a_ik[lane] * b[k][j];
-          c1 += a_ik[lane] * b[k][j + 1];
-          c2 += a_ik[lane] * b[k][j + 2];
-          c3 += a_ik[lane] * b[k][j + 3];
+          const row_t& b_k = k < kB / 2 ? b_top[k] : b_bot[k - kB / 2];
+          c0 += a_ik[lane] * b_k[j];
+          c1 += a_ik[lane] * b_k[j + 1];
+          c2 += a_ik[lane] * b_k[j + 2];
+          c3 += a_ik[lane] * b_k[j + 3];
           ++k;
         }
       }
-      c[ij] = c0;
-      c[ij + 1] = c1;
-      c[ij + 2] = c2;
-      c[ij + 3] = c3;
+      c_ij[0] = c0;
+      c_ij[1] = c1;
+      c_ij[2] = c2;
+      c_ij[3] = c3;
     }
-    tapa::fence();  // every send of the round before any receive
-    i_next.read(b, kB);
-    j_next.read(a, kVecs);
+    if (l == 0) {
+      a_lo.release();
+      a_hi.release();
+      b_lo.release();
+      b_hi.release();
+    } else {
+      j_next.release();
+      i_next.release();
+    }
   }
 
-  c_lo.write(c, kVecs / 2);
-  c_hi.write(c + kVecs / 2, kVecs / 2);
+  c_lo.commit(c_top, kVecs / 2);
+  c_hi.commit(c_bot, kVecs / 2);
 }
 
 void Cannon(tapa::mmap<const beat_t> a_vec, tapa::mmap<const beat_t> b_vec,
