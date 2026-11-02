@@ -154,6 +154,12 @@ This stage can run on a remote host via `--remote-host`.
 | `--hls-fixtures` | Use hand-authored test fixtures already staged under `hls/<task>/{report,verilog}`. Requires fresh output and reports matching the requested part and clock; fails rather than running HLS. Does not certify fixtures for normal cache reuse. Conflicts with `--skip-hls-based-on-mtime`. |
 | `--other-hls-configs TCL` | Extra Tcl appended verbatim to every generated HLS script. |
 
+A successful synthesis replaces the generated `rtl/` and `template/` trees
+and each regenerated task's HLS reports and Verilog. Outputs from removed
+HLS tasks are discarded; retained HLS project directories remain available
+for diagnostics. Keep custom RTL outside these generated directories and
+supply it with `pack --custom-rtl`.
+
 An AIE-only build preserves synthesized PL artifacts and floorplan state only
 when the resolved part number, platform, and requested clock period all match
 the previous PL synthesis. Changing any of them clears `flow.synthed` and the

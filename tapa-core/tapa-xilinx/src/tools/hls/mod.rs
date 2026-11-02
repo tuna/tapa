@@ -369,56 +369,38 @@ fn harvest_and_stage(
     let solution = solution_name(job);
     let syn_rel: Utf8PathBuf = ["project", &solution, "syn"].iter().collect();
 
-    // Copy the real HLS artifacts into the caller-visible output dirs.
+    // Validate the fresh project before replacing the previous output. An
+    // old report or helper module must never make an incomplete run succeed.
     let syn_abs = stage_dir.join(&syn_rel);
-    fs_err::create_dir_all(&job.reports_out_dir)?;
-    fs_err::create_dir_all(&job.hdl_out_dir)?;
-    copy_tree(&syn_abs.join("report"), &job.reports_out_dir).map_err(|e| {
-        XilinxError::HlsReportParse(format!(
-            "stage reports {} → {}: {e}",
-            syn_abs.join("report").as_str(),
-            job.reports_out_dir.as_str()
-        ))
-    })?;
-    copy_tree(&syn_abs.join("verilog"), &job.hdl_out_dir).map_err(|e| {
-        XilinxError::HlsReportParse(format!(
-            "stage verilog {} → {}: {e}",
-            syn_abs.join("verilog").as_str(),
-            job.hdl_out_dir.as_str()
-        ))
-    })?;
-
-    normalize_staged_reports(&job.reports_out_dir).map_err(|e| {
-        XilinxError::HlsReportParse(format!(
-            "normalize staged reports {}: {e}",
-            job.reports_out_dir.as_str()
-        ))
-    })?;
-
-    let report_xml = job
-        .reports_out_dir
-        .join(format!("{}_csynth.xml", job.top_name));
-    let fallback = job
-        .reports_out_dir
-        .join(format!("{}.csynth.xml", job.top_name));
-    let report_xml = if report_xml.is_file() {
-        report_xml
-    } else {
-        fallback
-    };
+    let reports = syn_abs.join("report");
+    let hdl = syn_abs.join("verilog");
+    let primary = reports.join(format!("{}_csynth.xml", job.top_name));
+    let fallback = reports.join(format!("{}.csynth.xml", job.top_name));
+    let report_xml = if primary.is_file() { primary } else { fallback };
     let bytes = fs_err::read(&report_xml).map_err(|_| {
         XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.as_str()))
     })?;
     let csynth = parse_csynth_xml(&bytes)?;
-
-    let verilog_files = collect_files(&job.hdl_out_dir)?;
-    if verilog_files.is_empty() {
+    if !collect_files(&hdl)?
+        .iter()
+        .any(|file| file.extension() == Some("v"))
+    {
         return Err(XilinxError::ToolFailure {
             program: "vitis_hls".into(),
             code: 0,
-            stderr: format!("no HDL output produced in {}", job.hdl_out_dir.as_str()),
+            stderr: format!("no HDL output produced in {}", hdl.as_str()),
         });
     }
+
+    for (source, destination) in [(&reports, &job.reports_out_dir), (&hdl, &job.hdl_out_dir)] {
+        if destination.exists() {
+            fs_err::remove_dir_all(destination)?;
+        }
+        fs_err::create_dir_all(destination)?;
+        copy_tree(source, destination)?;
+    }
+    normalize_staged_reports(&job.reports_out_dir)?;
+    let verilog_files = collect_files(&job.hdl_out_dir)?;
     let report_paths = collect_files(&job.reports_out_dir)?;
     Ok(HlsOutput {
         csynth,
@@ -712,6 +694,48 @@ mod tests {
         assert!(xml.contains("/src/k.cpp:7"));
         assert!(xml.contains("tapa-lib/tapa/xilinx/hls/stream.h:99"));
         assert!(!xml.contains("/tmp/sandbox/abc"));
+    }
+
+    #[test]
+    fn harvest_replaces_old_outputs_and_rejects_incomplete_projects() {
+        let tmp = tempfile::tempdir().unwrap();
+        let work = Utf8PathBuf::from_path_buf(tmp.path().to_path_buf()).unwrap();
+        let job = fixture_job(&work);
+        let stage = work.join("stage");
+        let syn = stage.join("project/k/syn");
+        fs_err::create_dir_all(syn.join("report")).unwrap();
+        fs_err::create_dir_all(syn.join("verilog")).unwrap();
+        let report = syn.join("report/k_csynth.xml");
+        fs_err::write(
+            &report,
+            "<profile><UserAssignments><TopModelName>k</TopModelName><Part>xcu250</Part><TargetClockPeriod>3.33</TargetClockPeriod></UserAssignments><PerformanceEstimates><SummaryOfTimingAnalysis><EstimatedClockPeriod>2.0</EstimatedClockPeriod></SummaryOfTimingAnalysis></PerformanceEstimates></profile>",
+        )
+        .unwrap();
+        fs_err::write(syn.join("verilog/k.v"), "module k; endmodule").unwrap();
+        fs_err::write(syn.join("verilog/obsolete.v"), "module obsolete; endmodule").unwrap();
+        fs_err::write(syn.join("report/obsolete.rpt"), "old report").unwrap();
+        harvest_and_stage(&job, &stage, ToolOutput::default()).unwrap();
+
+        fs_err::remove_file(syn.join("verilog/obsolete.v")).unwrap();
+        fs_err::remove_file(syn.join("report/obsolete.rpt")).unwrap();
+        let output = harvest_and_stage(&job, &stage, ToolOutput::default()).unwrap();
+        assert_eq!(output.verilog_files, [job.hdl_out_dir.join("k.v")]);
+        assert_eq!(
+            output.report_paths,
+            [job.reports_out_dir.join("k_csynth.xml")]
+        );
+        assert!(!job.hdl_out_dir.join("obsolete.v").exists());
+        assert!(!job.reports_out_dir.join("obsolete.rpt").exists());
+
+        fs_err::remove_file(&report).unwrap();
+        harvest_and_stage(&job, &stage, ToolOutput::default())
+            .expect_err("the previous report must not certify a new incomplete project");
+        assert!(job.reports_out_dir.join("k_csynth.xml").is_file());
+        fs_err::copy(job.reports_out_dir.join("k_csynth.xml"), &report).unwrap();
+        fs_err::remove_dir_all(syn.join("verilog")).unwrap();
+        harvest_and_stage(&job, &stage, ToolOutput::default())
+            .expect_err("old HDL must not substitute for missing new HDL");
+        assert!(job.hdl_out_dir.join("k.v").is_file());
     }
 
     #[test]

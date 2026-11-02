@@ -79,7 +79,9 @@ pub fn emit_prepared_rtl_tree(
     hdl_inputs: &TaskHdlInputs,
 ) -> Result<Vec<PathBuf>> {
     let top = state.design.top.clone();
-    let rtl_dir = work_dir.join("rtl");
+    fs::create_dir_all(work_dir)?;
+    let staged = tempfile::tempdir_in(work_dir)?;
+    let rtl_dir = staged.path().join("rtl");
     fs::create_dir_all(&rtl_dir)?;
 
     // The HLS outputs are user inputs to codegen, not artifacts it
@@ -90,9 +92,6 @@ pub fn emit_prepared_rtl_tree(
                 continue;
             };
             let dest = rtl_dir.join(name);
-            if dest == src.as_path() {
-                continue;
-            }
             fs::copy(src, &dest)?;
         }
     }
@@ -101,12 +100,24 @@ pub fn emit_prepared_rtl_tree(
 
     let mut written = Vec::new();
     for (relative, content) in manifest.files() {
-        let path = work_dir.join(relative);
+        let path = staged.path().join(relative);
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)?;
         }
         fs::write(&path, content)?;
-        written.push(path);
+        written.push(work_dir.join(relative));
+    }
+    // Copy all inputs before replacing either tree: some callers can supply
+    // files from the existing RTL directory. Publish only current artifacts.
+    for directory in ["rtl", "template"] {
+        let destination = work_dir.join(directory);
+        if destination.exists() {
+            fs::remove_dir_all(&destination)?;
+        }
+        let source = staged.path().join(directory);
+        if source.exists() {
+            fs::rename(source, destination)?;
+        }
     }
     Ok(written)
 }
@@ -331,6 +342,15 @@ mod tests {
                 .expect("read copied generator sidecar"),
             "create_ip -module_name Add_sort_ip\n"
         );
+        // Rerunning after HLS drops an IP must also drop its packaged sidecar.
+        fs::remove_file(&generator).unwrap();
+        let inputs = collect_hdl_inputs(&work_dir, &vadd_design()).unwrap();
+        fs::create_dir_all(candidate_dir.join("template")).unwrap();
+        fs::write(candidate_dir.join("template/Removed.v"), "old shell").unwrap();
+        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None, None).unwrap();
+        assert!(!candidate_dir.join("rtl/Add_sort_ip.tcl").exists());
+        assert!(!candidate_dir.join("template/Removed.v").exists());
+        assert!(candidate_dir.join("rtl/Add.v").is_file());
     }
 
     #[test]

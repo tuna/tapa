@@ -191,7 +191,39 @@ pub fn run_hls_for_leaves(
         };
         out.push((task_name, layout, hls_out));
     }
+    prune_inactive_hls_outputs(work_dir, design)?;
     Ok(out)
+}
+
+// Retained projects are diagnostics, but reports and RTL for removed or
+// non-HLS tasks must no longer be visible to packaging or later cache lookups.
+fn prune_inactive_hls_outputs(work_dir: &Path, design: &Design) -> Result<()> {
+    let root = work_dir.join("hls");
+    if !root.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(root)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir()
+            || design
+                .tasks
+                .get(entry.file_name().to_string_lossy().as_ref())
+                .is_some_and(|task| task.synth == SynthTarget::Hls)
+        {
+            continue;
+        }
+        for name in ["report", "verilog"] {
+            let path = entry.path().join(name);
+            if path.exists() {
+                fs::remove_dir_all(path)?;
+            }
+        }
+        let settings = entry.path().join("settings");
+        if settings.exists() {
+            fs::remove_file(settings)?;
+        }
+    }
+    Ok(())
 }
 
 fn dispatch_plan(
@@ -796,6 +828,12 @@ mod tests {
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
 
+        let removed = work.join("hls/Removed");
+        for directory in ["report", "verilog", "project"] {
+            fs::create_dir_all(removed.join(directory)).unwrap();
+            fs::write(removed.join(directory).join("old.txt"), "old output").unwrap();
+        }
+        fs::write(removed.join("settings"), "old settings").unwrap();
         let design = leaf_design();
         // Runner with no queued responses: any call fails loudly.
         let runner = MockToolRunner::new();
@@ -818,6 +856,10 @@ mod tests {
             "cache hit must carry the existing HDL files forward",
         );
         assert!(runner.calls().is_empty(), "cache hit must not call Vitis");
+        assert!(!removed.join("report").exists());
+        assert!(!removed.join("verilog").exists());
+        assert!(!removed.join("settings").exists());
+        assert!(removed.join("project/old.txt").exists());
     }
 
     #[test]
