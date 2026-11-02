@@ -156,6 +156,11 @@ def _stage_pack_inputs(source, destination):
         "mkdir -p {}".format(sh_quote(destination)),
         "cp -aL {} {}".format(sh_quote(source + "/rtl"), sh_quote(destination)),
         "cp -aL {} {}".format(sh_quote(source + "/hls"), sh_quote(destination)),
+        # Cache settings contain local source/include paths. Pack never reads
+        # them, and sandbox-specific paths must not invalidate its action.
+        "find {} -mindepth 2 -maxdepth 2 -type f -name settings -delete".format(
+            sh_quote(destination + "/hls"),
+        ),
     ]
     for name in ["tapa.json", "report.json", "report.yaml", "templates_info.json", "template"]:
         path = sh_quote(source + "/" + name)
