@@ -128,6 +128,43 @@ TEST(TaskTest, TapaConcurrencyZeroFallsBackToOneWorker) {
   EXPECT_TRUE(result_q.empty());
 }
 
+void NestedJoinNoOp() {}
+
+void NestedJoinDelay() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+}
+
+void NestedJoinProducer(tapa::ostream<int>& q) {
+  NestedJoinDelay();
+  q.write(42);
+}
+
+void NestedJoinConsumer(tapa::istream<int>& q, tapa::mmap<int> result) {
+  result[0] = q.read();
+}
+
+void NestedJoinUpper(tapa::mmap<int> result) {
+  tapa::stream<int> q("nested_join");
+  tapa::task()
+      .invoke(NestedJoinConsumer, q, result)
+      .invoke(NestedJoinNoOp)
+      .invoke(NestedJoinProducer, q);
+}
+
+TEST(TaskTest, JoinsChildrenScheduledOntoAnEarlierIdleWorker) {
+  tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", "2");
+  int result = 0;
+  // Worker 0 becomes idle while worker 1 is delayed. The upper task then
+  // schedules both producer and consumer on worker 0. The consumer yields
+  // before the producer writes, so shutdown must let it resume afterwards.
+  tapa::task()
+      .invoke(NestedJoinNoOp)
+      .invoke(NestedJoinDelay)
+      .invoke(NestedJoinNoOp)
+      .invoke(NestedJoinUpper, tapa::write_only_mmap<int>(&result, 1));
+  EXPECT_EQ(result, 42);
+}
+
 // allocate/deallocate are mmap-backed; verify they return usable memory and
 // release cleanly — these stay in task.cpp after any scheduler split.
 TEST(TaskTest, AllocateDeallocateSharedMemory) {

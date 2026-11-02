@@ -15,7 +15,6 @@ class worker {
   std::queue<std::tuple<bool, function<void()>>> tasks;
   mutex mtx;
   condition_variable task_cv;
-  condition_variable wait_cv;
   bool done = false;
   std::atomic_int signal{0};
   std::thread thread;
@@ -55,13 +54,11 @@ class worker {
           }
         }
 
-        bool active = false;
         bool coroutine_executed = false;
 
         bool debugging = this->signal;
         if (debugging) debug = true;
         for (auto& pair : this->coroutines) {
-          bool detach = pair.first;
           auto& coroutines = pair.second;
           for (auto it = coroutines.begin(); it != coroutines.end();) {
             if (auto& coroutine = *it) {
@@ -71,7 +68,6 @@ class worker {
             }
 
             if (*it) {
-              if (!detach) active = true;
               ++it;
             } else {
               unique_lock lock(this->mtx);
@@ -85,9 +81,6 @@ class worker {
           this->signal = 0;
         }
 
-        if (!active) {
-          this->wait_cv.notify_all();
-        }
         if (coroutine_executed) {
           // Running a coroutine is progress for the backoff: start the next
           // idle spell at the cheap end rather than wherever the last one
@@ -111,15 +104,6 @@ class worker {
     this->task_cv.notify_one();
   }
 
-  void wait() {
-    unique_lock lock(this->mtx);
-    this->wait_cv.wait(lock, [this] {
-      bool pred = this->tasks.empty() && this->coroutines[false].empty();
-      if (!pred) reschedule_this_thread();
-      return pred;
-    });
-  }
-
   void send(int signal) { this->signal = signal; }
 
   ~worker() {
@@ -139,6 +123,8 @@ void signal_handler(int signal);
 
 class thread_pool {
   mutex worker_mtx;
+  condition_variable wait_cv;
+  size_t joined_tasks = 0;
   std::list<worker> workers;
   decltype(workers)::iterator it;
 
@@ -170,7 +156,18 @@ class thread_pool {
 
   void add_task(bool detach, const function<void()>& f) {
     unique_lock lock(this->worker_mtx);
-    it->add_task(detach, f);
+    if (detach) {
+      it->add_task(true, f);
+    } else {
+      it->add_task(false, [this, f] {
+        f();
+        unique_lock lock(this->worker_mtx);
+        if (--this->joined_tasks == 0) this->wait_cv.notify_all();
+      });
+      // The worker cannot decrement this until worker_mtx is released.
+      // Count only after enqueueing succeeds.
+      ++this->joined_tasks;
+    }
     ++it;
     if (it == this->workers.end()) it = this->workers.begin();
   }
@@ -189,7 +186,10 @@ class thread_pool {
   }
 
   void wait() {
-    for (auto& w : this->workers) w.wait();
+    // A running upper task can enqueue children on any worker, including
+    // one that was idle earlier. Its children are counted before it returns.
+    unique_lock lock(this->worker_mtx);
+    this->wait_cv.wait(lock, [this] { return this->joined_tasks == 0; });
   }
 
   void send(int signal) {
