@@ -16,7 +16,7 @@ use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
 
 use super::device_resolve::resolve_device_info;
-use super::hls_run::{run_hls_for_leaves, HlsRunOptions};
+use super::hls_run::{run_hls_for_leaves, HlsReuse, HlsRunOptions};
 use super::hls_sources::stage_hls_sources;
 use super::post_synth_util::emit_post_synth_util;
 use super::report::write_top_report;
@@ -104,8 +104,15 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         clock_period,
         other_configs: args.other_hls_configs.clone(),
         cflags: build_hls_cflags(ctx.remote_config.is_some()),
-        skip_based_on_mtime: args.skip_hls_based_on_mtime,
-        require_cache_hit: args.require_hls_cache,
+        reuse: if args.hls_fixtures {
+            HlsReuse::Fixtures
+        } else if args.require_hls_cache {
+            HlsReuse::Required
+        } else if args.skip_hls_based_on_mtime {
+            HlsReuse::IfFresh
+        } else {
+            HlsReuse::Never
+        },
         jobs: args.jobs,
         keep_work_dir: args.keep_hls_work_dir,
     };

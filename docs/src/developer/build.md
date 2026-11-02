@@ -97,7 +97,7 @@ all available settings.
 The full analyze -> synth -> pack -> cosim chain also has a vendor-free
 tier: `//tests/apps/vadd:vadd-fixture-zipsim` synthesizes against
 checked-in HLS-output fixtures (`tapa_xo` with `hls_fixtures`, which runs
-`tapa synth --skip-hls-based-on-mtime --require-hls-cache` over the staged fixtures) and
+`tapa synth --hls-fixtures` over the staged fixtures) and
 simulates the resulting zip with frt-cosim's Verilator backend, so TAPA's
 own analyze, codegen, pack, and cosim are exercised end-to-end on hosts
 with no Xilinx tools at all. The fixtures and their interface contract are

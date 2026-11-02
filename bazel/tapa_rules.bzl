@@ -126,9 +126,9 @@ def _stage_hls_fixtures(fixture_files, destination):
     as `<task>/{verilog,report}/<file>`, mirroring the harvested HLS tree.
     Freshness is deterministic: the analyzed `rewritten/` tree (the
     mtime-skip freshness deps) is stamped to a fixed past time and the
-    fixtures to now, so the skip never falls through to a real HLS run
-    regardless of sandbox clock granularity or cache-materialization
-    timestamps.
+    fixtures to now, so fixture freshness is independent of clock granularity
+    and cache-materialization timestamps. Missing or incompatible
+    fixtures fail instead of invoking HLS.
     """
     lines = [
         "find {} -type f -exec touch -t 200109090146.40 {{}} +".format(
@@ -257,7 +257,7 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.enable_synth_util:
         synth_cmd.extend(["--enable-synth-util"])
     if ctx.files.hls_fixtures:
-        synth_cmd.extend(["--skip-hls-based-on-mtime", "--require-hls-cache"])
+        synth_cmd.append("--hls-fixtures")
 
     synth_inputs = [analysis_dir] + ctx.files.hls_fixtures
     if ctx.file.ssh_key:
@@ -442,7 +442,7 @@ _tapa_xo = rule(
         "hls_fixtures": attr.label_list(
             allow_files = True,
             doc = "HLS-output fixtures staged as the <work_dir>/hls tree " +
-                  "before `tapa synth --skip-hls-based-on-mtime`, replacing " +
+                  "before `tapa synth --hls-fixtures`, replacing " +
                   "every Vitis HLS run. Files must live under a directory " +
                   "named 'hls-fixtures' laid out as <task>/verilog/<file> " +
                   "and <task>/report/<task>_csynth.xml, mirroring the " +

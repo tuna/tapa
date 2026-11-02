@@ -7,7 +7,7 @@ Hand-authored stand-ins for the Vitis HLS output of every task of
 shell), laid out as `<task>/{verilog,report}/` to mirror the
 `<work_dir>/hls/` tree `tapa synth` harvests. `tapa_xo` targets with
 `hls_fixtures` set stage these files and run `tapa synth
---skip-hls-based-on-mtime`, so analyze -> synth -> pack -> Verilator cosim
+--hls-fixtures`, so analyze -> synth -> pack -> Verilator cosim
 runs with no Xilinx tools at all; only TAPA's own analyze, codegen, pack,
 and frt-cosim code is exercised.
 
@@ -35,7 +35,7 @@ model (`fp32_add`, latency 5 from the shipped `_ip.tcl`, a byte copy of what
 Vitis HLS 2025.2 emits for this kernel).
 
 The `*_csynth.xml` reports are minimal well-formed documents feeding
-`report.json` metrics through the mtime-skip reload path; their numbers are
+`report.json` metrics through the fixture reload path; their numbers are
 nominal, not measured.
 
 ## Regeneration

@@ -69,8 +69,8 @@ def _fixture_pipeline_actions_test_impl(ctx):
     command = " ".join(synth.argv) if synth.argv else (synth.content or "")
     asserts.true(
         env,
-        "--skip-hls-based-on-mtime" in command,
-        "fixture synth must route every HLS run through the mtime cache",
+        "--hls-fixtures" in command,
+        "fixture synth must explicitly select staged test inputs",
     )
     return analysistest.end(env)
 

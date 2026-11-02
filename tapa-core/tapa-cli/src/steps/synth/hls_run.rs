@@ -1,5 +1,5 @@
 //! Per-task Vitis HLS invocation with parallel dispatch and
-//! mtime-based skipping.
+//! settings- and mtime-based skipping.
 
 use camino::Utf8PathBuf;
 use rayon::prelude::*;
@@ -35,6 +35,15 @@ impl TaskHlsLayout {
     }
 }
 
+/// Mutually exclusive ways to obtain task RTL.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HlsReuse {
+    Never,
+    IfFresh,
+    Required,
+    Fixtures,
+}
+
 #[derive(Debug, Clone)]
 pub struct HlsRunOptions {
     pub part_num: String,
@@ -44,10 +53,7 @@ pub struct HlsRunOptions {
     /// closing with `-I<tapa-extra-runtime-include>`). Per-task user
     /// and manifest flags are prepended by [`task_cflags`].
     pub cflags: Vec<String>,
-    pub skip_based_on_mtime: bool,
-    /// Fail on a cache miss or unusable cached report rather than running
-    /// HLS or using default metrics. Requires `skip_based_on_mtime`.
-    pub require_cache_hit: bool,
+    pub reuse: HlsReuse,
     /// Number of HLS runs executed in parallel. `None` or 1 → serial.
     pub jobs: Option<u32>,
     /// When `--keep-hls-work-dir` is set,
@@ -85,64 +91,6 @@ pub fn run_hls_for_leaves(
         // manifests before any job is planned.
         let srcs = sources.srcs(task_name);
 
-        // Check freshness before creating `layout.hdl_dir`, and require
-        // at least one `.v` file so a directory containing only generator
-        // sidecars is not a cache hit.
-        if options.skip_based_on_mtime && layout.hdl_dir.is_dir() {
-            let hdl_files = list_hdl_files(&layout.hdl_dir)?;
-            if hdl_files.iter().any(|path| is_verilog(path))
-                && hdl_files_are_newer_than(&hdl_files, sources.freshness_deps())
-            {
-                log::info!(
-                    "skipping HLS for `{task_name}` (mtime cache hit at {})",
-                    layout.hdl_dir.as_str(),
-                );
-                // `reports_dir` must still exist for downstream
-                // readers; the skip path does not touch `hdl_dir`.
-                fs::create_dir_all(&layout.reports_dir)?;
-                // Reload existing csynth data so downstream report
-                // generation and the persisted graph keep correct metrics.
-                let csynth = match find_and_parse_csynth(&layout.reports_dir, task_name) {
-                    Ok(report) => report,
-                    Err(error) if options.require_cache_hit => return Err(error),
-                    Err(error) => {
-                        log::warn!(
-                            "could not reload cached csynth for `{task_name}`: {error}; using defaults"
-                        );
-                        tapa_xilinx::CsynthReport::default()
-                    }
-                };
-                let report_paths = walkdir::WalkDir::new(&layout.reports_dir)
-                    .into_iter()
-                    .filter_map(std::result::Result::ok)
-                    .filter(|e| e.file_type().is_file())
-                    .map(|e| crate::util::utf8(e.path()))
-                    .collect();
-                plan.push((
-                    task_name.clone(),
-                    layout,
-                    Work::Skip(HlsOutput {
-                        csynth,
-                        verilog_files: hdl_files,
-                        report_paths,
-                        stdout: String::new(),
-                        stderr: String::new(),
-                    }),
-                ));
-                continue;
-            }
-        }
-
-        if options.require_cache_hit {
-            return Err(CliError::Codegen(format!(
-                "cached HLS output for `{task_name}` is missing or stale; rerun without \
-                 `--require-hls-cache` to regenerate it"
-            )));
-        }
-
-        fs::create_dir_all(&layout.reports_dir)?;
-        fs::create_dir_all(&layout.hdl_dir)?;
-
         let job = HlsJob::builder()
             .task_name(task_name.clone())
             .srcs(srcs.to_vec())
@@ -159,6 +107,44 @@ pub fn run_hls_for_leaves(
             .hdl_out_dir(layout.hdl_dir.clone())
             .other_configs(options.other_configs.clone())
             .build();
+        let settings_path = layout.hdl_dir.with_file_name("settings");
+        let cache_key = job.cache_key()?;
+        let settings_match =
+            fs::read(&settings_path).is_ok_and(|saved| saved == cache_key.as_bytes());
+        // Fixtures are explicitly supplied test inputs. Real cache entries
+        // require the settings recorded after a successful synthesis run.
+        if (options.reuse != HlsReuse::Never && settings_match)
+            || options.reuse == HlsReuse::Fixtures
+        {
+            let hdl_files = list_hdl_files(&layout.hdl_dir)?;
+            if hdl_files.iter().any(|path| is_verilog(path))
+                && hdl_files_are_newer_than(&hdl_files, sources.freshness_deps())
+            {
+                match cached_hls_output(&layout, task_name, hdl_files, options) {
+                    Ok(output) => {
+                        log::info!("reusing HLS output for `{task_name}`");
+                        plan.push((task_name.clone(), layout, Work::Skip(output)));
+                        continue;
+                    }
+                    Err(error)
+                        if matches!(options.reuse, HlsReuse::Required | HlsReuse::Fixtures) =>
+                    {
+                        return Err(error);
+                    }
+                    Err(error) => log::info!("regenerating HLS for `{task_name}`: {error}"),
+                }
+            }
+        }
+
+        if matches!(options.reuse, HlsReuse::Required | HlsReuse::Fixtures) {
+            return Err(CliError::Codegen(format!(
+                "cached HLS output for `{task_name}` is missing or stale (including settings changes); \
+                 rerun without `--require-hls-cache` or `--hls-fixtures` to regenerate it"
+            )));
+        }
+
+        fs::create_dir_all(&layout.reports_dir)?;
+        fs::create_dir_all(&layout.hdl_dir)?;
 
         // `--keep-hls-work-dir`: stage under
         // `<work_dir>/hls/<task>/project` so the Vitis project + logs
@@ -222,20 +208,32 @@ fn dispatch_plan(
 
 impl Work {
     fn execute(&self, runner: &dyn ToolRunner) -> Result<Option<HlsOutput>> {
-        match self {
-            Self::Skip(_) => Ok(None),
-            Self::RunInStage(job, stage_dir) => {
-                let out = run_hls_with_retry_in_stage(runner, job, HLS_MAX_ATTEMPTS, stage_dir)
-                    .map_err(CliError::from)?;
-                Ok(Some(out))
-            }
-            Self::RunFresh(job) => {
-                // Each retry gets a fresh temporary staging directory.
-                let out =
-                    run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS).map_err(CliError::from)?;
-                Ok(Some(out))
-            }
+        let job = match self {
+            Self::Skip(_) => return Ok(None),
+            Self::RunInStage(job, _) | Self::RunFresh(job) => job,
+        };
+        let settings_path = job.hdl_out_dir.with_file_name("settings");
+        // A failed attempt may have partially replaced output. Never leave
+        // the previous run's settings certifying that output as a cache hit.
+        if settings_path.exists() {
+            fs::remove_file(&settings_path)?;
         }
+        let out = match self {
+            Self::RunInStage(job, stage_dir) => {
+                run_hls_with_retry_in_stage(runner, job, HLS_MAX_ATTEMPTS, stage_dir)?
+            }
+            Self::RunFresh(job) => run_hls_with_retry(runner, job, HLS_MAX_ATTEMPTS)?,
+            Self::Skip(_) => unreachable!(),
+        };
+        crate::state::json::write_bytes_atomic(
+            settings_path
+                .parent()
+                .expect("task directory")
+                .as_std_path(),
+            "settings",
+            job.cache_key()?.as_bytes(),
+        )?;
+        Ok(Some(out))
     }
 }
 
@@ -339,6 +337,30 @@ fn is_verilog(path: &camino::Utf8Path) -> bool {
     path.extension() == Some("v")
 }
 
+fn cached_hls_output(
+    layout: &TaskHlsLayout,
+    task_name: &str,
+    hdl_files: Vec<Utf8PathBuf>,
+    options: &HlsRunOptions,
+) -> Result<HlsOutput> {
+    let csynth = find_and_parse_csynth(&layout.reports_dir, task_name)?;
+    let clock = ClockPeriod::from_nanoseconds_str(&csynth.target_clock_period_ns);
+    if csynth.part != options.part_num || clock.ok() != Some(options.clock_period) {
+        return Err(CliError::Codegen(format!(
+            "cached HLS report for `{task_name}` does not match requested part {} and clock {} ns",
+            options.part_num, options.clock_period,
+        )));
+    }
+    let report_paths = list_hdl_files(&layout.reports_dir)?;
+    Ok(HlsOutput {
+        csynth,
+        verilog_files: hdl_files,
+        report_paths,
+        stdout: String::new(),
+        stderr: String::new(),
+    })
+}
+
 /// Reload and parse the task's top-level csynth report on an mtime-skip
 /// cache hit.
 ///
@@ -403,14 +425,38 @@ mod tests {
         write_manifest(work, &["Add.cpp"]);
     }
 
+    fn seed_cached_settings(work: &Path) {
+        let layout = TaskHlsLayout::new(work, "Add");
+        let job = HlsJob::builder()
+            .task_name("Add".into())
+            .top_name("Add".into())
+            .srcs(vec![crate::util::utf8(work.join("rewritten/Add.cpp"))])
+            .cflags(vec![format!("-I{}", work.join("rewritten").display())])
+            .target_part("xcvu37p".into())
+            .clock_period("3.33".into())
+            .reports_out_dir(layout.reports_dir.clone())
+            .hdl_out_dir(layout.hdl_dir.clone())
+            .build();
+        fs::write(
+            layout.hdl_dir.with_file_name("settings"),
+            job.cache_key().unwrap(),
+        )
+        .unwrap();
+        fs::create_dir_all(&layout.reports_dir).unwrap();
+        fs::write(
+            layout.reports_dir.join("Add_csynth.xml"),
+            csynth_xml("Add", 1, 0),
+        )
+        .unwrap();
+    }
+
     fn skip_hls_options() -> HlsRunOptions {
         HlsRunOptions {
             part_num: "xcvu37p".to_string(),
             clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
-            skip_based_on_mtime: true,
-            require_cache_hit: false,
+            reuse: HlsReuse::IfFresh,
             jobs: Some(1),
             keep_work_dir: false,
         }
@@ -588,8 +634,7 @@ mod tests {
             clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
-            skip_based_on_mtime: true,
-            require_cache_hit: false,
+            reuse: HlsReuse::IfFresh,
             jobs: Some(1),
             keep_work_dir: false,
         };
@@ -620,7 +665,7 @@ mod tests {
         let design = leaf_design();
         let runner = MockToolRunner::new();
         let opts = HlsRunOptions {
-            require_cache_hit: true,
+            reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
         let error = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
@@ -636,6 +681,7 @@ mod tests {
         seed_rewritten(work);
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(
             hdl.join("Add.v"),
@@ -643,10 +689,11 @@ mod tests {
 ",
         )
         .unwrap();
+        fs::remove_file(work.join("hls/Add/report/Add_csynth.xml")).unwrap();
         let design = leaf_design();
         let runner = MockToolRunner::new();
         let opts = HlsRunOptions {
-            require_cache_hit: true,
+            reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
         let error = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
@@ -661,6 +708,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn cache_records_successful_settings_and_rejects_configuration_changes() {
+        let tmp = tempfile::tempdir().unwrap();
+        let work = tmp.path();
+        seed_rewritten(work);
+        let design = leaf_design();
+        let sources = staged(work, &design);
+        let runner = MockToolRunner::new();
+        runner.push_ok("vitis_hls", ToolOutput::default());
+        let syn = crate::util::utf8(work.join("hls/Add/project/project/Add/syn"));
+        runner.attach_download(
+            syn.join("verilog/Add.v"),
+            b"module Add(); endmodule".to_vec(),
+        );
+        runner.attach_download(
+            syn.join("report/Add_csynth.xml"),
+            csynth_xml("Add", 1, 0).into_bytes(),
+        );
+        let original = HlsRunOptions {
+            keep_work_dir: true,
+            ..skip_hls_options()
+        };
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        run_hls_for_leaves(&runner, work, &design, &sources, &original).unwrap();
+        let required = HlsRunOptions {
+            reuse: HlsReuse::Required,
+            ..original.clone()
+        };
+        run_hls_for_leaves(&runner, work, &design, &sources, &required).expect("unchanged cache");
+
+        for change in 0..5 {
+            let mut changed = required.clone();
+            let mut graph = design.clone();
+            match change {
+                0 => changed.part_num = "xcu250".into(),
+                1 => changed.clock_period = ClockPeriod::from_picoseconds(2000),
+                2 => changed.other_configs = "config_compile -pipeline_loops 0".into(),
+                3 => changed.cflags.push("-DNEW_FLAG".into()),
+                _ => graph.cflags.push("-DUSER_FLAG".into()),
+            }
+            run_hls_for_leaves(&runner, work, &graph, &sources, &changed)
+                .expect_err("changed synthesis settings must invalidate the cache");
+        }
+        assert_eq!(runner.calls().len(), 1, "strict misses must never run HLS");
+
+        // A failed regeneration cannot certify the old or partial outputs.
+        runner.push_failure("vitis_hls", 1, "ERROR: synthesis failed");
+        let rerun = HlsRunOptions {
+            reuse: HlsReuse::Never,
+            ..original
+        };
+        run_hls_for_leaves(&runner, work, &design, &sources, &rerun)
+            .expect_err("must reject incompatible output");
+        assert!(!work.join("hls/Add/settings").exists());
+        run_hls_for_leaves(&runner, work, &design, &sources, &required)
+            .expect_err("must reject incompatible output");
+
+        // Explicit fixtures do not silently become a certified cache entry.
+        let fixtures = HlsRunOptions {
+            reuse: HlsReuse::Fixtures,
+            ..required
+        };
+        run_hls_for_leaves(&runner, work, &design, &sources, &fixtures).unwrap();
+        assert!(!work.join("hls/Add/settings").exists());
+        let wrong_part = HlsRunOptions {
+            part_num: "xcu250".into(),
+            ..fixtures
+        };
+        run_hls_for_leaves(&runner, work, &design, &sources, &wrong_part)
+            .expect_err("must reject incompatible output");
+    }
+
     /// Cache path still works: when `hdl_dir` already contains a `.v`
     /// file that is newer than the `.cpp`, the runner must skip HLS.
     #[test]
@@ -673,6 +792,7 @@ mod tests {
         // is strictly newer than the source.
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
 
@@ -685,8 +805,7 @@ mod tests {
             clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
-            skip_based_on_mtime: true,
-            require_cache_hit: false,
+            reuse: HlsReuse::IfFresh,
             jobs: Some(1),
             keep_work_dir: false,
         };
@@ -712,6 +831,7 @@ mod tests {
 
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -741,6 +861,7 @@ mod tests {
         seed_rewritten(work);
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -774,6 +895,7 @@ mod tests {
 
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
@@ -803,6 +925,7 @@ mod tests {
         let work = tmp.path();
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings(work);
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
         let dir_mtime_before = fs::metadata(&hdl).unwrap().modified().unwrap();
 
@@ -822,8 +945,7 @@ mod tests {
             clock_period: ClockPeriod::from_picoseconds(3330),
             other_configs: String::new(),
             cflags: Vec::new(),
-            skip_based_on_mtime: true,
-            require_cache_hit: false,
+            reuse: HlsReuse::IfFresh,
             jobs: Some(1),
             keep_work_dir: false,
         };
@@ -844,7 +966,7 @@ mod tests {
         format!(
             "<?xml version=\"1.0\"?>\n<profile>\n\
              <UserAssignments><TopModelName>{top}</TopModelName>\
-             <Part>xcu250</Part><TargetClockPeriod>3.33</TargetClockPeriod></UserAssignments>\n\
+             <Part>xcvu37p</Part><TargetClockPeriod>3.33</TargetClockPeriod></UserAssignments>\n\
              <PerformanceEstimates><SummaryOfTimingAnalysis>\
              <EstimatedClockPeriod>2.431</EstimatedClockPeriod>\
              </SummaryOfTimingAnalysis></PerformanceEstimates>\n\

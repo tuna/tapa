@@ -87,14 +87,19 @@ pub struct SynthArgs {
     pub keep_hls_work_dir: bool,
 
     /// Reuse a task's existing Verilog when it is newer than every
-    /// TAPA-owned file in the rewritten source tree.
+    /// TAPA-owned file in the rewritten source tree and its settings match.
     #[arg(long = "skip-hls-based-on-mtime", default_value_t = false)]
     pub skip_hls_based_on_mtime: bool,
 
     /// Require every task's cached HLS output and csynth report to be valid;
-    /// fail instead of running HLS or substituting defaults.
+    /// fail instead of running HLS.
     #[arg(long = "require-hls-cache", requires = "skip_hls_based_on_mtime")]
     pub require_hls_cache: bool,
+
+    /// Use hand-authored test fixtures staged under hls/<task> instead of HLS.
+    /// Reports must match the requested part and clock; no cache is recorded.
+    #[arg(long, conflicts_with = "skip_hls_based_on_mtime")]
+    pub hls_fixtures: bool,
 
     /// Extra Tcl appended verbatim to every generated HLS script.
     #[arg(long = "other-hls-configs", default_value = "")]

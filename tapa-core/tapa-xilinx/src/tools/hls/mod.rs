@@ -61,6 +61,20 @@ pub struct HlsJob {
     pub auto_prefix: bool,
 }
 
+impl HlsJob {
+    /// Exact synthesis inputs other than source contents (checked by mtime).
+    /// Include the rendered script so changes to built-in Tcl also invalidate
+    /// cached output. Debug escaping keeps paths and flag boundaries distinct.
+    pub fn cache_key(&self) -> Result<String> {
+        Ok(format!(
+            "tapa-hls-cache-v1\n{}\n{:?}\n{:?}\n",
+            build_hls_tcl(self)?,
+            self.srcs,
+            self.cflags,
+        ))
+    }
+}
+
 impl std::fmt::Debug for HlsJob {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("HlsJob")
