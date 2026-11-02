@@ -1,6 +1,7 @@
 #pragma once
 
 #include <any>
+#include <array>
 #include <cstddef>
 #include <cstring>
 #include <string>
@@ -56,8 +57,8 @@ template <typename T, typename = void>
 struct StreamCodec {
   static constexpr size_t kBytes = sizeof(T);
 
-  static std::string Encode(const T& val) {
-    std::string bytes(kBytes, '\0');
+  static std::array<char, kBytes> Encode(const T& val) {
+    std::array<char, kBytes> bytes;
     memcpy(bytes.data(), &val, sizeof(val));
     return bytes;
   }
@@ -76,8 +77,8 @@ struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
   static constexpr size_t kDataBytes = (kBits + 7) / 8;
   static constexpr size_t kBytes = kDataBytes + 1;
 
-  static std::string Encode(const elem_t<T>& val) {
-    std::string bytes(kBytes, '\0');
+  static std::array<char, kBytes> Encode(const elem_t<T>& val) {
+    std::array<char, kBytes> bytes;
     memcpy(bytes.data(), &val.val, kDataBytes);
     if constexpr (kBits % 8 != 0) {
       bytes[kDataBytes - 1] &= (1u << (kBits % 8)) - 1;
@@ -101,7 +102,8 @@ struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
 
 template <typename T>
 std::string ToBinaryString(const T& val) {
-  return StreamCodec<T>::Encode(val);
+  const auto bytes = StreamCodec<T>::Encode(val);
+  return {bytes.data(), bytes.size()};
 }
 
 template <typename T>

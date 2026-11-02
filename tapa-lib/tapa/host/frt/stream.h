@@ -41,6 +41,8 @@ class StreamBase : public StreamArg {
   }
 
  protected:
+  using Bytes = std::array<char, StreamCodec<T>::kBytes>;
+
   bool empty() const {
     int ret = frt_shmq_empty(handle_);
     CHECK_GE(ret, 0) << "frt_shmq_empty failed";
@@ -53,8 +55,7 @@ class StreamBase : public StreamArg {
     return ret != 0;
   }
 
-  void push_bytes(const std::string& bytes) {
-    CHECK_EQ(bytes.size(), StreamCodec<T>::kBytes);
+  void push_bytes(const Bytes& bytes) {
     CHECK_EQ(
         frt_shmq_push(handle_, reinterpret_cast<const uint8_t*>(bytes.data()),
                       bytes.size()),
@@ -62,8 +63,8 @@ class StreamBase : public StreamArg {
         << "frt_shmq_push failed";
   }
 
-  std::string front_bytes() const {
-    std::string bytes(StreamCodec<T>::kBytes, '\0');
+  Bytes front_bytes() const {
+    Bytes bytes;
     CHECK_EQ(frt_shmq_front(handle_, reinterpret_cast<uint8_t*>(bytes.data()),
                             bytes.size()),
              0)
@@ -71,8 +72,8 @@ class StreamBase : public StreamArg {
     return bytes;
   }
 
-  std::string pop_bytes() {
-    std::string bytes(StreamCodec<T>::kBytes, '\0');
+  Bytes pop_bytes() {
+    Bytes bytes;
     CHECK_EQ(frt_shmq_pop(handle_, reinterpret_cast<uint8_t*>(bytes.data()),
                           bytes.size()),
              0)
@@ -111,9 +112,15 @@ class Stream : public StreamBase<T> {
 
   bool empty() const { return StreamBase<T>::empty(); }
   bool full() const { return StreamBase<T>::full(); }
-  void push(const T& val) { this->push_bytes(ToBinaryString(val)); }
-  T pop() { return FromBinaryString<T>(this->pop_bytes()); }
-  T front() const { return FromBinaryString<T>(this->front_bytes()); }
+  void push(const T& val) { this->push_bytes(StreamCodec<T>::Encode(val)); }
+  T pop() {
+    const auto bytes = this->pop_bytes();
+    return FromBinaryString<T>({bytes.data(), bytes.size()});
+  }
+  T front() const {
+    const auto bytes = this->front_bytes();
+    return FromBinaryString<T>({bytes.data(), bytes.size()});
+  }
 };
 
 }  // namespace frt

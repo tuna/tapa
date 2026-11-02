@@ -23,8 +23,10 @@
 // deliberately kept out of the catch-all `tapa-lib-test` binary.
 
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <iostream>
@@ -120,6 +122,35 @@ TEST(StreamAllocTest, BlockingDoesNotAllocatePerPoll) {
       << "moving " << kElements << " elements through a depth-2 channel took "
       << blocking_ms
       << " ms: a blocked poll is sleeping again instead of backing off";
+}
+
+template <typename T>
+void CheckWideStreamAllocations(const T& value) {
+  using Token = tapa::internal::elem_t<T>;
+  tapa::internal::frt::Stream<Token> queue(1);
+  bool matched = true;
+  AllocationScope scope;
+  for (int i = 0; i < kElements; ++i) {
+    const bool eot = i % 2 == 0;
+    queue.push({value, eot});
+    const auto front = queue.front();
+    const auto popped = queue.pop();
+    matched &= front.val == value && popped.val == value && front.eot == eot &&
+               popped.eot == eot;
+  }
+  const auto allocations = scope.Stop();
+  EXPECT_TRUE(matched);
+  EXPECT_EQ(allocations, 0u);
+}
+
+TEST(StreamAllocTest, WideTransfersDoNotAllocatePerElement) {
+  // Exercise both raw-object and compact-integer encodings with payloads
+  // larger than a string's inline storage, including peek and EOT bytes.
+  CheckWideStreamAllocations(std::array<uint64_t, 8>{1, 2, 3, 4, 5, 6, 7, 8});
+  tapa::u<512> value{};
+  value[0] = true;
+  value[511] = true;
+  CheckWideStreamAllocations(value);
 }
 
 }  // namespace
