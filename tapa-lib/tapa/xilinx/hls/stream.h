@@ -130,18 +130,6 @@ class tapa_stream {
     internal::bulk_read<T>(*this, dst, n);
   }
 
-  // A FIFO holds no values in place, so they go through `storage`.
-  template <typename U>
-  const U* acquire(U* storage, int n) {
-#pragma HLS inline
-    read(storage, n);
-    return storage;
-  }
-
-  void release() {
-#pragma HLS inline
-  }
-
   bool try_open() {
 #pragma HLS inline
     internal::elem_t<T> elem;
@@ -181,18 +169,6 @@ class tapa_stream {
   void write(const U* src, int n) {
 #pragma HLS inline
     internal::bulk_write<T>(*this, src, n);
-  }
-
-  template <typename U>
-  U* reserve(U* storage, int /*n*/) {
-#pragma HLS inline
-    return storage;
-  }
-
-  template <typename U>
-  void commit(const U* values, int n) {
-#pragma HLS inline
-    write(values, n);
   }
 
   bool try_close() {

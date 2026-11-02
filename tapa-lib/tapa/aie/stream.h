@@ -29,19 +29,6 @@ namespace aie {
 template <typename T>
 inline constexpr int kWords = (::tapa::widthof<T>() + 31) / 32;
 
-// The words `n` values of U take, when they end on an element boundary within
-// the rest of a frame of N elements T with `pos` of them used, so that they
-// can be handed out in place; -1 otherwise.
-template <typename T, int N, typename U>
-TAPA_AIE_INLINE int in_place_words(int pos, int n) {
-  static_assert(sizeof(U) % sizeof(int32) == 0,
-                "a value must be a whole number of 32-bit words");
-  const int words = n * int(sizeof(U) / sizeof(int32));
-  return words % kWords<T> == 0 && pos * kWords<T> + words <= N * kWords<T>
-             ? words
-             : -1;
-}
-
 // Word-wise fallback for any trivially copyable whole-word element. Native
 // vector specializations below retain their single-instruction fast path.
 // Chess lowers std::memcpy to a byte-wise libc call; plain word loops are
@@ -174,13 +161,6 @@ class istream {
   TAPA_AIE_INLINE void read(U* dst, int n) {
     internal::bulk_read<T>(*this, dst, n);
   }
-  // A stream port holds no values in place, so they go through `storage`.
-  template <typename U>
-  TAPA_AIE_INLINE const U* acquire(U* storage, int n) {
-    read(storage, n);
-    return storage;
-  }
-  TAPA_AIE_INLINE void release() {}
 
  private:
   input_stream<int32>* port_;
@@ -205,14 +185,6 @@ class ostream {
   template <typename U>
   TAPA_AIE_INLINE void write(const U* src, int n) {
     internal::bulk_write<T>(*this, src, n);
-  }
-  template <typename U>
-  TAPA_AIE_INLINE U* reserve(U* storage, int /*n*/) {
-    return storage;
-  }
-  template <typename U>
-  TAPA_AIE_INLINE void commit(const U* values, int n) {
-    write(values, n);
   }
 
  private:
@@ -306,30 +278,6 @@ class iframe {
       }
     }
   }
-  // In place when they lie within one frame: the frame stays acquired until
-  // release(), which hands it back to the DMA once it is read to its end.
-  template <typename U>
-  TAPA_AIE_INLINE const U* acquire(U* storage, int n) {
-    const int words = internal::aie::in_place_words<T, N, U>(pos_, n);
-    if (words < 0) {
-      read(storage, n);
-      return storage;
-    }
-    if (pos_ == 0) {
-      buf_.acquire();
-      ptr_ = buf_.data();
-    }
-    const U* values = reinterpret_cast<const U*>(ptr_);
-    ptr_ += words;
-    pos_ += words / internal::aie::kWords<T>;
-    return values;
-  }
-  TAPA_AIE_INLINE void release() {
-    if (pos_ == N) {
-      buf_.release();
-      pos_ = 0;
-    }
-  }
   // A final frame may be padded; unread padding is discarded on release.
   ~iframe() {
     if (pos_ != 0) buf_.release();
@@ -395,31 +343,6 @@ class oframe {
       }
     }
   }
-  // In place when they fit within one frame: the frame stays acquired until
-  // commit(), which hands it to the DMA once it is written to its end.
-  template <typename U>
-  TAPA_AIE_INLINE U* reserve(U* storage, int n) {
-    const int words = internal::aie::in_place_words<T, N, U>(pos_, n);
-    in_place_ = words >= 0;
-    if (!in_place_) return storage;
-    if (pos_ == 0) {
-      buf_.acquire();
-      ptr_ = buf_.data();
-    }
-    U* slots = reinterpret_cast<U*>(ptr_);
-    ptr_ += words;
-    pos_ += words / internal::aie::kWords<T>;
-    return slots;
-  }
-  template <typename U>
-  TAPA_AIE_INLINE void commit(const U* values, int n) {
-    if (!in_place_) {
-      write(values, n);
-    } else if (pos_ == N) {
-      buf_.release();
-      pos_ = 0;
-    }
-  }
   // A final partial frame is zero-padded and released when the task returns.
   ~oframe() {
     if (pos_ != 0) {
@@ -433,7 +356,6 @@ class oframe {
   buffer& buf_;
   int32* ptr_ = nullptr;
   int pos_ = 0;
-  bool in_place_ = false;
 };
 
 template <typename Port, int N>

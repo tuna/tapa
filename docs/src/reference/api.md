@@ -104,8 +104,6 @@ Read-only view of a stream. Always passed by reference in task signatures: `tapa
 | `read(bool& ok)` | no | yes | Non-blocking read; sets `ok` to true if an element was consumed. |
 | `read(nullptr)` | no | yes | Non-blocking read that discards the success flag; returns `T()` when the stream is empty. Use after an `empty()` / `try_eot()` check has already established that data is there. |
 | `read(U* dst, int n)` | yes | yes | Reads `n` values of `U` into `dst`. The sizes of `U` and `T` must divide one another, and the values line up with the elements byte for byte: a wider `U` takes `sizeof(U) / sizeof(T)` elements per value, and a narrower one takes `sizeof(T) / sizeof(U)` values from each element, so `n` must then be a multiple of that. A `U` that is itself an array, such as a row of a two-dimensional array, moves as its elements: pass the array, `read(rows, n)`, rather than a pointer to its first element, which HLS takes to cover only the first row. On an AI Engine frame port (`[[tapa::aie_frame(N)]]`) it copies whole runs of a frame. In HLS, independent bulk transfers run concurrently. |
-| `acquire(U* storage, int n)` | yes | yes | Takes the next `n` values of `U`, lined up as `read(dst, n)` lines them up, and returns where they are: a `const U*` valid until `release()`. On an AI Engine frame port, when they lie within one frame, that is the frame in tile memory and nothing is copied; otherwise, and on every other port and target, they are read into `storage`, which is returned. Compute on the result rather than on `storage`, and call no other operation on the stream before `release()`. |
-| `release()` | no | — | Ends the use of the values `acquire` returned. On an AI Engine frame port, a frame read to its end goes back to the DMA. |
 | `try_read(T& val)` | no | yes | Non-blocking read; returns true and writes to `val` if successful. |
 | `operator>>(T& val)` | yes | yes | Blocking read into `val`; returns the stream so reads can be chained. Equivalent to `val = read()`. |
 | `peek(bool& ok)` | no | no | Returns the next element without consuming it; sets `ok` to whether one was available. |
@@ -135,8 +133,6 @@ Write-only view of a stream. Always passed by reference in task signatures: `tap
 |--------|----------|-------------|-------------|
 | `write(const T& val)` | yes | yes | Blocks until space is available, then writes `val`. |
 | `write(const U* src, int n)` | yes | yes | Writes `n` values of `U` from `src`, lined up with the elements as `read(dst, n)` lines them up. |
-| `reserve(U* storage, int n)` | yes | no | Returns where to put the next `n` values of `U`, which `commit` then writes: on an AI Engine frame port, when they fit within one frame, the frame in tile memory, once the DMA has a free one; otherwise `storage`. Call no other operation on the stream before `commit`. |
-| `commit(const U* values, int n)` | yes | yes | Writes the `n` values at `values`, the pointer `reserve` returned. On an AI Engine frame port they are already in place, and a frame written to its end goes to the DMA; elsewhere this is `write(values, n)`. |
 | `try_write(const T& val)` | no | yes | Non-blocking write; returns true if the element was written. |
 | `operator<<(const T& val)` | yes | yes | Blocking write; returns the stream so writes can be chained. Equivalent to `write(val)`. |
 | `full()` | no | no | Returns true if the stream is full. |
