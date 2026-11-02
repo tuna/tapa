@@ -272,6 +272,17 @@ TEST(StreamBulkTest, ValuesLineUpWithElementsByteForByte) {
   narrow.write(grid, 2);
   narrow.read(read_ints, 4);
   EXPECT_THAT(read_ints, testing::ElementsAreArray(ints));
+
+  // A single element can span several rows; each row is not a transfer.
+  tapa::stream<std::array<int, 4>, 1> wider("wider");
+  wider.write(grid, 2);
+  EXPECT_THAT(wider.read(), testing::ElementsAreArray(ints));
+  EXPECT_TRUE(wider.empty());
+  wider.write({5, 6, 7, 8});
+  wider.read(grid, 2);
+  EXPECT_THAT(grid, testing::ElementsAre(testing::ElementsAre(5, 6),
+                                         testing::ElementsAre(7, 8)));
+  EXPECT_TRUE(wider.empty());
 }
 
 TEST(StreamCompletionDeathTest, FinalTransferAfterBlockedPollRemainsUsable) {

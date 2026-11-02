@@ -52,16 +52,26 @@ struct bulk_layout {
       kWide ? sizeof(U) / sizeof(T) : sizeof(T) / sizeof(U);
 };
 
+// Copy through array indices so HLS preserves the banks of every dimension.
+template <typename U>
+void bulk_copy(U& dst, const U& src) {
+  TAPA_STREAM_INLINE
+  if constexpr (std::is_array<U>::value) {
+    for (size_t i = 0; i < std::extent<U>::value; ++i) {
+      TAPA_STREAM_UNROLL
+      bulk_copy(dst[i], src[i]);
+    }
+  } else {
+    dst = src;
+  }
+}
+
 // `istream<T>::read(dst, n)` on every target with a stream port.
 template <typename T, typename U, typename Stream>
 void bulk_read(Stream& s, U* dst, int n) {
   TAPA_STREAM_INLINE
   using layout = bulk_layout<T, U>;
-  if constexpr (std::is_array<U>::value) {
-    // A row of a multi-dimensional array moves as its elements, a row at a
-    // time, so HLS keeps the row's banks.
-    for (int i = 0; i < n; ++i) bulk_read<T>(s, dst[i], std::extent<U>::value);
-  } else if constexpr (std::is_same<T, U>::value) {
+  if constexpr (std::is_same<T, U>::value) {
     for (int i = 0; i < n; ++i) {
       TAPA_STREAM_PIPELINE
       dst[i] = s.read();
@@ -74,7 +84,9 @@ void bulk_read(Stream& s, U* dst, int n) {
         TAPA_STREAM_UNROLL
         parts[k] = s.read();
       }
-      dst[i] = bit_cast<U>(parts);
+      // Wrapping U also permits bit_cast to return a C array value.
+      const auto value = bit_cast<std::array<U, 1>>(parts);
+      bulk_copy(dst[i], value[0]);
     }
   } else {
     for (int i = 0; i < n; i += layout::kPer) {
@@ -82,7 +94,7 @@ void bulk_read(Stream& s, U* dst, int n) {
       const auto values = bit_cast<std::array<U, layout::kPer>>(s.read());
       for (int k = 0; k < layout::kPer; ++k) {
         TAPA_STREAM_UNROLL
-        dst[i + k] = values[k];
+        bulk_copy(dst[i + k], values[k]);
       }
     }
   }
@@ -93,11 +105,7 @@ template <typename T, typename U, typename Stream>
 void bulk_write(Stream& s, const U* src, int n) {
   TAPA_STREAM_INLINE
   using layout = bulk_layout<T, U>;
-  if constexpr (std::is_array<U>::value) {
-    for (int i = 0; i < n; ++i) {
-      bulk_write<T>(s, src[i], std::extent<U>::value);
-    }
-  } else if constexpr (std::is_same<T, U>::value) {
+  if constexpr (std::is_same<T, U>::value) {
     for (int i = 0; i < n; ++i) {
       TAPA_STREAM_PIPELINE
       s.write(src[i]);
@@ -105,7 +113,9 @@ void bulk_write(Stream& s, const U* src, int n) {
   } else if constexpr (layout::kWide) {
     for (int i = 0; i < n; ++i) {
       TAPA_STREAM_PIPELINE
-      const auto parts = bit_cast<std::array<T, layout::kPer>>(src[i]);
+      std::array<U, 1> value;
+      bulk_copy(value[0], src[i]);
+      const auto parts = bit_cast<std::array<T, layout::kPer>>(value);
       for (int k = 0; k < layout::kPer; ++k) {
         TAPA_STREAM_UNROLL
         s.write(parts[k]);
@@ -117,7 +127,7 @@ void bulk_write(Stream& s, const U* src, int n) {
       std::array<U, layout::kPer> values;
       for (int k = 0; k < layout::kPer; ++k) {
         TAPA_STREAM_UNROLL
-        values[k] = src[i + k];
+        bulk_copy(values[k], src[i + k]);
       }
       s.write(bit_cast<T>(values));
     }

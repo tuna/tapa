@@ -20,13 +20,19 @@ void Mmap2Stream(tapa::mmap<const float> mmap, uint64_t n,
 void Add(tapa::istream<packed_t>& a, tapa::istream<packed_t>& b,
          tapa::ostream<packed_t>& c, uint64_t n) {
   for (uint64_t i = 0; i < n; i += kFloats) {
-    float a_floats[kFloats];
-    float b_floats[kFloats];
-    float c_floats[kFloats];
-    a.read(a_floats, kFloats);
-    b.read(b_floats, kFloats);
-    for (int k = 0; k < kFloats; ++k) c_floats[k] = a_floats[k] + b_floats[k];
-    c.write(c_floats, kFloats);
+    // Each stream element spans two rows. Transfer the whole array so HLS
+    // retains its banks while bulk reads and writes cross row boundaries.
+    float a_floats[kFloats / 2][2];
+    float b_floats[kFloats / 2][2];
+    float c_floats[kFloats / 2][2];
+    a.read(a_floats, kFloats / 2);
+    b.read(b_floats, kFloats / 2);
+    for (int row = 0; row < kFloats / 2; ++row) {
+      for (int col = 0; col < 2; ++col) {
+        c_floats[row][col] = a_floats[row][col] + b_floats[row][col];
+      }
+    }
+    c.write(c_floats, kFloats / 2);
   }
 }
 
