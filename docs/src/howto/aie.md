@@ -110,9 +110,9 @@ These habits decide AI Engine performance:
   They test for a frame boundary once per run of a frame, where `read()` and
   `write()` test twice per element, and the DMA moves the frames while the
   core computes; the core's own stream ports move only 32 bits per cycle.
-  `tests/apps/cannon` carries its ring in frames this way: each round, a PE
-  writes its blocks of A and B whole, multiplies, and then reads its
-  neighbors' blocks whole. Its blocks from and to the PL travel as two
+  `tests/apps/cannon` carries its ring in frames this way: each round but the
+  last, a PE writes its blocks of A and B whole, multiplies, and then reads
+  its neighbors' blocks whole. Its blocks from and to the PL travel as two
   halves on two frame ports, so over two PLIO channels at once.
 
 ## Knobs

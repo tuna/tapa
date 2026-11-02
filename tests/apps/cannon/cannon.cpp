@@ -64,13 +64,13 @@ void Gather(tapa::mmap<beat_t> matrix, tapa::istreams<io_t, p * p>& lo,
 // Each PE holds one kB x kB block of A, B and C, row-major in vectors. Per
 // round it adds A * B to C, kCols vectors of a C row at a time, each with its
 // own accumulator so that their multiply-accumulates overlap: lane k of A's
-// row i times vector j of B's row k. It passes its blocks of A and B on to its
-// neighbors and receives theirs once it is done, so a ring stream holds a
-// whole block. On the AI Engine every port is a frame (`aie_frame`, ignored on
-// PL): the blocks move by DMA, so the PE hands both over whole before it
-// computes. On PL it sends the chunks of A and B an iteration computes with,
-// and B has a bank per row and per vector of a chunk, so the iteration's
-// kCols * kB multiply-accumulates issue in one cycle.
+// row i times vector j of B's row k. Every round but the last it passes its
+// blocks of A and B on to its neighbors and receives theirs once it is done,
+// so a ring stream holds a whole block. On the AI Engine every port is a frame
+// (`aie_frame`, ignored on PL): the blocks move by DMA, so the PE hands both
+// over whole before it computes. On PL it sends the chunks of A and B an
+// iteration computes with, and B has a bank per row and per vector of a chunk,
+// so the iteration's kCols * kB multiply-accumulates issue in one cycle.
 void ProcElem([[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
               [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_hi,
               [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& b_lo,
@@ -96,9 +96,12 @@ void ProcElem([[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
 
 outer:
   for (int l = 0; l < p; ++l) {
+    const bool pass = l + 1 < p;  // the last round's blocks go nowhere
 #if defined(TAPA_TARGET_AIE_)
-    i_prev.write(b, kB);
-    j_prev.write(a, kVecs);
+    if (pass) {
+      i_prev.write(b, kB);
+      j_prev.write(a, kVecs);
+    }
 #endif
   compute:
     [[tapa::pipeline(1)]] [[tapa::dependence("c")]]
@@ -106,8 +109,10 @@ outer:
       const int i = ij / kRowVecs;
       const int j = ij % kRowVecs;
 #if !defined(TAPA_TARGET_AIE_)
-      i_prev.write(&b[i][j], kCols);
-      j_prev.write(&a[ij], kCols);
+      if (pass) {
+        i_prev.write(&b[i][j], kCols);
+        j_prev.write(&a[ij], kCols);
+      }
 #endif
       vec_t c0 = c[ij];
       vec_t c1 = c[ij + 1];
@@ -129,9 +134,11 @@ outer:
       c[ij + 2] = c2;
       c[ij + 3] = c3;
     }
-    tapa::fence();  // every send of the round before any receive
-    i_next.read(b, kB);
-    j_next.read(a, kVecs);
+    if (pass) {
+      tapa::fence();  // every send of the round before any receive
+      i_next.read(b, kB);
+      j_next.read(a, kVecs);
+    }
   }
 
   c_lo.write(c, kVecs / 2);
