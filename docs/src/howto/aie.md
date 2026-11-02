@@ -112,7 +112,8 @@ These habits decide AI Engine performance:
   core computes; the core's own stream ports move only 32 bits per cycle.
   `tests/apps/cannon` carries its ring in frames this way: each round, a PE
   writes its blocks of A and B whole, multiplies, and then reads its
-  neighbors' blocks whole.
+  neighbors' blocks whole. Its blocks from and to the PL travel as two
+  halves on two frame ports, so over two PLIO channels at once.
 
 ## Knobs
 
