@@ -131,8 +131,8 @@ as on hardware; software simulation, tapacc and HLS compile the other branch.
 tapacc therefore neither checks nor lowers the guarded code, so it should use
 only ports and locals the other branch also uses, and loop attributes such as
 `[[tapa::pipeline]]` take no effect there. `tests/apps/cannon` guards where its
-PEs send their blocks: whole before multiplying on the AI Engine, a vector at
-a time while multiplying on PL.
+PEs send their blocks: whole before multiplying on the AI Engine, a chunk at a
+time while multiplying on PL.
 
 ## Simulating the AI Engine tasks
 
