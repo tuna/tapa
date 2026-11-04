@@ -542,7 +542,6 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
-    use indexmap::IndexMap;
     use tapa_ir::{AieStream, SynthTarget, Task, TaskInstance, TaskLevel};
     use tapa_xilinx::tools::aie::report::{AieKernelReport, AiePlioReport, AieTile};
 
@@ -576,18 +575,6 @@ mod tests {
             self_area: None,
             total_area: area,
             clock_period: clock,
-        }
-    }
-
-    #[allow(dead_code, reason = "kept for fixtures that still build maps")]
-    fn area_to_map(v: Value) -> IndexMap<String, Value> {
-        match v {
-            Value::Object(o) => o.into_iter().collect(),
-            Value::Null
-            | Value::Bool(_)
-            | Value::Number(_)
-            | Value::String(_)
-            | Value::Array(_) => IndexMap::new(),
         }
     }
 
