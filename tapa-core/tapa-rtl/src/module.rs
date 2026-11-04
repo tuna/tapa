@@ -78,24 +78,18 @@ impl VerilogModule {
     /// 3. If the original name was `foo[0]`, also try `{foo}{infix}{suffix}`
     ///    as a singleton-array fallback.
     pub fn get_port_of(&self, fifo: &str, suffix: &str) -> Option<&Port> {
-        let sanitized = sanitize_array_name(fifo);
-        for infix in FIFO_INFIXES {
-            let name = format!("{sanitized}{infix}{suffix}");
-            if let Some(port) = self.find_port(&name) {
-                return Some(port);
-            }
+        let find_with_base = |base: &str| {
+            FIFO_INFIXES
+                .iter()
+                .find_map(|infix| self.find_port(&format!("{base}{infix}{suffix}")))
+        };
+        if let Some(port) = find_with_base(&sanitize_array_name(fifo)) {
+            return Some(port);
         }
-        if let Some((base, idx)) = match_array_name(fifo) {
-            if idx == 0 {
-                for infix in FIFO_INFIXES {
-                    let name = format!("{base}{infix}{suffix}");
-                    if let Some(port) = self.find_port(&name) {
-                        return Some(port);
-                    }
-                }
-            }
+        match match_array_name(fifo) {
+            Some((base, 0)) => find_with_base(base),
+            _ => None,
         }
-        None
     }
 }
 
