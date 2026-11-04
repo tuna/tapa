@@ -102,9 +102,6 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     if !etc_dir.is_dir() {
         return Ok(());
     }
-    let pattern = regex::Regex::new(&regex::escape(AP_AUTOCC_COMPLEX_BLOCK))
-        .expect("an escaped literal always compiles");
-    let replacement = "#include <complex>";
     let mut any = false;
     for entry in std::fs::read_dir(&etc_dir).map_err(|e| {
         XilinxError::RemoteTransfer(format!("cannot list `{}`: {e}", etc_dir.display()))
@@ -125,7 +122,7 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
         let content = std::fs::read_to_string(&path).map_err(|e| {
             XilinxError::RemoteTransfer(format!("cannot read `{}`: {e}", path.display()))
         })?;
-        let new_content = pattern.replace(&content, replacement);
+        let new_content = content.replacen(AP_AUTOCC_COMPLEX_BLOCK, "#include <complex>", 1);
         if new_content != content {
             std::fs::write(&path, new_content.as_bytes()).map_err(|e| {
                 XilinxError::RemoteTransfer(format!("cannot write `{}`: {e}", path.display()))
