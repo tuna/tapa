@@ -652,15 +652,7 @@ mod tests {
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
 
-        let opts = HlsRunOptions {
-            part_num: "xcvu37p".to_string(),
-            clock_period: ClockPeriod::from_picoseconds(3330),
-            other_configs: String::new(),
-            cflags: Vec::new(),
-            reuse: HlsReuse::IfFresh,
-            jobs: Some(1),
-            keep_work_dir: false,
-        };
+        let opts = skip_hls_options();
 
         // Ignore the run result (no csynth.xml staged, so harvest
         // fails) — what we care about is that the runner was called
@@ -828,15 +820,7 @@ mod tests {
         // Runner with no queued responses: any call fails loudly.
         let runner = MockToolRunner::new();
 
-        let opts = HlsRunOptions {
-            part_num: "xcvu37p".to_string(),
-            clock_period: ClockPeriod::from_picoseconds(3330),
-            other_configs: String::new(),
-            cflags: Vec::new(),
-            reuse: HlsReuse::IfFresh,
-            jobs: Some(1),
-            keep_work_dir: false,
-        };
+        let opts = skip_hls_options();
         let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
             .expect("cache hit path must succeed");
         assert_eq!(out.len(), 1);
@@ -972,15 +956,7 @@ mod tests {
             "overwriting an existing HDL file should leave the directory mtime unchanged"
         );
 
-        let opts = HlsRunOptions {
-            part_num: "xcvu37p".to_string(),
-            clock_period: ClockPeriod::from_picoseconds(3330),
-            other_configs: String::new(),
-            cflags: Vec::new(),
-            reuse: HlsReuse::IfFresh,
-            jobs: Some(1),
-            keep_work_dir: false,
-        };
+        let opts = skip_hls_options();
         let runner = MockToolRunner::new();
         let design = leaf_design();
         let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
