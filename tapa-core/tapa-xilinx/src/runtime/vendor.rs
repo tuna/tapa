@@ -80,6 +80,11 @@ pub(crate) fn vendor_cache_dir(host: &str, port: u16, xilinx_settings: &str) -> 
         .join(hex::encode(&hash[..8]))
 }
 
+/// The `std::complex` forward-declaration block the vendor ships in its
+/// `ap_*_special.h` headers. The macOS patch replaces it with
+/// `#include <complex>`; the tests reproduce it verbatim.
+const AP_AUTOCC_COMPLEX_BLOCK: &str = "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n// include.\n// #include <complex>\nnamespace std {\ntemplate<typename _Tp> class complex;\n}";
+
 /// Apply the macOS libc++ compatibility patch to
 /// `<cache_dir>/include/etc/ap_*_special.h`. Replaces the forward-
 /// declaration block with `#include <complex>`. Idempotent: writes a marker
@@ -97,19 +102,8 @@ pub(crate) fn apply_macos_vendor_patch(cache_dir: &Path) -> Result<()> {
     if !etc_dir.is_dir() {
         return Ok(());
     }
-    #[allow(
-        clippy::trivial_regex,
-        reason = "the vendor header block is a fixed multi-line literal"
-    )]
-    let pattern = regex::Regex::new(concat!(
-        r"// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
-        r"// include\.\n",
-        r"// #include <complex>\n",
-        r"namespace std \{\n",
-        r"template<typename _Tp> class complex;\n",
-        r"\}",
-    ))
-    .expect("static macOS patch pattern must compile");
+    let pattern = regex::Regex::new(&regex::escape(AP_AUTOCC_COMPLEX_BLOCK))
+        .expect("an escaped literal always compiles");
     let replacement = "#include <complex>";
     let mut any = false;
     for entry in std::fs::read_dir(&etc_dir).map_err(|e| {
@@ -351,15 +345,7 @@ mod tests {
             if self.write_ap_special && local_dest.ends_with("include") {
                 let etc = local_dest.join("etc");
                 std::fs::create_dir_all(&etc).unwrap();
-                let body = concat!(
-                    "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
-                    "// include.\n",
-                    "// #include <complex>\n",
-                    "namespace std {\n",
-                    "template<typename _Tp> class complex;\n",
-                    "}\n",
-                    "struct rest_of_header {};\n",
-                );
+                let body = format!("{AP_AUTOCC_COMPLEX_BLOCK}\nstruct rest_of_header {{}};\n");
                 std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
             }
             Ok(())
@@ -525,15 +511,11 @@ mod tests {
         std::fs::write(cache.join(".synced"), b"/opt/xilinx/hls\n").unwrap();
         let etc = cache.join("include").join("etc");
         std::fs::create_dir_all(&etc).unwrap();
-        let body = concat!(
-            "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
-            "// include.\n",
-            "// #include <complex>\n",
-            "namespace std {\n",
-            "template<typename _Tp> class complex;\n",
-            "}\n",
-        );
-        std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
+        std::fs::write(
+            etc.join("ap_fixed_special.h"),
+            format!("{AP_AUTOCC_COMPLEX_BLOCK}\n"),
+        )
+        .unwrap();
 
         apply_macos_vendor_patch(&cache).unwrap();
 
@@ -575,15 +557,11 @@ mod tests {
         std::fs::write(cache.join(".patched_macos_complex"), b"patched\n").unwrap();
         let etc = cache.join("include").join("etc");
         std::fs::create_dir_all(&etc).unwrap();
-        let body = concat!(
-            "// FIXME AP_AUTOCC cannot handle many standard headers, so declare instead of\n",
-            "// include.\n",
-            "// #include <complex>\n",
-            "namespace std {\n",
-            "template<typename _Tp> class complex;\n",
-            "}\n",
-        );
-        std::fs::write(etc.join("ap_fixed_special.h"), body).unwrap();
+        std::fs::write(
+            etc.join("ap_fixed_special.h"),
+            format!("{AP_AUTOCC_COMPLEX_BLOCK}\n"),
+        )
+        .unwrap();
 
         let before = std::fs::metadata(etc.join("ap_fixed_special.h"))
             .unwrap()
