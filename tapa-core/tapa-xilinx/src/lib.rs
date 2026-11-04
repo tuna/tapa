@@ -71,8 +71,8 @@ pub use runtime::remote::RemoteToolRunner;
 pub use runtime::ssh::{SshMuxOptions, SshSession};
 pub use runtime::vendor::sync_remote_vendor_includes;
 pub use tools::hls::report::{
-    normalize_hls_report_text, parse_csynth_xml, parse_utilization_rpt, CsynthReport,
-    UtilizationReport,
+    csynth_report_path, normalize_hls_report_text, parse_csynth_xml, parse_utilization_rpt,
+    CsynthReport, UtilizationReport,
 };
 pub use tools::hls::{run_hls_with_retry, run_hls_with_retry_in_stage, HlsJob, HlsOutput};
 pub use tools::package_xo::{

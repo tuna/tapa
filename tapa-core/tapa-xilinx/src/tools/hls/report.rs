@@ -8,11 +8,28 @@
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
+use camino::{Utf8Path, Utf8PathBuf};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tapa_ir::{Area, Resource};
 
 use crate::error::{Result, XilinxError};
+
+/// Path of a task's top-level csynth report under `reports_dir`:
+/// `<task>_csynth.xml`, falling back to `<task>.csynth.xml`.
+///
+/// The exact name matters: the directory also holds sub-module reports
+/// such as `<task>_Pipeline_VITIS_LOOP_*_csynth.xml`, which share the
+/// `_csynth.xml` suffix but carry only the sub-loop's (smaller) area, so
+/// a directory scan for the suffix could pick the wrong report.
+pub fn csynth_report_path(reports_dir: &Utf8Path, task_name: &str) -> Utf8PathBuf {
+    let primary = reports_dir.join(format!("{task_name}_csynth.xml"));
+    if primary.is_file() {
+        primary
+    } else {
+        reports_dir.join(format!("{task_name}.csynth.xml"))
+    }
+}
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CsynthReport {

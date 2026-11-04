@@ -394,22 +394,13 @@ fn cached_hls_output(
 }
 
 /// Reload and parse the task's top-level csynth report on an mtime-skip
-/// cache hit.
-///
-/// Reads `<task>_csynth.xml` (falling back to `<task>.csynth.xml`), the
-/// exact file the live HLS harvest parses. A task's report dir also holds
-/// sub-module reports — e.g. `<task>_Pipeline_VITIS_LOOP_*_csynth.xml` —
-/// which likewise end in `_csynth.xml` but carry only the sub-loop's
-/// (smaller) area. Selecting the first `*_csynth.xml` in `read_dir` order
-/// could therefore reload a sub-module's area, making the skip path
-/// disagree with a full HLS run and breaking `.xo` reproducibility.
+/// cache hit — the exact file the live HLS harvest parses, resolved by
+/// [`tapa_xilinx::csynth_report_path`].
 fn find_and_parse_csynth(
     reports_dir: &camino::Utf8Path,
     task_name: &str,
 ) -> Result<tapa_xilinx::CsynthReport> {
-    let primary = reports_dir.join(format!("{task_name}_csynth.xml"));
-    let fallback = reports_dir.join(format!("{task_name}.csynth.xml"));
-    let report_xml = if primary.is_file() { primary } else { fallback };
+    let report_xml = tapa_xilinx::csynth_report_path(reports_dir, task_name);
     let bytes = fs::read(&report_xml).map_err(|e| {
         CliError::Codegen(format!(
             "cannot read cached csynth report `{}`: {e}",

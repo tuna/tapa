@@ -371,9 +371,7 @@ fn harvest_and_stage(
     let syn_abs = stage_dir.join(&syn_rel);
     let reports = syn_abs.join("report");
     let hdl = syn_abs.join("verilog");
-    let primary = reports.join(format!("{}_csynth.xml", job.top_name));
-    let fallback = reports.join(format!("{}.csynth.xml", job.top_name));
-    let report_xml = if primary.is_file() { primary } else { fallback };
+    let report_xml = crate::tools::hls::report::csynth_report_path(&reports, &job.top_name);
     let bytes = fs_err::read(&report_xml).map_err(|_| {
         XilinxError::HlsReportParse(format!("missing csynth.xml at {}", report_xml.as_str()))
     })?;
