@@ -436,16 +436,16 @@ fn is_verilog_like(path: &Path) -> bool {
 
 fn parse_xilinx_ip_model(ip_module: &str, rtl_dir: &Path) -> Result<Option<XilinxIpModel>> {
     let tcl_path = rtl_dir.join(format!("{ip_module}.tcl"));
-    let Ok(content) = std::fs::read_to_string(tcl_path) else {
-        return Ok(detect_xilinx_fp_ip_model_from_name(ip_module).map(XilinxIpModel::FloatingPoint));
-    };
-    if let Some(config) = parse_xilinx_fp_ip_tcl_text(&content)? {
-        return Ok(Some(XilinxIpModel::FloatingPoint(config)));
+    if let Ok(content) = std::fs::read_to_string(tcl_path) {
+        if let Some(config) = parse_xilinx_fp_ip_tcl_text(&content)? {
+            return Ok(Some(XilinxIpModel::FloatingPoint(config)));
+        }
+        if let Some(config) = parse_xilinx_divider_ip_tcl_text(&content)? {
+            return Ok(Some(XilinxIpModel::UnsignedDivider(config)));
+        }
     }
-    if let Some(config) = parse_xilinx_divider_ip_tcl_text(&content)? {
-        return Ok(Some(XilinxIpModel::UnsignedDivider(config)));
-    }
-    Ok(detect_xilinx_fp_ip_model_from_name(ip_module).map(XilinxIpModel::FloatingPoint))
+    warn_if_unmodeled_fp_ip(ip_module);
+    Ok(None)
 }
 
 fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>> {
@@ -570,7 +570,9 @@ fn parse_xilinx_tcl_config(content: &str) -> Result<HashMap<String, String>> {
         .collect())
 }
 
-fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConfig> {
+/// Without the IP's TCL there is no latency to model, so a module whose
+/// name still looks like a floating-point IP is only worth a warning.
+fn warn_if_unmodeled_fp_ip(ip_module: &str) {
     const FP_PATTERNS: &[&str] = &[
         "_fadd_", "_fadds_", "_fsub_", "_fsubs_", "_fmul_", "_fmuls_", "_dadd_", "_dadds_",
         "_dsub_", "_dsubs_", "_dmul_", "_dmuls_",
@@ -582,8 +584,6 @@ fn detect_xilinx_fp_ip_model_from_name(ip_module: &str) -> Option<XilinxFpIpConf
              skipping replacement",
         );
     }
-    // No TCL available; cannot determine latency reliably.
-    None
 }
 
 fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) -> String {
