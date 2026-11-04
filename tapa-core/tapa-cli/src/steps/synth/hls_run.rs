@@ -422,7 +422,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
-    use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
+    use tapa_xilinx::{MockToolRunner, ToolOutput};
 
     /// Stage `design`'s manifest against `work`, mirroring what
     /// `run_native` does before the HLS plan pass.
@@ -677,7 +677,6 @@ mod tests {
             calls[0].program, "vitis_hls",
             "the one call must be the Vitis HLS invocation",
         );
-        let _ = ToolInvocation::default(); // silence unused import in some builds
     }
 
     #[test]
