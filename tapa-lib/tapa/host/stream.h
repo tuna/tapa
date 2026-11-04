@@ -208,7 +208,7 @@ class frt_queue : public base_queue<T> {
     this->maybe_log(val);
     stream_.push(val);
   }
-  T pop() override { return stream_.pop(); };
+  T pop() override { return stream_.pop(); }
   T front() const override { return stream_.front(); }
 
   frt::Stream<T>& get_frt_stream() override {
@@ -771,7 +771,7 @@ class streams : public internal::unbound_streams<T, S> {
 
   stream<T, N> operator[](int pos) const {
     return internal::basic_streams<T>::operator[](pos);
-  };
+  }
 
  private:
   template <typename Param, typename Arg>
