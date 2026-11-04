@@ -24,7 +24,7 @@ pub(crate) fn is_transient_hls_output(stdout: &str) -> bool {
     stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
 }
 
-#[derive(Clone, TypedBuilder)]
+#[derive(Clone, Debug, TypedBuilder)]
 pub struct HlsJob {
     pub task_name: String,
     /// The task's translation units, added to the HLS project in
@@ -72,27 +72,6 @@ impl HlsJob {
             self.srcs,
             self.cflags,
         ))
-    }
-}
-
-impl std::fmt::Debug for HlsJob {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("HlsJob")
-            .field("task_name", &self.task_name)
-            .field("srcs", &self.srcs)
-            .field("cflags", &self.cflags)
-            .field("target_part", &self.target_part)
-            .field("top_name", &self.top_name)
-            .field("clock_period", &self.clock_period)
-            .field("reports_out_dir", &self.reports_out_dir)
-            .field("hdl_out_dir", &self.hdl_out_dir)
-            .field("uploads", &self.uploads)
-            .field("downloads", &self.downloads)
-            .field("other_configs", &self.other_configs)
-            .field("solution_name", &self.solution_name)
-            .field("reset_low", &self.reset_low)
-            .field("auto_prefix", &self.auto_prefix)
-            .finish()
     }
 }
 
