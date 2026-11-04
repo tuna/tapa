@@ -40,7 +40,9 @@ fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
         Some(offset) => Ok(offset),
         None if spec.mode == Mode::Hls => Ok(0),
         None => Err(CosimError::Metadata(format!(
-            "no control register offset for arg {name:?}: the s_axi control register map              is missing or incomplete (the map is read from packaged Verilog named              *_control_s_axi.v or s_axi_control.v)"
+            "no control register offset for arg {name:?}: the s_axi control register map is \
+             missing or incomplete (the map is read from packaged Verilog named \
+             *_control_s_axi.v or s_axi_control.v)"
         ))),
     }
 }
