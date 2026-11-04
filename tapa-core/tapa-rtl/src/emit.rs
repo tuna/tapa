@@ -25,6 +25,15 @@ fn write_statements(f: &mut fmt::Formatter<'_>, stmts: &[Statement], indent: usi
     Ok(())
 }
 
+/// One argument per line, comma-separated (the last line carries no comma).
+fn write_arg_lines(f: &mut fmt::Formatter<'_>, args: &[impl fmt::Display]) -> fmt::Result {
+    for (i, arg) in args.iter().enumerate() {
+        let comma = if i + 1 < args.len() { "," } else { "" };
+        writeln!(f, "  {arg}{comma}")?;
+    }
+    Ok(())
+}
+
 fn write_statement(f: &mut fmt::Formatter<'_>, stmt: &Statement, indent: usize) -> fmt::Result {
     match stmt {
         Statement::NonblockingAssign { lhs, rhs } => {
@@ -190,18 +199,12 @@ impl fmt::Display for ModuleInstance {
 
         if !self.params.is_empty() {
             writeln!(f, " #(")?;
-            for (i, p) in self.params.iter().enumerate() {
-                let comma = if i + 1 < self.params.len() { "," } else { "" };
-                writeln!(f, "  {p}{comma}")?;
-            }
+            write_arg_lines(f, &self.params)?;
             f.write_str(")")?;
         }
 
         writeln!(f, " {} (", self.instance_name)?;
-        for (i, p) in self.ports.iter().enumerate() {
-            let comma = if i + 1 < self.ports.len() { "," } else { "" };
-            writeln!(f, "  {p}{comma}")?;
-        }
+        write_arg_lines(f, &self.ports)?;
         writeln!(f, ");")
     }
 }
