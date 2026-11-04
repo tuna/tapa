@@ -623,59 +623,18 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
         "s_axis_a_tvalid & s_axis_b_tvalid"
     };
 
-    if latency == 0 {
-        return format!(
-            r#"`timescale 1ns/1ps
-
-module {ip_module} (
-    input  wire        aclk,
-    input  wire        aclken,
-    input  wire        s_axis_a_tvalid,
-    input  wire [{data_hi}:0] s_axis_a_tdata,
-    input  wire        s_axis_b_tvalid,
-    input  wire [{data_hi}:0] s_axis_b_tdata,
-{third_port}
-    output wire        m_axis_result_tvalid,
-    output wire [{data_hi}:0] m_axis_result_tdata
-);
-
-import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
-
-assign m_axis_result_tdata = {dpi_call};
-assign m_axis_result_tvalid = {valid_expr};
-
-endmodule
-"#,
-            ip_module = ip_module,
-            data_hi = bit_width - 1,
-            ret_type = ret_type,
-            dpi_func = model.dpi_func,
-            third_port = third_port,
-            dpi_args = dpi_args,
-            dpi_call = dpi_call,
-            valid_expr = valid_expr,
-        );
-    }
-
-    let depth = latency;
-    let depth_hi = depth - 1;
-    format!(
-        r#"`timescale 1ns/1ps
-
-module {ip_module} (
-    input  wire        aclk,
-    input  wire        aclken,
-    input  wire        s_axis_a_tvalid,
-    input  wire [{data_hi}:0] s_axis_a_tdata,
-    input  wire        s_axis_b_tvalid,
-    input  wire [{data_hi}:0] s_axis_b_tdata,
-{third_port}
-    output wire        m_axis_result_tvalid,
-    output wire [{data_hi}:0] m_axis_result_tdata
-);
-
-import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
-
+    // Only the body differs between a combinational model and a
+    // `latency`-deep pipeline; the shell (ports and the DPI import) is shared.
+    let body = if latency == 0 {
+        format!(
+            "assign m_axis_result_tdata = {dpi_call};\n\
+             assign m_axis_result_tvalid = {valid_expr};\n"
+        )
+    } else {
+        let depth = latency;
+        let depth_hi = depth - 1;
+        format!(
+            "\
 reg [{data_hi}:0] pipe [0:{depth_hi}];
 reg [{depth_hi}:0]  valid_pipe;
 
@@ -694,7 +653,28 @@ end
 
 assign m_axis_result_tdata  = pipe[{depth_hi}];
 assign m_axis_result_tvalid = valid_pipe[{depth_hi}];
+",
+            data_hi = bit_width - 1,
+        )
+    };
+    format!(
+        r#"`timescale 1ns/1ps
 
+module {ip_module} (
+    input  wire        aclk,
+    input  wire        aclken,
+    input  wire        s_axis_a_tvalid,
+    input  wire [{data_hi}:0] s_axis_a_tdata,
+    input  wire        s_axis_b_tvalid,
+    input  wire [{data_hi}:0] s_axis_b_tdata,
+{third_port}
+    output wire        m_axis_result_tvalid,
+    output wire [{data_hi}:0] m_axis_result_tdata
+);
+
+import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
+
+{body}
 endmodule
 "#,
         ip_module = ip_module,
@@ -703,10 +683,6 @@ endmodule
         dpi_func = model.dpi_func,
         third_port = third_port,
         dpi_args = dpi_args,
-        dpi_call = dpi_call,
-        valid_expr = valid_expr,
-        depth = depth,
-        depth_hi = depth_hi,
     )
 }
 
