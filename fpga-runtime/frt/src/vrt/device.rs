@@ -320,7 +320,9 @@ impl VrtDevice {
         Ok(unsafe { bar.map.cast::<u8>().add(offset).cast::<u32>() })
     }
 
-    fn read_register(&self, offset: u32) -> Result<u32> {
+    /// Resolve `offset` against the open BAR and return it with the mapped
+    /// register pointer.
+    fn register_access(&self, offset: u32) -> Result<(&BarFile, *mut u32)> {
         let bar = self
             .bar
             .as_ref()
@@ -331,6 +333,11 @@ impl VrtDevice {
             .checked_add(u64::from(offset))
             .ok_or_else(|| FrtError::Vrt("kernel register address overflow".into()))?;
         let pointer = Self::register_ptr(bar, absolute)?;
+        Ok((bar, pointer))
+    }
+
+    fn read_register(&self, offset: u32) -> Result<u32> {
+        let (bar, pointer) = self.register_access(offset)?;
         Self::bar_sync(bar, DMA_BUF_SYNC_START_READ)?;
         // SAFETY: pointer is aligned, in bounds, and bracketed for a single
         // volatile MMIO read; &mut VrtDevice prevents concurrent BAR access.
@@ -340,16 +347,7 @@ impl VrtDevice {
     }
 
     fn write_register(&self, offset: u32, value: u32) -> Result<()> {
-        let bar = self
-            .bar
-            .as_ref()
-            .ok_or_else(|| FrtError::Vrt("BAR0 is closed".into()))?;
-        let absolute = self
-            .kernel
-            .base_address
-            .checked_add(u64::from(offset))
-            .ok_or_else(|| FrtError::Vrt("kernel register address overflow".into()))?;
-        let pointer = Self::register_ptr(bar, absolute)?;
+        let (bar, pointer) = self.register_access(offset)?;
         Self::bar_sync(bar, DMA_BUF_SYNC_START_WRITE)?;
         // SAFETY: pointer is aligned, in bounds, and bracketed for a single
         // volatile MMIO write; &mut VrtDevice prevents concurrent BAR access.
