@@ -86,18 +86,21 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
 
     // Group cell matches by physical region so each placement constraint is emitted once.
     let mut by_region: BTreeMap<String, Vec<CellMatch>> = BTreeMap::new();
-    for (instance, region) in &result.regions {
-        if routed_streams.contains(instance.as_str()) {
-            continue;
-        }
+    let mut add_cell = |region: &str, pattern: String, description: String, user_sll_reg: bool| {
         by_region
             .entry(canonical_pblock_name(region))
             .or_default()
             .push(CellMatch {
-                pattern: cell_name_regex(instance),
-                description: instance.clone(),
-                user_sll_reg: false,
+                pattern,
+                description,
+                user_sll_reg,
             });
+    };
+    for (instance, region) in &result.regions {
+        if routed_streams.contains(instance.as_str()) {
+            continue;
+        }
+        add_cell(region, cell_name_regex(instance), instance.clone(), false);
     }
 
     for route in &result.routes {
@@ -128,32 +131,26 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
             .zip(route.route.last())
             .expect("validate_result rejects a route with no slots");
 
-        by_region
-            .entry(canonical_pblock_name(head_region))
-            .or_default()
-            .push(CellMatch {
-                pattern: pipeline_head_regex(&pipeline_instance),
-                description: format!("{description} Head"),
-                user_sll_reg: false,
-            });
+        add_cell(
+            head_region,
+            pipeline_head_regex(&pipeline_instance),
+            format!("{description} Head"),
+            false,
+        );
         for (index, region) in route.reg_regions.iter().enumerate() {
-            by_region
-                .entry(canonical_pblock_name(region))
-                .or_default()
-                .push(CellMatch {
-                    pattern: pipeline_body_regex(&pipeline_instance, index),
-                    description: format!("{description} Body {index}"),
-                    user_sll_reg: user_sll_body_indices.contains(&index),
-                });
+            add_cell(
+                region,
+                pipeline_body_regex(&pipeline_instance, index),
+                format!("{description} Body {index}"),
+                user_sll_body_indices.contains(&index),
+            );
         }
-        by_region
-            .entry(canonical_pblock_name(tail_region))
-            .or_default()
-            .push(CellMatch {
-                pattern: pipeline_tail_regex(&pipeline_instance),
-                description: format!("{description} Tail"),
-                user_sll_reg: false,
-            });
+        add_cell(
+            tail_region,
+            pipeline_tail_regex(&pipeline_instance),
+            format!("{description} Tail"),
+            false,
+        );
     }
 
     let mut lines: Vec<String> = Vec::new();
