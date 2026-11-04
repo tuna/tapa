@@ -20,7 +20,7 @@ pub mod report;
 /// contains `Pre-synthesis
 /// failed.` and does **not** contain `\nERROR:`.
 #[must_use]
-pub(crate) fn is_transient_hls_output(stdout: &str, _stderr: &str) -> bool {
+pub(crate) fn is_transient_hls_output(stdout: &str) -> bool {
     stdout.contains("Pre-synthesis failed.") && !stdout.contains("\nERROR:")
 }
 
@@ -466,7 +466,7 @@ fn run_hls_with_retry_impl(
         if out.exit_code == 0 {
             return harvest_and_stage(job, &stage_path, out).map_err(RetryError::Fatal);
         }
-        if !is_transient_hls_output(&out.stdout, &out.stderr) {
+        if !is_transient_hls_output(&out.stdout) {
             return Err(RetryError::Fatal(super::tool_failure("vitis_hls", out)));
         }
         Err(RetryError::Transient)
@@ -836,13 +836,12 @@ mod tests {
 
     #[test]
     fn default_transient_predicate_classifies_failures() {
-        assert!(is_transient_hls_output("Pre-synthesis failed.\n", ""));
+        assert!(is_transient_hls_output("Pre-synthesis failed.\n"));
         // Plain failure with ERROR: is not transient.
         assert!(!is_transient_hls_output(
-            "Pre-synthesis failed.\nERROR: bad\n",
-            ""
+            "Pre-synthesis failed.\nERROR: bad\n"
         ));
-        assert!(!is_transient_hls_output("just a regular failure", ""));
+        assert!(!is_transient_hls_output("just a regular failure"));
     }
 
     #[test]
