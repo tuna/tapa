@@ -520,8 +520,6 @@ fn remove_aie_control(xo: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
-/// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`.
 fn remove_aie_sidecars(xo: &Path) -> Result<()> {
     let (libadf, cfg) = crate::aie::sidecars(xo);
     if libadf.exists() {
@@ -556,6 +554,8 @@ fn write_aie_pl_control(
     Ok(Some(output))
 }
 
+/// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
+/// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`.
 fn write_aie_sidecars(
     work_dir: &Path,
     design: &Design,
