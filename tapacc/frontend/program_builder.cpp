@@ -207,6 +207,14 @@ nlohmann::json StreamJson(const StreamDecl& stream) {
   return j;
 }
 
+// The TU id of `file` in the TU table, or -1 when never registered.
+int FindTu(const std::vector<std::string>& tu_files, const std::string& file) {
+  for (size_t i = 0; i < tu_files.size(); ++i) {
+    if (tu_files[i] == file) return static_cast<int>(i);
+  }
+  return -1;
+}
+
 }  // namespace
 
 ProgramBuilder::ProgramBuilder(std::string top, SynthTarget default_target,
@@ -360,19 +368,18 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
 }
 
 int ProgramBuilder::RegisterTu(const std::string& file) {
-  for (size_t i = 0; i < tu_files_.size(); ++i) {
-    if (tu_files_[i] == file) return static_cast<int>(i);
-  }
+  if (const int tu = FindTu(tu_files_, file); tu >= 0) return tu;
   tu_files_.push_back(file);
   return static_cast<int>(tu_files_.size() - 1);
 }
 
 int ProgramBuilder::TuOf(const std::string& file) const {
-  for (size_t i = 0; i < tu_files_.size(); ++i) {
-    if (tu_files_[i] == file) return static_cast<int>(i);
+  const int tu = FindTu(tu_files_, file);
+  if (tu < 0) {
+    llvm::report_fatal_error(
+        "ProgramBuilder: RewriteTreeTu called on a TU that IndexTu never saw");
   }
-  llvm::report_fatal_error(
-      "ProgramBuilder: RewriteTreeTu called on a TU that IndexTu never saw");
+  return tu;
 }
 
 // The scanned-TU list every "found nothing anywhere" diagnostic carries.
