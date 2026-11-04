@@ -23,6 +23,44 @@ namespace internal {
 template <typename Param, typename Arg>
 struct accessor;
 
+/// Validates one buffer's reinterpretation from @c T to @c U and returns the
+/// converted pointer. Shared by `mmap<T>::reinterpret` and
+/// `mmaps<T, S>::reinterpret`, whose elements are each one buffer.
+template <typename T, typename U>
+U* checked_reinterpret(T* ptr, uint64_t size) {
+  static_assert(std::is_standard_layout<T>::value,
+                "T must have standard layout");
+  static_assert(std::is_standard_layout<U>::value,
+                "U must have standard layout");
+
+  if (sizeof(U) > sizeof(T)) {
+    constexpr auto N = sizeof(U) / sizeof(T);
+    CHECK_EQ(sizeof(U) % sizeof(T), 0)
+        << "sizeof(U) must be a multiple of sizeof(T) when mmap<T> is "
+           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "sizeof(U) = "
+        << sizeof(U) << ", sizeof(T) = " << sizeof(T);
+    CHECK_EQ(size % N, 0)
+        << "size of mmap<T> must be a multiple of N (= sizeof(U)/sizeof(T)) "
+           "when reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "size = "
+        << size << ", N = " << sizeof(U) << " / " << sizeof(T) << " = " << N
+        << ", but " << size << " % " << N << " != 0";
+  } else if (sizeof(U) < sizeof(T)) {
+    CHECK_EQ(sizeof(T) % sizeof(U), 0)
+        << "sizeof(T) must be a multiple of sizeof(U) when mmap<T> is "
+           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "sizeof(T) = "
+        << sizeof(T) << ", sizeof(U) = " << sizeof(U);
+  }
+  CHECK_EQ(reinterpret_cast<std::size_t>(ptr) % alignof(U), 0)
+      << "data of mmap<T> must be " << alignof(U)
+      << "-byte aligned when reinterpreted as mmap<U> (i.e., "
+         "`reinterpret<U>()`) because alignof(U) = "
+      << alignof(U);
+  return reinterpret_cast<U*>(ptr);
+}
+
 }  // namespace internal
 
 template <typename T>
@@ -78,37 +116,8 @@ class mmap {
   /// layout; pointer must be properly aligned.
   template <typename U>
   mmap<U> reinterpret() const {
-    static_assert(std::is_standard_layout<T>::value,
-                  "T must have standard layout");
-    static_assert(std::is_standard_layout<U>::value,
-                  "U must have standard layout");
-
-    if (sizeof(U) > sizeof(T)) {
-      constexpr auto N = sizeof(U) / sizeof(T);
-      CHECK_EQ(sizeof(U) % sizeof(T), 0)
-          << "sizeof(U) must be a multiple of sizeof(T) when mmap<T> is "
-             "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
-             "sizeof(U) = "
-          << sizeof(U) << ", sizeof(T) = " << sizeof(T);
-      CHECK_EQ(size() % N, 0)
-          << "size of mmap<T> must be a multiple of N (= sizeof(U)/sizeof(T)) "
-             "when reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
-             "size = "
-          << size() << ", N = " << sizeof(U) << " / " << sizeof(T) << " = " << N
-          << ", but " << size() << " % " << N << " != 0";
-    } else if (sizeof(U) < sizeof(T)) {
-      CHECK_EQ(sizeof(T) % sizeof(U), 0)
-          << "sizeof(T) must be a multiple of sizeof(U) when mmap<T> is "
-             "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
-             "sizeof(T) = "
-          << sizeof(T) << ", sizeof(U) = " << sizeof(U);
-    }
-    CHECK_EQ(reinterpret_cast<std::size_t>(get()) % alignof(U), 0)
-        << "data of mmap<T> must be " << alignof(U)
-        << "-byte aligned when reinterpreted as mmap<U> (i.e., "
-           "`reinterpret<U>()`) because alignof(U) = "
-        << alignof(U);
-    return mmap<U>(reinterpret_cast<U*>(get()), size() * sizeof(T) / sizeof(U));
+    return mmap<U>(internal::checked_reinterpret<T, U>(get(), size()),
+                   size() * sizeof(T) / sizeof(U));
   }
 
  protected:
@@ -297,41 +306,11 @@ class mmaps {
   /// Reinterprets each element type as @c U.
   template <typename U>
   mmaps<U, S> reinterpret() const {
-    static_assert(std::is_standard_layout<T>::value,
-                  "T must have standard layout");
-    static_assert(std::is_standard_layout<U>::value,
-                  "U must have standard layout");
-
     std::array<U*, S> ptrs;
     std::array<uint64_t, S> sizes;
     for (uint64_t i = 0; i < S; ++i) {
-      if (sizeof(U) > sizeof(T)) {
-        CHECK_EQ(sizeof(U) % sizeof(T), 0)
-            << "sizeof(U) must be a multiple of sizeof(T) when mmap<T> is "
-               "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
-               "sizeof(U) = "
-            << sizeof(U) << ", sizeof(T) = " << sizeof(T);
-        constexpr auto N = sizeof(U) / sizeof(T);
-        CHECK_EQ(mmaps_[i].size() % N, 0)
-            << "size of mmap<T> must be a multiple of N (= "
-               "sizeof(U)/sizeof(T)) when reinterpreted as mmap<U> (i.e., "
-               "`reinterpret<U>()`); got size = "
-            << mmaps_[i].size() << ", N = " << sizeof(U) << " / " << sizeof(T)
-            << " = " << N << ", but " << mmaps_[i].size() << " % " << N
-            << " != 0";
-      } else if (sizeof(U) < sizeof(T)) {
-        CHECK_EQ(sizeof(T) % sizeof(U), 0)
-            << "sizeof(T) must be a multiple of sizeof(U) when mmap<T> is "
-               "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
-               "sizeof(T) = "
-            << sizeof(T) << ", sizeof(U) = " << sizeof(U);
-      }
-      CHECK_EQ(reinterpret_cast<std::size_t>(mmaps_[i].get()) % alignof(U), 0)
-          << "data of mmap<T> must be " << alignof(U)
-          << "-byte aligned when reinterpreted as mmap<U> (i.e., "
-             "`reinterpret<U>()`) because alignof(U) = "
-          << alignof(U);
-      ptrs[i] = reinterpret_cast<U*>(mmaps_[i].get());
+      ptrs[i] = internal::checked_reinterpret<T, U>(mmaps_[i].get(),
+                                                    mmaps_[i].size());
       sizes[i] = mmaps_[i].size() * sizeof(T) / sizeof(U);
     }
     return mmaps<U, S>(ptrs, sizes);
