@@ -86,6 +86,51 @@ impl Kernel {
             ))
         })
     }
+
+    /// Reject a scalar binding whose kind, register width, or offset is
+    /// invalid, before the caller stages it.
+    pub(crate) fn validate_scalar_arg(&self, index: u32, value: &[u8]) -> Result<()> {
+        let arg = self.arg(index)?;
+        if arg.kind != ArgKind::Scalar {
+            return Err(FrtError::Vrt(format!(
+                "argument {index} (`{}`) is not a scalar",
+                arg.name
+            )));
+        }
+        register_words(arg.offset, arg.range, value)?;
+        Ok(())
+    }
+
+    /// Reject an invalid buffer binding and resolve its memory target and
+    /// byte size, before the caller allocates or stages anything.
+    pub(crate) fn validate_buffer_arg(
+        &self,
+        index: u32,
+        ptr: *const u8,
+        bytes: usize,
+    ) -> Result<(MemoryTarget, u64)> {
+        if bytes == 0 {
+            return Err(FrtError::Vrt(format!(
+                "zero-length buffer argument {index}"
+            )));
+        }
+        if ptr.is_null() {
+            return Err(FrtError::Vrt(format!(
+                "null host pointer for buffer argument {index}"
+            )));
+        }
+        let arg = self.arg(index)?;
+        if arg.kind != ArgKind::Buffer || arg.range != 64 {
+            return Err(FrtError::Vrt(format!(
+                "argument {index} (`{}`) is not a 64-bit buffer pointer",
+                arg.name
+            )));
+        }
+        let target = self.memory_target(arg)?;
+        let size = u64::try_from(bytes)
+            .map_err(|error| FrtError::Vrt(format!("buffer argument {index}: {error}")))?;
+        Ok((target, size))
+    }
 }
 
 /// A fully extracted VBIN and the typed metadata shared by VRT backends.

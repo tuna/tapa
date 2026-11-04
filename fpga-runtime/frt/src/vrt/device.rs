@@ -430,15 +430,7 @@ impl Drop for VrtDevice {
 impl Device for VrtDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
         self.ensure_not_running("change an argument")?;
-        let arg = self.kernel.arg(index)?.clone();
-        if arg.kind != ArgKind::Scalar {
-            return Err(FrtError::Vrt(format!(
-                "argument {index} (`{}`) is not a scalar",
-                arg.name
-            )));
-        }
-        // Validate width and offset before changing the staged binding.
-        register_words(arg.offset, arg.range, value)?;
+        self.kernel.validate_scalar_arg(index, value)?;
         self.scalars.insert(index, value.to_vec());
         Ok(())
     }
@@ -451,27 +443,8 @@ impl Device for VrtDevice {
         access: BufferAccess,
     ) -> Result<()> {
         self.ensure_not_running("change an argument")?;
-        if bytes == 0 {
-            return Err(FrtError::Vrt(format!(
-                "zero-length buffer argument {index}"
-            )));
-        }
-        if ptr.is_null() {
-            return Err(FrtError::Vrt(format!(
-                "null host pointer for buffer argument {index}"
-            )));
-        }
-        let arg = self.kernel.arg(index)?.clone();
-        if arg.kind != ArgKind::Buffer || arg.range != 64 {
-            return Err(FrtError::Vrt(format!(
-                "argument {index} (`{}`) is not a 64-bit buffer pointer",
-                arg.name
-            )));
-        }
-        let target = self.kernel.memory_target(&arg)?;
+        let (target, size) = self.kernel.validate_buffer_arg(index, ptr, bytes)?;
         let allocation = allocation(target, access);
-        let size = u64::try_from(bytes)
-            .map_err(|error| FrtError::Vrt(format!("buffer argument {index}: {error}")))?;
         let mut handle = ptr::null_mut();
         // SAFETY: live vrtd connection and valid output pointer. No host
         // pointer crosses this call; libvrtd allocates its own DMA staging map.

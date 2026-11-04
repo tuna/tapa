@@ -425,14 +425,7 @@ impl Drop for SimDevice {
 impl Device for SimDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
         self.ensure_not_running("change an argument")?;
-        let arg = self.vbin.kernel.arg(index)?.clone();
-        if arg.kind != ArgKind::Scalar {
-            return Err(FrtError::Vrt(format!(
-                "argument {index} (`{}`) is not a scalar",
-                arg.name
-            )));
-        }
-        register_words(arg.offset, arg.range, value)?;
+        self.vbin.kernel.validate_scalar_arg(index, value)?;
         self.scalars.insert(index, value.to_vec());
         Ok(())
     }
@@ -445,26 +438,7 @@ impl Device for SimDevice {
         access: BufferAccess,
     ) -> Result<()> {
         self.ensure_not_running("change an argument")?;
-        if bytes == 0 {
-            return Err(FrtError::Vrt(format!(
-                "zero-length buffer argument {index}"
-            )));
-        }
-        if ptr.is_null() {
-            return Err(FrtError::Vrt(format!(
-                "null host pointer for buffer argument {index}"
-            )));
-        }
-        let arg = self.vbin.kernel.arg(index)?.clone();
-        if arg.kind != ArgKind::Buffer || arg.range != 64 {
-            return Err(FrtError::Vrt(format!(
-                "argument {index} (`{}`) is not a 64-bit buffer pointer",
-                arg.name
-            )));
-        }
-        let target = self.vbin.kernel.memory_target(&arg)?;
-        let size = u64::try_from(bytes)
-            .map_err(|error| FrtError::Vrt(format!("buffer argument {index}: {error}")))?;
+        let (target, size) = self.vbin.kernel.validate_buffer_arg(index, ptr, bytes)?;
         let address = self.allocators.allocate(target, size)?;
         self.buffers.insert(
             index,
