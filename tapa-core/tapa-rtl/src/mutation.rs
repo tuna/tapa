@@ -361,16 +361,21 @@ pub fn simple_port(name: impl Into<String>, direction: Direction) -> Port {
     }
 }
 
+/// The tokenized `[msb:lsb]` width the `wide_*` constructors share.
+fn wide_width(msb: &str, lsb: &str) -> Width {
+    use crate::expression::tokenize_expression;
+    Width {
+        msb: tokenize_expression(msb),
+        lsb: tokenize_expression(lsb),
+    }
+}
+
 /// Helper to create a port with width.
 pub fn wide_port(name: impl Into<String>, direction: Direction, msb: &str, lsb: &str) -> Port {
-    use crate::expression::tokenize_expression;
     Port {
         name: name.into(),
         direction,
-        width: Some(Width {
-            msb: tokenize_expression(msb),
-            lsb: tokenize_expression(lsb),
-        }),
+        width: Some(wide_width(msb, lsb)),
         pragma: None,
     }
 }
@@ -411,28 +416,20 @@ pub fn reg(name: impl Into<String>) -> Signal {
 
 /// Helper to create a wide wire.
 pub fn wide_wire(name: impl Into<String>, msb: &str, lsb: &str) -> Signal {
-    use crate::expression::tokenize_expression;
     Signal {
         name: name.into(),
         kind: SignalKind::Wire,
-        width: Some(Width {
-            msb: tokenize_expression(msb),
-            lsb: tokenize_expression(lsb),
-        }),
+        width: Some(wide_width(msb, lsb)),
         attribute: None,
     }
 }
 
 /// Helper to create a wide reg.
 pub fn wide_reg(name: impl Into<String>, msb: &str, lsb: &str) -> Signal {
-    use crate::expression::tokenize_expression;
     Signal {
         name: name.into(),
         kind: SignalKind::Reg,
-        width: Some(Width {
-            msb: tokenize_expression(msb),
-            lsb: tokenize_expression(lsb),
-        }),
+        width: Some(wide_width(msb, lsb)),
         attribute: None,
     }
 }
