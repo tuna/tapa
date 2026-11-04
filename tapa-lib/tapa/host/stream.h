@@ -202,24 +202,8 @@ class frt_queue : public base_queue<T> {
 
   ~frt_queue() override { this->check_leftover(); }
 
-  bool empty() const override {
-    if (this->stream_.empty()) {
-      if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        std::this_thread::yield();
-      }
-      return true;
-    }
-    return false;
-  }
-  bool full() const override {
-    if (this->stream_.full()) {
-      if (is_frt_arg_.load(std::memory_order_relaxed)) {
-        std::this_thread::yield();
-      }
-      return true;
-    }
-    return false;
-  }
+  bool empty() const override { return poll(stream_.empty()); }
+  bool full() const override { return poll(stream_.full()); }
   void push(const T& val) override {
     this->maybe_log(val);
     stream_.push(val);
@@ -249,6 +233,15 @@ class frt_queue : public base_queue<T> {
   }
 
  private:
+  // A bound stream whose poll comes back blocked is spinning on the serving
+  // instance; yield so that instance can run.
+  bool poll(bool blocked) const {
+    if (blocked && is_frt_arg_.load(std::memory_order_relaxed)) {
+      std::this_thread::yield();
+    }
+    return blocked;
+  }
+
   frt::Stream<T> stream_;
   std::atomic<bool> is_frt_arg_ = false;
   std::atomic<int> bound_at_ = 0;
