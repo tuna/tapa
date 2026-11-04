@@ -105,12 +105,8 @@ pub struct HlsOutput {
     pub stderr: String,
 }
 
-/// Build the Vitis HLS TCL script for the given job.
-///
-/// Build the HLS command sequence: `open_project` → `set_top` →
-/// `add_files` → `open_solution` → `set_part` → `create_clock` →
-/// `config_compile` → `config_interface` → `{config}` →
-/// `{other_configs}` → `config_rtl` → `csynth_design` → `exit`.
+/// Build the `config_rtl` line selecting the reset level, with the
+/// optional `-module_auto_prefix`.
 fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
     let mut line = format!(
         "config_rtl -reset_level {}",
@@ -200,6 +196,12 @@ fn kernel_env_entries(job: &HlsJob, cflags: &ToolValue) -> Vec<(String, ToolValu
     env
 }
 
+/// Build the Vitis HLS TCL script for the given job.
+///
+/// The command sequence: `open_project` → `set_top` → `add_files`
+/// (one per `TAPA_KERNEL_*` env entry) → `open_solution` → `set_part`
+/// → `create_clock` → `config_compile` → `config_interface` →
+/// `{other_configs}` → `config_rtl` → `csynth_design` → `exit`.
 pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     #[derive(askama::Template)]
     #[template(path = "run_hls.tcl.j2", escape = "none")]
