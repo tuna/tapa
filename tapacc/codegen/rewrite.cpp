@@ -634,6 +634,28 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     target_defines[model.target].push_back(TaskGuardDefine(model.name));
   }
 
+  // A helper shared by several targets gets one guarded definition variant
+  // per target.
+  auto guard_helper_definition = [&](const clang::FunctionDecl* func) {
+    std::vector<MixedVariant> variants;
+    for (const auto& [target, defines] : target_defines) {
+      TaskModel model;
+      model.name = func->getNameAsString();
+      model.def = func;
+      model.target = target;
+      variants.emplace_back(std::move(model), defines);
+    }
+    const auto rewrite_helper = [func](TaskModel&, const Backend& backend,
+                                       EditSink& variant_edits) {
+      backend.RewriteHelperFunc(func, variant_edits);
+      LowerFuncAttrs(func, backend, variant_edits);
+      LowerParamAttrs(func, backend, variant_edits);
+      LowerAttrs(func->getBody(), variant_edits.getASTContext(), backend,
+                 variant_edits, /*in_block=*/false);
+    };
+    guard_mixed_definition(variants, func, rewrite_helper);
+  };
+
   // Plain task definitions: unconditional signatures, one guarded body each.
   for (const auto& [name, model] : program.tasks) {
     if (model.is_template_spec) continue;
@@ -719,23 +741,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     } else {
       edits.Describe("helper function '" + func->getNameAsString() + "'");
       if (target_defines.size() > 1 && func->isThisDeclarationADefinition()) {
-        std::vector<MixedVariant> variants;
-        for (const auto& [target, defines] : target_defines) {
-          TaskModel model;
-          model.name = func->getNameAsString();
-          model.def = func;
-          model.target = target;
-          variants.emplace_back(std::move(model), defines);
-        }
-        const auto rewrite_helper = [func](TaskModel&, const Backend& backend,
-                                           EditSink& variant_edits) {
-          backend.RewriteHelperFunc(func, variant_edits);
-          LowerFuncAttrs(func, backend, variant_edits);
-          LowerParamAttrs(func, backend, variant_edits);
-          LowerAttrs(func->getBody(), variant_edits.getASTContext(), backend,
-                     variant_edits, /*in_block=*/false);
-        };
-        guard_mixed_definition(variants, func, rewrite_helper);
+        guard_helper_definition(func);
       } else {
         shared.RewriteHelperFunc(func, edits);
         LowerFuncAttrs(func, shared, edits);
@@ -751,23 +757,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   for (const clang::FunctionDecl* func : program.local_funcs) {
     edits.Describe("helper function '" + func->getNameAsString() + "'");
     if (target_defines.size() > 1) {
-      std::vector<MixedVariant> variants;
-      for (const auto& [target, defines] : target_defines) {
-        TaskModel model;
-        model.name = func->getNameAsString();
-        model.def = func;
-        model.target = target;
-        variants.emplace_back(std::move(model), defines);
-      }
-      const auto rewrite_helper = [func](TaskModel&, const Backend& backend,
-                                         EditSink& variant_edits) {
-        backend.RewriteHelperFunc(func, variant_edits);
-        LowerFuncAttrs(func, backend, variant_edits);
-        LowerParamAttrs(func, backend, variant_edits);
-        LowerAttrs(func->getBody(), variant_edits.getASTContext(), backend,
-                   variant_edits, /*in_block=*/false);
-      };
-      guard_mixed_definition(variants, func, rewrite_helper);
+      guard_helper_definition(func);
     } else {
       shared.RewriteHelperFunc(func, edits);
       LowerParamAttrs(func, shared, edits);
