@@ -233,6 +233,22 @@ fn spawn_check_if_stale() {
         .spawn();
 }
 
+/// Best-effort: record `tag` as the latest known release, checked now.
+/// A write failure only delays the next warning, so it is logged at
+/// debug rather than surfaced.
+fn record_latest_tag(tag: String) {
+    let Some(path) = cache_file_path() else {
+        return;
+    };
+    let cache = UpdateCache {
+        checked_at_unix: now_unix(),
+        latest_tag: Some(tag),
+    };
+    if let Err(e) = write_cache(&path, &cache) {
+        log::debug!("cannot record the latest release tag: {e}");
+    }
+}
+
 /// Body of the hidden `tapa update-check` worker: fetch the latest tag
 /// and record it. Best-effort — a failure leaves the parent's stamp in
 /// place, which defers the next attempt by one interval.
@@ -240,19 +256,8 @@ pub fn run_update_check() {
     if std::env::var_os(NO_UPDATE_CHECK_ENV).is_some() {
         return;
     }
-    let Some(path) = cache_file_path() else {
-        return;
-    };
     match fetch_latest_tag() {
-        Ok(tag) => {
-            let cache = UpdateCache {
-                checked_at_unix: now_unix(),
-                latest_tag: Some(tag),
-            };
-            if let Err(e) = write_cache(&path, &cache) {
-                log::debug!("update-check: cannot write cache: {e}");
-            }
-        }
+        Ok(tag) => record_latest_tag(tag),
         Err(e) => log::debug!("update-check: fetch failed: {e}"),
     }
 }
@@ -429,13 +434,7 @@ pub fn run_update(_args: &UpdateArgs, _ctx: &CliContext) -> Result<()> {
     }
     if !is_newer_release(&tag) {
         println!("TAPA is already up to date ({VERSION}).");
-        if let Some(path) = cache_file_path() {
-            let cache = UpdateCache {
-                checked_at_unix: now_unix(),
-                latest_tag: Some(tag),
-            };
-            let _ = write_cache(&path, &cache);
-        }
+        record_latest_tag(tag);
         return Ok(());
     }
 
@@ -448,13 +447,7 @@ pub fn run_update(_args: &UpdateArgs, _ctx: &CliContext) -> Result<()> {
     println!("Installing TAPA {tag} to \"{}\"...", root.display());
     install_tarball(&tarball, &root)?;
 
-    if let Some(path) = cache_file_path() {
-        let cache = UpdateCache {
-            checked_at_unix: now_unix(),
-            latest_tag: Some(tag.clone()),
-        };
-        let _ = write_cache(&path, &cache);
-    }
+    record_latest_tag(tag.clone());
     println!("Updated TAPA to {tag} in \"{}\".", root.display());
     Ok(())
 }
