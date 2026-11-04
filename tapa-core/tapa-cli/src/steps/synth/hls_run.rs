@@ -324,19 +324,13 @@ fn hdl_files_are_newer_than(hdl_files: &[Utf8PathBuf], deps: &[Utf8PathBuf]) -> 
     }
     // Every emitted HDL file must postdate the newest dependency;
     // a metadata gap on any input conservatively reports stale.
-    let mut newest_dep: Option<std::time::SystemTime> = None;
+    let mut newest_dep = std::time::SystemTime::UNIX_EPOCH;
     for dep in deps {
-        let Ok(meta) = fs::metadata(dep) else {
+        let Ok(t) = fs::metadata(dep).and_then(|meta| meta.modified()) else {
             return false;
         };
-        let Ok(t) = meta.modified() else {
-            return false;
-        };
-        newest_dep = Some(newest_dep.map_or(t, |prev: std::time::SystemTime| prev.max(t)));
+        newest_dep = newest_dep.max(t);
     }
-    let Some(newest_dep) = newest_dep else {
-        return false;
-    };
     hdl_files.iter().all(|hdl| {
         fs::metadata(hdl)
             .and_then(|metadata| metadata.modified())
