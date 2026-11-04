@@ -494,25 +494,23 @@ clang::SourceRange DefinitionRange(const clang::FunctionDecl* func,
   return {begin, func->getEndLoc()};
 }
 
+// `defined(A) || defined(B) || ...` — one guard condition over a define set.
+std::string DefinedAny(const std::vector<std::string>& defines) {
+  std::string condition;
+  for (size_t i = 0; i < defines.size(); ++i) {
+    if (i > 0) condition += " || ";
+    condition += "defined(" + defines[i] + ")";
+  }
+  return condition;
+}
+
 std::string GuardOpening(const std::vector<std::string>& defines) {
   if (defines.size() == 1) return "#ifdef " + defines.front() + "\n";
-  std::string opening = "#if ";
-  for (size_t i = 0; i < defines.size(); ++i) {
-    if (i > 0) opening += " || ";
-    opening += "defined(" + defines[i] + ")";
-  }
-  return opening + "\n";
+  return "#if " + DefinedAny(defines) + "\n";
 }
 
 std::string GuardElif(const std::vector<std::string>& defines) {
-  std::string opening = "#elif ";
-  if (defines.size() == 1)
-    return opening + "defined(" + defines.front() + ")\n";
-  for (size_t i = 0; i < defines.size(); ++i) {
-    if (i > 0) opening += " || ";
-    opening += "defined(" + defines[i] + ")";
-  }
-  return opening + "\n";
+  return "#elif " + DefinedAny(defines) + "\n";
 }
 
 }  // namespace
