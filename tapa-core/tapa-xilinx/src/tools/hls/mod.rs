@@ -219,11 +219,6 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
             job.task_name
         )));
     }
-    let solution = if job.solution_name.is_empty() {
-        job.top_name.as_str()
-    } else {
-        job.solution_name.as_str()
-    };
     let other = if job.other_configs.is_empty() {
         String::new()
     } else {
@@ -232,7 +227,7 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     let rtl = build_rtl_config(job.reset_low, job.auto_prefix);
     askama::Template::render(&Template {
         top: &job.top_name,
-        solution,
+        solution: solution_name(job),
         part: &job.target_part,
         clock: &job.clock_period,
         other: &other,
@@ -306,11 +301,11 @@ fn run_hls_attempt(
 
 /// Name of the HLS solution subdirectory — mirrors the TCL template's
 /// `open_solution "<solution>"` value.
-fn solution_name(job: &HlsJob) -> String {
+fn solution_name(job: &HlsJob) -> &str {
     if job.solution_name.is_empty() {
-        job.top_name.clone()
+        &job.top_name
     } else {
-        job.solution_name.clone()
+        &job.solution_name
     }
 }
 
@@ -369,7 +364,7 @@ fn harvest_and_stage(
     // `run_once` downloaded `cwd` back into place via the rootfs
     // mirror). We just need to copy the caller-facing slices out.
     let solution = solution_name(job);
-    let syn_rel: Utf8PathBuf = ["project", &solution, "syn"].iter().collect();
+    let syn_rel: Utf8PathBuf = ["project", solution, "syn"].iter().collect();
 
     // Validate the fresh project before replacing the previous output. An
     // old report or helper module must never make an incomplete run succeed.
