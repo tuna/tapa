@@ -63,7 +63,8 @@ struct StreamCodec {
     return bytes;
   }
 
-  static T Decode(std::string_view bytes) {
+  template <typename Bytes>
+  static T Decode(const Bytes& bytes) {
     CHECK_EQ(bytes.size(), kBytes);
     T val;
     memcpy(&val, bytes.data(), sizeof(val));
@@ -87,7 +88,8 @@ struct StreamCodec<elem_t<T>, std::enable_if_t<(StreamWidth<T>::value > 0)>> {
     return bytes;
   }
 
-  static elem_t<T> Decode(std::string_view bytes) {
+  template <typename Bytes>
+  static elem_t<T> Decode(const Bytes& bytes) {
     CHECK_EQ(bytes.size(), kBytes);
     elem_t<T> val{};
     memcpy(&val.val, bytes.data(), kDataBytes);

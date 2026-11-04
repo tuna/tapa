@@ -113,14 +113,8 @@ class Stream : public StreamBase<T> {
   bool empty() const { return StreamBase<T>::empty(); }
   bool full() const { return StreamBase<T>::full(); }
   void push(const T& val) { this->push_bytes(StreamCodec<T>::Encode(val)); }
-  T pop() {
-    const auto bytes = this->pop_bytes();
-    return FromBinaryString<T>({bytes.data(), bytes.size()});
-  }
-  T front() const {
-    const auto bytes = this->front_bytes();
-    return FromBinaryString<T>({bytes.data(), bytes.size()});
-  }
+  T pop() { return StreamCodec<T>::Decode(this->pop_bytes()); }
+  T front() const { return StreamCodec<T>::Decode(this->front_bytes()); }
 };
 
 }  // namespace frt
