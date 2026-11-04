@@ -4,10 +4,9 @@
 //! `tapa-floorplan` (the planner) and `tapa-codegen` (the consumer) never
 //! depend on each other; they meet only here, through these contract
 //! types — serde records plus the shared [`Coor`] region-tag geometry.
-//! The
-//! planner assigns every flattened instance to a physical grid *region* and
-//! records how each cross-region channel is pipelined; codegen turns those
-//! stream records into Head/Body/Tail handshake pipelines and pblock
+//! The planner assigns every flattened instance to a physical grid *region*
+//! and records how each cross-region channel is pipelined; codegen turns
+//! those stream records into Head/Body/Tail handshake pipelines and pblock
 //! constraints.
 
 use std::collections::BTreeMap;
@@ -19,8 +18,8 @@ use crate::connectivity::MemoryBank;
 /// Physical storage depth used for a shallow FIFO while floorplanning.
 ///
 /// A shallow co-located FIFO uses an almost-full Tail with one cycle of
-/// registered ready feedback.  One grace entry plus four safety entries keep
-/// its logical capacity unchanged.  Deeper FIFOs retain their original
+/// registered ready feedback. One grace entry plus four safety entries keep
+/// its logical capacity unchanged. Deeper FIFOs retain their original
 /// implementation and depth.
 #[must_use]
 pub const fn floorplanned_fifo_storage_depth(logical_depth: u32) -> u32 {
