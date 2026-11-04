@@ -293,18 +293,17 @@ fn generate_xilinx_ip_models(rtl_dir: &Path) -> Result<()> {
             if !generated.insert(ip_module.clone()) {
                 continue;
             }
-            let ip_v_path = rtl_dir.join(format!("{ip_module}.v"));
+            // An existing plain-text module is a real implementation; only
+            // an absent or `pragma protect`ed (encrypted) stub gets a
+            // generated model.
+            let has_plain_text_module = ["v", "sv"].into_iter().any(|ext| {
+                std::fs::read_to_string(rtl_dir.join(format!("{ip_module}.{ext}")))
+                    .is_ok_and(|text| !text.contains("`pragma protect"))
+            });
+            if has_plain_text_module {
+                continue;
+            }
             let ip_sv_path = rtl_dir.join(format!("{ip_module}.sv"));
-            if let Ok(existing) = std::fs::read_to_string(&ip_v_path) {
-                if !existing.contains("`pragma protect") {
-                    continue;
-                }
-            }
-            if let Ok(existing) = std::fs::read_to_string(&ip_sv_path) {
-                if !existing.contains("`pragma protect") {
-                    continue;
-                }
-            }
 
             if let Some(model) = parse_xilinx_ip_model(&ip_module, rtl_dir)? {
                 let replacement = match model {
