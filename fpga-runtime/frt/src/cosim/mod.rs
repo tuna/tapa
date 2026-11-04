@@ -197,25 +197,11 @@ impl CosimDevice {
     }
 
     fn arg_name(&self, index: u32) -> Result<&str> {
-        self.arg_names
-            .get(&index)
-            .map(String::as_str)
-            .ok_or_else(|| {
-                FrtError::MetadataParse(format!(
-                    "the kernel metadata declares no argument at index {index}"
-                ))
-            })
+        declared_arg_name(&self.arg_names, index, "argument")
     }
 
     fn stream_arg_name(&self, index: u32) -> Result<&str> {
-        self.stream_arg_names
-            .get(&index)
-            .map(String::as_str)
-            .ok_or_else(|| {
-                FrtError::MetadataParse(format!(
-                    "the kernel metadata declares no stream argument at index {index}"
-                ))
-            })
+        declared_arg_name(&self.stream_arg_names, index, "stream argument")
     }
 
     /// Sorted `'name' (arg index N)` listing of the stream args the kernel
@@ -279,6 +265,20 @@ impl CosimDevice {
         }
         Ok(())
     }
+}
+
+/// Look up the name the kernel metadata gives argument `index`; `kind`
+/// names the declaration ("argument", "stream argument") in the error.
+fn declared_arg_name<'n>(
+    names: &'n HashMap<u32, String>,
+    index: u32,
+    kind: &str,
+) -> Result<&'n str> {
+    names.get(&index).map(String::as_str).ok_or_else(|| {
+        FrtError::MetadataParse(format!(
+            "the kernel metadata declares no {kind} at index {index}"
+        ))
+    })
 }
 
 /// Stream names recorded under `"streams"` in a resumed `dpi_config.json`.
