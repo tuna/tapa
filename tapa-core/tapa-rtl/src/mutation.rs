@@ -282,19 +282,22 @@ impl MutableModule {
             let _ = writeln!(out, ") (");
         }
 
-        // Collect all ports (parsed + added are already unified on inner).
-        let all_ports: Vec<&Port> = self.inner.ports.iter().collect();
-
+        // Ports and signals added through `add_port`/`add_signal` live on
+        // `inner` already, so emission reads the parsed lists directly.
         let signal_kinds: BTreeMap<_, _> = self
             .inner
             .signals
             .iter()
             .map(|s| (s.name.as_str(), s.kind))
             .collect();
-        let port_names: BTreeSet<_> = all_ports.iter().map(|p| p.name.as_str()).collect();
+        let port_names: BTreeSet<_> = self.inner.ports.iter().map(|p| p.name.as_str()).collect();
 
-        for (i, port) in all_ports.iter().enumerate() {
-            let comma = if i + 1 < all_ports.len() { "," } else { "" };
+        for (i, port) in self.inner.ports.iter().enumerate() {
+            let comma = if i + 1 < self.inner.ports.len() {
+                ","
+            } else {
+                ""
+            };
             if port.direction == Direction::Output
                 && signal_kinds.get(port.name.as_str()) == Some(&SignalKind::Reg)
             {
