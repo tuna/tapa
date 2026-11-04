@@ -109,6 +109,18 @@ const char* LevelStr(TaskLevel level) {
   return level == TaskLevel::kUpper ? "upper" : "lower";
 }
 
+// Record `func` under `key` in a TU's visible-decl map: a definition
+// outranks a bare declaration when both are visible.
+void RecordVisibleDecl(
+    std::map<std::string, const clang::FunctionDecl*>& visible,
+    const std::string& key, const clang::FunctionDecl* func) {
+  auto [it, inserted] = visible.try_emplace(key, func);
+  if (!inserted && !it->second->isThisDeclarationADefinition() &&
+      func->isThisDeclarationADefinition()) {
+    it->second = func;
+  }
+}
+
 // Maps the per-task synthesis policy to its wire string. tapa-ir's SynthTarget
 // is closed over {"hls", "ignore", "aie"}, so both HLS and Vitis tasks
 // collapse to "hls": the per-task field only says how to build the task. The
@@ -273,11 +285,7 @@ std::map<std::string, const clang::FunctionDecl*> ProgramBuilder::VisibleDecls(
   // TraverseDecl mutates nothing but is non-const in the API.
   collector.TraverseDecl(ctx.getTranslationUnitDecl());
   auto record = [&](const clang::FunctionDecl* func) {
-    auto [it, inserted] = visible.try_emplace(KeyOf(*mangler, func), func);
-    if (!inserted && !it->second->isThisDeclarationADefinition() &&
-        func->isThisDeclarationADefinition()) {
-      it->second = func;
-    }
+    RecordVisibleDecl(visible, KeyOf(*mangler, func), func);
   };
   std::vector<const clang::FunctionDecl*> uppers;
   for (const clang::FunctionDecl* func : collector.TakeFuncs()) {
@@ -308,20 +316,10 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
   collector.TraverseDecl(ctx.getTranslationUnitDecl());
   const int tu = static_cast<int>(tu_files_.size());  // provisional id
 
-  // Visible: identity key -> a decl of that function in this TU, a
-  // definition outranking a bare declaration.
   std::set<std::string> sighted;
-  auto record_visible = [&index](const std::string& key,
-                                 const clang::FunctionDecl* func) {
-    auto [it, inserted] = index.visible.try_emplace(key, func);
-    if (!inserted && !it->second->isThisDeclarationADefinition() &&
-        func->isThisDeclarationADefinition()) {
-      it->second = func;
-    }
-  };
   auto record_sighting = [&](const clang::FunctionDecl* func) {
     const std::string key = KeyOf(*mangler, func);
-    record_visible(key, func);
+    RecordVisibleDecl(index.visible, key, func);
     if (!func->isThisDeclarationADefinition()) return;
     if (!sighted.insert(key).second) return;  // one sighting per key per TU
     index.defs.push_back(MakeFacts(*mangler, func, tu));
