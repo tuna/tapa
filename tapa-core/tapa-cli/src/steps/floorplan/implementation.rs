@@ -224,44 +224,26 @@ pub(super) fn implement_and_publish(
         infeasible.len(),
         worker_count,
     );
+    let run = |candidate: PlannedCandidate| {
+        implement_one(
+            runner,
+            work_dir,
+            state,
+            projection,
+            hdl_inputs,
+            connectivity,
+            target,
+            candidate,
+        )
+    };
     let outcomes = match worker_count {
         0 => Vec::new(),
-        1 => candidates
-            .into_iter()
-            .map(|candidate| {
-                implement_one(
-                    runner,
-                    work_dir,
-                    state,
-                    projection,
-                    hdl_inputs,
-                    connectivity,
-                    target,
-                    candidate,
-                )
-            })
-            .collect(),
+        1 => candidates.into_iter().map(run).collect(),
         _ => crate::util::run_in_pool(
             worker_count,
             "DSE implementation",
             CliError::Floorplan,
-            || {
-                candidates
-                    .into_par_iter()
-                    .map(|candidate| {
-                        implement_one(
-                            runner,
-                            work_dir,
-                            state,
-                            projection,
-                            hdl_inputs,
-                            connectivity,
-                            target,
-                            candidate,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            },
+            || candidates.into_par_iter().map(run).collect::<Vec<_>>(),
         )?,
     };
 
