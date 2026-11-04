@@ -16,7 +16,6 @@
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use fs_err;
 use path_slash::PathExt;
 use tapa_ir::Target;
 
