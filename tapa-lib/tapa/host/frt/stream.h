@@ -21,27 +21,22 @@ struct StreamFfiContext {
 };
 
 template <typename T>
-class StreamBase : public StreamArg {
+class Stream : public StreamArg {
  public:
-  explicit StreamBase(uint64_t depth) : StreamBase(MakeInit(depth)) {}
+  explicit Stream(uint64_t depth) : Stream(MakeInit(depth)) {}
 
-  ~StreamBase() {
+  ~Stream() {
     if (handle_ != nullptr) {
       frt_shmq_destroy(handle_);
       handle_ = nullptr;
     }
   }
 
-  StreamBase(const StreamBase&) = delete;
-  StreamBase& operator=(const StreamBase&) = delete;
+  Stream(const Stream&) = delete;
+  Stream& operator=(const Stream&) = delete;
 
   // Shared-memory path used to hand this stream to the FRT C ABI.
-  std::string path() const {
-    return this->template get<StreamFfiContext>().path;
-  }
-
- protected:
-  using Bytes = std::array<char, StreamCodec<T>::kBytes>;
+  std::string path() const { return get<StreamFfiContext>().path; }
 
   bool empty() const {
     int ret = frt_shmq_empty(handle_);
@@ -54,6 +49,13 @@ class StreamBase : public StreamArg {
     CHECK_GE(ret, 0) << "frt_shmq_full failed";
     return ret != 0;
   }
+
+  void push(const T& val) { push_bytes(StreamCodec<T>::Encode(val)); }
+  T pop() { return StreamCodec<T>::Decode(pop_bytes()); }
+  T front() const { return StreamCodec<T>::Decode(front_bytes()); }
+
+ private:
+  using Bytes = std::array<char, StreamCodec<T>::kBytes>;
 
   void push_bytes(const Bytes& bytes) {
     CHECK_EQ(
@@ -81,13 +83,12 @@ class StreamBase : public StreamArg {
     return bytes;
   }
 
- private:
   struct Init {
     StreamFfiContext context;
     void* handle = nullptr;
   };
 
-  explicit StreamBase(const Init& init)
+  explicit Stream(const Init& init)
       : StreamArg(init.context), handle_(init.handle) {}
 
   static Init MakeInit(uint64_t depth) {
@@ -103,18 +104,6 @@ class StreamBase : public StreamArg {
   }
 
   void* handle_ = nullptr;
-};
-
-template <typename T>
-class Stream : public StreamBase<T> {
- public:
-  using StreamBase<T>::StreamBase;
-
-  bool empty() const { return StreamBase<T>::empty(); }
-  bool full() const { return StreamBase<T>::full(); }
-  void push(const T& val) { this->push_bytes(StreamCodec<T>::Encode(val)); }
-  T pop() { return StreamCodec<T>::Decode(this->pop_bytes()); }
-  T front() const { return StreamCodec<T>::Decode(this->front_bytes()); }
 };
 
 }  // namespace frt
