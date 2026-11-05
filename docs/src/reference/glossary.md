@@ -30,7 +30,7 @@ The condition where a producer cannot write to a stream because the downstream c
 
 RTL simulation used to check hardware behavior against the software model.
 TAPA supports fast cosim from an XO or ZIP without Vitis implementation, and
-Vitis hardware emulation from an `hw_emu.xclbin`. See also: *fast cosim*.
+Vitis hardware emulation from an `hw_emu.xclbin`.
 
 ---
 

@@ -66,8 +66,7 @@ frequency and resource usage, not for learning the API. Start with
 `tests/apps/` for that. Designs with TAPA hosts expose manual `-xosim` targets.
 KNN fast cosimulation uses one tile per processing element while its canonical
 XO retains 64; the full-size stencil workload can run for hours under xsim, so
-use an appropriate `--test_timeout` override. New designs are added over time —
-check `tests/regression/` in the repository for the current list.
+use an appropriate `--test_timeout` override.
 ```
 
 ---

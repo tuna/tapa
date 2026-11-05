@@ -175,9 +175,3 @@ After updating dependencies:
    git commit -a -m "build(deps): bump versions" \
      -m "Co-Authored-By: Kimi K3.1 Pro <noreply@moonshot.ai>"
    ```
-
-```admonish note
-This section provides guidance on updating all types of dependencies in the
-TAPA project, including where to find the latest versions and how to verify
-that the updates work correctly.
-```
