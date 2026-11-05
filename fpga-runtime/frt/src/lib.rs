@@ -1,5 +1,6 @@
 pub mod cosim;
 pub mod device;
+mod dl;
 pub mod error;
 pub mod ffi;
 pub mod instance;

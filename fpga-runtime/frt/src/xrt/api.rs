@@ -2,9 +2,10 @@
 //! hardware or in hardware emulation. Neither libfrt nor the host program
 //! links XRT, so software simulation and cosimulation need no XRT install.
 
-use std::ffi::{c_char, c_int, c_uint, c_void, CStr, CString};
+use std::ffi::{c_char, c_int, c_uint, c_void};
 use std::sync::OnceLock;
 
+use crate::dl::dl_sym;
 use crate::error::{FrtError, Result};
 
 /// An opaque XRT handle (device, kernel, run, buffer or graph).
@@ -92,91 +93,40 @@ fn candidates() -> Vec<String> {
     paths
 }
 
-fn open_library() -> std::result::Result<*mut c_void, String> {
-    let mut reasons = Vec::new();
-    for candidate in candidates() {
-        let name = CString::new(candidate).map_err(|e| format!("bad library path: {e}"))?;
-        // SAFETY: dlopen with a valid C string; the handle is never closed,
-        // so every resolved pointer stays valid for the process.
-        let lib = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_GLOBAL) };
-        if !lib.is_null() {
-            return Ok(lib);
-        }
-        // SAFETY: dlerror returns a C string or null.
-        let error = unsafe { libc::dlerror() };
-        if !error.is_null() {
-            // SAFETY: a non-null dlerror result is a NUL-terminated string.
-            reasons.push(
-                unsafe { CStr::from_ptr(error) }
-                    .to_string_lossy()
-                    .into_owned(),
-            );
-        }
-    }
-    Err(format!(
-        "cannot load {LIBRARY} (is XRT installed and `XILINX_XRT` set?): {}",
-        reasons.join("; ")
-    ))
-}
-
 fn load() -> std::result::Result<Api, String> {
-    let lib = open_library()?;
+    let lib = crate::dl::open_library(
+        &candidates(),
+        libc::RTLD_NOW | libc::RTLD_GLOBAL,
+        &format!("cannot load {LIBRARY} (is XRT installed and `XILINX_XRT` set?)"),
+    )?;
     // Each field's type is the C signature of the XRT symbol of that name
     // (xrt_device.h, xrt_kernel.h, xrt_bo.h, xrt_graph.h).
-    macro_rules! sym {
-        ($name:literal) => {
-            // SAFETY: the field this initializes is typed as `$name`'s C
-            // signature.
-            unsafe { resolve(lib, $name) }?
-        };
-    }
     Ok(Api {
-        device_open: sym!("xrtDeviceOpen"),
-        device_open_by_bdf: sym!("xrtDeviceOpenByBDF"),
-        device_close: sym!("xrtDeviceClose"),
-        device_load_xclbin_file: sym!("xrtDeviceLoadXclbinFile"),
-        device_get_xclbin_uuid: sym!("xrtDeviceGetXclbinUUID"),
-        kernel_open: sym!("xrtPLKernelOpen"),
-        kernel_close: sym!("xrtKernelClose"),
-        kernel_arg_group_id: sym!("xrtKernelArgGroupId"),
-        bo_alloc: sym!("xrtBOAlloc"),
-        bo_alloc_user_ptr: sym!("xrtBOAllocUserPtr"),
-        bo_free: sym!("xrtBOFree"),
-        bo_write: sym!("xrtBOWrite"),
-        bo_read: sym!("xrtBORead"),
-        bo_sync: sym!("xrtBOSync"),
-        run_open: sym!("xrtRunOpen"),
-        run_close: sym!("xrtRunClose"),
-        run_set_arg: sym!("xrtRunSetArg"),
-        run_start: sym!("xrtRunStart"),
-        run_state: sym!("xrtRunState"),
-        run_wait: sym!("xrtRunWait"),
-        graph_open: sym!("xrtGraphOpen"),
-        graph_close: sym!("xrtGraphClose"),
-        graph_reset: sym!("xrtGraphReset"),
-        graph_run: sym!("xrtGraphRun"),
-        graph_wait: sym!("xrtGraphWait"),
-        graph_update_rtp: sym!("xrtGraphUpdateRTP"),
+        device_open: dl_sym!(lib, LIBRARY, "xrtDeviceOpen"),
+        device_open_by_bdf: dl_sym!(lib, LIBRARY, "xrtDeviceOpenByBDF"),
+        device_close: dl_sym!(lib, LIBRARY, "xrtDeviceClose"),
+        device_load_xclbin_file: dl_sym!(lib, LIBRARY, "xrtDeviceLoadXclbinFile"),
+        device_get_xclbin_uuid: dl_sym!(lib, LIBRARY, "xrtDeviceGetXclbinUUID"),
+        kernel_open: dl_sym!(lib, LIBRARY, "xrtPLKernelOpen"),
+        kernel_close: dl_sym!(lib, LIBRARY, "xrtKernelClose"),
+        kernel_arg_group_id: dl_sym!(lib, LIBRARY, "xrtKernelArgGroupId"),
+        bo_alloc: dl_sym!(lib, LIBRARY, "xrtBOAlloc"),
+        bo_alloc_user_ptr: dl_sym!(lib, LIBRARY, "xrtBOAllocUserPtr"),
+        bo_free: dl_sym!(lib, LIBRARY, "xrtBOFree"),
+        bo_write: dl_sym!(lib, LIBRARY, "xrtBOWrite"),
+        bo_read: dl_sym!(lib, LIBRARY, "xrtBORead"),
+        bo_sync: dl_sym!(lib, LIBRARY, "xrtBOSync"),
+        run_open: dl_sym!(lib, LIBRARY, "xrtRunOpen"),
+        run_close: dl_sym!(lib, LIBRARY, "xrtRunClose"),
+        run_set_arg: dl_sym!(lib, LIBRARY, "xrtRunSetArg"),
+        run_start: dl_sym!(lib, LIBRARY, "xrtRunStart"),
+        run_state: dl_sym!(lib, LIBRARY, "xrtRunState"),
+        run_wait: dl_sym!(lib, LIBRARY, "xrtRunWait"),
+        graph_open: dl_sym!(lib, LIBRARY, "xrtGraphOpen"),
+        graph_close: dl_sym!(lib, LIBRARY, "xrtGraphClose"),
+        graph_reset: dl_sym!(lib, LIBRARY, "xrtGraphReset"),
+        graph_run: dl_sym!(lib, LIBRARY, "xrtGraphRun"),
+        graph_wait: dl_sym!(lib, LIBRARY, "xrtGraphWait"),
+        graph_update_rtp: dl_sym!(lib, LIBRARY, "xrtGraphUpdateRTP"),
     })
-}
-
-/// The `name` symbol of `lib` as a function pointer of type `F`.
-///
-/// # Safety
-/// `F` must be a function pointer type matching the symbol's C signature.
-unsafe fn resolve<F: Copy>(lib: *mut c_void, name: &str) -> std::result::Result<F, String> {
-    assert_eq!(
-        std::mem::size_of::<F>(),
-        std::mem::size_of::<*mut c_void>(),
-        "`F` must be a function pointer"
-    );
-    let symbol = CString::new(name).map_err(|e| format!("bad symbol name `{name}`: {e}"))?;
-    // SAFETY: lib is a live dlopen handle and symbol a C string.
-    let ptr = unsafe { libc::dlsym(lib, symbol.as_ptr()) };
-    if ptr.is_null() {
-        return Err(format!("{LIBRARY} has no `{name}`"));
-    }
-    // SAFETY: the caller guarantees `F` is the symbol's function type, and
-    // the sizes match (asserted above).
-    Ok(unsafe { std::mem::transmute_copy::<*mut c_void, F>(&ptr) })
 }

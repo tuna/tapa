@@ -5,6 +5,8 @@
 //! or initializes a hardware VRT symbol.
 
 use std::ffi::{c_char, c_int, c_void, CStr, CString, OsStr};
+
+use crate::dl::dl_sym;
 use std::ptr;
 use std::sync::OnceLock;
 
@@ -279,83 +281,31 @@ fn candidates_with_override(override_path: Option<&OsStr>) -> Vec<String> {
     paths
 }
 
-fn open_library() -> std::result::Result<*mut c_void, String> {
-    let mut reasons = Vec::new();
-    for candidate in candidates() {
-        let name = CString::new(candidate.clone())
-            .map_err(|error| format!("bad libzmq path `{candidate}`: {error}"))?;
-        // SAFETY: name is NUL-terminated. A successful handle is intentionally
-        // leaked so all resolved entry points remain valid.
-        let library = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
-        if !library.is_null() {
-            return Ok(library);
-        }
-        // SAFETY: dlerror returns null or a borrowed thread-local C string.
-        let error = unsafe { libc::dlerror() };
-        let reason = if error.is_null() {
-            "unknown loader error".to_owned()
-        } else {
-            // SAFETY: a non-null dlerror result is a C string, copied here.
-            unsafe { CStr::from_ptr(error) }
-                .to_string_lossy()
-                .into_owned()
-        };
-        reasons.push(format!("{candidate}: {reason}"));
-    }
-    Err(format!(
-        "cannot load {LIBRARY}; install libzmq or set {} to its path: {}",
-        frt_shm::env::FRT_ZMQ_LIBRARY,
-        reasons.join("; ")
-    ))
-}
-
 fn load() -> std::result::Result<Api, String> {
-    let library = open_library()?;
-    macro_rules! sym {
-        ($name:literal) => {
-            // SAFETY: each initialized field has the symbol's pinned C type.
-            unsafe { resolve(library, $name) }?
-        };
-    }
+    let library = crate::dl::open_library(
+        &candidates(),
+        libc::RTLD_NOW | libc::RTLD_LOCAL,
+        &format!(
+            "cannot load {LIBRARY}; install libzmq or set {} to its path",
+            frt_shm::env::FRT_ZMQ_LIBRARY
+        ),
+    )?;
     Ok(Api {
-        ctx_new: sym!("zmq_ctx_new"),
-        socket: sym!("zmq_socket"),
-        connect: sym!("zmq_connect"),
-        setsockopt: sym!("zmq_setsockopt"),
-        send: sym!("zmq_send"),
-        msg_recv: sym!("zmq_msg_recv"),
-        msg_init: sym!("zmq_msg_init"),
-        msg_data: sym!("zmq_msg_data"),
-        msg_size: sym!("zmq_msg_size"),
-        msg_close: sym!("zmq_msg_close"),
-        close: sym!("zmq_close"),
-        ctx_term: sym!("zmq_ctx_term"),
-        errno: sym!("zmq_errno"),
-        strerror: sym!("zmq_strerror"),
+        ctx_new: dl_sym!(library, LIBRARY, "zmq_ctx_new"),
+        socket: dl_sym!(library, LIBRARY, "zmq_socket"),
+        connect: dl_sym!(library, LIBRARY, "zmq_connect"),
+        setsockopt: dl_sym!(library, LIBRARY, "zmq_setsockopt"),
+        send: dl_sym!(library, LIBRARY, "zmq_send"),
+        msg_recv: dl_sym!(library, LIBRARY, "zmq_msg_recv"),
+        msg_init: dl_sym!(library, LIBRARY, "zmq_msg_init"),
+        msg_data: dl_sym!(library, LIBRARY, "zmq_msg_data"),
+        msg_size: dl_sym!(library, LIBRARY, "zmq_msg_size"),
+        msg_close: dl_sym!(library, LIBRARY, "zmq_msg_close"),
+        close: dl_sym!(library, LIBRARY, "zmq_close"),
+        ctx_term: dl_sym!(library, LIBRARY, "zmq_ctx_term"),
+        errno: dl_sym!(library, LIBRARY, "zmq_errno"),
+        strerror: dl_sym!(library, LIBRARY, "zmq_strerror"),
     })
-}
-
-/// Resolve one symbol as its pinned C function type.
-///
-/// # Safety
-/// `F` must exactly match the named symbol's C signature.
-unsafe fn resolve<F: Copy>(library: *mut c_void, name: &str) -> std::result::Result<F, String> {
-    assert_eq!(
-        std::mem::size_of::<F>(),
-        std::mem::size_of::<*mut c_void>(),
-        "F must be a function pointer"
-    );
-    let symbol = CString::new(name).map_err(|error| format!("bad symbol `{name}`: {error}"))?;
-    // SAFETY: library is a live dlopen handle and symbol is NUL-terminated.
-    let pointer = unsafe { libc::dlsym(library, symbol.as_ptr()) };
-    if pointer.is_null() {
-        return Err(format!(
-            "{LIBRARY} has no `{name}` required by the pinned C API"
-        ));
-    }
-    // SAFETY: the caller guarantees F is the symbol's function pointer type;
-    // the size assertion rules out a data pointer or differently sized value.
-    Ok(unsafe { std::mem::transmute_copy::<*mut c_void, F>(&pointer) })
 }
 
 #[cfg(test)]

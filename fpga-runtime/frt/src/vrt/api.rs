@@ -5,9 +5,10 @@
 //! pinned SLASH release. The library is deliberately never unloaded: its
 //! function pointers remain valid for every device for the process lifetime.
 
-use std::ffi::{c_char, c_int, c_void, CStr, CString, OsStr};
+use std::ffi::{c_char, c_int, c_void, OsStr};
 use std::sync::OnceLock;
 
+use crate::dl::dl_sym;
 use crate::error::{FrtError, Result};
 
 pub(super) const CLOCK_REGION_USER: u32 = 1;
@@ -101,82 +102,29 @@ fn candidates_with_override(override_path: Option<&OsStr>) -> Vec<String> {
     paths
 }
 
-fn open_library() -> std::result::Result<*mut c_void, String> {
-    let mut reasons = Vec::new();
-    for candidate in candidates() {
-        let name = CString::new(candidate.clone())
-            .map_err(|error| format!("bad libvrtd path `{candidate}`: {error}"))?;
-        // SAFETY: name is NUL-terminated. A successful handle is intentionally
-        // leaked, so all resolved entry points stay valid for the process.
-        let library = unsafe { libc::dlopen(name.as_ptr(), libc::RTLD_NOW | libc::RTLD_LOCAL) };
-        if !library.is_null() {
-            return Ok(library);
-        }
-        // SAFETY: dlerror returns either null or a borrowed NUL-terminated
-        // thread-local string, copied here before another loader call.
-        let error = unsafe { libc::dlerror() };
-        let reason = if error.is_null() {
-            "unknown loader error".to_owned()
-        } else {
-            // SAFETY: a non-null dlerror result is a C string.
-            unsafe { CStr::from_ptr(error) }
-                .to_string_lossy()
-                .into_owned()
-        };
-        reasons.push(format!("{candidate}: {reason}"));
-    }
-    Err(format!(
-        "cannot load libvrtd; install SLASH's libvrtd or set {} to its path: {}",
-        frt_shm::env::FRT_VRTD_LIBRARY,
-        reasons.join("; ")
-    ))
-}
-
 fn load() -> std::result::Result<Api, String> {
-    let library = open_library()?;
+    let library = crate::dl::open_library(
+        &candidates(),
+        libc::RTLD_NOW | libc::RTLD_LOCAL,
+        &format!(
+            "cannot load libvrtd; install SLASH's libvrtd or set {} to its path",
+            frt_shm::env::FRT_VRTD_LIBRARY
+        ),
+    )?;
     // Every field is typed with the C signature in the pinned vrtd.h.
-    macro_rules! sym {
-        ($name:literal) => {
-            // SAFETY: the initialized field has the symbol's pinned C type.
-            unsafe { resolve(library, $name) }?
-        };
-    }
     Ok(Api {
-        connect: sym!("vrtd_connect"),
-        get_device_by_bdf: sym!("vrtd_get_device_by_bdf"),
-        design_write_file: sym!("vrtd_design_write_file"),
-        clock_get_rate: sym!("vrtd_clock_get_rate"),
-        clock_set_rate: sym!("vrtd_clock_set_rate"),
-        open_bar_file: sym!("vrtd_open_bar_file"),
-        close_bar_file: sym!("vrtd_close_bar_file"),
-        buffer_open: sym!("vrtd_buffer_open"),
-        buffer_close: sym!("vrtd_buffer_close"),
-        buffer_sync_to_device: sym!("vrtd_buffer_sync_to_device"),
-        buffer_sync_from_device: sym!("vrtd_buffer_sync_from_device"),
+        connect: dl_sym!(library, "libvrtd", "vrtd_connect"),
+        get_device_by_bdf: dl_sym!(library, "libvrtd", "vrtd_get_device_by_bdf"),
+        design_write_file: dl_sym!(library, "libvrtd", "vrtd_design_write_file"),
+        clock_get_rate: dl_sym!(library, "libvrtd", "vrtd_clock_get_rate"),
+        clock_set_rate: dl_sym!(library, "libvrtd", "vrtd_clock_set_rate"),
+        open_bar_file: dl_sym!(library, "libvrtd", "vrtd_open_bar_file"),
+        close_bar_file: dl_sym!(library, "libvrtd", "vrtd_close_bar_file"),
+        buffer_open: dl_sym!(library, "libvrtd", "vrtd_buffer_open"),
+        buffer_close: dl_sym!(library, "libvrtd", "vrtd_buffer_close"),
+        buffer_sync_to_device: dl_sym!(library, "libvrtd", "vrtd_buffer_sync_to_device"),
+        buffer_sync_from_device: dl_sym!(library, "libvrtd", "vrtd_buffer_sync_from_device"),
     })
-}
-
-/// Resolve one symbol as its pinned C function type.
-///
-/// # Safety
-/// `F` must exactly match the named symbol's C signature.
-unsafe fn resolve<F: Copy>(library: *mut c_void, name: &str) -> std::result::Result<F, String> {
-    assert_eq!(
-        std::mem::size_of::<F>(),
-        std::mem::size_of::<*mut c_void>(),
-        "F must be a function pointer"
-    );
-    let symbol = CString::new(name).map_err(|error| format!("bad symbol `{name}`: {error}"))?;
-    // SAFETY: library is a live dlopen handle and symbol is NUL-terminated.
-    let pointer = unsafe { libc::dlsym(library, symbol.as_ptr()) };
-    if pointer.is_null() {
-        return Err(format!(
-            "libvrtd has no `{name}` required by the pinned C API"
-        ));
-    }
-    // SAFETY: the caller guarantees F is the symbol's function pointer type;
-    // the size assertion rules out a data pointer or differently sized value.
-    Ok(unsafe { std::mem::transmute_copy::<*mut c_void, F>(&pointer) })
 }
 
 #[cfg(test)]
