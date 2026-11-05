@@ -13,7 +13,6 @@
 #include <csignal>
 #include <functional>
 #include <memory>
-#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -300,8 +299,7 @@ struct task {
         internal::is_callable_v<typename std::remove_reference_t<Func>>,
         "the first argument for tapa::task::invoke() must be callable");
     internal::invoker<Func>::template invoke<Args...>(
-        mode_override.value_or(mode), std::forward<Func>(func),
-        std::forward<Args>(args)...);
+        mode, std::forward<Func>(func), std::forward<Args>(args)...);
     return *this;
   }
 
@@ -337,9 +335,6 @@ struct task {
     }
     return *this;
   }
-
- protected:
-  std::optional<internal::InvokeMode> mode_override;
 
  private:
   task& invoke_frt(std::shared_ptr<internal::frt::Instance> instance);
