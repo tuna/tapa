@@ -148,14 +148,6 @@ struct narrow_limbs {
       s.v = static_cast<native>(s.v & x);
       return *this;
     }
-    ref& operator+=(uint64_t x) {
-      s.v = static_cast<native>(s.v + x);
-      return *this;
-    }
-    ref& operator-=(uint64_t x) {
-      s.v = static_cast<native>(s.v - x);
-      return *this;
-    }
     ref& operator++() {
       ++s.v;
       return *this;
