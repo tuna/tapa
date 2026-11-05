@@ -1,6 +1,7 @@
 //! SLASH VBIN backends.
 
 mod api;
+mod ctrl;
 mod device;
 mod sim;
 mod vbin;

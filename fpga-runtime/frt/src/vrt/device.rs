@@ -5,7 +5,7 @@ use super::api::{
     ALLOC_DIR_HOST_TO_DEVICE, ALLOC_TYPE_DDR, ALLOC_TYPE_HBM, ALLOC_TYPE_HBM_VNOC,
     CLOCK_REGION_USER,
 };
-use super::vbin::{register_words, Arg, ArgKind, Kernel, MemoryTarget, Platform, Vbin};
+use super::vbin::{ArgKind, Kernel, MemoryTarget, Platform, Vbin};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_shm::env_non_empty;
@@ -15,15 +15,13 @@ use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
 
+use super::ctrl::{ControlChannel, ExecutionState, CTRL_OFFSET, CTRL_START};
 use crate::elapsed_ns;
 
 const VRTD_SOCKET: &str = "/run/vrtd.sock";
 const PROGRAM_SETTLE: Duration = Duration::from_secs(1);
 const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
 const FINISH_POLL: Duration = Duration::from_millis(1);
-const CTRL_OFFSET: u32 = 0;
-const CTRL_START: u32 = 1;
-const CTRL_DONE: u32 = 1 << 1;
 
 // Linux dma-buf uapi: _IOW('b', 0, struct dma_buf_sync { __u64 flags; }).
 // x86_64 and aarch64 both use the generic _IOC layout; this is the same ioctl
@@ -37,13 +35,6 @@ const DMA_BUF_SYNC_END_WRITE: u64 = 2 | (1 << 2);
 #[repr(C)]
 struct DmaBufSync {
     flags: u64,
-}
-
-#[derive(Clone, Copy)]
-enum ExecutionState {
-    Idle,
-    Running(Instant),
-    Finished,
 }
 
 struct BufferBinding {
@@ -266,16 +257,6 @@ impl VrtDevice {
         Ok(bar)
     }
 
-    fn ensure_not_running(&self, action: &str) -> Result<()> {
-        if matches!(self.execution_state, ExecutionState::Running(_)) {
-            Err(FrtError::Vrt(format!(
-                "cannot {action} while the VRT kernel is running"
-            )))
-        } else {
-            Ok(())
-        }
-    }
-
     fn bar_sync(bar: &BarFile, flags: u64) -> Result<()> {
         if bar.mock != 0 {
             return Ok(());
@@ -353,13 +334,6 @@ impl VrtDevice {
         Self::bar_sync(bar, DMA_BUF_SYNC_END_WRITE)
     }
 
-    fn write_value(&self, arg: &Arg, value: &[u8]) -> Result<()> {
-        for (offset, word) in register_words(arg.offset, arg.range, value)? {
-            self.write_register(offset, word)?;
-        }
-        Ok(())
-    }
-
     fn close_buffer(api: &Api, index: u32, handle: *mut VrtdBuffer) {
         if handle.is_null() {
             return;
@@ -410,6 +384,24 @@ impl VrtDevice {
     }
 }
 
+impl ControlChannel for VrtDevice {
+    fn ctrl_write(&mut self, offset: u32, value: u32) -> Result<()> {
+        self.write_register(offset, value)
+    }
+
+    fn ctrl_read(&mut self, offset: u32) -> Result<u32> {
+        self.read_register(offset)
+    }
+
+    fn execution_state(&mut self) -> &mut ExecutionState {
+        &mut self.execution_state
+    }
+
+    fn compute_ns(&mut self) -> &mut u64 {
+        &mut self.compute_ns
+    }
+}
+
 impl Drop for VrtDevice {
     fn drop(&mut self) {
         if matches!(self.execution_state, ExecutionState::Running(_)) {
@@ -425,7 +417,8 @@ impl Drop for VrtDevice {
 
 impl Device for VrtDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.ensure_not_running("change an argument")?;
+        self.execution_state
+            .ensure_not_running("change an argument", "VRT kernel")?;
         self.kernel.validate_scalar_arg(index, value)?;
         self.scalars.insert(index, value.to_vec());
         Ok(())
@@ -438,7 +431,8 @@ impl Device for VrtDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
-        self.ensure_not_running("change an argument")?;
+        self.execution_state
+            .ensure_not_running("change an argument", "VRT kernel")?;
         let (target, size) = self.kernel.validate_buffer_arg(index, ptr, bytes)?;
         let allocation = allocation(target, access);
         let mut handle = ptr::null_mut();
@@ -496,7 +490,8 @@ impl Device for VrtDevice {
     }
 
     fn write_to_device(&mut self) -> Result<()> {
-        self.ensure_not_running("upload buffers")?;
+        self.execution_state
+            .ensure_not_running("upload buffers", "VRT kernel")?;
         let start = Instant::now();
         for (index, binding) in &self.buffers {
             if !binding.access.loads_from_host() {
@@ -542,7 +537,8 @@ impl Device for VrtDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        self.ensure_not_running("start the kernel again")?;
+        self.execution_state
+            .ensure_not_running("start the kernel again", "VRT kernel")?;
         for arg in self.kernel.args.clone() {
             if !arg.writable {
                 continue;
@@ -605,15 +601,7 @@ impl Device for VrtDevice {
     }
 
     fn is_finished(&mut self) -> Result<bool> {
-        let ExecutionState::Running(started) = self.execution_state else {
-            return Ok(matches!(self.execution_state, ExecutionState::Finished));
-        };
-        if self.read_register(CTRL_OFFSET)? & CTRL_DONE == 0 {
-            return Ok(false);
-        }
-        self.compute_ns = elapsed_ns(started);
-        self.execution_state = ExecutionState::Finished;
-        Ok(true)
+        self.poll_finished()
     }
 
     fn load_ns(&self) -> u64 {

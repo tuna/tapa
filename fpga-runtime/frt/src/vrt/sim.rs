@@ -1,6 +1,7 @@
 //! RTL simulation of one SLASH VBIN through its `vpp_sim` process.
 
-use super::vbin::{register_words, Arg, ArgKind, MemoryTarget, Platform, Vbin};
+use super::ctrl::{ControlChannel, ExecutionState, CTRL_OFFSET, CTRL_START};
+use super::vbin::{ArgKind, MemoryTarget, Platform, Vbin};
 use super::zmq::{FrameTransport, ZmqTransport};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
@@ -19,20 +20,10 @@ const HBM_BASE: u64 = 0x40_0000_0000;
 const DDR_BASE: u64 = 0x600_0000_0000;
 const MEMORY_WINDOW_BYTES: u64 = 128 * 1024 * 1024;
 const BUFFER_ALIGNMENT: u64 = 4096;
-const CTRL_OFFSET: u32 = 0;
-const CTRL_START: u32 = 1;
-const CTRL_DONE: u32 = 1 << 1;
 const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
 const FINISH_POLL: Duration = Duration::from_millis(1);
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_EXIT_POLL: Duration = Duration::from_millis(10);
-
-#[derive(Clone, Copy)]
-enum ExecutionState {
-    Idle,
-    Running(Instant),
-    Finished,
-}
 
 #[derive(Clone, Copy)]
 struct BufferBinding {
@@ -384,23 +375,6 @@ impl SimDevice {
         Ok(data)
     }
 
-    fn write_value(&mut self, arg: &Arg, value: &[u8]) -> Result<()> {
-        for (offset, word) in register_words(arg.offset, arg.range, value)? {
-            self.write_register(offset, word)?;
-        }
-        Ok(())
-    }
-
-    fn ensure_not_running(&self, action: &str) -> Result<()> {
-        if matches!(self.execution_state, ExecutionState::Running(_)) {
-            Err(FrtError::Vrt(format!(
-                "cannot {action} while the SLASH simulation kernel is running"
-            )))
-        } else {
-            Ok(())
-        }
-    }
-
     fn shutdown(&mut self) {
         if self.session_active {
             if let Err(error) = self.exit_session() {
@@ -414,6 +388,24 @@ impl SimDevice {
     }
 }
 
+impl ControlChannel for SimDevice {
+    fn ctrl_write(&mut self, offset: u32, value: u32) -> Result<()> {
+        self.write_register(offset, value)
+    }
+
+    fn ctrl_read(&mut self, offset: u32) -> Result<u32> {
+        self.read_register(offset)
+    }
+
+    fn execution_state(&mut self) -> &mut ExecutionState {
+        &mut self.execution_state
+    }
+
+    fn compute_ns(&mut self) -> &mut u64 {
+        &mut self.compute_ns
+    }
+}
+
 impl Drop for SimDevice {
     fn drop(&mut self) {
         self.shutdown();
@@ -422,7 +414,8 @@ impl Drop for SimDevice {
 
 impl Device for SimDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.ensure_not_running("change an argument")?;
+        self.execution_state
+            .ensure_not_running("change an argument", "SLASH simulation kernel")?;
         self.vbin.kernel.validate_scalar_arg(index, value)?;
         self.scalars.insert(index, value.to_vec());
         Ok(())
@@ -435,7 +428,8 @@ impl Device for SimDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
-        self.ensure_not_running("change an argument")?;
+        self.execution_state
+            .ensure_not_running("change an argument", "SLASH simulation kernel")?;
         let (target, size) = self.vbin.kernel.validate_buffer_arg(index, ptr, bytes)?;
         let address = self.allocators.allocate(target, size)?;
         self.buffers.insert(
@@ -457,7 +451,8 @@ impl Device for SimDevice {
     }
 
     fn write_to_device(&mut self) -> Result<()> {
-        self.ensure_not_running("upload buffers")?;
+        self.execution_state
+            .ensure_not_running("upload buffers", "SLASH simulation kernel")?;
         let started = Instant::now();
         let buffers = self
             .buffers
@@ -507,7 +502,8 @@ impl Device for SimDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        self.ensure_not_running("start the kernel again")?;
+        self.execution_state
+            .ensure_not_running("start the kernel again", "SLASH simulation kernel")?;
         for arg in self.vbin.kernel.args.clone() {
             if !arg.writable {
                 continue;
@@ -563,15 +559,7 @@ impl Device for SimDevice {
     }
 
     fn is_finished(&mut self) -> Result<bool> {
-        let ExecutionState::Running(started) = self.execution_state else {
-            return Ok(matches!(self.execution_state, ExecutionState::Finished));
-        };
-        if self.read_register(CTRL_OFFSET)? & CTRL_DONE == 0 {
-            return Ok(false);
-        }
-        self.compute_ns = elapsed_ns(started);
-        self.execution_state = ExecutionState::Finished;
-        Ok(true)
+        self.poll_finished()
     }
 
     fn load_ns(&self) -> u64 {
