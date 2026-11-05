@@ -92,14 +92,6 @@ void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, CodeSink& out) {
   out.Line("void(" + name + ".write_resp._peek.empty());");
 }
 
-// Generate the body-preamble text for a task at the given level.
-std::string GeneratePreamble(const Backend& backend, const TaskModel& task,
-                             bool is_top) {
-  CodeSink sink;
-  backend.EmitPortPreambles(task.def, task.level, is_top, sink);
-  return sink.Str();
-}
-
 // Add `#pragma HLS stream` depth pragmas after each stream declaration.
 // Walks the whole body: multi-declarator statements contribute one pragma
 // per declarator, and streams declared in nested scopes get their depth
@@ -295,7 +287,9 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     if (lvl == Lvl::kTop) WrapTaskDeclExternC(func, edits);
     return;
   }
-  const std::string lines = GeneratePreamble(*this, task, is_top);
+  CodeSink sink;
+  EmitPortPreambles(func, task.level, is_top, sink);
+  const std::string lines = sink.Str();
 
   if (lvl == Lvl::kLower) {
     // Leading newline so the first pragma starts its own line after the brace.
