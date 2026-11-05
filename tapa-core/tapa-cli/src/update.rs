@@ -420,12 +420,12 @@ pub fn run_update(_args: &UpdateArgs, _ctx: &CliContext) -> Result<()> {
     println!("Checking for the latest TAPA release...");
     let tag = fetch_latest_tag()
         .map_err(|e| CliError::Update(format!("cannot query the latest release: {e}")))?;
-    if release_version(&tag).is_none() {
+    let Some(latest) = release_version(&tag) else {
         return Err(CliError::Update(format!(
             "unexpected release tag format: `{tag}`"
         )));
-    }
-    if !is_newer_release(&tag) {
+    };
+    if latest <= current_version() {
         println!("TAPA is already up to date ({VERSION}).");
         record_latest_tag(tag);
         return Ok(());
