@@ -121,16 +121,25 @@ struct frame_cursor {
 
   TAPA_AIE_INLINE explicit frame_cursor(Buffer& buf) : buf_(buf) {}
 
+  TAPA_AIE_INLINE void acquire() {
+    buf_.acquire();
+    ptr_ = buf_.data();
+  }
+  TAPA_AIE_INLINE void release() {
+    buf_.release();
+    pos_ = 0;
+  }
+  // A per-element access meets a frame boundary once every N calls, so its
+  // tests are hinted cold. A bulk copy meets one on nearly every pass of its
+  // loop and tests unhinted: the hint costs it cycles there.
   TAPA_AIE_INLINE void acquire_at_start() {
     if (pos_ == 0) [[unlikely]] {
-      buf_.acquire();
-      ptr_ = buf_.data();
+      acquire();
     }
   }
   TAPA_AIE_INLINE void release_at_end() {
     if (pos_ == N) [[unlikely]] {
-      buf_.release();
-      pos_ = 0;
+      release();
     }
   }
 
@@ -148,7 +157,7 @@ struct frame_cursor {
   // Accounts for `m` stepped values at the end of a bulk copy.
   TAPA_AIE_INLINE void advance_values(int m, int elem_words, int value_words) {
     pos_ += m * value_words / elem_words;
-    release_at_end();
+    if (pos_ == N) release();
   }
 };
 
@@ -286,7 +295,7 @@ class iframe {
       static_assert(N * kElemWords % kValueWords == 0,
                     "a frame must hold a whole number of values");
       while (n > 0) {
-        cursor_.acquire_at_start();
+        if (cursor_.pos_ == 0) cursor_.acquire();
         const int room = cursor_.values_left(kElemWords, kValueWords);
         const int m = n < room ? n : room;
         for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
@@ -335,7 +344,7 @@ class oframe {
       static_assert(N * kElemWords % kValueWords == 0,
                     "a frame must hold a whole number of values");
       while (n > 0) {
-        cursor_.acquire_at_start();
+        if (cursor_.pos_ == 0) cursor_.acquire();
         const int room = cursor_.values_left(kElemWords, kValueWords);
         const int m = n < room ? n : room;
         for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
