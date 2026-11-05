@@ -637,9 +637,6 @@ class stream : public internal::unbound_stream<T> {
 
   stream(const internal::basic_stream<T>& base)
       : internal::basic_stream<T>(base) {}
-
-  stream(const std::string name, uint64_t simulation_depth = SimulationDepth)
-      : internal::basic_stream<T>(name, simulation_depth) {}
 };
 
 /// Consumer-side view of a @c tapa::stream array. Use only as a task parameter.
