@@ -134,23 +134,8 @@ bool Instance::IsFinished() const {
   return ret != 0;
 }
 
-int64_t Instance::LoadTimeNanoSeconds() const {
-  return impl_->handle ? frt_instance_load_ns(impl_->handle) : 0;
-}
 int64_t Instance::ComputeTimeNanoSeconds() const {
   return impl_->handle ? frt_instance_compute_ns(impl_->handle) : 0;
-}
-int64_t Instance::StoreTimeNanoSeconds() const {
-  return impl_->handle ? frt_instance_store_ns(impl_->handle) : 0;
-}
-double Instance::LoadTimeSeconds() const {
-  return LoadTimeNanoSeconds() * 1e-9;
-}
-double Instance::ComputeTimeSeconds() const {
-  return ComputeTimeNanoSeconds() * 1e-9;
-}
-double Instance::StoreTimeSeconds() const {
-  return StoreTimeNanoSeconds() * 1e-9;
 }
 
 }  // namespace frt

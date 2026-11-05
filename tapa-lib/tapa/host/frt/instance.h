@@ -49,12 +49,7 @@ class Instance {
   void Kill();
   bool IsFinished() const;
 
-  int64_t LoadTimeNanoSeconds() const;
   int64_t ComputeTimeNanoSeconds() const;
-  int64_t StoreTimeNanoSeconds() const;
-  double LoadTimeSeconds() const;
-  double ComputeTimeSeconds() const;
-  double StoreTimeSeconds() const;
 
  private:
   struct Impl;
