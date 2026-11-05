@@ -81,7 +81,6 @@ pub unsafe fn tapa_protocol::PortDir::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_protocol::PortDir
 pub fn tapa_protocol::PortDir::from(T) -> T
 pub struct tapa_protocol::AxiChannelInfo
-pub tapa_protocol::AxiChannelInfo::name: &'static str
 pub tapa_protocol::AxiChannelInfo::ports: &'static [tapa_protocol::AxiPort]
 pub tapa_protocol::AxiChannelInfo::ready: &'static str
 pub tapa_protocol::AxiChannelInfo::valid: &'static str
@@ -114,7 +113,6 @@ pub fn tapa_protocol::AxiChannelInfo::from(T) -> T
 pub struct tapa_protocol::AxiPort
 pub tapa_protocol::AxiPort::direction: tapa_protocol::PortDir
 pub tapa_protocol::AxiPort::is_compact: bool
-pub tapa_protocol::AxiPort::name: &'static str
 pub tapa_protocol::AxiPort::suffix: &'static str
 impl tapa_protocol::AxiPort
 pub const fn tapa_protocol::AxiPort::width(&self, u32, u32, u32) -> u32
@@ -170,10 +168,8 @@ pub const tapa_protocol::HLS_FSM_NS: &str
 pub const tapa_protocol::HLS_FSM_STATE_PREFIX: &str
 pub const tapa_protocol::HLS_RST_INV: &str
 pub const tapa_protocol::ISTREAM_SUFFIXES: &[&str]
-pub const tapa_protocol::M_AXI_CHANNELS: &[tapa_protocol::AxiChannelInfo]
 pub const tapa_protocol::M_AXI_MAX_OUTSTANDING: u32
 pub const tapa_protocol::M_AXI_PREFIX: &str
-pub const tapa_protocol::M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str]
 pub const tapa_protocol::OSTREAM_SUFFIXES: &[&str]
 pub const tapa_protocol::STREAM_DATA_SUFFIXES: &[&str]
 pub const tapa_protocol::S_AXI_LITE_CTRL_PORTS: &[&str]

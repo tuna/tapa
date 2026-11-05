@@ -149,7 +149,7 @@ pub enum AxiWidth {
 /// An emitted M-AXI port, including its width and compact-fabric membership.
 #[derive(Debug, Clone, Copy)]
 pub struct AxiPort {
-    pub name: &'static str,
+    name: &'static str,
     pub suffix: &'static str,
     pub direction: PortDir,
     pub is_compact: bool,
@@ -177,7 +177,7 @@ impl AxiPort {
 
 /// An AXI channel in emission order, with its valid/ready markers.
 pub struct AxiChannelInfo {
-    pub name: &'static str,
+    name: &'static str,
     pub ports: &'static [AxiPort],
     pub valid: &'static str,
     pub ready: &'static str,
@@ -231,7 +231,7 @@ macro_rules! address_channel {
 
 /// Single emitted vocabulary, in canonical channel and sub-port order.
 /// REGION is deliberately absent: HLS children never drive it.
-pub const M_AXI_CHANNELS: &[AxiChannelInfo] = &[
+const M_AXI_CHANNELS: &[AxiChannelInfo] = &[
     address_channel!("AR"),
     address_channel!("AW"),
     channel!(
@@ -261,7 +261,7 @@ pub const M_AXI_CHANNELS: &[AxiChannelInfo] = &[
 ];
 
 /// Optional attributes accepted by packaging but never emitted or wired.
-pub const M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str] = &["_ARREGION", "_AWREGION"];
+const M_AXI_RECOGNITION_ONLY_SUFFIXES: &[&str] = &["_ARREGION", "_AWREGION"];
 
 #[must_use]
 pub fn m_axi_channel(name: &str) -> Option<&'static AxiChannelInfo> {
