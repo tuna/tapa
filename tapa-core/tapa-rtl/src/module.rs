@@ -32,7 +32,7 @@ pub struct VerilogModule {
 
 /// Vitis-generated RTL infixes tried when looking up a FIFO port by its
 /// logical argument name.
-pub const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
+const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 
 /// The port-name convention belongs to the schema, so that `tapa-codegen`,
 /// `tapa pack` and `frt-cosim` cannot drift apart on it. Re-exported here
@@ -95,7 +95,7 @@ impl VerilogModule {
 
 /// Match `name[idx]` and return `(name, idx)`.
 #[must_use]
-pub fn match_array_name(name: &str) -> Option<(&str, u32)> {
+fn match_array_name(name: &str) -> Option<(&str, u32)> {
     let lb = name.find('[')?;
     let rb = name.rfind(']')?;
     if rb <= lb + 1 || !name.ends_with(']') {

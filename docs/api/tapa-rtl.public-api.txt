@@ -736,8 +736,6 @@ pub unsafe fn tapa_rtl::module::VerilogModule::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::module::VerilogModule
 pub fn tapa_rtl::module::VerilogModule::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_rtl::module::VerilogModule where T: for<'de> serde_core::de::Deserialize<'de>
-pub const tapa_rtl::module::FIFO_INFIXES: &[&str]
-pub fn tapa_rtl::module::match_array_name(&str) -> core::option::Option<(&str, u32)>
 pub mod tapa_rtl::mutation
 pub struct tapa_rtl::mutation::MutableModule
 pub tapa_rtl::mutation::MutableModule::body_text: alloc::string::String
