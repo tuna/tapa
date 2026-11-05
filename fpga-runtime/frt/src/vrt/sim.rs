@@ -13,6 +13,8 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::elapsed_ns;
+
 const HBM_BASE: u64 = 0x40_0000_0000;
 const DDR_BASE: u64 = 0x600_0000_0000;
 const MEMORY_WINDOW_BYTES: u64 = 128 * 1024 * 1024;
@@ -195,10 +197,6 @@ pub struct SimDevice {
 // Native transport/process handles are exclusively owned and host pointers use
 // the same caller-lifetime contract as the other raw-buffer Device backends.
 unsafe impl Send for SimDevice {}
-
-fn elapsed_ns(since: Instant) -> u64 {
-    u64::try_from(since.elapsed().as_nanos()).unwrap_or(u64::MAX)
-}
 
 fn reply_error(reply: &[u8], command: &str) -> Result<()> {
     if reply == b"ERR" || reply.starts_with(b"ERR:") || reply.starts_with(b"ERR ") {

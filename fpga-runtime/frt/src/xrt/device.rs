@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::Instant;
 
+use crate::elapsed_ns;
+
 /// A host buffer and the XRT buffer object the kernel sees. A page-aligned
 /// host buffer backs its buffer object directly; any other is staged
 /// through a device-side copy.
@@ -84,10 +86,6 @@ pub(super) fn non_null(handle: Handle, action: &str) -> Result<Handle> {
     } else {
         Ok(handle)
     }
-}
-
-fn elapsed_ns(since: Instant) -> u64 {
-    u64::try_from(since.elapsed().as_nanos()).unwrap_or(u64::MAX)
 }
 
 /// Whether an `ert_cmd_state` is a terminal failure rather than a pending

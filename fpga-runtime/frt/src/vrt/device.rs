@@ -15,6 +15,8 @@ use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
 
+use crate::elapsed_ns;
+
 const VRTD_SOCKET: &str = "/run/vrtd.sock";
 const PROGRAM_SETTLE: Duration = Duration::from_secs(1);
 const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
@@ -125,10 +127,6 @@ fn path_cstring(path: &Path) -> Result<CString> {
         .to_str()
         .ok_or_else(|| FrtError::Vrt(format!("non-UTF-8 path `{}`", path.display())))?;
     cstring(text, "VBIN member path")
-}
-
-fn elapsed_ns(since: Instant) -> u64 {
-    u64::try_from(since.elapsed().as_nanos()).unwrap_or(u64::MAX)
 }
 
 /// Match libvrtd++'s board-level lookup: strip an optional PF function and

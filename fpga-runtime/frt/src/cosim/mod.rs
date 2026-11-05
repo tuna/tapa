@@ -187,7 +187,7 @@ impl CosimDevice {
                 }
             }
         }
-        self.store_ns = started.elapsed().as_nanos() as u64;
+        self.store_ns = crate::elapsed_ns(started);
         // Ensure non-zero to signal "copy-back completed" (callers use
         // store_ns() == 0 to mean "not yet run").
         if self.store_ns == 0 {
@@ -245,7 +245,7 @@ impl CosimDevice {
 
     fn complete_simulation(&mut self, error: Option<FrtError>) {
         if let SimulationState::Running(run) = &self.simulation_state {
-            self.compute_ns = run.started_at.elapsed().as_nanos() as u64;
+            self.compute_ns = crate::elapsed_ns(run.started_at);
         }
         self.simulation_state = SimulationState::Finished(error);
     }
@@ -717,7 +717,7 @@ impl Device for CosimDevice {
                 }
             }
         }
-        self.load_ns = started.elapsed().as_nanos() as u64;
+        self.load_ns = crate::elapsed_ns(started);
         Ok(())
     }
 
