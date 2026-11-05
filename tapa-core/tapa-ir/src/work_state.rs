@@ -85,13 +85,7 @@ impl WorkState {
                 });
             }
         }
-        let mut de = serde_json::Deserializer::from_str(json);
-        let state: Self =
-            serde_path_to_error::deserialize(&mut de).map_err(|e| ParseError::Schema {
-                path: e.path().to_string(),
-                message: e.inner().to_string(),
-            })?;
-        de.end()?;
+        let state: Self = crate::error::parse_json(json)?;
         state.graph.validate().map_err(|mut error| {
             if let ParseError::Schema { path, .. } = &mut error {
                 *path = format!("graph.{path}");

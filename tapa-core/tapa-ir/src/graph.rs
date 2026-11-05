@@ -50,13 +50,7 @@ const fn default_schema_version() -> u32 {
 impl TaskGraph {
     /// Parse one JSON task-graph document with field-path error diagnostics.
     pub fn from_json(json: &str) -> Result<Self, ParseError> {
-        let mut de = serde_json::Deserializer::from_str(json);
-        let graph: Self =
-            serde_path_to_error::deserialize(&mut de).map_err(|e| ParseError::Schema {
-                path: e.path().to_string(),
-                message: e.inner().to_string(),
-            })?;
-        de.end()?;
+        let graph: Self = crate::error::parse_json(json)?;
         graph.validate()?;
         Ok(graph)
     }
