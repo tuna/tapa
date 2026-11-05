@@ -776,14 +776,10 @@ fn parallel_streams_share_one_placement_edge_plane() {
 }
 
 #[test]
-fn sparse_domains_encode_exact_terminals_and_user_pins() {
+fn sparse_domains_encode_exact_terminals() {
     let graph = mmap_floor_graph();
     let device = select_device("u280").expect("u280");
     let regions = atomic_regions(&device);
-    let mut constraints = PlacementConstraints::default();
-    constraints
-        .vertex_regions
-        .insert("C_0".to_string(), Coor::slot(1, 2));
     let domains = candidate_domains(
         &graph,
         &device,
@@ -791,7 +787,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         &region_areas(&device, &regions).expect("region areas"),
         DEFAULT_USAGE_LIMIT,
         None,
-        &constraints,
+        &PlacementConstraints::default(),
     )
     .expect("domains");
 
@@ -807,7 +803,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         "the exact HBM bank terminal is fixed by its device tag"
     );
     let compute = graph.index_of("C_0").expect("compute");
-    assert_eq!(domains[compute], [Coor::slot(1, 2)]);
+    assert_eq!(domains[compute], regions);
 
     let model = FloorplanModel::build(
         &graph,
@@ -816,7 +812,7 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         &domain_areas(&device, &domains),
         &find_cuts_for_regions(&device, &regions),
         DEFAULT_USAGE_LIMIT,
-        &constraints,
+        &PlacementConstraints::default(),
     )
     .expect("model");
     let x_count = model
@@ -826,8 +822,8 @@ fn sparse_domains_encode_exact_terminals_and_user_pins() {
         .filter(|var| var.label.starts_with("x_"))
         .count();
     assert_eq!(
-        x_count, 8,
-        "six reader candidates, one compute pin, and one exact bank terminal"
+        x_count, 13,
+        "six candidates per movable task and one exact bank terminal"
     );
 
     let stream_graph = vadd_floor_graph();
@@ -1700,27 +1696,27 @@ fn refinement_solve_pins_the_primary_objective_and_ranks_candidates() {
 }
 
 #[test]
-fn permanent_pin_conflict_does_not_retry_or_solve() {
-    let graph = single_task_floor_graph(1);
+fn permanent_anchor_conflict_does_not_retry_or_solve() {
+    let graph = mmap_floor_graph();
     let device = one_slot_device(1000);
     let solver = StatusSolver::new(LpStatus::Infeasible);
-    let config = PlacementConfig {
-        strategy: PartitionStrategy::Flat,
-        constraints: PlacementConstraints {
-            vertex_regions: BTreeMap::from([("A_0".to_string(), Coor::slot(1, 0))]),
-            ..PlacementConstraints::default()
-        },
-        ..PlacementConfig::default()
-    };
 
     assert!(matches!(
-        floorplan_with_config(&graph, &device, &config, &solver, &SolveOpts::default()),
-        Err(IlpError::NoCandidates { vertex }) if vertex == "A_0"
+        floorplan_with_strategy(
+            &graph,
+            &device,
+            DEFAULT_USAGE_LIMIT,
+            (DEFAULT_USAGE_LIMIT).max(MAX_USAGE_LIMIT),
+            PartitionStrategy::Flat,
+            &solver,
+            &SolveOpts::default(),
+        ),
+        Err(IlpError::AnchorUnplaceable(_))
     ));
     assert_eq!(
         solver.calls.load(Ordering::Relaxed),
         0,
-        "a utilization increase cannot repair a permanent pin conflict"
+        "a utilization increase cannot repair an anchor the device cannot hold"
     );
 }
 

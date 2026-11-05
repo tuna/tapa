@@ -73,13 +73,10 @@ type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
 
 /// Constraints that narrow candidate domains or override resource limits.
 ///
-/// `vertex_regions` uses overlap semantics: a region is a candidate during an
-/// iteration when it overlaps the target. Parent
-/// containment and exact external-terminal placement are added by the
+/// Parent containment and exact external-terminal placement are added by the
 /// schedule itself, so none of these restrictions require extra ILP rows.
 #[derive(Debug, Clone, Default)]
 struct PlacementConstraints {
-    vertex_regions: BTreeMap<String, Coor>,
     max_resource_limits: RegionResourceLimits,
 }
 
@@ -440,7 +437,7 @@ struct FeasibleRung {
 enum Rung {
     Placed(Box<FeasibleRung>),
     /// Nothing places at this derating. Carries the error to surface if even
-    /// the ceiling turns out to be infeasible, so a permanent pin, parent, or
+    /// the ceiling turns out to be infeasible, so a permanent parent or
     /// memory-domain conflict is still reported as itself.
     Infeasible(IlpError),
 }
@@ -609,7 +606,7 @@ fn attempt_placement(
     ) {
         Ok(domains) => domains,
         // An empty domain may be a derating that is merely too strict, or a
-        // permanent pin, parent, or memory conflict. Either way nothing places
+        // permanent parent or memory conflict. Either way nothing places
         // here; the ladder search decides which by asking the ceiling.
         Err(error @ (IlpError::NoCandidates { .. } | IlpError::AnchorUnplaceable(_))) => {
             return Ok(Rung::Infeasible(error));
@@ -725,17 +722,11 @@ fn candidate_domains(
 
     for (index, vertex) in graph.vertices().iter().enumerate() {
         let parent = parents.map(|assignments| &assignments[index]);
-        let target = constraints.vertex_regions.get(&vertex.name);
         let mut candidates = Vec::new();
 
         for &region in regions {
             if let Some(parent) = parent {
                 if !region.is_inside(parent) {
-                    continue;
-                }
-            }
-            if let Some(target) = target {
-                if !region.has_overlap(target) {
                     continue;
                 }
             }
@@ -780,7 +771,7 @@ fn candidate_domains(
                     vertex,
                     tag,
                     &ctx,
-                    parent.is_some() || target.is_some(),
+                    parent.is_some(),
                 ));
             }
             return Err(IlpError::NoCandidates {
@@ -881,10 +872,9 @@ fn anchor_unplaceable_error(
         .map(Coor::region_name)
         .collect::<Vec<_>>()
         .join(", ");
-    // The parent row assignment and the user's region pin are re-applied on
-    // every rung, so if the vertex fits a tagged region at this limit and
-    // still has no candidate, one of those is the binding constraint, not
-    // capacity.
+    // The parent row assignment is re-applied on every rung, so if the vertex
+    // fits a tagged region at this limit and still has no candidate, it is
+    // the binding constraint, not capacity.
     let fits_somewhere = tagged.iter().any(|region| {
         areas.get(region).is_some_and(|total| {
             area_fits(
