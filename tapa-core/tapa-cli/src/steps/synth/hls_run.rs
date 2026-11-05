@@ -19,7 +19,7 @@ use super::resolve_worker_count;
 /// so the retry wrapper keys off that substring.
 const HLS_MAX_ATTEMPTS: u32 = 3;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct TaskHlsLayout {
     pub reports_dir: Utf8PathBuf,
     pub hdl_dir: Utf8PathBuf,

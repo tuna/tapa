@@ -30,7 +30,7 @@ pub(super) const TREE_MANIFEST_HEADER: &str = "tapa-tree-ownership-v1\n";
 /// dir's `rewritten/` tree. Built once by [`stage_hls_sources`] before
 /// any HLS job runs, so missing source or ownership metadata fails the
 /// whole step up front instead of one parallel worker deep into synthesis.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug)]
 pub struct TaskSources {
     srcs: BTreeMap<String, Vec<Utf8PathBuf>>,
     freshness_deps: Vec<Utf8PathBuf>,
@@ -223,7 +223,6 @@ fn check_reserved_port_names(design: &Design) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
     use std::fs;
 
     use tapa_ir::port::ArgCategory;
