@@ -95,7 +95,7 @@ pub fn plan_with_inputs(
 }
 
 /// The planner's retry ceiling: a table that pins a
-/// [`Device::usage_ceiling`](crate::device::Device::usage_ceiling) overrides
+/// [`Device::usage_ceiling`](crate::device::model::Device::usage_ceiling) overrides
 /// the caller-derived cap (see that field for V80's rationale).
 fn table_retry_ceiling(state: &WorkState, options: &PlanOptions) -> f64 {
     state
