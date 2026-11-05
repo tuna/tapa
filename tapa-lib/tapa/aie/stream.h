@@ -18,8 +18,10 @@
 // 32-bit words (`input_stream<int32>`); an element is read and written as its
 // own type through a pointer cast, the way aie_api's helpers do internally.
 // Only the blocking operations exist: AI Engine streams have no EoT and no
-// visible occupancy, so `close`, `eot`, `peek`, `try_*`, `empty` and `full`
-// fail to compile here (tapacc rejects them first, with a portable hint).
+// visible occupancy, so `close`, `eot`, `peek`, `try_peek`, `empty` and
+// `full` fail to compile here (tapacc rejects them first, with a portable
+// hint). `try_read` and `try_write` below are accepted but block, always
+// reporting success once the transfer completes.
 
 namespace tapa {
 namespace internal {
