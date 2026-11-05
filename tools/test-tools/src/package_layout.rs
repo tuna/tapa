@@ -6,11 +6,6 @@ use tar::{Archive, EntryType};
 
 use crate::common::{require_file, Result};
 
-#[derive(Debug)]
-struct Entry {
-    kind: EntryType,
-}
-
 pub fn check_package_layout(path: &Path) -> Result<()> {
     require_file(path)?;
     let file =
@@ -29,12 +24,7 @@ pub fn check_package_layout(path: &Path) -> Result<()> {
             .map_err(|error| format!("failed to read tar entry path: {error}"))?
             .to_string_lossy()
             .into_owned();
-        entries.insert(
-            path,
-            Entry {
-                kind: entry.header().entry_type(),
-            },
-        );
+        entries.insert(path, entry.header().entry_type());
     }
 
     require_regular(&entries, "usr/bin/tapa")?;
@@ -73,21 +63,18 @@ pub fn check_package_layout(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn require_regular(entries: &BTreeMap<String, Entry>, path: &str) -> Result<()> {
+fn require_regular(entries: &BTreeMap<String, EntryType>, path: &str) -> Result<()> {
     match entries.get(path) {
-        Some(entry) if entry.kind == EntryType::Regular => Ok(()),
-        Some(entry) => Err(format!(
-            "{path} must be a regular file, got {:?}",
-            entry.kind
-        )),
+        Some(kind) if *kind == EntryType::Regular => Ok(()),
+        Some(kind) => Err(format!("{path} must be a regular file, got {kind:?}")),
         None => Err(format!("package missing {path}")),
     }
 }
 
-fn require_dir_entry(entries: &BTreeMap<String, Entry>, path: &str) -> Result<()> {
+fn require_dir_entry(entries: &BTreeMap<String, EntryType>, path: &str) -> Result<()> {
     match entries.get(path) {
-        Some(entry) if entry.kind == EntryType::Directory => Ok(()),
-        Some(entry) => Err(format!("{path} must be a directory, got {:?}", entry.kind)),
+        Some(kind) if *kind == EntryType::Directory => Ok(()),
+        Some(kind) => Err(format!("{path} must be a directory, got {kind:?}")),
         None => Err(format!("package missing {path}")),
     }
 }
