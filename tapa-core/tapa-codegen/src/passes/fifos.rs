@@ -353,9 +353,8 @@ pub fn connect_fifos(
                 } else {
                     OSTREAM_SUFFIXES
                 };
-                let canonical_base = tapa_rtl::module::sanitize_array_name(fifo_name);
                 for suffix in suffixes {
-                    let canonical = format!("{canonical_base}{suffix}");
+                    let canonical = format!("{sanitized_fifo_name}{suffix}");
                     let signal_width = if STREAM_DATA_SUFFIXES.contains(suffix) {
                         Some(tapa_rtl::port::Width {
                             msb: tapa_rtl::expression::tokenize_expression(
@@ -413,8 +412,7 @@ pub fn connect_fifos(
                     // one. AI Engine streams carry no end-of-transmission
                     // token, so every beat into the AI Engine asserts TLAST
                     // and the adapter's own TLAST goes unused.
-                    let base = tapa_rtl::module::sanitize_array_name(fifo_name);
-                    let unused = format!("{base}_eot_unused");
+                    let unused = format!("{sanitized_fifo_name}_eot_unused");
                     for port in &mut adapter.ports {
                         if port.port_name == "m_axis_tlast" {
                             port.connection = Expr::ident(&unused);
@@ -423,7 +421,7 @@ pub fn connect_fifos(
                     if let Some(mm) = modules.get_mut(task_name) {
                         let _ = mm.add_signal(tapa_rtl::mutation::wire(&unused));
                         mm.add_assign(ContinuousAssign::new(
-                            Expr::ident(format!("{base}_TLAST")),
+                            Expr::ident(format!("{sanitized_fifo_name}_TLAST")),
                             Expr::lit("1'b1"),
                         ));
                     }
@@ -431,16 +429,15 @@ pub fn connect_fifos(
                 if let Some(mm) = modules.get_mut(task_name) {
                     mm.add_instance(adapter);
                     if !is_input {
-                        let canonical_base = tapa_rtl::module::sanitize_array_name(fifo_name);
                         if mm
                             .inner
-                            .find_port(&format!("{canonical_base}_TKEEP"))
+                            .find_port(&format!("{sanitized_fifo_name}_TKEEP"))
                             .is_some()
                         {
                             let keep_width =
                                 (tapa_protocol::axis_data_width(stream_width) / 8).max(1);
                             mm.add_assign(ContinuousAssign::new(
-                                Expr::ident(format!("{canonical_base}_TKEEP")),
+                                Expr::ident(format!("{sanitized_fifo_name}_TKEEP")),
                                 Expr::lit(format!(
                                     "{keep_width}'b{}",
                                     "1".repeat(keep_width as usize)
