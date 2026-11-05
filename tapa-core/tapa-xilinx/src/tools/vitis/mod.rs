@@ -11,7 +11,7 @@ use crate::runtime::process::{ToolInvocation, ToolRunner};
 pub mod timing;
 
 use self::timing::parse_kernel_timing_summary;
-use super::LinkOutput;
+use super::{validate_input, LinkOutput};
 
 const TIMING_REPORT_NAME: &str = "timing_summary.rpt";
 const FINAL_TIMING_HOOK_NAME: &str = "final_timing.tcl";
@@ -121,7 +121,6 @@ struct ResolvedJob<'a> {
     connectivity_config: Option<Utf8PathBuf>,
     aie: Option<AieInputs>,
     link_output: Utf8PathBuf,
-    package_output: Utf8PathBuf,
     package_temp_dir: Utf8PathBuf,
     timing_hook: Utf8PathBuf,
     timing_report: Utf8PathBuf,
@@ -220,7 +219,6 @@ impl<'a> ResolvedJob<'a> {
         } else {
             output_xclbin.clone()
         };
-        let package_output = output_xclbin.clone();
         let package_temp_dir = Utf8PathBuf::from(format!("{temp_dir}.package"));
         let timing_hook = artifacts_dir.join(FINAL_TIMING_HOOK_NAME);
         let timing_report = artifacts_dir.join(TIMING_REPORT_NAME);
@@ -238,7 +236,6 @@ impl<'a> ResolvedJob<'a> {
             connectivity_config,
             aie,
             link_output,
-            package_output,
             package_temp_dir,
             timing_hook,
             timing_report,
@@ -259,11 +256,23 @@ fn discover_aie_inputs(xo: &Utf8Path) -> Result<Option<AieInputs>> {
     if !libadf.exists() && !config.exists() && !pl_control.exists() {
         return Ok(None);
     }
-    validate_input(&libadf, "AI Engine graph (`<name>.libadf.a`)")?;
-    validate_input(&config, "AI Engine connectivity (`<name>.aie.cfg`)")?;
+    validate_input(
+        &libadf,
+        "AI Engine graph (`<name>.libadf.a`)",
+        XilinxError::VitisLink,
+    )?;
+    validate_input(
+        &config,
+        "AI Engine connectivity (`<name>.aie.cfg`)",
+        XilinxError::VitisLink,
+    )?;
     let pl_control = pl_control.exists().then_some(pl_control);
     if let Some(path) = &pl_control {
-        validate_input(path, "AI Engine PL control (`<name>.aie_control.xo`)")?;
+        validate_input(
+            path,
+            "AI Engine PL control (`<name>.aie_control.xo`)",
+            XilinxError::VitisLink,
+        )?;
     }
     Ok(Some(AieInputs {
         libadf,
@@ -291,14 +300,6 @@ fn ensure_under(path: &Utf8Path, root: &Utf8Path, item: &str, root_name: &str) -
 
 fn link_error<T>(detail: impl Into<String>) -> Result<T> {
     Err(XilinxError::VitisLink(detail.into()))
-}
-
-fn validate_input(path: &Utf8Path, label: &str) -> Result<()> {
-    if path.is_file() {
-        Ok(())
-    } else {
-        link_error(format!("{label} `{path}` is not a file"))
-    }
 }
 
 fn final_timing_tcl() -> &'static str {
@@ -415,7 +416,7 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--temp_dir")
         .arg(ToolValue::path(&resolved.package_temp_dir))
         .arg("--output")
-        .arg(ToolValue::path(&resolved.package_output))
+        .arg(ToolValue::path(&resolved.output_xclbin))
         .arg(ToolValue::path(&resolved.link_output))
         .arg(ToolValue::path(&aie.libadf));
     inv.cwd = Some(resolved.work_dir.clone());
@@ -423,8 +424,8 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .insert("HOME".into(), ToolValue::path(&resolved.work_dir));
     inv.uploads = vec![resolved.link_output.clone(), aie.libadf.clone()];
     inv.downloads = vec![resolved.artifacts_dir.clone()];
-    if !resolved.package_output.starts_with(&resolved.artifacts_dir) {
-        inv.downloads.push(resolved.package_output.clone());
+    if !resolved.output_xclbin.starts_with(&resolved.artifacts_dir) {
+        inv.downloads.push(resolved.output_xclbin.clone());
     }
     inv
 }
@@ -432,12 +433,12 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
 /// Run one hardware link and return its kernel-clock timing result.
 pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<LinkOutput> {
     let resolved = ResolvedJob::new(job)?;
-    validate_input(&resolved.xo, "XO")?;
+    validate_input(&resolved.xo, "XO", XilinxError::VitisLink)?;
     if let Some(xdc) = &resolved.floorplan_xdc {
-        validate_input(xdc, "floorplan XDC")?;
+        validate_input(xdc, "floorplan XDC", XilinxError::VitisLink)?;
     }
     if let Some(config) = &resolved.connectivity_config {
-        validate_input(config, "connectivity config")?;
+        validate_input(config, "connectivity config", XilinxError::VitisLink)?;
     }
 
     fs_err::create_dir_all(&resolved.work_dir)?;
@@ -451,11 +452,6 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
     remove_stale_output(&resolved.output_xclbin)?;
     if resolved.link_output != resolved.output_xclbin {
         remove_stale_output(&resolved.link_output)?;
-    }
-    if resolved.package_output != resolved.output_xclbin
-        && resolved.package_output != resolved.link_output
-    {
-        remove_stale_output(&resolved.package_output)?;
     }
     remove_stale_output(&resolved.timing_report)?;
     fs_err::write(&resolved.timing_hook, final_timing_tcl().as_bytes())?;
@@ -476,7 +472,11 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         if package_output.exit_code != 0 {
             return Err(super::tool_failure(&job.vpp, package_output));
         }
-        validate_input(&resolved.output_xclbin, "packaged xclbin")?;
+        validate_input(
+            &resolved.output_xclbin,
+            "packaged xclbin",
+            XilinxError::VitisLink,
+        )?;
         (
             merge_tool_text(link_output.stdout, package_output.stdout),
             merge_tool_text(link_output.stderr, package_output.stderr),

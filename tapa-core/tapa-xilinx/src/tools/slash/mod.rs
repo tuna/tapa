@@ -7,7 +7,7 @@ mod vbin;
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
 
-use super::LinkOutput;
+use super::{validate_input, LinkOutput};
 use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolOutput, ToolRunner};
 use crate::tools::vitis::timing::{
@@ -114,10 +114,14 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let output = crate::util::absolutize(&job.output);
     let work = crate::util::absolutize(&job.work_dir);
     let floorplan_xdc = job.floorplan_xdc.as_deref().map(crate::util::absolutize);
-    validate_input(&package, "K5 package")?;
-    validate_input(&input_config, "SLASH connectivity config")?;
+    validate_input(&package, "K5 package", XilinxError::SlashLink)?;
+    validate_input(
+        &input_config,
+        "SLASH connectivity config",
+        XilinxError::SlashLink,
+    )?;
     if let Some(xdc) = &floorplan_xdc {
-        validate_input(xdc, "floorplan XDC")?;
+        validate_input(xdc, "floorplan XDC", XilinxError::SlashLink)?;
     }
     if output.exists() {
         return Err(slash_error(format!(
@@ -240,7 +244,11 @@ fn finish_link(
     if tool_output.exit_code != 0 {
         return Err(super::tool_failure(&job.slashkit, tool_output));
     }
-    validate_input(&prepared.output, "SLASH vbin output")?;
+    validate_input(
+        &prepared.output,
+        "SLASH vbin output",
+        XilinxError::SlashLink,
+    )?;
 
     let system_map = vbin::read_system_map(&prepared.output)?;
     if system_map.platform != job.mode.system_map_platform() {
@@ -257,7 +265,11 @@ fn finish_link(
             let timing_report = prepared.timing_report.clone().ok_or_else(|| {
                 slash_error("hardware link preparation produced no routed timing report path")
             })?;
-            validate_input(&timing_report, "SLASH routed timing report")?;
+            validate_input(
+                &timing_report,
+                "SLASH routed timing report",
+                XilinxError::SlashLink,
+            )?;
             let report = fs_err::read_to_string(&timing_report)?;
             let timing = parse_named_clock_timing_summary(&report, KERNEL_CLOCK)?;
             let fixed_wns_ns = parse_named_clock_wns(&report, FIXED_CLOCK)?;
@@ -337,14 +349,6 @@ fn validate_job(job: &SlashLinkJob) -> Result<()> {
         return Err(slash_error("SLASH tool names must not be empty"));
     }
     Ok(())
-}
-
-fn validate_input(path: &Utf8Path, label: &str) -> Result<()> {
-    if path.is_file() {
-        Ok(())
-    } else {
-        Err(slash_error(format!("{label} `{path}` is not a file")))
-    }
 }
 
 fn routed_timing_report(output: &Utf8Path) -> Result<Utf8PathBuf> {

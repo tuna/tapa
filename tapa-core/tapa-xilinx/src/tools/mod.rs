@@ -65,3 +65,16 @@ fn merged_failure_output(stdout: String, stderr: String) -> String {
         (false, false) => format!("stdout:\n{stdout}\nstderr:\n{stderr}"),
     }
 }
+
+/// An input path must name an existing file, labeled with what it is.
+fn validate_input(
+    path: &Utf8Path,
+    label: &str,
+    variant: impl FnOnce(String) -> XilinxError,
+) -> Result<()> {
+    if path.is_file() {
+        Ok(())
+    } else {
+        Err(variant(format!("{label} `{path}` is not a file")))
+    }
+}
