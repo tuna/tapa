@@ -160,20 +160,11 @@ HLS tasks are discarded; retained HLS project directories remain available
 for diagnostics. Keep custom RTL outside these generated directories and
 supply it with `pack --custom-rtl`.
 
-An AIE-only build preserves synthesized PL artifacts and floorplan state only
-when the resolved part number, platform, and requested clock period all match
-the previous PL synthesis. Changing any of them clears `flow.synthed` and the
-floorplan, requiring a full synth before packing; running `analyze` also leaves
-the state unsynthesized, and AIE-only never promotes it. The graph's existing
-PL metrics remain stored in `tapa.json`.
-
-With valid synthesized PL state and existing root reports, AIE-only rewrites
-those reports from the preserved PL metrics and the new AIE mapping. This drops
-`aie.aiesim`, so rerun `tapa aiesim --cycle-accurate` for timing of the new
-graph. It does not create or refresh root reports without valid synthesized PL
-state, nor create them when none exist; the AIE compiler output and console
-remain available. Reports invalidated by `analyze` or changed PL inputs stay
-stale and are not treated as current.
+An AIE-only build (`--aie-only`) preserves synthesized PL artifacts and
+floorplan state only when the part number, platform, and clock period match
+the previous PL synthesis; see [Iterating on the AI Engine
+only](../howto/aie.md#iterating-on-the-ai-engine-only) for the full
+state-preservation and report-refresh rules.
 
 ### Example
 
