@@ -2,11 +2,7 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <cmath>
-
-#include <chrono>
 #include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <vector>
 
@@ -18,11 +14,8 @@
 
 using std::clog;
 using std::endl;
-using std::numeric_limits;
 using std::runtime_error;
 using std::vector;
-using std::chrono::duration;
-using std::chrono::high_resolution_clock;
 
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 

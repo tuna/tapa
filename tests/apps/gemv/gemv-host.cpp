@@ -10,8 +10,6 @@
 
 #include "gemv.h"
 
-using std::vector;
-
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 
 int main(int argc, char* argv[]) {

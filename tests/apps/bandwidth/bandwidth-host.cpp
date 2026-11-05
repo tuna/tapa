@@ -2,7 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <chrono>
 #include <iostream>
 #include <vector>
 
