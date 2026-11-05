@@ -20,6 +20,7 @@ mod s_axi;
 
 use std::collections::BTreeMap;
 
+use tapa_ir::floorplan::Coor;
 use tapa_ir::SynthTarget;
 
 use self::axi_pipeline::DirectAxiPipelinePlan;
@@ -339,4 +340,14 @@ pub fn s_axi_control(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
         );
     }
     Ok(())
+}
+
+/// The (`dl_x`, `dl_y`) slot of an atomic-region name, when it parses.
+fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
+    Coor::from_atomic_region_name(region).map(|coor| (coor.dl_x, coor.dl_y))
+}
+
+/// A floorplan-consistency failure, shared by the placement-reading passes.
+fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
+    CodegenError::InvalidFloorplan(detail.into())
 }

@@ -19,6 +19,7 @@ use tapa_rtl::builder::{
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wide_wire, wire};
 
+use super::{invalid_floorplan, parse_atomic_region};
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
@@ -1065,14 +1066,6 @@ fn logical_reduction(expressions: impl Iterator<Item = Expr>, identity: &str) ->
 
 fn control_wire_prefix(instance: &str) -> String {
     format!("__tapa_control_{}", sanitize_identifier_name(instance))
-}
-
-fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
-    Coor::from_atomic_region_name(region).map(|coor| (coor.dl_x, coor.dl_y))
-}
-
-fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
-    CodegenError::InvalidFloorplan(detail.into())
 }
 
 fn scope_signal(scope: Option<&str>, signal: &str) -> String {

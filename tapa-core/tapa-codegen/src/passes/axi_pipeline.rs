@@ -11,6 +11,7 @@ use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortAr
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{wide_wire, wire};
 
+use super::{invalid_floorplan, parse_atomic_region};
 use crate::error::CodegenError;
 use crate::rtl_state::DirectMmapInterface;
 use crate::state::views::ModuleTable;
@@ -454,10 +455,6 @@ const fn channel_rtl_name(channel: AxiChannel) -> &'static str {
     }
 }
 
-fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
-    Coor::from_atomic_region_name(region).map(|coor| (coor.dl_x, coor.dl_y))
-}
-
 fn display_endpoint(endpoint: &AxiEndpoint) -> String {
     format!(
         "`{}.{}` (top port `{}`)",
@@ -483,10 +480,6 @@ fn invalid_route_direction(
         display_slot(expected),
         display_slot(actual),
     ))
-}
-
-fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
-    CodegenError::InvalidMmapConnection(format!("invalid floorplan: {}", detail.into()))
 }
 
 #[cfg(test)]
