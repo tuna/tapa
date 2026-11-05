@@ -108,14 +108,8 @@ pub(super) fn build_child_instance_with_reset(
     // Handshake signals from InstanceSignals
     port_args.extend(sig.instance_portargs());
 
-    let resolve_child_stream_port = |name: &str, suffix: &str| {
-        child_rtl
-            .and_then(|module| module.get_port_of(name, suffix))
-            .map_or_else(
-                || stream_port_name(&sanitize_array_name(name), suffix),
-                |p| p.name.clone(),
-            )
-    };
+    let resolve_child_stream_port =
+        |name: &str, suffix: &str| resolve_stream_port(child_rtl, name, suffix);
     let resolve_child_stream_peek_port =
         |name: &str, suffix: &str| resolve_peek_port_name(child_rtl?, name, suffix);
     // A stream argument binds to either a FIFO declared in the parent task
@@ -133,9 +127,7 @@ pub(super) fn build_child_instance_with_reset(
         if parent_fifos.contains(name) {
             return format!("{base}{suffix}");
         }
-        parent_rtl
-            .and_then(|module| module.get_port_of(name, suffix))
-            .map_or_else(|| stream_port_name(&base, suffix), |p| p.name.clone())
+        resolve_stream_port(parent_rtl, name, suffix)
     };
     let peek_signal = |name: &str, suffix: &str| {
         let base = sanitize_array_name(name);
@@ -206,13 +198,18 @@ pub(super) fn build_child_instance_with_reset(
                 let binding = mmap_bindings.get(parent);
                 let m_axi_wire_prefix = binding.wire_prefix(parent);
                 if matches!(arg.cat, ArgCategory::AsyncMmap) {
-                    if child_has_direct_mmap_ports(child_rtl, child_port) {
-                        let child_rtl_filter =
-                            if child_has_direct_mmap_offset(child_rtl, child_port) {
-                                None
-                            } else {
-                                child_rtl
-                            };
+                    if child_rtl.is_some_and(|module| {
+                        async_mmap::has_direct_m_axi_ports(module, child_port)
+                    }) {
+                        let child_rtl_filter = if child_rtl.is_some_and(|module| {
+                            module
+                                .find_port(&direct_mmap_offset_port(child_rtl, child_port))
+                                .is_some()
+                        }) {
+                            None
+                        } else {
+                            child_rtl
+                        };
                         add_direct_mmap_portargs(
                             &mut port_args,
                             child_port,
@@ -257,12 +254,15 @@ pub(super) fn build_child_instance_with_reset(
     ModuleInstance::new(child_task_name, instance_name).with_ports(port_args)
 }
 
-fn child_has_direct_mmap_offset(child_rtl: Option<&VerilogModule>, child_port: &str) -> bool {
-    child_rtl.is_some_and(|module| {
-        module
-            .find_port(&direct_mmap_offset_port(child_rtl, child_port))
-            .is_some()
-    })
+/// Resolve a stream port against the parsed module, falling back to the
+/// scalar-stream spelling when the module is unavailable or has no such port.
+fn resolve_stream_port(module: Option<&VerilogModule>, name: &str, suffix: &str) -> String {
+    module
+        .and_then(|module| module.get_port_of(name, suffix))
+        .map_or_else(
+            || stream_port_name(&sanitize_array_name(name), suffix),
+            |p| p.name.clone(),
+        )
 }
 
 /// Direct-offset scalar port name on the child HLS module. Vitis HLS
@@ -282,10 +282,6 @@ fn direct_mmap_offset_port(child_rtl: Option<&VerilogModule>, child_port: &str) 
         }
     }
     conventional
-}
-
-fn child_has_direct_mmap_ports(child_rtl: Option<&VerilogModule>, child_port: &str) -> bool {
-    child_rtl.is_some_and(|module| async_mmap::has_direct_m_axi_ports(module, child_port))
 }
 
 fn add_direct_mmap_portargs(
@@ -322,10 +318,7 @@ fn direct_mmap_connection_expr(
     let Some((target_width, child_width)) = id_widths else {
         return Expr::ident(wire_name);
     };
-    if !is_id || target_width <= 1 {
-        return Expr::ident(wire_name);
-    }
-    if child_width >= target_width {
+    if !is_id || target_width <= 1 || child_width >= target_width {
         return Expr::ident(wire_name);
     }
     Expr::range(
