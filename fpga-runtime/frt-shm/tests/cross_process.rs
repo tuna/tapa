@@ -1,5 +1,4 @@
 use frt_shm::MmapSegment;
-use std::path::PathBuf;
 
 const CHILD_TEST_NAME: &str = "child_shm_reader";
 const ENV_PATH: &str = "FRT_SHM_CHILD_PATH";
@@ -49,5 +48,5 @@ fn child_shm_reader() {
 
     let seg = MmapSegment::open(&path.to_string_lossy()).expect("open segment");
     let bytes = &seg.as_slice()[..5];
-    std::fs::write(PathBuf::from(out_path), bytes).expect("write child output");
+    std::fs::write(out_path, bytes).expect("write child output");
 }
