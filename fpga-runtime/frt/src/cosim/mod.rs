@@ -366,7 +366,6 @@ fn terminate_running_simulation(run: &mut RunningSimulation) -> Result<()> {
     Ok(())
 }
 
-#[cfg(unix)]
 fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
     let pgid = child.id() as i32;
     // SAFETY: killpg sends a signal to a process group; pgid is a valid
@@ -377,11 +376,6 @@ fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
             return Err(err.into());
         }
     }
-    Ok(())
-}
-
-#[cfg(not(unix))]
-fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
     Ok(())
 }
 
@@ -448,7 +442,6 @@ fn dpi_lib_path(variant: &str) -> Result<PathBuf> {
     dpi_lib_path_from_exe(&self_path, variant)
 }
 
-#[cfg(unix)]
 fn self_lib_path() -> Option<PathBuf> {
     // Use dladdr to find the path of the shared library containing this function.
     #[allow(
@@ -468,11 +461,6 @@ fn self_lib_path() -> Option<PathBuf> {
     } else {
         None
     }
-}
-
-#[cfg(not(unix))]
-fn self_lib_path() -> Option<PathBuf> {
-    None
 }
 
 fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
