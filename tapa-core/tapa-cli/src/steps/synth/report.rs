@@ -222,12 +222,12 @@ pub fn fold_aiesim_timing(work_dir: &Path, timing: &AiesimSection) -> Result<Vec
     let mut updated = Vec::new();
     let json_path = work_dir.join("report.json");
     if json_path.exists() {
-        fold_json_report(&json_path, timing)?;
+        fold_report(&json_path, timing, ReportFormat::Json)?;
         updated.push("report.json".to_string());
     }
     let yaml_path = work_dir.join("report.yaml");
     if yaml_path.exists() {
-        fold_yaml_report(&yaml_path, timing)?;
+        fold_report(&yaml_path, timing, ReportFormat::Yaml)?;
         updated.push("report.yaml".to_string());
     }
     Ok(updated)
@@ -240,22 +240,52 @@ fn not_foldable(path: &Path, reason: &str) -> CliError {
     ))
 }
 
-fn fold_json_report(path: &Path, timing: &AiesimSection) -> Result<()> {
+/// The on-disk syntax of a root report.
+#[derive(Clone, Copy)]
+enum ReportFormat {
+    Json,
+    Yaml,
+}
+
+/// Fold `timing` under `aie.aiesim` in the report at `path`, preserving
+/// every other field, in one read → parse → insert → serialize → write
+/// flow for both syntaxes.
+///
+/// YAML folds through the order-preserving `serde_json::Value` too, so the
+/// insert logic exists once; a YAML mapping with non-string keys fails the
+/// conversion and is reported as a parse failure of the file.
+fn fold_report(path: &Path, timing: &AiesimSection, format: ReportFormat) -> Result<()> {
     let text = fs::read_to_string(path)
         .map_err(|e| CliError::Report(format!("cannot read `{}`: {e}", path.display())))?;
-    let mut root: Value = serde_json::from_str(&text)
+    let mut root: Value = parse_report(&text, format)
         .map_err(|e| CliError::Report(format!("cannot parse `{}`: {e}", path.display())))?;
     let section = serde_json::to_value(timing)
         .map_err(|e| CliError::Report(format!("cannot serialize the aiesim section: {e}")))?;
-    set_aiesim_json(&mut root, path, section)?;
-    let rewritten = serde_json::to_string_pretty(&root)
+    set_aiesim(&mut root, path, section)?;
+    let rewritten = serialize_report(&root, format)
         .map_err(|e| CliError::Report(format!("cannot serialize `{}`: {e}", path.display())))?;
     fs::write(path, rewritten)?;
     Ok(())
 }
 
+fn parse_report(text: &str, format: ReportFormat) -> std::result::Result<Value, String> {
+    match format {
+        ReportFormat::Json => serde_json::from_str(text).map_err(|e| e.to_string()),
+        ReportFormat::Yaml => serde_yaml::from_str::<serde_yaml::Value>(text)
+            .map_err(|e| e.to_string())
+            .and_then(|yaml| serde_json::to_value(&yaml).map_err(|e| e.to_string())),
+    }
+}
+
+fn serialize_report(root: &Value, format: ReportFormat) -> std::result::Result<String, String> {
+    match format {
+        ReportFormat::Json => serde_json::to_string_pretty(root).map_err(|e| e.to_string()),
+        ReportFormat::Yaml => serde_yaml::to_string(root).map_err(|e| e.to_string()),
+    }
+}
+
 /// Place `section` at `aie.aiesim`, creating `aie` when the report has none.
-fn set_aiesim_json(root: &mut Value, path: &Path, section: Value) -> Result<()> {
+fn set_aiesim(root: &mut Value, path: &Path, section: Value) -> Result<()> {
     let Value::Object(root_fields) = root else {
         return Err(not_foldable(path, "the document root is not an object"));
     };
@@ -266,39 +296,6 @@ fn set_aiesim_json(root: &mut Value, path: &Path, section: Value) -> Result<()> 
         return Err(not_foldable(path, "`aie` is not an object"));
     };
     aie_fields.insert("aiesim".to_string(), section);
-    Ok(())
-}
-
-fn fold_yaml_report(path: &Path, timing: &AiesimSection) -> Result<()> {
-    let text = fs::read_to_string(path)
-        .map_err(|e| CliError::Report(format!("cannot read `{}`: {e}", path.display())))?;
-    let mut root: serde_yaml::Value = serde_yaml::from_str(&text)
-        .map_err(|e| CliError::Report(format!("cannot parse `{}`: {e}", path.display())))?;
-    let section = serde_yaml::to_value(timing)
-        .map_err(|e| CliError::Report(format!("cannot serialize the aiesim section: {e}")))?;
-    set_aiesim_yaml(&mut root, path, section)?;
-    let rewritten = serde_yaml::to_string(&root)
-        .map_err(|e| CliError::Report(format!("cannot serialize `{}`: {e}", path.display())))?;
-    fs::write(path, rewritten)?;
-    Ok(())
-}
-
-/// Place `section` at `aie.aiesim`, creating `aie` when the report has none.
-fn set_aiesim_yaml(
-    root: &mut serde_yaml::Value,
-    path: &Path,
-    section: serde_yaml::Value,
-) -> Result<()> {
-    let serde_yaml::Value::Mapping(root_fields) = root else {
-        return Err(not_foldable(path, "the document root is not a mapping"));
-    };
-    let aie = root_fields
-        .entry(serde_yaml::Value::String("aie".to_string()))
-        .or_insert_with(|| serde_yaml::Value::Mapping(serde_yaml::Mapping::new()));
-    let serde_yaml::Value::Mapping(aie_fields) = aie else {
-        return Err(not_foldable(path, "`aie` is not a mapping"));
-    };
-    aie_fields.insert(serde_yaml::Value::String("aiesim".to_string()), section);
     Ok(())
 }
 
@@ -1170,6 +1167,6 @@ mod tests {
         assert!(message.contains("cannot parse"), "{message}");
         assert!(message.contains("report.yaml"), "{message}");
         let message = fold_fails("report.yaml", "aie: 3");
-        assert!(message.contains("`aie` is not a mapping"), "{message}");
+        assert!(message.contains("`aie` is not an object"), "{message}");
     }
 }
