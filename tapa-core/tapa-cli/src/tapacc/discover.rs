@@ -63,7 +63,7 @@ pub fn find_resource(name: &str) -> Result<PathBuf> {
 }
 
 /// Same as [`find_resource`] but with an explicit anchor (used in tests).
-pub fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
+fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
     let suffixes = POTENTIAL_PATHS
         .iter()
         .find(|(k, _)| *k == name)
