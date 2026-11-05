@@ -58,7 +58,7 @@ fn run() -> Result<(), CliError> {
     } else {
         ctx.work_dir.clone()
     };
-    ctx.switch_work_dir(work_dir.clone())
+    ctx.switch_work_dir(&work_dir)
         .map_err(|e| CliError::WorkDir(work_dir.clone(), e.to_string()))?;
 
     if let Some(temp_dir) = cli.globals.temp_dir.as_deref() {

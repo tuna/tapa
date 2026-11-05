@@ -1,6 +1,6 @@
 //! Per-invocation execution context shared by the chained step pipeline.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tapa_xilinx::RemoteConfig;
 
@@ -36,11 +36,9 @@ impl CliContext {
         }
     }
 
-    pub fn switch_work_dir(&mut self, path: PathBuf) -> std::io::Result<()> {
-        std::fs::create_dir_all(&path)?;
-        let abs = absolutize_for_storage(&path);
-        drop(path);
-        self.work_dir = abs;
+    pub fn switch_work_dir(&mut self, path: &Path) -> std::io::Result<()> {
+        std::fs::create_dir_all(path)?;
+        self.work_dir = absolutize_for_storage(path);
         Ok(())
     }
 }
