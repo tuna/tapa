@@ -118,7 +118,7 @@ pub(super) trait ControlChannel {
     }
 
     /// Poll the DONE bit until the kernel finishes; `timeout` builds the
-    /// error reported when FINISH_TIMEOUT expires.
+    /// error reported when `FINISH_TIMEOUT` expires.
     fn wait_finished(&mut self, timeout: impl FnOnce(u64) -> FrtError) -> Result<()> {
         if !matches!(*self.execution_state(), ExecutionState::Running(_)) {
             return Ok(());
