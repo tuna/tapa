@@ -6,11 +6,12 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_pkg//pkg:mappings.bzl", "pkg_attributes", "pkg_files", "strip_prefix")
+load("//tapacc:defs.bzl", "CLANG_TOOLING", "TAPACC_COPTS")
 
 cc_binary(
     name = "tapacc",
     srcs = ["tapacc.cpp"],
-    copts = ["-fno-rtti"],
+    copts = TAPACC_COPTS,
     visibility = ["//visibility:public"],
     deps = [
         "//tapacc/codegen:macro_splice",
@@ -18,7 +19,7 @@ cc_binary(
         "//tapacc/frontend:program_builder",
         "//tapacc/frontend:vendor_scan",
         "@nlohmann_json//:json",
-        "@tapa-llvm-project//clang:tooling",
+        CLANG_TOOLING,
     ],
 )
 
