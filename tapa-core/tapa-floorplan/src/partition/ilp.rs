@@ -940,17 +940,21 @@ fn component_max(a: Area, b: Area) -> Area {
     Area::from_amounts(|resource| resource.amount(&a).max(resource.amount(&b)))
 }
 
-fn area_fits(required: Area, available: Area) -> bool {
+fn area_fits_with(required: Area, available: Area, planned: impl Fn(Resource) -> bool) -> bool {
     Resource::ALL
         .into_iter()
+        .filter(|resource| planned(*resource))
         .all(|resource| resource.amount(&required) <= resource.amount(&available))
 }
 
+fn area_fits(required: Area, available: Area) -> bool {
+    area_fits_with(required, available, |_| true)
+}
+
 fn area_fits_on_device(device: &Device, required: Area, available: Area) -> bool {
-    Resource::ALL
-        .into_iter()
-        .filter(|resource| device.plans_resource(*resource))
-        .all(|resource| resource.amount(&required) <= resource.amount(&available))
+    area_fits_with(required, available, |resource| {
+        device.plans_resource(resource)
+    })
 }
 
 /// An area as a short `LUT=… FF=…` line for an error message, listing only the
