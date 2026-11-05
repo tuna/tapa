@@ -51,8 +51,9 @@ pub fn sanitize_identifier_name(name: &str) -> String {
 }
 
 /// Argument / port category.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, IntoStaticStr, EnumString, Serialize)]
 #[strum(serialize_all = "snake_case")]
+#[serde(rename_all = "snake_case")]
 pub enum ArgCategory {
     Istream,
     Ostream,
@@ -63,12 +64,6 @@ pub enum ArgCategory {
     Immap,
     Ommap,
     AsyncMmap,
-}
-
-impl Serialize for ArgCategory {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.as_str())
-    }
 }
 
 impl<'de> Deserialize<'de> for ArgCategory {
