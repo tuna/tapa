@@ -51,10 +51,6 @@ impl RemoteToolRunner {
         Self { session }
     }
 
-    pub fn session(&self) -> &SshSession {
-        &self.session
-    }
-
     fn classify_remote_failure(&self, stderr: &str) -> XilinxError {
         match classify_ssh_error(stderr) {
             SshErrorKind::TransientMux => {
