@@ -142,7 +142,15 @@ fn read_zip_entries(path: &Path) -> Result<BTreeMap<String, Vec<u8>>> {
         if file.is_dir() {
             continue;
         }
-        let name = file.name().unwrap().into_owned();
+        let name = file
+            .name()
+            .map_err(|error| {
+                format!(
+                    "failed to read name of {} entry {index}: {error}",
+                    path.display()
+                )
+            })?
+            .into_owned();
         let mut contents = Vec::new();
         file.read_to_end(&mut contents)
             .map_err(|error| format!("failed to read {name} from {}: {error}", path.display()))?;
