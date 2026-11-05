@@ -1,7 +1,7 @@
 //! RTL simulation of one SLASH VBIN through its `vpp_sim` process.
 
-use super::ctrl::{ControlChannel, ExecutionState, CTRL_OFFSET, CTRL_START};
-use super::vbin::{ArgKind, MemoryTarget, Platform, Vbin};
+use super::ctrl::{ControlChannel, ExecutionState};
+use super::vbin::{Kernel, MemoryTarget, Platform, Vbin};
 use super::zmq::{FrameTransport, ZmqTransport};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
@@ -20,8 +20,6 @@ const HBM_BASE: u64 = 0x40_0000_0000;
 const DDR_BASE: u64 = 0x600_0000_0000;
 const MEMORY_WINDOW_BYTES: u64 = 128 * 1024 * 1024;
 const BUFFER_ALIGNMENT: u64 = 4096;
-const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
-const FINISH_POLL: Duration = Duration::from_millis(1);
 const PROCESS_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const PROCESS_EXIT_POLL: Duration = Duration::from_millis(10);
 
@@ -389,6 +387,8 @@ impl SimDevice {
 }
 
 impl ControlChannel for SimDevice {
+    const LABEL: &'static str = "SLASH simulation kernel";
+
     fn ctrl_write(&mut self, offset: u32, value: u32) -> Result<()> {
         self.write_register(offset, value)
     }
@@ -404,6 +404,22 @@ impl ControlChannel for SimDevice {
     fn compute_ns(&mut self) -> &mut u64 {
         &mut self.compute_ns
     }
+
+    fn kernel(&self) -> &Kernel {
+        &self.vbin.kernel
+    }
+
+    fn scalars(&self) -> &BTreeMap<u32, Vec<u8>> {
+        &self.scalars
+    }
+
+    fn scalars_mut(&mut self) -> &mut BTreeMap<u32, Vec<u8>> {
+        &mut self.scalars
+    }
+
+    fn buffer_address(&self, index: u32) -> Option<u64> {
+        self.buffers.get(&index).map(|binding| binding.address)
+    }
 }
 
 impl Drop for SimDevice {
@@ -414,11 +430,7 @@ impl Drop for SimDevice {
 
 impl Device for SimDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.execution_state
-            .ensure_not_running("change an argument", "SLASH simulation kernel")?;
-        self.vbin.kernel.validate_scalar_arg(index, value)?;
-        self.scalars.insert(index, value.to_vec());
-        Ok(())
+        self.set_scalar(index, value)
     }
 
     fn set_buffer_arg(
@@ -502,54 +514,15 @@ impl Device for SimDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        self.execution_state
-            .ensure_not_running("start the kernel again", "SLASH simulation kernel")?;
-        for arg in self.vbin.kernel.args.clone() {
-            if !arg.writable {
-                continue;
-            }
-            let value = match arg.kind {
-                ArgKind::Scalar => self.scalars.get(&arg.index).cloned().ok_or_else(|| {
-                    FrtError::Vrt(format!(
-                        "unbound scalar argument {} (`{}`)",
-                        arg.index, arg.name
-                    ))
-                })?,
-                ArgKind::Buffer => self
-                    .buffers
-                    .get(&arg.index)
-                    .map(|binding| binding.address.to_le_bytes().to_vec())
-                    .ok_or_else(|| {
-                        FrtError::Vrt(format!(
-                            "unbound buffer argument {} (`{}`)",
-                            arg.index, arg.name
-                        ))
-                    })?,
-            };
-            self.write_value(&arg, &value)?;
-        }
-        let started = Instant::now();
-        self.write_register(CTRL_OFFSET, CTRL_START)?;
-        self.compute_ns = 0;
-        self.execution_state = ExecutionState::Running(started);
-        Ok(())
+        self.start()
     }
 
     fn finish(&mut self) -> Result<()> {
-        if !matches!(self.execution_state, ExecutionState::Running(_)) {
-            return Ok(());
-        }
-        let wait_started = Instant::now();
-        while !self.is_finished()? {
-            if wait_started.elapsed() >= FINISH_TIMEOUT {
-                return Err(FrtError::Vrt(format!(
-                    "SLASH simulation kernel did not finish within {}s",
-                    FINISH_TIMEOUT.as_secs()
-                )));
-            }
-            std::thread::sleep(FINISH_POLL);
-        }
-        Ok(())
+        self.wait_finished(|secs| {
+            FrtError::Vrt(format!(
+                "SLASH simulation kernel did not finish within {secs}s"
+            ))
+        })
     }
 
     fn kill(&mut self) -> Result<()> {

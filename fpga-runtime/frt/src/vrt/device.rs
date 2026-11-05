@@ -5,7 +5,7 @@ use super::api::{
     ALLOC_DIR_HOST_TO_DEVICE, ALLOC_TYPE_DDR, ALLOC_TYPE_HBM, ALLOC_TYPE_HBM_VNOC,
     CLOCK_REGION_USER,
 };
-use super::vbin::{ArgKind, Kernel, MemoryTarget, Platform, Vbin};
+use super::vbin::{Kernel, MemoryTarget, Platform, Vbin};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_shm::env_non_empty;
@@ -15,13 +15,11 @@ use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use super::ctrl::{ControlChannel, ExecutionState, CTRL_OFFSET, CTRL_START};
+use super::ctrl::{ControlChannel, ExecutionState, FINISH_TIMEOUT};
 use crate::elapsed_ns;
 
 const VRTD_SOCKET: &str = "/run/vrtd.sock";
 const PROGRAM_SETTLE: Duration = Duration::from_secs(1);
-const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
-const FINISH_POLL: Duration = Duration::from_millis(1);
 
 // Linux dma-buf uapi: _IOW('b', 0, struct dma_buf_sync { __u64 flags; }).
 // x86_64 and aarch64 both use the generic _IOC layout; this is the same ioctl
@@ -385,6 +383,8 @@ impl VrtDevice {
 }
 
 impl ControlChannel for VrtDevice {
+    const LABEL: &'static str = "VRT kernel";
+
     fn ctrl_write(&mut self, offset: u32, value: u32) -> Result<()> {
         self.write_register(offset, value)
     }
@@ -399,6 +399,22 @@ impl ControlChannel for VrtDevice {
 
     fn compute_ns(&mut self) -> &mut u64 {
         &mut self.compute_ns
+    }
+
+    fn kernel(&self) -> &Kernel {
+        &self.kernel
+    }
+
+    fn scalars(&self) -> &BTreeMap<u32, Vec<u8>> {
+        &self.scalars
+    }
+
+    fn scalars_mut(&mut self) -> &mut BTreeMap<u32, Vec<u8>> {
+        &mut self.scalars
+    }
+
+    fn buffer_address(&self, index: u32) -> Option<u64> {
+        self.buffers.get(&index).map(|binding| binding.phys_addr)
     }
 }
 
@@ -417,11 +433,7 @@ impl Drop for VrtDevice {
 
 impl Device for VrtDevice {
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()> {
-        self.execution_state
-            .ensure_not_running("change an argument", "VRT kernel")?;
-        self.kernel.validate_scalar_arg(index, value)?;
-        self.scalars.insert(index, value.to_vec());
-        Ok(())
+        self.set_scalar(index, value)
     }
 
     fn set_buffer_arg(
@@ -537,60 +549,23 @@ impl Device for VrtDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        self.execution_state
-            .ensure_not_running("start the kernel again", "VRT kernel")?;
-        for arg in self.kernel.args.clone() {
-            if !arg.writable {
-                continue;
-            }
-            let value = match arg.kind {
-                ArgKind::Scalar => self.scalars.get(&arg.index).cloned().ok_or_else(|| {
-                    FrtError::Vrt(format!(
-                        "unbound scalar argument {} (`{}`)",
-                        arg.index, arg.name
-                    ))
-                })?,
-                ArgKind::Buffer => self
-                    .buffers
-                    .get(&arg.index)
-                    .map(|binding| binding.phys_addr.to_le_bytes().to_vec())
-                    .ok_or_else(|| {
-                        FrtError::Vrt(format!(
-                            "unbound buffer argument {} (`{}`)",
-                            arg.index, arg.name
-                        ))
-                    })?,
-            };
-            self.write_value(&arg, &value)?;
-        }
-        let started = Instant::now();
-        self.write_register(CTRL_OFFSET, CTRL_START)?;
-        self.compute_ns = 0;
-        self.execution_state = ExecutionState::Running(started);
-        Ok(())
+        self.start()
     }
 
     fn finish(&mut self) -> Result<()> {
-        if !matches!(self.execution_state, ExecutionState::Running(_)) {
-            return Ok(());
+        if matches!(self.execution_state, ExecutionState::Running(_)) {
+            tracing::debug!(
+                timeout_seconds = FINISH_TIMEOUT.as_secs(),
+                "waiting for VRT kernel"
+            );
         }
-        tracing::debug!(
-            timeout_seconds = FINISH_TIMEOUT.as_secs(),
-            "waiting for VRT kernel"
-        );
-        let wait_started = Instant::now();
-        while !self.is_finished()? {
-            if wait_started.elapsed() >= FINISH_TIMEOUT {
-                let error = FrtError::Vrt(format!(
-                    "VRT kernel did not finish within {}s and cannot be cancelled",
-                    FINISH_TIMEOUT.as_secs()
-                ));
-                tracing::warn!(%error, "bounded VRT wait expired");
-                return Err(error);
-            }
-            std::thread::sleep(FINISH_POLL);
-        }
-        Ok(())
+        self.wait_finished(|secs| {
+            let error = FrtError::Vrt(format!(
+                "VRT kernel did not finish within {secs}s and cannot be cancelled"
+            ));
+            tracing::warn!(%error, "bounded VRT wait expired");
+            error
+        })
     }
 
     fn kill(&mut self) -> Result<()> {
