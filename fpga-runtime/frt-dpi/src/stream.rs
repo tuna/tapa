@@ -1,4 +1,4 @@
-use crate::context::{DpiContext, DpiStreamInner};
+use crate::context::{DpiContext, DpiStream, DpiStreamInner};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 impl DpiStreamInner {
@@ -90,12 +90,35 @@ fn maybe_report_progress(port: &str, q: &frt_shm::SharedMemoryQueue) {
     }
 }
 
-pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool {
+/// The stream for `port` with its state locked, or None after reporting.
+fn lock_stream<'c>(
+    ctx: &'c DpiContext,
+    port: &str,
+    op: &str,
+) -> Option<(&'c DpiStream, std::sync::MutexGuard<'c, DpiStreamInner>)> {
     let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_try_read: unknown port '{port}'");
-        return false;
+        eprintln!("frt-dpi: {op}: unknown port '{port}'");
+        return None;
     };
-    let Ok(mut s) = stream.inner.lock() else {
+    let Ok(s) = stream.inner.lock() else {
+        return None;
+    };
+    Some((stream, s))
+}
+
+/// The can-write verdict after accounting for a full queue.
+fn write_ready(s: &DpiStreamInner, port: &str, known_full: bool) -> bool {
+    let can = !known_full && !s.queue.is_full();
+    if !can {
+        WRITE_FULL.fetch_add(1, Ordering::Relaxed);
+        maybe_report_progress(port, &s.queue);
+        maybe_yield();
+    }
+    can
+}
+
+pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool {
+    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_try_read") else {
         return false;
     };
     let dpi = stream.dpi_width_bytes;
@@ -121,11 +144,7 @@ pub fn stream_try_read_impl(ctx: &DpiContext, port: &str, out: *mut u8) -> bool 
 }
 
 pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out: *mut u8) -> bool {
-    let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_istream_step: unknown port '{port}'");
-        return false;
-    };
-    let Ok(mut s) = stream.inner.lock() else {
+    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_istream_step") else {
         return false;
     };
 
@@ -153,11 +172,7 @@ pub fn stream_istream_step_impl(ctx: &DpiContext, port: &str, consume: bool, out
 }
 
 pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> bool {
-    let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_try_write: unknown port '{port}'");
-        return false;
-    };
-    let Ok(mut s) = stream.inner.lock() else {
+    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_try_write") else {
         return false;
     };
     let ok = s.push_from_dpi(data, stream.dpi_width_bytes).is_ok();
@@ -179,11 +194,7 @@ pub fn stream_ostream_step_impl(
     write: bool,
     data: *const u8,
 ) -> bool {
-    let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_ostream_step: unknown port '{port}'");
-        return false;
-    };
-    let Ok(mut s) = stream.inner.lock() else {
+    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_ostream_step") else {
         return false;
     };
 
@@ -206,13 +217,8 @@ pub fn stream_ostream_step_impl(
         }
     }
 
-    let can = !known_full && !s.queue.is_full();
+    let can = write_ready(&s, port, known_full);
     s.last_ostream_ready = can;
-    if !can {
-        WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &s.queue);
-        maybe_yield();
-    }
     can
 }
 
@@ -222,11 +228,7 @@ pub fn stream_hls_ostream_step_impl(
     write: bool,
     data: *const u8,
 ) -> bool {
-    let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_hls_ostream_step: unknown port '{port}'");
-        return false;
-    };
-    let Ok(mut s) = stream.inner.lock() else {
+    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_hls_ostream_step") else {
         return false;
     };
 
@@ -254,30 +256,14 @@ pub fn stream_hls_ostream_step_impl(
         }
     }
 
-    let can = !known_full && !s.queue.is_full();
-    if !can {
-        WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &s.queue);
-        maybe_yield();
-    }
-    can
+    write_ready(&s, port, known_full)
 }
 
 pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
-    let Some(stream) = ctx.streams.get(port) else {
-        eprintln!("frt-dpi: stream_can_write: unknown port '{port}'");
+    let Some((_, s)) = lock_stream(ctx, port, "stream_can_write") else {
         return false;
     };
-    let Ok(s) = stream.inner.lock() else {
-        return false;
-    };
-    let can = !s.queue.is_full();
-    if !can {
-        WRITE_FULL.fetch_add(1, Ordering::Relaxed);
-        maybe_report_progress(port, &s.queue);
-        maybe_yield();
-    }
-    can
+    write_ready(&s, port, false)
 }
 
 #[cfg(test)]
