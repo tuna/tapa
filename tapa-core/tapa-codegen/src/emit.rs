@@ -17,16 +17,22 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
     // built by the `ignore-task-shells` pass. Lower HLS modules were already
     // copied from their original Verilog sources by the CLI; re-emitting them
     // from the parsed model drops legal port-reg redeclarations used by HLS.
-    for (name, mm) in ctx.modules.iter() {
-        let Some(task) = design.tasks.get(name.as_str()) else {
+    for (name, task) in &design.tasks {
+        let rtl = if task.synth == SynthTarget::Ignore {
+            // The pass registers every `Ignore` task; a missing one is a bug.
+            let rtl = ctx.modules[name].emit();
+            ctx.outputs
+                .insert_template(format!("{name}.v"), rtl.clone());
+            rtl
+        } else if task.level == TaskLevel::Upper {
+            let Some(mm) = ctx.modules.get(name) else {
+                continue;
+            };
+            mm.emit()
+        } else {
             continue;
         };
-        if task.synth == SynthTarget::Ignore {
-            ctx.outputs.insert_template(format!("{name}.v"), mm.emit());
-        }
-        if task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore {
-            ctx.outputs.insert_generated(format!("{name}.v"), mm.emit());
-        }
+        ctx.outputs.insert_generated(format!("{name}.v"), rtl);
     }
     for (name, mm) in ctx.fsms.iter() {
         ctx.outputs

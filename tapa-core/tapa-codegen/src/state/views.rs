@@ -90,11 +90,6 @@ impl<'a> ModuleTable<'a> {
     pub fn insert(&mut self, task_name: String, module: MutableModule) {
         self.map.insert(task_name, module);
     }
-
-    /// Iterate all attached modules in key order.
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &MutableModule)> {
-        self.map.iter()
-    }
 }
 
 impl<Q> std::ops::Index<&'_ Q> for ModuleTable<'_>
