@@ -58,12 +58,11 @@ divider IP from the packaged Tcl configuration, including the declared
 latency and clock enable. Single-precision unfused multiply-add rounds the
 product before addition; it does not use fused multiply-add semantics.
 
-For xsim, pass `-xsim_part_num` with the part used for HLS when running an
-XO. XO loading does not recover the target part; the fallback is
-`xc7a100tcsg324-1`. A different device family can select incorrect models
-for device-specific primitives, including V80 floating-point operators.
-HLS ZIP archives carry their part number in `tapa.json` and use it unless
-overridden.
+Cosim reads the target part from the archive's `tapa.json` for both XO and
+HLS ZIP inputs, so `-xsim_part_num` is usually unnecessary. Pass it only to
+override the recorded part; a different device family can select incorrect
+models for device-specific primitives, including V80 floating-point
+operators.
 
 ```bash
 ./vadd --bitstream VecAdd.xo \
