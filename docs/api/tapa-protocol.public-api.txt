@@ -185,5 +185,5 @@ pub fn tapa_protocol::m_axi_ports() -> impl core::iter::traits::iterator::Iterat
 pub fn tapa_protocol::m_axi_suffixes() -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
 pub const fn tapa_protocol::stream_data_wire_width(u32) -> u32
 pub fn tapa_protocol::stream_peek_port_name(&str, &str) -> alloc::string::String
-pub fn tapa_protocol::stream_port_direction(&str) -> core::option::Option<&'static str>
+pub fn tapa_protocol::stream_port_direction(&str) -> core::option::Option<tapa_protocol::PortDir>
 pub fn tapa_protocol::stream_port_name(&str, &str) -> alloc::string::String

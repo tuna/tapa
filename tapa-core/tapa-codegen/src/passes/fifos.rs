@@ -7,8 +7,8 @@ use tapa_ir::floorplanned_fifo_storage_depth;
 
 use super::floorplans::stream_crossing_body_level;
 use tapa_protocol::{
-    stream_port_direction, FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK, HANDSHAKE_RST,
-    ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
+    stream_port_direction, PortDir, FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK,
+    HANDSHAKE_RST, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -379,7 +379,7 @@ pub fn connect_fifos(
                     }
                     let parent = Expr::ident(parent_port.name);
                     let internal = Expr::ident(canonical);
-                    let is_input_dir = stream_port_direction(suffix).is_some_and(|d| d == "input");
+                    let is_input_dir = stream_port_direction(suffix) == Some(PortDir::Input);
                     if is_input_dir {
                         mm.add_assign(ContinuousAssign::new(internal, parent));
                     } else {

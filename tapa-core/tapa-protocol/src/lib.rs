@@ -59,12 +59,12 @@ pub fn stream_peek_port_name(base: &str, suffix: &str) -> String {
     format!("{base}_peek{suffix}")
 }
 
-/// Port-name suffix → wire direction (`"input"` or `"output"`).
+/// Port-name suffix → wire direction.
 #[must_use]
-pub fn stream_port_direction(suffix: &str) -> Option<&'static str> {
+pub fn stream_port_direction(suffix: &str) -> Option<PortDir> {
     match suffix {
-        "_dout" | "_empty_n" | "_full_n" => Some("input"),
-        "_read" | "_din" | "_write" => Some("output"),
+        "_dout" | "_empty_n" | "_full_n" => Some(PortDir::Input),
+        "_read" | "_din" | "_write" => Some(PortDir::Output),
         _ => None,
     }
 }
