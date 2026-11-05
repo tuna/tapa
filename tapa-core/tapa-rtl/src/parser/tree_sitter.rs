@@ -146,7 +146,7 @@ fn extract_ansi_port(
     src: &[u8],
     last_dir: &mut Direction,
     last_width: &mut Option<Width>,
-) -> Vec<Port> {
+) -> Option<Port> {
     let mut direction = *last_dir;
     let mut width: Option<Width> = None;
     let mut name: Option<String> = None;
@@ -176,22 +176,18 @@ fn extract_ansi_port(
         }
     }
 
-    if has_type_spec || width.is_some() {
+    if has_type_spec {
         *last_dir = direction;
         *last_width = width;
     }
     let final_width = last_width.clone();
 
-    if let Some(name) = name {
-        vec![Port {
-            name,
-            direction,
-            width: final_width,
-            pragma: None, // pragma handled by caller
-        }]
-    } else {
-        Vec::new()
-    }
+    name.map(|name| Port {
+        name,
+        direction,
+        width: final_width,
+        pragma: None, // pragma handled by caller
+    })
 }
 
 fn parse_direction(text: &str) -> Direction {
@@ -565,14 +561,14 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
                         }
                     }
                     "ansi_port_declaration" => {
-                        let mut port_list =
-                            extract_ansi_port(c, src, &mut last_dir, &mut last_width);
-                        if let Some(ref p) = pending_pragma {
-                            if let Some(first) = port_list.first_mut() {
-                                first.pragma = Some(p.clone());
+                        if let Some(mut port) =
+                            extract_ansi_port(c, src, &mut last_dir, &mut last_width)
+                        {
+                            if let Some(ref p) = pending_pragma {
+                                port.pragma = Some(p.clone());
                             }
+                            ports.push(port);
                         }
-                        ports.extend(port_list);
                         pending_pragma = None;
                     }
                     _ => {}
