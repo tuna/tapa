@@ -13,7 +13,7 @@
 //! * Per-slot `area` is the resources **available** after the platform shell
 //!   is subtracted; the usage limit derates it further at ILP time.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tapa_ir::Area;
 
 pub use tapa_ir::floorplan::Coor;
@@ -36,7 +36,7 @@ pub const WIRE_CAPACITY_INF: u64 = 100_000_000;
 ///
 /// An omitted direction defaults to [`WIRE_CAPACITY_INF`] — a boundary with no
 /// declared cap does not constrain routing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirCaps {
     #[serde(default = "wire_cap_inf")]
@@ -65,7 +65,7 @@ impl Default for DirCaps {
 }
 
 /// One physical slot on the device grid.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Slot {
     /// Grid column, `0..cols`.
@@ -103,7 +103,7 @@ impl Slot {
 ///
 /// The anchor remains tied to the slot carrying its tag; it refines wirelength
 /// cost without creating another placement region.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DeviceAnchor {
     /// Exact terminal tag consumed by the placement graph.
@@ -117,7 +117,7 @@ pub struct DeviceAnchor {
 }
 
 /// How the floorplan XDC constrains a placed region's cells.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PlacementStyle {
     /// Per-region soft pblocks scoping cells to the slots' physical ranges.
@@ -169,21 +169,6 @@ impl Default for PlannedResources {
     }
 }
 
-impl Serialize for PlannedResources {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_seq(self.0.iter().map(|&resource| table_name(resource)))
-    }
-}
-
-/// The wire name of `resource`; every [`Resource`] has one.
-fn table_name(resource: Resource) -> &'static str {
-    RESOURCE_TABLE_NAMES
-        .iter()
-        .find(|&(_, candidate)| *candidate == resource)
-        .expect("every Resource has a table name")
-        .0
-}
-
 impl<'de> Deserialize<'de> for PlannedResources {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Vec::<String>::deserialize(deserializer)?
@@ -209,7 +194,7 @@ impl<'de> Deserialize<'de> for PlannedResources {
 ///
 /// Not `Eq`: the [`f64`](Device::usage_ceiling) ceiling makes equality
 /// partial.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Device {
     /// Short key, e.g. `"u280"`.
