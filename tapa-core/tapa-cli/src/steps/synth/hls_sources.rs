@@ -20,7 +20,7 @@ use crate::error::{CliError, Result};
 /// Argument names that Vitis HLS treats as reserved keywords. Using one
 /// of these as a port name produces inconsistent AXI/interface naming
 /// downstream, so reject up front.
-const DISABLED_MMAP_NAMES: &[&str] = &[
+const RESERVED_PORT_NAMES: &[&str] = &[
     "begin", "end", "in", "input", "out", "output", "reg", "wire",
 ];
 pub(super) const TREE_MANIFEST_NAME: &str = ".tapa-tree-manifest";
@@ -206,10 +206,10 @@ fn check_reserved_port_names(design: &Design) -> Result<()> {
             continue;
         }
         for port in &task.ports {
-            if DISABLED_MMAP_NAMES.contains(&port.name.as_str()) {
+            if RESERVED_PORT_NAMES.contains(&port.name.as_str()) {
                 return Err(CliError::InvalidArg(format!(
                     "task `{task_name}` argument `{}` is a reserved keyword \
-                     ({DISABLED_MMAP_NAMES:?}); rename it before running synth — \
+                     ({RESERVED_PORT_NAMES:?}); rename it before running synth — \
                      Vitis HLS would otherwise emit inconsistent AXI/interface \
                      naming.",
                     port.name,
