@@ -25,7 +25,6 @@ int main(int argc, char* argv[]) {
   for (uint64_t i = 0; i < n; ++i) {
     a[i] = static_cast<float>(i);
     b[i] = static_cast<float>(i) * 2;
-    c[i] = 0.f;
   }
   int64_t kernel_time_ns = tapa::invoke(
       VecAdd, FLAGS_bitstream, tapa::read_only_mmap<const float>(a),

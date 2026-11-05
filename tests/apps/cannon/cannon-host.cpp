@@ -36,7 +36,6 @@ int main(int argc, char* argv[]) {
     for (uint64_t j = 0; j < n; ++j) {
       a[i][j] = dist(gen);
       b[i][j] = dist(gen);
-      c[i][j] = 0.f;
     }
   }
 

@@ -34,7 +34,6 @@ int main(int argc, char* argv[]) {
         return static_cast<float>((n / 2 - x) * (n / 2 - x));
       };
       t1[i][j] = pow(shuffle(i, height), 1.5f) + shuffle(j, width);
-      t0[i][j] = 0.f;
     }
   }
 
