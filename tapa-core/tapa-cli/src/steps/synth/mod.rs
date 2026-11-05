@@ -38,7 +38,7 @@ pub(crate) mod rtl_codegen;
 mod runner;
 
 pub(crate) use device_resolve::resolve_platform_dir;
-pub(crate) use runner::run_native;
+use runner::run_native;
 
 /// Resolve the parallel worker count for a synth sub-pass.
 ///
