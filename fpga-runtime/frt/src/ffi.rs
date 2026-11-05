@@ -107,6 +107,26 @@ fn to_str<'a>(ptr: *const c_char, field: &str) -> Result<Option<&'a str>, String
         .map_err(|e| format!("invalid UTF-8 in {field}: {e}"))
 }
 
+/// Copy `text` into the caller's buffer as a NUL-terminated C string,
+/// truncating to `buf_len - 1` bytes when the buffer is too small; a null
+/// buffer or a zero length writes nothing. Callers that cannot accept a
+/// truncated value must check the length before calling.
+pub fn write_c_string(buf: *mut c_char, buf_len: usize, text: &str) {
+    if buf.is_null() || buf_len == 0 {
+        return;
+    }
+    let bytes = text.as_bytes();
+    let len = bytes.len().min(buf_len - 1);
+    // SAFETY: `buf` is non-null with `buf_len` writable bytes and
+    // `len < buf_len`; `bytes` is a valid slice and the two ranges do not
+    // overlap.
+    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), len) };
+    // SAFETY: `len < buf_len`, so `buf.add(len)` is in bounds.
+    let nul = unsafe { buf.add(len) };
+    // SAFETY: `nul` is a valid, writable byte inside the caller's buffer.
+    unsafe { nul.write(0) };
+}
+
 fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
     match sim.unwrap_or("xsim") {
         "verilator" => Ok(Simulator::Verilator),
@@ -315,18 +335,7 @@ pub extern "C" fn frt_instance_host_stream(
         ));
         return -1;
     };
-    if !name_out.is_null() && name_len > 0 {
-        let bytes = stream.name.as_bytes();
-        let len = bytes.len().min(name_len - 1);
-        // SAFETY: `name_out` is non-null with `name_len` writable bytes and
-        // `len < name_len`; `bytes` is a valid slice and the two ranges do
-        // not overlap.
-        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), name_out.cast::<u8>(), len) };
-        // SAFETY: `len < name_len`, so `name_out.add(len)` is in bounds.
-        let nul = unsafe { name_out.add(len) };
-        // SAFETY: `nul` is a valid, writable byte inside the caller's buffer.
-        unsafe { nul.write(0) };
-    }
+    write_c_string(name_out, name_len, &stream.name);
     if !kernel_reads.is_null() {
         // SAFETY: the caller provides a writable `c_int`.
         unsafe { *kernel_reads = c_int::from(stream.kernel_reads) };

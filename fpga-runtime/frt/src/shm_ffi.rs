@@ -1,4 +1,4 @@
-use crate::ffi::{clear_last_error, set_last_error};
+use crate::ffi::{clear_last_error, set_last_error, write_c_string};
 use frt_shm::SharedMemoryQueue;
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::Mutex;
@@ -43,24 +43,6 @@ fn lock_checked<'h>(
     Some(q)
 }
 
-fn write_c_string(buf: *mut c_char, buf_len: usize, text: &str) -> bool {
-    if buf.is_null() || buf_len == 0 {
-        return false;
-    }
-    let bytes = text.as_bytes();
-    if bytes.len() + 1 > buf_len {
-        return false;
-    }
-    // SAFETY: buf is non-null, buf_len > bytes.len(), and the source is a
-    // valid &[u8] slice.  The two writes do not overlap.
-    unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.cast::<u8>(), bytes.len()) };
-    // SAFETY: buf_len > bytes.len(), so buf.add(bytes.len()) is within bounds.
-    let nul_ptr = unsafe { buf.add(bytes.len()) };
-    // SAFETY: nul_ptr is a valid, aligned, writable location (within buf).
-    unsafe { nul_ptr.write(0) };
-    true
-}
-
 #[no_mangle]
 pub extern "C" fn frt_shmq_create(
     depth: u32,
@@ -86,7 +68,7 @@ pub extern "C" fn frt_shmq_create(
         }
     };
     let path = queue.path().to_string_lossy().to_string();
-    if !write_c_string(out_path, out_path_len, &path) {
+    if out_path.is_null() || out_path_len <= path.len() {
         set_last_error(format!(
             "out_path buffer is null or too small: {} bytes required, \
              {out_path_len} provided",
@@ -94,6 +76,7 @@ pub extern "C" fn frt_shmq_create(
         ));
         return std::ptr::null_mut();
     }
+    write_c_string(out_path, out_path_len, &path);
     let handle = Box::new(QueueHandle {
         queue: Mutex::new(queue),
     });
