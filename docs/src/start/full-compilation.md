@@ -25,7 +25,7 @@ Run `tapa compile` to translate the C++ kernel into an RTL object (`.xo`):
 tapa \
   compile \
   --top VecAdd \
-  --part-num xcu55c-fsvh2892-2L-e \
+  --platform xilinx_u55c_gen3x16_xdma_3_202210_1 \
   --clock-period 3.33 \
   -f vadd.cpp \
   -o vecadd.xo
@@ -34,16 +34,15 @@ tapa \
 | Flag | Meaning |
 |---|---|
 | `--top` | Name of the top-level TAPA task |
-| `--part-num` | Target FPGA part number |
+| `--platform` | Target Vitis platform; it supplies the FPGA part, and Stage 3 links against it |
 | `--clock-period` | Target clock period in nanoseconds |
 | `-f` | Kernel source file |
 | `-o` | Output XO file |
 
 ```admonish note
-You can replace `--part-num` and `--clock-period` with `--platform` to
-target a Vitis platform directly, for example:
-
-    --platform xilinx_u55c_gen3x16_xdma_3_202210_1
+Without the platform installed, `--part-num xcu55c-fsvh2892-2L-e` in place
+of `--platform` still produces an `.xo` for Stage 2, but `tapa link` in Stage 3
+needs the platform recorded here.
 
 Per-task HLS reports are written to `work.out/hls/<TASK>/report/`, and a
 combined timing and area summary to `work.out/report.json` and
@@ -124,8 +123,8 @@ Artifact produced: `vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin`
 ```admonish note
 `v++` accepts only platforms supported by the installed Vitis version. If
 linking fails with `ERROR: [v++ 60-1299] The specified platform is not
-supported`, choose a supported platform that matches both your board and Vitis
-installation. See [Common Errors](../troubleshoot/common-errors.md).
+supported`, rerun Stage 1 with a `--platform` that matches both your board
+and Vitis installation. See [Common Errors](../troubleshoot/common-errors.md).
 ```
 
 ```admonish note
