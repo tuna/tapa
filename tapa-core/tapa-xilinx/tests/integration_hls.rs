@@ -191,7 +191,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     );
     // Load the committed golden manifest and compare the live
     // `HlsOutput` to every field it names. The manifest captures
-    // what `tapa.backend.xilinx_hls::RunHls` produces for
+    // what `tapa_xilinx::run_hls_with_retry` produces for
     // the same shared fixture against the same Vitis HLS
     // toolchain. Keeping the manifest on disk (instead of
     // hard-coded assertions) lets reviewers update the golden by
