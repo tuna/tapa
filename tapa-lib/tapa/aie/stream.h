@@ -61,21 +61,11 @@ struct word_io {
 };
 
 template <typename T>
-struct elem_io {
+struct elem_io : word_io<T> {
   static_assert(sizeof(T) % sizeof(int32) == 0 &&
                     std::is_trivially_copyable<T>::value,
                 "an AI Engine stream element must be trivially copyable and "
                 "a whole number of 32-bit words");
-  static TAPA_AIE_INLINE T read(input_stream<int32>* s) {
-    return word_io<T>::read(s);
-  }
-  static TAPA_AIE_INLINE void write(output_stream<int32>* s, const T& value) {
-    word_io<T>::write(s, value);
-  }
-  static TAPA_AIE_INLINE T load(const int32* p) { return word_io<T>::load(p); }
-  static TAPA_AIE_INLINE void store(int32* p, const T& value) {
-    word_io<T>::store(p, value);
-  }
 };
 
 template <typename E, int N>
