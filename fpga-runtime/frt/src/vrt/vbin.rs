@@ -67,16 +67,12 @@ impl Kernel {
     }
 
     pub(crate) fn memory_target(&self, arg: &Arg) -> Result<MemoryTarget> {
-        let port = arg
-            .port
-            .as_deref()
-            .filter(|port| !port.is_empty())
-            .ok_or_else(|| {
-                FrtError::Vrt(format!(
-                    "buffer argument {} (`{}`) has no AXI port",
-                    arg.index, arg.name
-                ))
-            })?;
+        let port = arg.port.as_deref().ok_or_else(|| {
+            FrtError::Vrt(format!(
+                "buffer argument {} (`{}`) has no AXI port",
+                arg.index, arg.name
+            ))
+        })?;
         self.connections.get(port).copied().ok_or_else(|| {
             FrtError::Vrt(format!(
                 "kernel `{}` has no memory connection for port `{port}`",
