@@ -1,6 +1,7 @@
 //! FIFO instantiation and connection.
 
 use crate::error::CodegenError;
+use crate::rtl_state::routing_id_bits;
 use crate::state::views::{DesignView, ModuleTable};
 use tapa_ir::floorplanned_fifo_storage_depth;
 
@@ -14,11 +15,7 @@ use tapa_rtl::module::sanitize_array_name;
 
 /// The `ADDR_WIDTH` a FIFO of `depth` entries needs: `ceil(log2(depth))`, min 1.
 fn fifo_addr_width(depth: u32) -> u64 {
-    if depth <= 1 {
-        1
-    } else {
-        u64::from((depth - 1).ilog2() + 1)
-    }
+    u64::from(routing_id_bits(depth).max(1))
 }
 
 /// The 10 `clk`/`reset`/`if_*` port connections a FIFO-compatible storage

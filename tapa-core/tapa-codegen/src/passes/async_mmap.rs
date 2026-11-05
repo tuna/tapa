@@ -15,6 +15,8 @@ use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{wide_wire, wire, MutableModule};
 use tapa_rtl::VerilogModule;
 
+use crate::rtl_state::routing_id_bits;
+
 pub const READ_ADDR: &str = "read_addr";
 pub const READ_DATA: &str = "read_data";
 pub const WRITE_ADDR: &str = "write_addr";
@@ -233,11 +235,7 @@ pub fn build_bridge_instance(
     reset: Expr,
 ) -> ModuleInstance {
     let bytes = data_width / 8;
-    let bytes_log = if bytes <= 1 {
-        0
-    } else {
-        (bytes - 1).ilog2() + 1
-    };
+    let bytes_log = routing_id_bits(bytes);
     let max_burst_len = 8192_u32
         .checked_div(data_width)
         .unwrap_or(0)
