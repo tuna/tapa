@@ -12,7 +12,8 @@ pub fn utf8(p: impl AsRef<std::path::Path>) -> Utf8PathBuf {
 /// Absolute form of `p`: already-absolute paths pass through; relative
 /// paths are joined onto the current directory and canonicalized when
 /// they exist (a not-yet-created target keeps the plain joined form).
-pub fn absolutize(p: &camino::Utf8Path) -> Utf8PathBuf {
+pub fn absolutize(p: impl AsRef<camino::Utf8Path>) -> Utf8PathBuf {
+    let p = p.as_ref();
     if p.is_absolute() {
         return p.to_path_buf();
     }

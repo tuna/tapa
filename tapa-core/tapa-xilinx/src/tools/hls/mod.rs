@@ -110,7 +110,7 @@ fn kernel_flags(cflags: &[String]) -> (ToolValue, Vec<Utf8PathBuf>) {
                 ],
                 "",
             );
-            let p = crate::util::absolutize(&Utf8PathBuf::from(dir_str));
+            let p = crate::util::absolutize(Utf8PathBuf::from(dir_str));
             if p.is_dir() {
                 out.push(p);
             }

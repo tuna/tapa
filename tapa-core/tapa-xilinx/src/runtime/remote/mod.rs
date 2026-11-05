@@ -193,10 +193,11 @@ impl RemoteToolRunner {
         // invocation drops the work tree + RTL + C++ sources from the
         // upload batch, leaving the remote Vitis HLS with nothing to
         // compile.
-        let absolutize = |p: &Utf8PathBuf| crate::util::absolutize(p);
-        let cwd_abs: Option<Utf8PathBuf> = inv.cwd.as_ref().map(absolutize);
-        let uploads_abs: Vec<Utf8PathBuf> = inv.uploads.iter().map(absolutize).collect();
-        let downloads_abs: Vec<Utf8PathBuf> = inv.downloads.iter().map(absolutize).collect();
+        let cwd_abs: Option<Utf8PathBuf> = inv.cwd.as_ref().map(crate::util::absolutize);
+        let uploads_abs: Vec<Utf8PathBuf> =
+            inv.uploads.iter().map(crate::util::absolutize).collect();
+        let downloads_abs: Vec<Utf8PathBuf> =
+            inv.downloads.iter().map(crate::util::absolutize).collect();
 
         let mut to_upload: Vec<Utf8PathBuf> = Vec::new();
         if let Some(cwd) = cwd_abs.as_ref() {
