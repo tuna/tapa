@@ -206,12 +206,7 @@ impl AiePartition {
                 let top_aie_net = top.fifos.get(&stream.fifo).is_some_and(|fifo| {
                     [&fifo.produced_by, &fifo.consumed_by]
                         .iter()
-                        .all(|endpoint| {
-                            endpoint
-                                .as_ref()
-                                .and_then(|e| graph.tasks.get(&e.0))
-                                .is_some_and(|task| task.synth == SynthTarget::Aie)
-                        })
+                        .all(|endpoint| endpoint_is_aie(graph, endpoint.as_ref()))
                 });
                 if top_aie_net {
                     top.fifos.remove(&stream.fifo);
@@ -367,6 +362,13 @@ fn check_invoke_step(child: &str, step: i64, run_forever: &mut bool) -> Result<(
     Ok(())
 }
 
+/// Whether the endpoint resolves to a task synthesized for the AI Engine.
+fn endpoint_is_aie(graph: &TaskGraph, endpoint: Option<&EndpointRef>) -> bool {
+    endpoint
+        .and_then(|e| graph.tasks.get(&e.0))
+        .is_some_and(|t| t.synth == SynthTarget::Aie)
+}
+
 /// What a name in a task's scope is bound to.
 #[derive(Debug, Clone)]
 enum Binding {
@@ -408,13 +410,8 @@ impl Builder<'_> {
                          stream the top declares"
                     )));
                 };
-                let endpoint_on_aie = |endpoint: Option<&crate::EndpointRef>| {
-                    endpoint
-                        .and_then(|e| graph.tasks.get(&e.0))
-                        .is_some_and(|t| t.synth == SynthTarget::Aie)
-                };
-                let producer_aie = endpoint_on_aie(fifo.produced_by.as_ref());
-                let consumer_aie = endpoint_on_aie(fifo.consumed_by.as_ref());
+                let producer_aie = endpoint_is_aie(graph, fifo.produced_by.as_ref());
+                let consumer_aie = endpoint_is_aie(graph, fifo.consumed_by.as_ref());
                 let words = stream_words(graph, child, port)?;
                 let aie_port = task(graph, child)?.port(port);
                 let frame = aie_port.and_then(|port| port.aie_frame);
