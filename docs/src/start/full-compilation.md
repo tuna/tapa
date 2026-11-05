@@ -110,16 +110,13 @@ and the full flow.
 
 ## Stage 3 — Link to xclbin
 
-Use Vitis `v++` to link the `.xo` into a hardware bitstream. This step does
-not involve TAPA and typically takes several hours:
+Link the `.xo` into a hardware bitstream with `tapa link`, which drives
+`v++ --link` using the kernel name and platform recorded in the package:
 
 ```bash
-v++ -o vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin \
-  --link \
-  --target hw \
-  --kernel VecAdd \
-  --platform xilinx_u55c_gen3x16_xdma_3_202210_1 \
-  vecadd.xo
+tapa link \
+  --package vecadd.xo \
+  -o vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin
 ```
 
 Artifact produced: `vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin`
@@ -129,6 +126,12 @@ Artifact produced: `vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin`
 linking fails with `ERROR: [v++ 60-1299] The specified platform is not
 supported`, choose a supported platform that matches both your board and Vitis
 installation. See [Common Errors](../troubleshoot/common-errors.md).
+```
+
+```admonish note
+`tapa link` builds hardware bitstreams only. For a Vitis hardware-emulation
+build (`v++ --target hw_emu`), invoke `v++` directly as shown in
+[Vitis Cosimulation](../howto/vitis-cosim.md).
 ```
 
 ```admonish warning
