@@ -4,18 +4,12 @@ use zip::ZipArchive;
 
 use crate::common::{archive_text, Result};
 
-const SRC_DIR: &str = "ip_repo/tapa_xrtl_VecAddShared_1_0/src";
-const UNSUPPORTED_PRAGMAS: &[(&str, &str)] = &[
-    ("Load_fsm.v", "RS clk port=ap_clk"),
-    ("Load_fsm.v", "RS rst port=ap_rst_n active=low"),
-    (
-        "Load_fsm.v",
-        "RS ap-ctrl ap_start=ap_start ap_done=ap_done ap_idle=ap_idle ap_ready=ap_ready scalar=(srcs_offset|n)",
-    ),
-    (
-        "Load_fsm.v",
-        "RS ap-ctrl ap_start=Mmap2Stream_0__ap_start ap_done=Mmap2Stream_0__ap_done ap_idle=Mmap2Stream_0__ap_idle ap_ready=Mmap2Stream_0__ap_ready scalar=Mmap2Stream_0___.*",
-    ),
+const LOAD_FSM_PATH: &str = "ip_repo/tapa_xrtl_VecAddShared_1_0/src/Load_fsm.v";
+const UNSUPPORTED_PRAGMAS: &[&str] = &[
+    "RS clk port=ap_clk",
+    "RS rst port=ap_rst_n active=low",
+    "RS ap-ctrl ap_start=ap_start ap_done=ap_done ap_idle=ap_idle ap_ready=ap_ready scalar=(srcs_offset|n)",
+    "RS ap-ctrl ap_start=Mmap2Stream_0__ap_start ap_done=Mmap2Stream_0__ap_done ap_idle=Mmap2Stream_0__ap_idle ap_ready=Mmap2Stream_0__ap_ready scalar=Mmap2Stream_0___.*",
 ];
 
 pub fn check_shared_mmap_pragmas(path: &Path) -> Result<()> {
@@ -24,11 +18,12 @@ pub fn check_shared_mmap_pragmas(path: &Path) -> Result<()> {
     let mut archive = ZipArchive::new(file)
         .map_err(|error| format!("failed to read {} as zip: {error}", path.display()))?;
 
-    for (file_name, pragma) in UNSUPPORTED_PRAGMAS {
-        let path = format!("{SRC_DIR}/{file_name}");
-        let source = archive_text(&mut archive, &path)?;
+    let source = archive_text(&mut archive, LOAD_FSM_PATH)?;
+    for pragma in UNSUPPORTED_PRAGMAS {
         if has_pragma(&source, pragma) {
-            return Err(format!("{path} contains unsupported pragma: {pragma}"));
+            return Err(format!(
+                "{LOAD_FSM_PATH} contains unsupported pragma: {pragma}"
+            ));
         }
     }
     Ok(())
