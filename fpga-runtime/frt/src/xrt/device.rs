@@ -782,11 +782,7 @@ fn current_username() -> Option<String> {
         }
     }
 
-    if let Some(user) = env_non_empty("USER") {
-        return Some(user);
-    }
-
-    None
+    env_non_empty("USER")
 }
 
 #[cfg(test)]

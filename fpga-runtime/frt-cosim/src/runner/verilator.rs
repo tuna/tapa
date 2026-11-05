@@ -29,8 +29,6 @@ fn acquire_exclusive_lock(lock_path: &Path) -> Result<std::fs::File> {
 }
 use which::which;
 
-const VERILATOR_BUILD_LOCK_ENV: &str = frt_shm::env::FRT_VERILATOR_BUILD_LOCK;
-
 pub struct VerilatorRunner {
     pub dpi_lib: PathBuf,
 }
@@ -258,7 +256,7 @@ impl VerilatorBuildGate {
 }
 
 fn verilator_build_lock_path() -> PathBuf {
-    std::env::var_os(VERILATOR_BUILD_LOCK_ENV)
+    std::env::var_os(frt_shm::env::FRT_VERILATOR_BUILD_LOCK)
         .filter(|path| !path.is_empty())
         .map_or_else(
             || std::env::temp_dir().join("frt-verilator-build.lock"),
