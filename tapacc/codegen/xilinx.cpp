@@ -181,10 +181,6 @@ void XilinxBackend::EmitMmapPort(const PortContext& p, CodeSink& out) const {
       EmitDummyMmapOrScalarRW(p.param, p.kind, out);
       break;
     case Lvl::kTop:
-      if (!is_vitis_) {
-        out.Line("#error top-level mmaps not supported in non-Vitis mode");
-        return;
-      }
       if (IsMmapArray(p.kind)) {
         for (int64_t i = 0; i < ArraySize(p.param); ++i) {
           out.Pragma({"HLS interface s_axilite port =",
