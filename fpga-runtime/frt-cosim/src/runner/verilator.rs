@@ -107,8 +107,9 @@ impl SimRunner for VerilatorRunner {
                 std::fs::copy(f, rtl_dir.join(fname))?;
             }
         }
-        generate_xilinx_ip_models(&rtl_dir)?;
-        fix_combinational_nba(&rtl_dir)?;
+        let rtl_sources = read_rtl_sources(&rtl_dir)?;
+        generate_xilinx_ip_models(&rtl_dir, &rtl_sources)?;
+        fix_combinational_nba(&rtl_sources)?;
         Ok(())
     }
 
@@ -267,23 +268,33 @@ enum XilinxIpModel {
     UnsignedDivider(XilinxDividerIpConfig),
 }
 
-fn generate_xilinx_ip_models(rtl_dir: &Path) -> Result<()> {
-    let mut generated = HashSet::new();
-    let ip_re = Regex::new(r"(?m)^\s*(\w+_ip)\s+\w+\s*\(").map_err(|e| {
-        CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
-    })?;
-
+/// Read every Verilog source in `rtl_dir` once, up front: the IP-model
+/// pass below writes new `.sv` files into the directory, so iterating it
+/// lazily would race its own output.
+fn read_rtl_sources(rtl_dir: &Path) -> Result<Vec<(PathBuf, String)>> {
+    let mut sources = Vec::new();
     for entry in std::fs::read_dir(rtl_dir)? {
-        let entry = entry?;
-        let path = entry.path();
+        let path = entry?.path();
         if !is_verilog_like(&path) {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(&path) else {
             continue;
         };
+        sources.push((path, content));
+    }
+    Ok(sources)
+}
+
+fn generate_xilinx_ip_models(rtl_dir: &Path, sources: &[(PathBuf, String)]) -> Result<()> {
+    let mut generated = HashSet::new();
+    let ip_re = Regex::new(r"(?m)^\s*(\w+_ip)\s+\w+\s*\(").map_err(|e| {
+        CosimError::Metadata(format!("cannot compile the testbench parsing regex: {e}"))
+    })?;
+
+    for (_, content) in sources {
         for ip_module in ip_re
-            .captures_iter(&content)
+            .captures_iter(content)
             .filter_map(|caps| caps.get(1).map(|m| m.as_str().to_owned()))
         {
             if !generated.insert(ip_module.clone()) {
@@ -323,21 +334,14 @@ fn generate_xilinx_ip_models(rtl_dir: &Path) -> Result<()> {
 /// Verilator silently converts to blocking `=` with a COMBDLY warning. By
 /// patching the source we ensure identical behavior across all simulators and
 /// silence the warning.
-fn fix_combinational_nba(rtl_dir: &Path) -> Result<()> {
-    for entry in std::fs::read_dir(rtl_dir)? {
-        let path = entry?.path();
-        if !is_verilog_like(&path) {
-            continue;
-        }
-        let Ok(content) = std::fs::read_to_string(&path) else {
-            continue;
-        };
+fn fix_combinational_nba(sources: &[(PathBuf, String)]) -> Result<()> {
+    for (path, content) in sources {
         if !content.contains("always @(*)") {
             continue;
         }
-        let result = rewrite_combinational_nba(&content);
-        if result != content {
-            std::fs::write(&path, &result)?;
+        let result = rewrite_combinational_nba(content);
+        if result != *content {
+            std::fs::write(path, &result)?;
         }
     }
     Ok(())
@@ -1002,7 +1006,8 @@ set_property -dict [list CONFIG.dividend_and_quotient_width 32 \
         )
         .expect("write tcl");
 
-        generate_xilinx_ip_models(tmp.path()).expect("generate models");
+        let sources = read_rtl_sources(tmp.path()).expect("read rtl sources");
+        generate_xilinx_ip_models(tmp.path(), &sources).expect("generate models");
         let model =
             std::fs::read_to_string(tmp.path().join("Add_fadd_32ns_32ns_32_7_full_dsp_1_ip.sv"))
                 .expect("read generated model");
