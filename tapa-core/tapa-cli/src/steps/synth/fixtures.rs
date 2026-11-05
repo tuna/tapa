@@ -1,6 +1,6 @@
 //! Test fixtures shared by the synth step's test modules: a minimal
 //! typed task/port builder, the rewritten-tree ownership manifest
-//! writer, the source-staging shortcut, and the two-task VecAdd design.
+//! writer, the source-staging shortcut, and the two-task `VecAdd` design.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -83,7 +83,7 @@ pub fn staged(work: &Path, design: &Design) -> TaskSources {
     stage_hls_sources(work, design).expect("stage sources")
 }
 
-/// The two-task VecAdd design: lower `Add` instantiated once by upper
+/// The two-task `VecAdd` design: lower `Add` instantiated once by upper
 /// top `VecAdd`, both HLS-targeted.
 pub fn vadd_design() -> Design {
     let mut tasks = BTreeMap::new();
