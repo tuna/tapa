@@ -9,24 +9,21 @@
 
 namespace tapa::cc {
 
-// True when `loc` belongs to the selected source files. A null set selects
-// only the main file; a concrete set selects the rewritten-tree mirror
-// closure by FileID.
+// True when `loc` belongs to the selected source files — the rewritten-tree
+// mirror closure, matched by FileID.
 bool IsInSourceFiles(const clang::ASTContext& ctx, clang::SourceLocation loc,
-                     const std::set<clang::FileID>* files);
+                     const std::set<clang::FileID>& files);
 
 // Global function definitions in the selected files, in source order. Drives
 // both task discovery and codegen's source assembly.
 std::vector<const clang::FunctionDecl*> CollectFileFuncs(
-    const clang::ASTContext& ctx,
-    const std::set<clang::FileID>* files = nullptr);
+    const clang::ASTContext& ctx, const std::set<clang::FileID>& files);
 
 // Selected-file definitions with internal linkage (`static`, anonymous
 // namespace) and methods — everything `CollectFileFuncs` leaves out. Helpers
 // for codegen's purposes, but kept out of task discovery.
 std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
-    const clang::ASTContext& ctx,
-    const std::set<clang::FileID>* files = nullptr);
+    const clang::ASTContext& ctx, const std::set<clang::FileID>& files);
 
 }  // namespace tapa::cc
 

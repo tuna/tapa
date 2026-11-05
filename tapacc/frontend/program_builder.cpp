@@ -84,7 +84,7 @@ std::string CanonicalSignature(const clang::FunctionDecl* func) {
 class MainFileFuncs : public clang::RecursiveASTVisitor<MainFileFuncs> {
  public:
   MainFileFuncs(const clang::ASTContext& ctx,
-                const std::set<clang::FileID>* files)
+                const std::set<clang::FileID>& files)
       : ctx_(ctx), files_(files) {}
 
   bool VisitFunctionDecl(clang::FunctionDecl* func) {
@@ -101,7 +101,7 @@ class MainFileFuncs : public clang::RecursiveASTVisitor<MainFileFuncs> {
 
  private:
   const clang::ASTContext& ctx_;
-  const std::set<clang::FileID>* files_;
+  const std::set<clang::FileID>& files_;
   std::vector<const clang::FunctionDecl*> funcs_;
 };
 
@@ -286,7 +286,7 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
 // rewrite pass resolves tasks through; the index pass needs the full
 // sighting and edge index on top (IndexTuImpl).
 std::map<std::string, const clang::FunctionDecl*> ProgramBuilder::VisibleDecls(
-    clang::ASTContext& ctx, const std::set<clang::FileID>* files) const {
+    clang::ASTContext& ctx, const std::set<clang::FileID>& files) const {
   std::map<std::string, const clang::FunctionDecl*> visible;
   const auto mangler = CreateMangleContext(ctx);
   MainFileFuncs collector(ctx, files);
@@ -316,7 +316,7 @@ std::map<std::string, const clang::FunctionDecl*> ProgramBuilder::VisibleDecls(
 }
 
 ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
-    clang::ASTContext& ctx, const std::set<clang::FileID>* files) const {
+    clang::ASTContext& ctx, const std::set<clang::FileID>& files) const {
   TuIndex index;
   const auto mangler = CreateMangleContext(ctx);
   MainFileFuncs collector(ctx, files);
@@ -410,7 +410,7 @@ std::set<clang::FileID> ProgramBuilder::TreeFiles(
 void ProgramBuilder::IndexTu(clang::ASTContext& ctx,
                              const std::vector<IncludeDirective>& log) {
   const std::set<clang::FileID> files = TreeFiles(ctx, log);
-  TuIndex index = IndexTuImpl(ctx, &files);
+  TuIndex index = IndexTuImpl(ctx, files);
   const int tu = RegisterTu(MainFilePath(ctx));
   for (DefSighting& sighting : index.defs) {
     sighting.tu = tu;
@@ -760,11 +760,11 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx,
                                const std::vector<IncludeDirective>& log) {
   const std::set<clang::FileID> files = TreeFiles(ctx, log);
   const std::map<std::string, const clang::FunctionDecl*> visible =
-      VisibleDecls(ctx, &files);
+      VisibleDecls(ctx, files);
   Program view;
   view.top = top_;
-  view.file_funcs = CollectFileFuncs(ctx, &files);
-  view.local_funcs = CollectLocalFuncs(ctx, &files);
+  view.file_funcs = CollectFileFuncs(ctx, files);
+  view.local_funcs = CollectLocalFuncs(ctx, files);
   for (const auto& [key, task] : tasks_) {
     // This TU's best decl for the task: the definition when it is visible
     // here, else a visible redeclaration (the shared header announcing a

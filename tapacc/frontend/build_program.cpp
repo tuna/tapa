@@ -10,7 +10,7 @@ namespace {
 class FileFuncCollector : public clang::RecursiveASTVisitor<FileFuncCollector> {
  public:
   FileFuncCollector(const clang::ASTContext& ctx,
-                    const std::set<clang::FileID>* files)
+                    const std::set<clang::FileID>& files)
       : ctx_(ctx), files_(files) {}
   std::vector<const clang::FunctionDecl*> funcs;
 
@@ -24,7 +24,7 @@ class FileFuncCollector : public clang::RecursiveASTVisitor<FileFuncCollector> {
 
  private:
   const clang::ASTContext& ctx_;
-  const std::set<clang::FileID>* files_;
+  const std::set<clang::FileID>& files_;
 };
 
 // Definitions `isGlobal()` excludes: `static` functions, functions in an
@@ -36,7 +36,7 @@ class LocalFuncCollector
     : public clang::RecursiveASTVisitor<LocalFuncCollector> {
  public:
   LocalFuncCollector(const clang::ASTContext& ctx,
-                     const std::set<clang::FileID>* files)
+                     const std::set<clang::FileID>& files)
       : ctx_(ctx), files_(files) {}
   std::vector<const clang::FunctionDecl*> funcs;
 
@@ -52,21 +52,20 @@ class LocalFuncCollector
 
  private:
   const clang::ASTContext& ctx_;
-  const std::set<clang::FileID>* files_;
+  const std::set<clang::FileID>& files_;
 };
 
 }  // namespace
 
 bool IsInSourceFiles(const clang::ASTContext& ctx, clang::SourceLocation loc,
-                     const std::set<clang::FileID>* files) {
+                     const std::set<clang::FileID>& files) {
   const clang::SourceManager& sm = ctx.getSourceManager();
-  if (files == nullptr) return sm.isWrittenInMainFile(loc);
   if (loc.isInvalid()) return false;
-  return files->count(sm.getFileID(sm.getExpansionLoc(loc))) > 0;
+  return files.count(sm.getFileID(sm.getExpansionLoc(loc))) > 0;
 }
 
 std::vector<const clang::FunctionDecl*> CollectFileFuncs(
-    const clang::ASTContext& ctx, const std::set<clang::FileID>* files) {
+    const clang::ASTContext& ctx, const std::set<clang::FileID>& files) {
   FileFuncCollector collector(ctx, files);
   // TraverseDecl mutates nothing but is non-const in the API.
   collector.TraverseDecl(
@@ -75,7 +74,7 @@ std::vector<const clang::FunctionDecl*> CollectFileFuncs(
 }
 
 std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
-    const clang::ASTContext& ctx, const std::set<clang::FileID>* files) {
+    const clang::ASTContext& ctx, const std::set<clang::FileID>& files) {
   LocalFuncCollector collector(ctx, files);
   collector.TraverseDecl(
       const_cast<clang::ASTContext&>(ctx).getTranslationUnitDecl());
