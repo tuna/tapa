@@ -48,15 +48,7 @@ pub(super) fn validate_control_names(
 ) -> Result<(), GraphError> {
     let mut occupied = occupied_rtl_names(top, vertices, co_located)?;
     for interface in memory {
-        for (channel, _) in interface.channel_widths.enabled_channels() {
-            let name = axi_pipeline_instance_name(&interface.endpoint, channel);
-            occupied
-                .entry(name.clone())
-                .or_insert_with(|| OccupiedName {
-                    owner: name.clone(),
-                    description: format!("AXI pipeline for `{}`", interface.endpoint.top_port),
-                });
-        }
+        reserve_axi_pipeline_names(&mut occupied, interface)?;
     }
 
     reserve_generated_name(
@@ -105,6 +97,24 @@ pub(super) fn validate_control_names(
                 )?;
             }
         }
+    }
+    Ok(())
+}
+
+/// Reserve the generated AXI pipeline instance names of one memory interface.
+pub(super) fn reserve_axi_pipeline_names(
+    occupied: &mut BTreeMap<String, OccupiedName>,
+    interface: &MemoryInterface,
+) -> Result<(), GraphError> {
+    for (channel, _) in interface.channel_widths.enabled_channels() {
+        reserve_generated_name(
+            occupied,
+            axi_pipeline_instance_name(&interface.endpoint, channel),
+            &format!(
+                "{channel:?} AXI pipeline for `{}`",
+                interface.endpoint.top_port
+            ),
+        )?;
     }
     Ok(())
 }

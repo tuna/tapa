@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{
-    axi_pipeline_instance_name, floorplanned_fifo_storage_depth, global_controller_instance_name,
+    floorplanned_fifo_storage_depth, global_controller_instance_name,
     local_controller_instance_name, scope_controller_instance_name, Area, AxiChannel, AxiEndpoint,
     ControlChannel, MemoryBank, TaskGraph,
 };
@@ -17,8 +17,8 @@ use crate::graph::floor_graph::{
 
 use super::child_instances;
 use super::validate::{
-    expected_memory_interfaces, occupied_rtl_names, reserve_generated_name, validate_control_names,
-    validate_memory_interface_shape,
+    expected_memory_interfaces, occupied_rtl_names, reserve_axi_pipeline_names,
+    reserve_generated_name, validate_control_names, validate_memory_interface_shape,
 };
 
 /// The widths flowing each way across one endpoint pair, accumulated while the
@@ -222,13 +222,7 @@ impl FloorGraphBuilder {
         for (endpoint, expected_endpoint) in &expected {
             let interface = provided[endpoint];
             validate_memory_interface_shape(interface, *expected_endpoint)?;
-            for (channel, _) in interface.channel_widths.enabled_channels() {
-                reserve_generated_name(
-                    &mut occupied,
-                    axi_pipeline_instance_name(endpoint, channel),
-                    &format!("{channel:?} AXI pipeline for `{}`", endpoint.top_port),
-                )?;
-            }
+            reserve_axi_pipeline_names(&mut occupied, interface)?;
             if let Some(bridge) = &interface.bridge_instance {
                 reserve_generated_name(
                     &mut occupied,
