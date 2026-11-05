@@ -398,8 +398,6 @@ TEST(IntTest, SignedNativeProxyAssignmentsExtendPast64Bits) {
   EXPECT_EQ(lo, ~uint64_t(0));
 }
 
-namespace {
-
 // Mirrors the slice of ap_int_base's interface the vendor bridge uses, so
 // the >64-bit path is covered without depending on the vendor headers.
 template <int W, bool S>
@@ -423,8 +421,6 @@ class FakeVendorInt {
  private:
   std::vector<bool> bits_;
 };
-
-}  // namespace
 
 TEST(IntTest, WideVendorValuesCrossTheBridgeWhole) {
   // to_uint64() is a 64-bit accessor; a 128-bit vendor source must not be
@@ -705,7 +701,6 @@ TEST(IntTest, SizeMatchesVendorLayout) {
 struct VendorLike {
   uint64_t to_uint64() const { return 0xabcd; }
 };
-struct NotConvertible {};
 
 TEST(IntTest, DuckTypedVendorBridge) {
   VendorLike v;
