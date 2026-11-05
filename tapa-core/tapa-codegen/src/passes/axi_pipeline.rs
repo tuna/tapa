@@ -11,21 +11,10 @@ use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortAr
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{wide_wire, wire};
 
-use super::{invalid_floorplan, parse_atomic_region};
+use super::{invalid_floorplan, parse_atomic_region, OPTIONAL_AXI_ADDRESS_PORTS};
 use crate::error::CodegenError;
 use crate::rtl_state::DirectMmapInterface;
 use crate::state::views::ModuleTable;
-
-const OPTIONAL_ADDRESS_OUTPUTS: [(&str, &str); 8] = [
-    ("_AWLOCK", "1'b0"),
-    ("_AWCACHE", "4'b0011"),
-    ("_AWPROT", "3'b000"),
-    ("_AWQOS", "4'b0000"),
-    ("_ARLOCK", "1'b0"),
-    ("_ARCACHE", "4'b0011"),
-    ("_ARPROT", "3'b000"),
-    ("_ARQOS", "4'b0000"),
-];
 
 #[derive(Debug)]
 struct PlannedRoute {
@@ -250,12 +239,13 @@ impl DirectAxiPipelinePlan {
                 )?);
             }
 
-            for (suffix, value) in OPTIONAL_ADDRESS_OUTPUTS.into_iter().filter(|(suffix, _)| {
-                (suffix.starts_with("_AR") && interface.channel_widths.read_address != 0)
-                    || (suffix.starts_with("_AW") && interface.channel_widths.write_address != 0)
+            for (name, value) in OPTIONAL_AXI_ADDRESS_PORTS.into_iter().filter(|(name, _)| {
+                (name.starts_with("ar") && interface.channel_widths.read_address != 0)
+                    || (name.starts_with("aw") && interface.channel_widths.write_address != 0)
             }) {
+                let suffix = name.to_ascii_uppercase();
                 module.add_assign(ContinuousAssign::new(
-                    Expr::ident(format!("{top_prefix}{suffix}")),
+                    Expr::ident(format!("{top_prefix}_{suffix}")),
                     Expr::lit(value),
                 ));
             }

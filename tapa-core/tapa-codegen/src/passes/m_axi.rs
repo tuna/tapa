@@ -10,6 +10,7 @@ use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port, MutableModule};
 use tapa_rtl::port::{Direction, Port};
 
+use super::OPTIONAL_AXI_ADDRESS_PORTS;
 use crate::error::CodegenError;
 use crate::passes::children;
 use crate::rtl_state::{routing_id_bits, MMapConnection};
@@ -345,17 +346,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
 
     let mut axi_ports: Vec<String> = vec![".clk(clk)".to_string(), ".rst(rst)".to_string()];
 
-    let optional_addr_ports = [
-        ("awlock", "1'b0"),
-        ("awcache", "4'b0011"),
-        ("awprot", "3'b000"),
-        ("awqos", "4'b0000"),
-        ("arlock", "1'b0"),
-        ("arcache", "4'b0011"),
-        ("arprot", "3'b000"),
-        ("arqos", "4'b0000"),
-    ];
-    for (name, value) in optional_addr_ports {
+    for (name, value) in OPTIONAL_AXI_ADDRESS_PORTS {
         axi_ports.push(format!(".s_axi_{name}({{{slaves}{{{value}}}}})"));
     }
     for suffix in m_axi_compact_suffixes() {
@@ -363,7 +354,7 @@ pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
         let axi_suffix = suffix.trim_start_matches('_').to_ascii_lowercase();
         axi_ports.push(format!(".s_axi_{axi_suffix}({signal})"));
     }
-    for (name, _value) in optional_addr_ports {
+    for (name, _value) in OPTIONAL_AXI_ADDRESS_PORTS {
         axi_ports.push(format!(".m_axi_{name}()"));
     }
     for suffix in m_axi_compact_suffixes() {

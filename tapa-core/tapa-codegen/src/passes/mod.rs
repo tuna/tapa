@@ -353,6 +353,20 @@ fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
     CodegenError::InvalidFloorplan(detail.into())
 }
 
+/// The optional AXI address-channel outputs (AW/AR LOCK/CACHE/PROT/QOS) and
+/// the constants they tie off to, keyed by lowercase signal stem; use sites
+/// adjust the case to their port spelling.
+const OPTIONAL_AXI_ADDRESS_PORTS: [(&str, &str); 8] = [
+    ("awlock", "1'b0"),
+    ("awcache", "4'b0011"),
+    ("awprot", "3'b000"),
+    ("awqos", "4'b0000"),
+    ("arlock", "1'b0"),
+    ("arcache", "4'b0011"),
+    ("arprot", "3'b000"),
+    ("arqos", "4'b0000"),
+];
+
 /// The driver expression for a scalar argument binding: a scalar is the one
 /// binding that can be a constant rather than a parent wire; this is where
 /// the constant becomes Verilog.
