@@ -141,7 +141,9 @@ pub struct AnalyzeArgs {
     #[arg(long = "flatten-hierarchy", default_value_t = false)]
     pub flatten_hierarchy: bool,
 
-    /// Counterpart to `--flatten-hierarchy`; default behavior.
+    /// Counterpart to `--flatten-hierarchy`; inert by design: keeping the
+    /// hierarchy is the default, so the flag only exists to let scripts say
+    /// so explicitly (and to conflict with `--flatten-hierarchy`).
     #[arg(long = "keep-hierarchy", conflicts_with = "flatten_hierarchy")]
     pub keep_hierarchy: bool,
 
