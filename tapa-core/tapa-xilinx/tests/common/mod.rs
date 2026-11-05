@@ -18,6 +18,20 @@ pub fn utf8(p: impl AsRef<std::path::Path>) -> camino::Utf8PathBuf {
     camino::Utf8PathBuf::from(p.as_ref().to_string_lossy().into_owned())
 }
 
+/// tapa-core/tapa-xilinx/tests/ → …/tapa (repo root).
+#[allow(
+    dead_code,
+    reason = "used by integration_{hls,pack_xo} but not integration_{remote,vivado}"
+)]
+pub fn repo_root() -> camino::Utf8PathBuf {
+    utf8(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(std::path::Path::parent)
+            .expect("manifest parent"),
+    )
+}
+
 #[allow(
     dead_code,
     reason = "used by integration_{hls,vivado} but not integration_remote"

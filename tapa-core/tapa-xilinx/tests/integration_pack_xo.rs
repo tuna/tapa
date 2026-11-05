@@ -17,20 +17,10 @@ mod common;
 use std::io::Read;
 use std::sync::Arc;
 
-use camino::Utf8PathBuf;
 use tapa_xilinx::{
     emit_kernel_xml, pack_xo_without_redaction, redact_xo, DeviceInfo, KernelXmlArgs,
     KernelXmlPort, PackageXoInputs, PortCategory, RemoteToolRunner, SshSession,
 };
-
-fn repo_root() -> Utf8PathBuf {
-    common::utf8(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(std::path::Path::parent)
-            .expect("manifest parent"),
-    )
-}
 
 /// Per-entry metadata captured for the `.xo` redaction check:
 /// filename, size, MS-DOS timestamp tuple, and the SHA-256 hex digest
@@ -122,7 +112,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         eprintln!("integration_pack_xo: no REMOTE_HOST; skipping live package_xo");
         return;
     };
-    let real_hdl = repo_root()
+    let real_hdl = common::repo_root()
         .join("tapa-core")
         .join("tapa-xilinx")
         .join("testdata")

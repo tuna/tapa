@@ -100,16 +100,6 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     assert!(has_verilog, "no HDL files under {}", hdl.as_str());
 }
 
-fn repo_root() -> camino::Utf8PathBuf {
-    // tapa-core/tapa-xilinx/tests/ → …/tapa (repo root)
-    common::utf8(
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .and_then(std::path::Path::parent)
-            .expect("manifest parent"),
-    )
-}
-
 #[test]
 #[ignore = "requires real vitis_hls + TAPA tapa-lib include on the runner"]
 #[allow(
@@ -140,13 +130,13 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         eprintln!("integration_hls: TAPA_SHARED_VADD_HLS=1 not set; skipping shared vadd fixture");
         return;
     }
-    let tapa_lib = repo_root().join("tapa-lib");
+    let tapa_lib = common::repo_root().join("tapa-lib");
     assert!(
         tapa_lib.join("tapa.h").is_file(),
         "TAPA_SHARED_VADD_HLS=1 set but tapa-lib/tapa.h missing at {}",
         tapa_lib.as_str()
     );
-    let vadd_cpp = repo_root()
+    let vadd_cpp = common::repo_root()
         .join("tests")
         .join("apps")
         .join("vadd")
@@ -207,7 +197,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
     // hard-coded assertions) lets reviewers update the golden by
     // editing a JSON file when HLS output evolves, without
     // touching the Rust test logic.
-    let golden_path = repo_root()
+    let golden_path = common::repo_root()
         .join("tapa-core")
         .join("tapa-xilinx")
         .join("testdata")
