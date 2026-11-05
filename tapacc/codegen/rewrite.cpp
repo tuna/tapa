@@ -2,6 +2,7 @@
 
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <utility>
@@ -497,6 +498,12 @@ std::string GuardElif(const std::vector<std::string>& defines) {
   return "#elif " + DefinedAny(defines) + "\n";
 }
 
+// The `#else` branch closing a guarded definition: the signature-only stub
+// declaration, then `#endif`.
+std::string GuardStubClosing(const std::string& stub) {
+  return "\n#else\n" + stub + ";\n#endif\n";
+}
+
 }  // namespace
 
 void RewriteTreeFiles(const Program& program, SynthTarget default_target,
@@ -533,39 +540,53 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     return true;
   };
 
-  auto guard_definition =
-      [&](const TaskModel& model, const clang::FunctionDecl* func, bool is_top,
-          const Backend& backend, const std::vector<std::string>& defines,
-          bool rewrite_signature) {
-        const clang::SourceRange definition = DefinitionRange(func, edits);
-        if (reject_macro_owned_definition(definition, model.name)) {
-          return;
-        }
-        edits.Describe("signature of task '" + model.name + "'");
-        if (rewrite_signature) backend.RewriteSignature(model, is_top, edits);
-        // Signature text is shared by the full definition and stub branches.
-        // Remove parameter/function attributes once; their body pragmas stay in
-        // the guarded full-definition branch below.
-        RemoveParamAttrs(func, edits);
-        RemoveFuncAttrs(func, edits);
-        const std::string stub =
-            RewrittenSignature(func, definition.getBegin(), edits);
+  // The shared prelude of both guard shapes: the definition range, the
+  // macro-owned-signature rejection, the caller's signature-phase edits, and
+  // the attribute removal plus stub capture (the signature text is shared by
+  // the full-definition and stub branches, so attributes come off once here;
+  // their body pragmas stay in the full-definition branch). Nullopt when the
+  // definition shape is rejected.
+  auto begin_guarded = [&](const clang::FunctionDecl* func,
+                           const std::string& task_name,
+                           const std::function<void()>& signature_edits)
+      -> std::optional<std::pair<clang::SourceRange, std::string>> {
+    const clang::SourceRange definition = DefinitionRange(func, edits);
+    if (reject_macro_owned_definition(definition, task_name)) {
+      return std::nullopt;
+    }
+    signature_edits();
+    RemoveParamAttrs(func, edits);
+    RemoveFuncAttrs(func, edits);
+    return {
+        {definition, RewrittenSignature(func, definition.getBegin(), edits)}};
+  };
 
-        const std::string construct = "definition of task '" + model.name + "'";
-        if (!session.InsertGuardOpening(definition, GuardOpening(defines),
-                                        construct)) {
-          return;
-        }
-        edits.Describe(construct);
-        backend.RewriteTaskFunc(model, is_top, edits);
-        LowerParamAttrPragmas(func, backend, edits);
-        LowerFuncAttrPragmas(func, backend, edits);
-        LowerAttrs(func->getBody(), ctx, backend, edits,
-                   /*in_block=*/false);
+  auto guard_definition = [&](const TaskModel& model,
+                              const clang::FunctionDecl* func, bool is_top,
+                              const Backend& backend,
+                              const std::vector<std::string>& defines,
+                              bool rewrite_signature) {
+    const auto prelude = begin_guarded(func, model.name, [&] {
+      edits.Describe("signature of task '" + model.name + "'");
+      if (rewrite_signature) backend.RewriteSignature(model, is_top, edits);
+    });
+    if (!prelude) return;
+    const auto& [definition, stub] = *prelude;
 
-        const std::string closing = "\n#else\n" + stub + ";\n#endif\n";
-        session.InsertGuardClosing(definition, closing, construct);
-      };
+    const std::string construct = "definition of task '" + model.name + "'";
+    if (!session.InsertGuardOpening(definition, GuardOpening(defines),
+                                    construct)) {
+      return;
+    }
+    edits.Describe(construct);
+    backend.RewriteTaskFunc(model, is_top, edits);
+    LowerParamAttrPragmas(func, backend, edits);
+    LowerFuncAttrPragmas(func, backend, edits);
+    LowerAttrs(func->getBody(), ctx, backend, edits,
+               /*in_block=*/false);
+
+    session.InsertGuardClosing(definition, GuardStubClosing(stub), construct);
+  };
 
   using MixedVariant = std::pair<TaskModel, std::vector<std::string>>;
   using BodyRewrite =
@@ -573,15 +594,10 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   auto guard_mixed_definition = [&](const std::vector<MixedVariant>& variants,
                                     const clang::FunctionDecl* func,
                                     const BodyRewrite& rewrite_body) {
-    const clang::SourceRange definition = DefinitionRange(func, edits);
-    const TaskModel& representative = variants.front().first;
-    if (reject_macro_owned_definition(definition, representative.name)) {
-      return;
-    }
-    RemoveParamAttrs(func, edits);
-    RemoveFuncAttrs(func, edits);
-    const std::string stub =
-        RewrittenSignature(func, definition.getBegin(), edits);
+    const auto prelude =
+        begin_guarded(func, variants.front().first.name, [] {});
+    if (!prelude) return;
+    const auto& [definition, stub] = *prelude;
     std::string guarded;
     for (size_t i = 0; i < variants.size(); ++i) {
       auto [model, defines] = variants[i];
@@ -600,7 +616,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
       guarded += variant_edits.getRewrittenText(definition);
       guarded += "\n";
     }
-    guarded += "\n#else\n" + stub + ";\n#endif\n";
+    guarded += GuardStubClosing(stub);
     if (TreeFileBuffer* buffer =
             session.BufferForLocation(definition.getBegin())) {
       (void)buffer->ReplaceWithLineResnap(
