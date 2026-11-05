@@ -341,18 +341,6 @@ impl MockToolRunner {
         });
     }
 
-    /// Queue a canned error response. Lets producer tests trigger any
-    /// `XilinxError` variant (not just `ToolFailure`) so the error
-    /// coverage check exercises real `ToolRunner::run` returns.
-    pub fn push_err(&self, program: impl Into<String>, err: XilinxError) {
-        self.responses.lock().unwrap().push(Response {
-            program: program.into(),
-            args: None,
-            result: Err(err),
-            downloads: HashMap::new(),
-        });
-    }
-
     pub fn push_failure(&self, program: impl Into<String>, code: i32, stderr: impl Into<String>) {
         let program = program.into();
         let stderr = stderr.into();
