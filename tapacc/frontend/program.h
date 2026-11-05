@@ -70,7 +70,6 @@ struct Arg {
 
 // One instantiation of a child task within an upper task (post vec-expansion).
 struct Instance {
-  const clang::FunctionDecl* callee = nullptr;
   std::string task_name;            // mangled name for template specializations
   int64_t step = 0;                 // join=0, detach=-1, sequential>=1
   std::optional<std::string> name;  // explicit invoke("name", ...)
