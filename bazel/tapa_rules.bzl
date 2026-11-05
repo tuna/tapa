@@ -65,14 +65,15 @@ _HLS_JOB_MB = 2048
 _PACK_MB = 6144
 
 def _vendor_exec_requirements(jobs, remote_host):
-    """Local resource reservation for one `tapa` invocation.
+    """Local resource reservation for an action that forks `--jobs` Vitis HLS processes.
 
-    A `tapa_xo` action forks `--jobs` concurrent Vitis HLS processes and then
-    a Vivado for packaging. Bazel's default estimate for an unannotated action
-    is one CPU and ~250 MB, so without this the scheduler treats each one as a
-    lightweight compile and runs as many as there are cores -- which is how a
-    full `bazel test //...` used to exhaust host memory and take the server
-    down with it.
+    This covers the `tapa_xo` synth action and the reuse-work-dir action,
+    which additionally runs pack in the same step (pack's single Vivado is
+    why the memory reservation floors at `_PACK_MB`). Bazel's default
+    estimate for an unannotated action is one CPU and ~250 MB, so without
+    this the scheduler treats each one as a lightweight compile and runs as
+    many as there are cores -- which is how a full `bazel test //...` used
+    to exhaust host memory and take the server down with it.
 
     This goes through `execution_requirements` rather than `resource_set`
     because the latter must be a top-level function and so cannot see `jobs`.
@@ -87,6 +88,20 @@ def _vendor_exec_requirements(jobs, remote_host):
         # Vendor tools run on the remote host, so only the ssh client is local.
         reqs = {"requires-network": "1"}
     return reqs
+
+def _pack_exec_requirements(remote_host):
+    """Local resource reservation for one `tapa pack` action.
+
+    Pack spawns a single Vivado for IP packaging and takes no `--jobs`, so
+    unlike `_vendor_exec_requirements` the reservation is fixed.
+    """
+    if remote_host:
+        # Vendor tools run on the remote host, so only the ssh client is local.
+        return {"requires-network": "1"}
+    return {
+        "resources:cpu:2": "",
+        "resources:memory:{}".format(_PACK_MB): "",
+    }
 
 def _with_tool_constraints(target, kwargs):
     kwargs = dict(kwargs)
@@ -302,7 +317,7 @@ def _tapa_xo_impl(ctx):
         ) + ("\n" + _stage_aie_sidecars(output_file, aie_output_dir) if aie_output_dir else ""),
         mnemonic = "TapaPack",
         use_default_shell_env = True,
-        execution_requirements = _vendor_exec_requirements(ctx.attr.jobs, remote_host),
+        execution_requirements = _pack_exec_requirements(remote_host),
     )
 
     return [
