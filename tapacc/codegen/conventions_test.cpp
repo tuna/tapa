@@ -88,7 +88,7 @@ TEST(Conventions, TaskGuardCollisionIsHardAndDeterministic) {
 
 TEST(CodeSink, Accumulates) {
   CodeSink out;
-  EXPECT_TRUE(out.Empty());
+  EXPECT_TRUE(out.Lines().empty());
   out.Line("void(x);");
   out.Pragma({"HLS", "interface", "ap_fifo", "port =", "q"});
   ASSERT_EQ(out.Lines().size(), 2u);

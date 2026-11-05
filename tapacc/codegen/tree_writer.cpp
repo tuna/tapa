@@ -253,13 +253,6 @@ bool TreeFileBuffer::ReplaceWithLineResnap(clang::CharSourceRange range,
   return ApplyEdit(range.getBegin(), end - begin, text);
 }
 
-bool TreeFileBuffer::InsertGuard(clang::SourceRange range,
-                                 llvm::StringRef opening,
-                                 llvm::StringRef closing) {
-  return InsertGuardOpening(range, opening) &&
-         InsertGuardClosing(range, closing);
-}
-
 bool TreeFileBuffer::InsertGuardOpening(clang::SourceRange range,
                                         llvm::StringRef opening) {
   return range.getBegin().isFileID() && ApplyEdit(range.getBegin(), 0, opening);

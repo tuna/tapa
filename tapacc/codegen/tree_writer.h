@@ -131,12 +131,10 @@ class TreeFileBuffer {
   bool ReplaceWithLineResnap(clang::CharSourceRange range,
                              llvm::StringRef text);
 
-  // Wraps `range` in guard text: `opening` right before it, `closing`
-  // right after its last token, each followed by a `#line` re-snap (the
-  // task `#ifdef`/`#else`/`#endif` shape; both insertions change the line
-  // count by construction).
-  bool InsertGuard(clang::SourceRange range, llvm::StringRef opening,
-                   llvm::StringRef closing);
+  // Guard text around `range`, inserted as two halves: `opening` right before
+  // it, `closing` right after its last token, each followed by a `#line`
+  // re-snap (the task `#ifdef`/`#else`/`#endif` shape; both insertions change
+  // the line count by construction).
   bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening);
   bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing);
 

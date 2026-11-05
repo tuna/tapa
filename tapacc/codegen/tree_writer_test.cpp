@@ -402,9 +402,10 @@ TEST(TreeFileBuffer, ForeignInsertionAtMarkerOffsetDoesNotGlueTheMarker) {
       sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(offset);
   const clang::SourceLocation last_token =
       begin.getLocWithOffset(body.size() - 1);
-  ASSERT_TRUE(buffer.InsertGuard(clang::SourceRange(begin, last_token),
-                                 "#ifdef TAPA_TASK_DEF_F\n",
-                                 "#else\nvoid f();\n#endif\n"));
+  ASSERT_TRUE(buffer.InsertGuardOpening(clang::SourceRange(begin, last_token),
+                                        "#ifdef TAPA_TASK_DEF_F\n") &&
+              buffer.InsertGuardClosing(clang::SourceRange(begin, last_token),
+                                        "#else\nvoid f();\n#endif\n"));
   // The foreign insertion: an attribute at the next declaration's begin —
   // the exact offset the guard's closing marker also targets.
   const clang::SourceLocation helper = begin.getLocWithOffset(body.size() + 2);
@@ -471,12 +472,13 @@ TEST(TreeFileBuffer, GuardWrappingResnapsBothHalves) {
   const clang::SourceLocation begin =
       sm.getLocForStartOfFile(sm.getMainFileID()).getLocWithOffset(offset);
   // A SourceRange end names the START of the last token (the closing
-  // brace), the way AST ranges do; InsertGuard extends past it itself.
+  // brace), the way AST ranges do; InsertGuardClosing extends past it itself.
   const clang::SourceLocation last_token =
       begin.getLocWithOffset(body.size() - 1);
-  ASSERT_TRUE(buffer.InsertGuard(clang::SourceRange(begin, last_token),
-                                 "#ifdef TAPA_TASK_DEF_F\n",
-                                 "\n#else\nvoid f();\n#endif\n"));
+  ASSERT_TRUE(buffer.InsertGuardOpening(clang::SourceRange(begin, last_token),
+                                        "#ifdef TAPA_TASK_DEF_F\n") &&
+              buffer.InsertGuardClosing(clang::SourceRange(begin, last_token),
+                                        "\n#else\nvoid f();\n#endif\n"));
   // The closing text ends the `}` line; the original newline that
   // followed it then reads as a blank line before the marker (still
   // logically line 4), and `int two;` re-snaps to its original line 5.

@@ -19,7 +19,6 @@ class CodeSink {
     lines_.push_back("#pragma " + llvm::join(parts, " "));
   }
 
-  bool Empty() const { return lines_.empty(); }
   const std::vector<std::string>& Lines() const { return lines_; }
   std::string Str() const { return llvm::join(lines_, "\n"); }
 
