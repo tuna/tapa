@@ -38,7 +38,7 @@ pub struct PackageXoInputs {
     #[builder(default)]
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
     /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
-    #[builder(default = vec![S_AXI_NAME.to_string()])]
+    #[builder(default = PackageXoInputs::default_s_axi())]
     pub s_axi_ifaces: Vec<String>,
     /// Extra HLS report files to append under the packaged `.xo`'s
     /// `report/` tree before redaction. Each entry is `(source_path,
@@ -189,9 +189,6 @@ fn bundle_report_paths_into_xo(
     report_paths: &[(Utf8PathBuf, String)],
 ) -> Result<()> {
     use std::io::{Read, Write};
-    if report_paths.is_empty() {
-        return Ok(());
-    }
     let raw = std::fs::read(xo)?;
     let mut z_in = zip::ZipArchive::new(std::io::Cursor::new(raw)).map_err(|e| {
         XilinxError::XoRedaction(format!("cannot open `{xo}` as a zip archive: {e}"))
