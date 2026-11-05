@@ -57,33 +57,24 @@ tapa --work-dir work.out synth \
   --clock-period 3.33
 ```
 
-TAPA runs an additional RTL synthesis pass and writes per-task resource counts to:
+TAPA runs an additional out-of-context Vivado synthesis pass per task on the
+generated RTL and writes per-task LUT, FF, BRAM, URAM, and DSP counts to:
 
 - `work.out/report.json` — machine-readable JSON
 - `work.out/report.yaml` — human-readable YAML
 
-Both files contain per-task LUT, FF, BRAM, URAM, and DSP counts. Use them to identify which tasks are consuming the most resources before proceeding to full implementation.
+Use them to identify which tasks are consuming the most resources before
+proceeding to full implementation. If these files are missing, synthesis
+either did not run or exited before the reporting step; check the HLS log in
+`work.out/` for errors.
 
-## Validation
-
-After running `tapa synth --enable-synth-util`, confirm the reports were written:
-
-```bash
-ls work.out/report.json work.out/report.yaml
-```
-
-- `work.out/report.json` — machine-readable per-task resource counts (LUT, FF, BRAM, URAM, DSP)
-- `work.out/report.yaml` — human-readable version of the same data
-
-If these files are missing, synthesis either did not run or exited before the reporting step. Check the HLS log in `work.out/` for errors.
-
-### Where per-task resource estimates come from
-
-TAPA needs a resource estimate for each task to balance the design across SLRs during floorplanning and to report utilization. There are two sources, in order of increasing accuracy:
-
-- **HLS estimates (available for each HLS-synthesized task).** After Vitis HLS synthesizes a task, TAPA reads its synthesis report for LUT, FF, BRAM, DSP, and URAM counts. These come "for free" with every `tapa synth` run, but **HLS estimates are coarse and frequently inaccurate** — they tend to undercount control and interconnect logic. Treat them as a rough guide, not a placement-quality number.
-
-- **Post-RTL-synthesis estimates (with `--enable-synth-util`).** This runs an additional out-of-context Vivado synthesis pass per task on the generated RTL, producing materially more accurate resource counts. **Prefer this whenever the estimates matter** — i.e. before floorplanning a tight design or when interpreting the utilization report. It costs one extra Vivado synth per task.
+The extra pass matters because the default per-task estimates are read from
+the Vitis HLS synthesis reports, and **HLS estimates are coarse and
+frequently inaccurate** — they tend to undercount control and interconnect
+logic. The post-RTL-synthesis numbers are materially more accurate, so
+prefer them whenever the estimates matter — before floorplanning a tight
+design or when interpreting the utilization report — at the cost of one
+extra Vivado synth per task.
 
 ## Improving Fmax with `tapa floorplan`
 
@@ -96,12 +87,6 @@ long combinational paths inside a task. Those require HLS changes.
 
 See [Floorplan for Timing Closure](floorplan.md) for the complete workflow,
 including connectivity, `--run-impl`, DSE, result files, and troubleshooting.
-
-## Advanced flags summary
-
-| Flag | Description |
-|------|-------------|
-| `--enable-synth-util` | Run post-HLS RTL synthesis to collect per-task resource utilization. |
 
 ## If something goes wrong
 
