@@ -125,6 +125,14 @@ pub enum AieStreamKind {
 /// Widest boundary element: one 128-bit PLIO beat.
 const MAX_PLIO_BITS: u32 = 128;
 
+/// A node of the stream graph cycles are found on: a kernel, or an instance
+/// of a PL task the top invokes (a PL upper task counts as one node).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum Node {
+    Kernel(usize),
+    Pl(String, u32),
+}
+
 impl AiePartition {
     /// The AI Engine partition of `graph`, or `None` when no task is on the
     /// AI Engine.
@@ -180,9 +188,7 @@ impl AiePartition {
         builder.partition.mark_cycles(graph, top);
         Ok(Some(builder.partition))
     }
-}
 
-impl AiePartition {
     /// The PL half of `graph`, the design `tapa synth` builds as RTL: the AI
     /// Engine tasks and their instances are gone, a net the top declares is
     /// gone, and every PLIO becomes a top-level stream port of the top task,
@@ -194,7 +200,7 @@ impl AiePartition {
     pub fn pl_projection(&self, graph: &TaskGraph) -> Result<TaskGraph, AieError> {
         let mut pl = graph.clone();
         pl.tasks.retain(|_, task| task.synth != SynthTarget::Aie);
-        let pl_tasks: std::collections::BTreeSet<String> = pl.tasks.keys().cloned().collect();
+        let pl_tasks: BTreeSet<String> = pl.tasks.keys().cloned().collect();
         let original = task(graph, &graph.top)?;
         let top = pl
             .tasks
@@ -202,16 +208,19 @@ impl AiePartition {
             .ok_or_else(|| AieError(format!("the task graph has no task `{}`", graph.top)))?;
         top.tasks.retain(|child, _| pl_tasks.contains(child));
         for stream in &self.streams {
-            let AieStreamKind::Plio { input, width } = stream.kind else {
-                let top_aie_net = top.fifos.get(&stream.fifo).is_some_and(|fifo| {
-                    [&fifo.produced_by, &fifo.consumed_by]
-                        .iter()
-                        .all(|endpoint| endpoint_is_aie(graph, endpoint.as_ref()))
-                });
-                if top_aie_net {
-                    top.fifos.remove(&stream.fifo);
+            let (input, width) = match stream.kind {
+                AieStreamKind::Plio { input, width } => (input, width),
+                AieStreamKind::Net { .. } => {
+                    let top_aie_net = top.fifos.get(&stream.fifo).is_some_and(|fifo| {
+                        [&fifo.produced_by, &fifo.consumed_by]
+                            .iter()
+                            .all(|endpoint| endpoint_is_aie(graph, endpoint.as_ref()))
+                    });
+                    if top_aie_net {
+                        top.fifos.remove(&stream.fifo);
+                    }
+                    continue;
                 }
-                continue;
             };
             let Some(fifo) = top.fifos.get_mut(&stream.fifo) else {
                 continue;
@@ -272,17 +281,7 @@ impl AiePartition {
         }
         Ok(pl)
     }
-}
 
-/// A node of the stream graph cycles are found on: a kernel, or an instance
-/// of a PL task the top invokes (a PL upper task counts as one node).
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum Node {
-    Kernel(usize),
-    Pl(String, u32),
-}
-
-impl AiePartition {
     /// Sets [`AieKernel::ordered`] on every kernel a stream cycle runs
     /// through, by way of other kernels or the top's PL instances.
     fn mark_cycles(&mut self, graph: &TaskGraph, top: &Task) {
