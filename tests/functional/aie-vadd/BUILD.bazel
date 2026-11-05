@@ -18,7 +18,6 @@ cc_binary(
             "*.cpp",
             "*.h",
         ],
-        exclude = ["detach.cpp"],
     ),
     deps = [
         "//tapa-lib:tapa-host",
@@ -33,7 +32,6 @@ cc_binary(
             "*.cpp",
             "*.h",
         ],
-        exclude = ["detach.cpp"],
     ),
     copts = ["-DTAPA_AIE_TEST_REPEATS=2"],
     deps = [
