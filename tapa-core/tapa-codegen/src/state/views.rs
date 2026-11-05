@@ -132,9 +132,8 @@ impl<'a> FsmTable<'a> {
 
     /// Create an FSM module for an upper-level task.
     ///
-    /// Rejects lower-level tasks. This is the [`FsmTable`]-resident half of
-    /// `TopologyWithRtl::create_fsm_module`, which delegates here after the
-    /// design-side task lookup.
+    /// Rejects lower-level tasks; the design-side level lookup lives in the
+    /// `create_fsm_module` task pass, which delegates here.
     pub fn create_fsm_module(
         &mut self,
         task_name: &str,
