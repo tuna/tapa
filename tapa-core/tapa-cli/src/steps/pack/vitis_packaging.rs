@@ -10,7 +10,7 @@
 //! `rtl_dir`.
 
 use camino::Utf8PathBuf;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use tapa_ir::{ClockPeriod, Design, WorkState};
 use tapa_xilinx::{
     emit_kernel_xml, emit_slash_hls_data, normalize_hls_report_text, pack_ip,
@@ -55,9 +55,7 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
             state.flow.skip_aie,
             platform,
             &output_path,
-        )?
-        .is_some()
-        {
+        )? {
             write_aie_pl_control(runner, &ctx.work_dir, platform, target_mhz, &output_path)?;
         } else {
             remove_aie_control(&output_path)?;
@@ -524,17 +522,18 @@ fn write_aie_pl_control(
 }
 
 /// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
-/// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`.
+/// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`;
+/// returns whether the graph was packaged.
 fn write_aie_sidecars(
     work_dir: &Path,
     design: &Design,
     skip_aie: bool,
     platform: &str,
     xo: &Path,
-) -> Result<Option<(PathBuf, PathBuf)>> {
+) -> Result<bool> {
     let Some(partition) = tapa_ir::AiePartition::derive(design)? else {
         remove_aie_sidecars(xo)?;
-        return Ok(None);
+        return Ok(false);
     };
     let libadf = crate::aie::dir(work_dir, "hw").join("libadf.a");
     if !libadf.is_file() {
@@ -544,7 +543,7 @@ fn write_aie_sidecars(
                 "no AI Engine graph to package (synthesized with `--skip-aie`): the .xo serves \
                  hybrid cosimulation only"
             );
-            return Ok(None);
+            return Ok(false);
         }
         return Err(CliError::MissingState {
             name: "AI Engine graph (run `tapa synth` without `--skip-aie`)".to_string(),
@@ -566,7 +565,7 @@ fn write_aie_sidecars(
         libadf_out.display(),
         cfg_out.display()
     );
-    Ok(Some((libadf_out, cfg_out)))
+    Ok(true)
 }
 
 #[cfg(test)]
@@ -688,7 +687,7 @@ mod tests {
             let state = aie_state(skip_aie);
             let result = write_aie_sidecars(dir.path(), &state.graph, skip_aie, "", &xo);
             if skip_aie {
-                assert!(result.expect("intentional skip").is_none());
+                assert!(!result.expect("intentional skip"));
             } else {
                 assert!(matches!(result, Err(CliError::MissingState { .. })));
             }
@@ -701,9 +700,8 @@ mod tests {
         let xo = dir.path().join("k.xo");
         write_stale_sidecars(&xo);
         let state = pl_only_state();
-        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
-            .expect("PL-only package")
-            .is_none());
+        assert!(!write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
+            .expect("PL-only package"));
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
         assert_no_aie_control(&xo);
@@ -717,9 +715,9 @@ mod tests {
         fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
         let xo = dir.path().join("k.xo");
         let state = aie_state(false);
-        let (libadf, cfg) = write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
-            .expect("package graph")
-            .expect("sidecars");
+        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
+            .expect("package graph"));
+        let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert_eq!(
             fs_err::read_to_string(libadf).expect("read graph"),
             "current graph"
@@ -739,15 +737,15 @@ mod tests {
         fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
         let xo = dir.path().join("k.xo");
         let state = aie_state(false);
-        let (_, cfg) = write_aie_sidecars(
+        assert!(write_aie_sidecars(
             dir.path(),
             &state.graph,
             false,
             "xilinx_vck5000_gen4x8_qdma_2_202220_1",
             &xo,
         )
-        .expect("package graph")
-        .expect("sidecars");
+        .expect("package graph"));
+        let (_, cfg) = crate::aie::sidecars(&xo);
         assert_eq!(
             fs_err::read_to_string(cfg).expect("read connectivity"),
             "[connectivity]\n\
