@@ -20,7 +20,7 @@ use crate::error::{Result, XilinxError};
 /// graph with a never-returning kernel is named apart, so the runtime knows
 /// to run it forever and stop it rather than wait for it.
 #[must_use]
-pub const fn graph_instance(run_forever: bool) -> &'static str {
+const fn graph_instance(run_forever: bool) -> &'static str {
     if run_forever {
         "tapa_aie_forever"
     } else {
@@ -67,7 +67,7 @@ pub struct GraphOptions {
 /// the top scalar argument `arg` of the PL kernel. The leading index lets
 /// the runtime find which argument value to write: `rtp_<arg>_<kernel>_<port>`.
 #[must_use]
-pub fn rtp_name(arg: u32, kernel: &str, port: &str) -> String {
+fn rtp_name(arg: u32, kernel: &str, port: &str) -> String {
     format!("rtp_{arg}_{kernel}_{}", sanitize_identifier_name(port))
 }
 
