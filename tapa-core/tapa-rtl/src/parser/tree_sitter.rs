@@ -42,6 +42,11 @@ pub(super) fn text_of<'a>(node: Node<'a>, src: &'a [u8]) -> &'a str {
     std::str::from_utf8(&src[node.byte_range()]).unwrap_or("")
 }
 
+/// A node's children, without the cursor tree-sitter's `children` needs.
+pub(super) fn children_of(node: Node<'_>) -> impl Iterator<Item = Node<'_>> {
+    (0..node.child_count()).map(move |i| node.child(i).unwrap())
+}
+
 // ── Width extraction ────────────────────────────────────────────────
 
 fn extract_width(node: Node, src: &[u8]) -> Option<Width> {
@@ -49,8 +54,8 @@ fn extract_width(node: Node, src: &[u8]) -> Option<Width> {
         if node.kind() == "packed_dimension" {
             return Some(node);
         }
-        for i in 0..node.child_count() {
-            if let Some(found) = find_packed_dimension(node.child(i).unwrap()) {
+        for child in children_of(node) {
+            if let Some(found) = find_packed_dimension(child) {
                 return Some(found);
             }
         }
@@ -58,8 +63,7 @@ fn extract_width(node: Node, src: &[u8]) -> Option<Width> {
     }
 
     let pd = find_packed_dimension(node)?;
-    for i in 0..pd.child_count() {
-        let child = pd.child(i).unwrap();
+    for child in children_of(pd) {
         if child.kind() == "constant_range" {
             return parse_constant_range(child, src);
         }
@@ -70,8 +74,7 @@ fn extract_width(node: Node, src: &[u8]) -> Option<Width> {
 fn parse_constant_range(node: Node, src: &[u8]) -> Option<Width> {
     let mut msb_str = None;
     let mut lsb_str = None;
-    for i in 0..node.child_count() {
-        let child = node.child(i).unwrap();
+    for child in children_of(node) {
         let text = text_of(child, src).trim();
         if text == ":" {
             continue;
@@ -97,42 +100,20 @@ fn extract_ports_from_node(node: Node, src: &[u8]) -> Vec<Port> {
     let mut width: Option<Width> = None;
     let mut names: Vec<String> = Vec::new();
 
-    for i in 0..node.child_count() {
-        let child = node.child(i).unwrap();
+    for child in children_of(node) {
         match child.kind() {
             "attribute_instance" => {
                 if let Some(p) = parse_attribute_text(text_of(child, src)) {
                     pragmas.push(p);
                 }
             }
-            "input_declaration" => {
-                direction = Direction::Input;
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
-                    if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
-                        width = extract_width(c, src);
-                    }
-                    if c.kind() == "list_of_port_identifiers" {
-                        names.extend(extract_identifiers(c, src));
-                    }
-                }
-            }
-            "output_declaration" => {
-                direction = Direction::Output;
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
-                    if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
-                        width = extract_width(c, src);
-                    }
-                    if c.kind() == "list_of_port_identifiers" {
-                        names.extend(extract_identifiers(c, src));
-                    }
-                }
-            }
-            "inout_declaration" => {
-                direction = Direction::Inout;
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
+            "input_declaration" | "output_declaration" | "inout_declaration" => {
+                direction = match child.kind() {
+                    "input_declaration" => Direction::Input,
+                    "output_declaration" => Direction::Output,
+                    _ => Direction::Inout,
+                };
+                for c in children_of(child) {
                     if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
                         width = extract_width(c, src);
                     }
@@ -171,29 +152,15 @@ fn extract_ansi_port(
     let mut name: Option<String> = None;
     let mut has_type_spec = false;
 
-    for i in 0..node.child_count() {
-        let child = node.child(i).unwrap();
+    for child in children_of(node) {
         match child.kind() {
-            "net_port_header" => {
+            "net_port_header" | "variable_port_header" => {
                 has_type_spec = true;
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
+                for c in children_of(child) {
                     if c.kind() == "port_direction" {
                         direction = parse_direction(text_of(c, src).trim());
                     }
-                    if c.kind() == "net_port_type" {
-                        width = extract_width(c, src);
-                    }
-                }
-            }
-            "variable_port_header" => {
-                has_type_spec = true;
-                for j in 0..child.child_count() {
-                    let c = child.child(j).unwrap();
-                    if c.kind() == "port_direction" {
-                        direction = parse_direction(text_of(c, src).trim());
-                    }
-                    if c.kind() == "variable_port_type" {
+                    if c.kind() == "net_port_type" || c.kind() == "variable_port_type" {
                         width = extract_width(c, src);
                     }
                 }
@@ -240,8 +207,8 @@ fn extract_identifiers(node: Node, src: &[u8]) -> Vec<String> {
         if node.kind() == "simple_identifier" || node.kind() == "escaped_identifier" {
             ids.push(text_of(node, src).to_owned());
         }
-        for i in 0..node.child_count() {
-            walk(node.child(i).unwrap(), src, ids);
+        for child in children_of(node) {
+            walk(child, src, ids);
         }
     }
     let mut ids = Vec::new();
@@ -255,14 +222,12 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
     let mut width: Option<Width> = None;
     let mut params = Vec::new();
 
-    for i in 0..node.child_count() {
-        let child = node.child(i).unwrap();
+    for child in children_of(node) {
         if child.kind() == "data_type_or_implicit" || child.kind() == "data_type" {
             width = extract_width(child, src).or(width);
         }
         if child.kind() == "list_of_param_assignments" {
-            for j in 0..child.child_count() {
-                let c = child.child(j).unwrap();
+            for c in children_of(child) {
                 if c.kind() == "param_assignment" {
                     let mut name = None;
                     let mut default_str = None;
@@ -344,8 +309,8 @@ fn first_issue(root: Node, src: &[u8]) -> Option<ParseIssue> {
         // ignored: only the module interface is validated here.
         return None;
     }
-    for i in 0..root.child_count() {
-        if let Some(found) = first_issue(root.child(i).unwrap(), src) {
+    for child in children_of(root) {
+        if let Some(found) = first_issue(child, src) {
             return Some(found);
         }
     }
@@ -374,9 +339,7 @@ pub(super) fn signal_kind_of(node: Node, src: &[u8]) -> Option<SignalKind> {
 
 /// True when the node subtree contains an `ERROR` or `MISSING` node.
 pub(super) fn has_error_node(node: Node) -> bool {
-    node.kind() == "ERROR"
-        || node.is_missing()
-        || (0..node.child_count()).any(|i| has_error_node(node.child(i).unwrap()))
+    node.kind() == "ERROR" || node.is_missing() || children_of(node).any(has_error_node)
 }
 
 /// Declared identifier of each declarator in a wire/reg declaration,
@@ -388,13 +351,11 @@ fn declarator_names(node: Node, src: &[u8]) -> Vec<String> {
         "list_of_variable_decl_assignments"
     };
     let mut names = Vec::new();
-    for i in 0..node.child_count() {
-        let list = node.child(i).unwrap();
+    for list in children_of(node) {
         if list.kind() != list_kind {
             continue;
         }
-        for j in 0..list.child_count() {
-            let assignment = list.child(j).unwrap();
+        for assignment in children_of(list) {
             if !matches!(
                 assignment.kind(),
                 "net_decl_assignment" | "variable_decl_assignment"
@@ -482,8 +443,8 @@ fn walk_module_body(
             // Unwrap one grouping level; port declarations carry their
             // leading attributes as direct children.
             "module_item" | "port_declaration" => {
-                for i in 0..node.child_count() {
-                    visit(node.child(i).unwrap(), src, module, out)?;
+                for child in children_of(node) {
+                    visit(child, src, module, out)?;
                 }
             }
             "net_declaration" | "data_declaration" => {
@@ -509,8 +470,7 @@ fn walk_module_body(
         signals: Vec::new(),
         pragmas: Vec::new(),
     };
-    for i in 0..mod_node.child_count() {
-        let child = mod_node.child(i).unwrap();
+    for child in children_of(mod_node) {
         if child.id() == header_node.id() {
             continue;
         }
@@ -526,8 +486,8 @@ pub(super) fn find_first_module(root: Node) -> Option<Node> {
     if root.kind() == "module_declaration" {
         return Some(root);
     }
-    for i in 0..root.child_count() {
-        if let Some(found) = find_first_module(root.child(i).unwrap()) {
+    for child in children_of(root) {
+        if let Some(found) = find_first_module(child) {
             return Some(found);
         }
     }
@@ -536,8 +496,7 @@ pub(super) fn find_first_module(root: Node) -> Option<Node> {
 
 pub(super) fn module_header(module: Node) -> Option<Node> {
     module.child_by_field_name("header").or_else(|| {
-        (0..module.child_count())
-            .map(|i| module.child(i).unwrap())
+        children_of(module)
             .find(|node| matches!(node.kind(), "module_nonansi_header" | "module_ansi_header"))
     })
 }
@@ -559,8 +518,7 @@ fn is_preamble_trivia(node: Node, src: &[u8]) -> bool {
 /// level or folded into the module header by the grammar.
 fn leading_pragmas(root: Node, mod_node: Node, header: Node, src: &[u8]) -> Vec<Pragma> {
     let mut pragmas = Vec::new();
-    for i in 0..root.child_count() {
-        let child = root.child(i).unwrap();
+    for child in children_of(root) {
         if child.end_byte() > mod_node.start_byte() {
             break;
         }
@@ -575,8 +533,7 @@ fn leading_pragmas(root: Node, mod_node: Node, header: Node, src: &[u8]) -> Vec<
             }
         }
     }
-    for i in 0..header.child_count() {
-        let child = header.child(i).unwrap();
+    for child in children_of(header) {
         if child.kind() == "module_keyword" {
             break;
         }
@@ -595,14 +552,12 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
     let mut port_names = Vec::new();
 
     // ANSI header ports
-    for i in 0..header.child_count() {
-        let child = header.child(i).unwrap();
+    for child in children_of(header) {
         if child.kind() == "list_of_port_declarations" {
             let mut pending_pragma: Option<Pragma> = None;
             let mut last_dir = Direction::Input;
             let mut last_width: Option<Width> = None;
-            for j in 0..child.child_count() {
-                let c = child.child(j).unwrap();
+            for c in children_of(child) {
                 match c.kind() {
                     "attribute_instance" => {
                         if let Some(p) = parse_attribute_text(text_of(c, src)) {
@@ -625,8 +580,7 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
             }
         }
         if child.kind() == "list_of_ports" {
-            for j in 0..child.child_count() {
-                let c = child.child(j).unwrap();
+            for c in children_of(child) {
                 if c.kind() == "port" {
                     for k in 0..c.child_count() {
                         let d = c.child(k).unwrap();
@@ -709,8 +663,7 @@ pub fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
         return Ok(ModuleParse::HeaderFailed);
     };
 
-    let Some(name) = (0..header.child_count())
-        .map(|i| header.child(i).unwrap())
+    let Some(name) = children_of(header)
         .find(|n| n.kind() == "simple_identifier")
         .map(|n| text_of(n, src).to_owned())
     else {

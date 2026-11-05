@@ -7,8 +7,8 @@ use streaming_iterator::StreamingIterator;
 use tree_sitter::{Node, Query, QueryCursor};
 
 use super::tree_sitter::{
-    find_first_module, has_error_node, module_header, signal_kind_of, sv_language, sv_parser,
-    text_of,
+    children_of, find_first_module, has_error_node, module_header, signal_kind_of, sv_language,
+    sv_parser, text_of,
 };
 
 static Q_DRIVER_USES: LazyLock<Query> = LazyLock::new(|| {
@@ -98,8 +98,8 @@ fn record_identifiers(
             .and_modify(|previous| *previous &= proven)
             .or_insert(proven);
     } else {
-        for i in 0..node.child_count() {
-            record_identifiers(node.child(i).unwrap(), src, proven_name, names);
+        for child in children_of(node) {
+            record_identifiers(child, src, proven_name, names);
         }
     }
 }
@@ -127,7 +127,7 @@ pub fn unconditionally_zero_driven_names(source: &str) -> BTreeSet<String> {
         if matches!(
             lhs.kind(),
             "net_decl_assignment" | "variable_decl_assignment"
-        ) && !(0..lhs.child_count()).any(|i| lhs.child(i).unwrap().kind() == "=")
+        ) && !children_of(lhs).any(|child| child.kind() == "=")
         {
             continue;
         }
@@ -185,13 +185,11 @@ pub fn original_module_text(source: &str) -> (&str, &str) {
     let Some(header) = module_header(module) else {
         return empty;
     };
-    let body_end = (0..module.child_count())
-        .map(|i| module.child(i).unwrap())
+    let body_end = children_of(module)
         .find(|node| node.kind() == "endmodule")
         .map_or_else(|| module.end_byte(), |node| node.start_byte());
     let mut body_start = header.end_byte();
-    for i in 0..module.child_count() {
-        let child = module.child(i).unwrap();
+    for child in children_of(module) {
         if child.end_byte() <= header.end_byte() {
             continue;
         }
@@ -207,8 +205,7 @@ pub fn original_module_text(source: &str) -> (&str, &str) {
     }
     // The comment on the terminator's own line is replaced by the emitted
     // `endmodule //name`; every later node starts the preserved tail.
-    let tail_start = (0..root.child_count())
-        .map(|i| root.child(i).unwrap())
+    let tail_start = children_of(root)
         .filter(|node| node.start_byte() >= module.end_byte())
         .find(|node| {
             !(node.start_position().row == module.end_position().row
