@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include <cstddef>
+#include <cstdint>
 
 #include "tapa/xilinx/hls/stream.h"
 
