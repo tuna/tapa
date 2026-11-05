@@ -134,12 +134,11 @@ depend on compiler engines or the CLI.
 
 The generated C header is another guarded boundary:
 `frt/tests/c_api_header_test.rs` compares the checked-in `c_api.h` with fresh
-cbindgen output. To check it manually:
+cbindgen output. Regenerate it with:
 
 ```bash
 cd fpga-runtime
-cargo run -p frt --example gen_c_api -- \
-  --check ../tapa-lib/tapa/host/frt/c_api.h
+cargo run -p frt --example gen_c_api > ../tapa-lib/tapa/host/frt/c_api.h
 ```
 
 ## Implementation conventions
