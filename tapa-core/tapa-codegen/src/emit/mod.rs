@@ -4,18 +4,13 @@
 use tapa_ir::task::TaskLevel;
 use tapa_ir::SynthTarget;
 
-use crate::error::CodegenError;
 use crate::passes::DesignPassCtx;
 
 /// Design pass: collect the emitted files.
 ///
 /// Runs last: every mutation pass must have run before the Verilog is
 /// emitted into `generated_files` / `template_files`.
-#[allow(
-    clippy::unnecessary_wraps,
-    reason = "every pass shares one signature so the stage table stays uniform"
-)]
-pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
+pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
     let design = ctx.design.design();
 
     // `Ignore` tasks: emit the authoritative template file from the
@@ -46,6 +41,4 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> 
         ctx.outputs
             .insert_generated(format!("{name}_fsm.v"), mm.emit());
     }
-
-    Ok(())
 }
