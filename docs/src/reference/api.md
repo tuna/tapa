@@ -418,22 +418,13 @@ inline constexpr int widthof(T object);  // deduce T from argument
 
 ### EoT macros
 
-End-of-transaction macros simplify consuming a stream until a sentinel marker is received.
+End-of-transaction macros simplify consuming a stream until a sentinel marker is received. See [Streams](../concepts/streams.md#eot-loop-helper-macros) for the usage pattern.
 
 | Macro | Description |
 |-------|-------------|
 | `TAPA_WHILE_NOT_EOT(stream)` | Loop body executes once per data element; loop exits when the EoT marker is seen. |
 | `TAPA_WHILE_NEITHER_EOT(s1, s2)` | Two-stream variant; exits when either stream reaches EoT. |
 | `TAPA_WHILE_NONE_EOT(s1, s2, s3)` | Three-stream variant. |
-
-```cpp
-// Example: consume all elements from 'in' and forward to 'out'
-TAPA_WHILE_NOT_EOT(in) {
-  out.write(in.read());
-}
-in.open();   // consume the EoT marker
-out.close(); // send EoT marker downstream
-```
 
 ### Synthesis pragmas (C++ attributes)
 
