@@ -1,6 +1,5 @@
 #pragma once
 
-#include <any>
 #include <array>
 #include <cstddef>
 #include <cstring>
@@ -23,23 +22,6 @@ struct ap_int;
 namespace tapa {
 namespace internal {
 namespace frt {
-
-// Type-erased carrier for a stream's FFI context (its shared-memory path).
-class StreamArg {
- public:
-  explicit StreamArg(std::any context) : context_(std::move(context)) {}
-  StreamArg() = default;
-  StreamArg(const StreamArg&) = delete;
-  StreamArg& operator=(const StreamArg&) = delete;
-
-  template <typename Context>
-  Context get() const {
-    return std::any_cast<Context>(context_);
-  }
-
- private:
-  std::any context_;
-};
 
 template <typename T>
 struct StreamWidth : std::integral_constant<int, 0> {};

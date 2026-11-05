@@ -21,7 +21,7 @@ struct StreamFfiContext {
 };
 
 template <typename T>
-class Stream : public StreamArg {
+class Stream {
  public:
   explicit Stream(uint64_t depth) : Stream(MakeInit(depth)) {}
 
@@ -36,7 +36,7 @@ class Stream : public StreamArg {
   Stream& operator=(const Stream&) = delete;
 
   // Shared-memory path used to hand this stream to the FRT C ABI.
-  std::string path() const { return get<StreamFfiContext>().path; }
+  std::string path() const { return context_.path; }
 
   bool empty() const {
     int ret = frt_shmq_empty(handle_);
@@ -89,7 +89,7 @@ class Stream : public StreamArg {
   };
 
   explicit Stream(const Init& init)
-      : StreamArg(init.context), handle_(init.handle) {}
+      : context_(init.context), handle_(init.handle) {}
 
   static Init MakeInit(uint64_t depth) {
     std::array<char, 4096> path_buf{};
@@ -103,6 +103,7 @@ class Stream : public StreamArg {
     return init;
   }
 
+  StreamFfiContext context_;
   void* handle_ = nullptr;
 };
 
