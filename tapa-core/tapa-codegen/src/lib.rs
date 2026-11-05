@@ -51,7 +51,7 @@ const TASK_PASSES: &[TaskPass] = &[
 /// auxiliary files. The manifest is assembled from those maps plus the
 /// embedded support assets — the codegen charter's output type, whose
 /// packaging (CLI, golden harness) is a copy operation. The `state` file
-/// maps remain public for now; consumers must not re-derive the shipped
+/// maps remain public; consumers must not re-derive the shipped
 /// set from them.
 pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, CodegenError> {
     let task_names: Vec<String> = state.data_design().tasks.keys().cloned().collect();

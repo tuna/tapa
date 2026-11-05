@@ -224,10 +224,6 @@ fn register_fsm_handshake_ports(
         // instantiation portargs using child-specific port names.
         // FSM module ports are child-specific (e.g., child_0__ap_start),
         // parent wires have the same names — so both sides match.
-        // `fsm_ports()` is pure over `sig`, so one merged pass emits the FSM
-        // module ports and the instantiation portargs in the same per-target
-        // order as two sequential loops; the portarg push stays outside the
-        // module lookup exactly as before.
         for port in sig.fsm_ports() {
             let portarg = tapa_rtl::builder::PortArg::new(&port.name, Expr::ident(&port.name));
             if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {

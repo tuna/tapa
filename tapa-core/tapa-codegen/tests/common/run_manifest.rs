@@ -7,7 +7,7 @@
 //! Tests assert against the manifest (`rtl/<name>.v` and
 //! `template/<name>.v` entries) instead of re-deriving the shipped set
 //! from the post-pipeline `state` maps — `lib.rs` keeps those maps
-//! "public for now" and directs consumers to the manifest. Fixture states
+//! public and directs consumers to the manifest. Fixture states
 //! that need adjustment between construction and generation (a floorplan,
 //! a mutated module) run through [`generate_manifest`] directly.
 

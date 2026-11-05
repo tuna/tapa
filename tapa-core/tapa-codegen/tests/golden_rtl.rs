@@ -33,10 +33,10 @@
 //! re-pinned here (the inputs themselves are the pinned fixtures under
 //! `<case>/inputs/`).
 //!
-//! Comparison is normalized per the refactor plan's cross-cutting standard
-//! (sorted relative paths, trailing whitespace trimmed per line, single
-//! trailing newline) so cosmetic churn does not cost a re-bless. A mismatch
-//! reports every differing file plus the first differing line per file.
+//! Comparison is normalized (sorted relative paths, trailing whitespace
+//! trimmed per line, single trailing newline) so cosmetic churn does not
+//! cost a re-bless. A mismatch reports every differing file plus the first
+//! differing line per file.
 //!
 //! BLESS / REGENERATE: run with `TAPA_BLESS_GOLDEN=1`:
 //!
@@ -322,9 +322,9 @@ fn golden_rtl_matches_blessed() {
     let assets_case = shared_assets_case(&root);
     let bless_mode = env::var("TAPA_BLESS_GOLDEN").is_ok_and(|value| value == "1");
 
-    // The manifest is the complete emitted set (F1 seam closed); its
-    // support-asset slice is case-invariant, so any case's manifest
-    // provides the shared `_assets` pin.
+    // The manifest is the complete emitted set; its support-asset slice is
+    // case-invariant, so any case's manifest provides the shared `_assets`
+    // pin.
     let manifests: Vec<ArtifactManifest> = cases.iter().map(run_case).collect();
 
     if bless_mode {

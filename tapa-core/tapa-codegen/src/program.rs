@@ -57,7 +57,6 @@ pub const DONE_Q: &str = "__tapa_done_q";
 ///
 /// Children use `start_q` for IDLE->RUNNING and `done_q` for DONE->IDLE.
 pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
-    // Add top-level handshake ports to FSM module interface
     let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
         HANDSHAKE_START,
         tapa_rtl::port::Direction::Input,
@@ -75,13 +74,10 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
         tapa_rtl::port::Direction::Output,
     ));
 
-    // Add state register
     let _ = fsm_module.add_signal(wide_reg("__tapa_state", "1", "0"));
 
-    // Add reset wire
     let _ = fsm_module.add_signal(wire(HANDSHAKE_RST));
 
-    // Add start/done wires
     let _ = fsm_module.add_signal(wire(START_Q));
     let _ = fsm_module.add_signal(wire(DONE_Q));
 
