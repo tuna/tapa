@@ -7,7 +7,6 @@
 .ci-secrets
 .claude/
 .humanize
-.humanize/
 /.cache/
 /.cmake-format
 /.pi-subagents/
@@ -20,10 +19,7 @@
 /fpga-runtime/target/
 /tapa-core/target/
 /tools/test-tools/target/
-a.out
-artifacts.out/
 docs/superpowers/
 plans/
 run/
 work.xo
-work.zip
