@@ -9,6 +9,6 @@ mod validate;
 // path (`tapa_floorplan::graph::floor_graph::*`) — and thus the recorded
 // public API — is unchanged by the build/validate/query split.
 pub use floor_graph::{
-    fifo_area, AxiNet, ControlInterface, ControlNet, FloorGraph, GraphError, MemoryInterface,
-    PlacementEdge, Stream, Vertex,
+    AxiNet, ControlInterface, ControlNet, FloorGraph, GraphError, MemoryInterface, PlacementEdge,
+    Stream, Vertex,
 };

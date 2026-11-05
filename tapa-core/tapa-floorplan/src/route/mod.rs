@@ -4,5 +4,4 @@
 pub mod ilp;
 pub mod paths;
 
-pub use ilp::{route_nets, slot_tag, RouteError, RouteNet};
-pub use paths::{enumerate_paths, Cell};
+pub use ilp::RouteError;

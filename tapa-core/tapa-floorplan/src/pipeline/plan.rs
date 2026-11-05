@@ -18,7 +18,7 @@ use tapa_ir::{
 };
 
 use crate::device::model::{Coor, Device, Resource};
-use crate::graph::{fifo_area, FloorGraph};
+use crate::graph::floor_graph::{fifo_area, FloorGraph};
 use crate::partition::ilp::scaled_area;
 #[cfg(test)]
 use crate::partition::ilp::MAX_USAGE_LIMIT;
