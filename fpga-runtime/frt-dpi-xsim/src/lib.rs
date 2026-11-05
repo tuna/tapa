@@ -27,21 +27,11 @@ mod imp {
         })
     }
 
-    /// Extract the raw byte pointer from an svOpenArrayHandle.
-    ///
-    /// # Safety
-    /// `h` must be a valid svOpenArrayHandle provided by the xsim DPI caller.
-    unsafe fn sv_array_ptr(h: SvOpenArrayHandle) -> *mut u8 {
+    /// Marshals the payload pointer out of an svOpenArrayHandle.
+    fn arr_ptr(h: SvOpenArrayHandle) -> *mut u8 {
         // SAFETY: `h` is a valid svOpenArrayHandle from the xsim DPI caller;
         // `svGetArrayPtr` returns the underlying data pointer.
         unsafe { (get_sv_get_array_ptr())(h).cast::<u8>() }
-    }
-
-    // Marshals an svOpenArrayHandle payload pointer.
-    fn arr_ptr(h: SvOpenArrayHandle) -> *mut u8 {
-        // SAFETY: the DPI caller hands us a handle that stays valid for the
-        // duration of the exported call.
-        unsafe { sv_array_ptr(h) }
     }
 
     // Decodes an `svBit`-style flag: nonzero is set.
