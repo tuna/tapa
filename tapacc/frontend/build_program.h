@@ -14,8 +14,9 @@ namespace tapa::cc {
 bool IsInSourceFiles(const clang::ASTContext& ctx, clang::SourceLocation loc,
                      const std::set<clang::FileID>& files);
 
-// Global function definitions in the selected files, in source order. Drives
-// both task discovery and codegen's source assembly.
+// Global function definitions in the selected files, in source order. Fills
+// `Program::file_funcs` for codegen's source assembly; task discovery runs on
+// MainFileFuncs instead.
 std::vector<const clang::FunctionDecl*> CollectFileFuncs(
     const clang::ASTContext& ctx, const std::set<clang::FileID>& files);
 
