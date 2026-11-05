@@ -247,15 +247,6 @@ fn control_master_restart_during_transfer() {
     std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n").expect("write src");
 
     let run = || -> tapa_xilinx::ToolOutput {
-        let mut inv = ToolInvocation::new("cat");
-        inv.cwd = Some(src_dir.clone());
-        inv.uploads.push(src_dir.clone());
-        inv.downloads.push(src_dir.clone());
-        // `cat payload/hello.txt` is resolved relative to the
-        // rewritten cwd, so the runner must have (a) uploaded the
-        // `payload/` tree, (b) rewritten cwd to the rootfs mirror,
-        // and (c) downloaded the mirror back on return.
-        let _ = inv; // silence unused-mut if the compiler complains
         let mut inv = ToolInvocation::new("cat").arg(ToolValue::path(src_dir.join("hello.txt")));
         inv.cwd = Some(
             Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
@@ -263,6 +254,8 @@ fn control_master_restart_during_transfer() {
         );
         inv.uploads.push(src_dir.clone());
         inv.downloads.push(src_dir.clone());
+        // The typed absolute source path is relocated to the remote mirror,
+        // and the upload/download round-trip transfers the source tree there and back.
         runner
             .run(&inv)
             .expect("remote transfer + cat must succeed")
