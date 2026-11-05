@@ -42,8 +42,6 @@ def _header_extractor_impl(ctx):
 header_extractor = rule(
     implementation = _header_extractor_impl,
     attrs = {
-        "deps": attr.label_list(
-            default = [],
-        ),
+        "deps": attr.label_list(),
     },
 )
