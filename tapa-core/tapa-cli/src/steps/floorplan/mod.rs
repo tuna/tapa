@@ -846,8 +846,8 @@ mod tests {
         fs_err::write(&source_path, "[connectivity]\nsp=Top.mem:HBM[x]\n")
             .expect("write connectivity");
 
-        let error =
-            read_connectivity(Some(&source_path), parse_vitis_config).expect_err("syntax must fail");
+        let error = read_connectivity(Some(&source_path), parse_vitis_config)
+            .expect_err("syntax must fail");
         assert!(matches!(error, CliError::InvalidArg(_)));
         assert!(!dir.path().join(FLOORPLAN_CONNECTIVITY).exists());
         assert!(!dir.path().join(FLOORPLAN_XDC).exists());
