@@ -185,12 +185,11 @@ def _ssh_key_repository_impl(rctx):
     key_file = rctx.path(key_path)
     if key_file.exists:
         rctx.symlink(key_file, "key")
-        rctx.file("BUILD.bazel", 'exports_files(["key"], visibility = ["//visibility:public"])\n')
     else:
         # buildifier: disable=print
         print("NOTE: SSH key file not found: " + key_path)
         rctx.file("key", "")
-        rctx.file("BUILD.bazel", 'exports_files(["key"], visibility = ["//visibility:public"])\n')
+    rctx.file("BUILD.bazel", 'exports_files(["key"], visibility = ["//visibility:public"])\n')
 
 _ssh_key_repository = repository_rule(
     implementation = _ssh_key_repository_impl,
