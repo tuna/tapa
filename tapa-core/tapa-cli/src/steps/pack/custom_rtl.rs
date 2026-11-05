@@ -189,14 +189,6 @@ fn copy_overlay(src: &Path, dest: &Path) -> Result<bool> {
     Ok(replaced)
 }
 
-/// Best-effort port-signature check:
-///
-/// * Non-`.v` files log a skip message (accepts `.tcl`, `.sv`, etc.).
-/// * Unparsable Verilog logs a skip message and moves on.
-/// * `.v` files whose top module name is not a key in
-///   `templates_info` are silently accepted as helper modules.
-/// * Port-signature mismatches against a known template key log a
-///   warning and proceed.
 fn module_port_shape(
     module: &VerilogModule,
 ) -> BTreeMap<String, (tapa_rtl::port::Direction, Option<tapa_rtl::port::Width>)> {
@@ -207,6 +199,14 @@ fn module_port_shape(
         .collect()
 }
 
+/// Best-effort port-signature check:
+///
+/// * Non-`.v` files log a skip message (accepts `.tcl`, `.sv`, etc.).
+/// * Unparsable Verilog logs a skip message and moves on.
+/// * `.v` files whose top module name is not a key in
+///   `templates_info` are silently accepted as helper modules.
+/// * Port-signature mismatches against a known template key log a
+///   warning and proceed.
 fn check_custom_rtl_format(rtl_files: &[PathBuf], rtl_dir: &Path, templates_info: &TemplatesInfo) {
     for path in rtl_files {
         if path.extension().and_then(|s| s.to_str()) != Some("v") {
