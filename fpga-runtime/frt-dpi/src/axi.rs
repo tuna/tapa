@@ -1,23 +1,38 @@
 use crate::context::DpiContext;
+use frt_shm::MmapSegment;
 
-pub fn axi_read_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, out: *mut u8) {
+/// Resolve `(segment, byte offset)` for `addr` on `port`, reporting `op`'s
+/// failure mode and returning None.
+fn resolve_span<'c>(
+    ctx: &'c DpiContext,
+    port: &str,
+    addr: u64,
+    len: usize,
+    op: &str,
+) -> Option<(&'c MmapSegment, usize)> {
     let Some((seg, base)) = ctx.buffers.get(port) else {
-        eprintln!("frt-dpi: axi_read: unknown port '{port}'");
-        return;
+        eprintln!("frt-dpi: {op}: unknown port '{port}'");
+        return None;
     };
-
     let Some(offset) = addr
         .checked_sub(*base)
         .and_then(|v| usize::try_from(v).ok())
     else {
-        eprintln!("frt-dpi: axi_read: invalid addr on '{port}'");
+        eprintln!("frt-dpi: {op}: invalid addr on '{port}'");
+        return None;
+    };
+    if offset.checked_add(len).is_none_or(|end| end > seg.len()) {
+        eprintln!("frt-dpi: {op}: out of bounds on '{port}' offset={offset} len={len}");
+        return None;
+    }
+    Some((seg, offset))
+}
+
+pub fn axi_read_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, out: *mut u8) {
+    let len = width as usize;
+    let Some((seg, offset)) = resolve_span(ctx, port, addr, len, "axi_read") else {
         return;
     };
-    let len = width as usize;
-    if offset.checked_add(len).is_none_or(|end| end > seg.len()) {
-        eprintln!("frt-dpi: axi_read: out of bounds on '{port}' offset={offset} len={len}");
-        return;
-    }
     // SAFETY: `offset` is within the mmap segment (bounds checked above).
     let src = unsafe { seg.as_slice().as_ptr().add(offset) };
     // SAFETY: `src` points into the mmap segment with at least `len` bytes
@@ -26,23 +41,10 @@ pub fn axi_read_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, out: *
 }
 
 pub fn axi_write_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, data: *const u8) {
-    let Some((seg, base)) = ctx.buffers.get(port) else {
-        eprintln!("frt-dpi: axi_write: unknown port '{port}'");
-        return;
-    };
-
-    let Some(offset) = addr
-        .checked_sub(*base)
-        .and_then(|v| usize::try_from(v).ok())
-    else {
-        eprintln!("frt-dpi: axi_write: invalid addr on '{port}'");
-        return;
-    };
     let len = width as usize;
-    if offset.checked_add(len).is_none_or(|end| end > seg.len()) {
-        eprintln!("frt-dpi: axi_write: out of bounds on '{port}'");
+    let Some((seg, offset)) = resolve_span(ctx, port, addr, len, "axi_write") else {
         return;
-    }
+    };
     // SAFETY: bounds checked above; MmapSegment::write_at writes through the
     // raw mmap pointer without creating a &mut reference from &self.
     unsafe { seg.write_at(offset, data, len) }
