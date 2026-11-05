@@ -169,13 +169,13 @@ impl CosimDevice {
     }
 
     /// Run `transfer` for each pending buffer whose access `flows` in that
-    /// direction, yielding the validated `(index, host pointer, host bytes,
+    /// direction, yielding the validated `(host pointer, host bytes,
     /// segment)`: null pointers are rejected and the declared argument name
     /// is resolved against the context's segments.
     fn for_each_transfer(
         &mut self,
         flows: fn(BufferAccess) -> bool,
-        mut transfer: impl FnMut(u32, *mut u8, usize, &mut MmapSegment),
+        mut transfer: impl FnMut(*mut u8, usize, &mut MmapSegment),
     ) -> Result<()> {
         for (index, binding) in &self.pending_buffers {
             if !flows(binding.access) {
@@ -188,7 +188,7 @@ impl CosimDevice {
             }
             let name = declared_arg_name(&self.arg_names, *index, "argument")?;
             if let Some(seg) = self.ctx.buffers.get_mut(name) {
-                transfer(*index, binding.ptr, binding.bytes, seg);
+                transfer(binding.ptr, binding.bytes, seg);
             }
         }
         Ok(())
@@ -196,7 +196,7 @@ impl CosimDevice {
 
     fn copy_back_to_host(&mut self) -> Result<()> {
         let started = Instant::now();
-        self.for_each_transfer(BufferAccess::stores_to_host, |_index, ptr, bytes, seg| {
+        self.for_each_transfer(BufferAccess::stores_to_host, |ptr, bytes, seg| {
             let len = bytes.min(seg.len());
             if len > 0 {
                 // SAFETY: ptr is non-null (validated above) and
@@ -688,7 +688,7 @@ impl Device for CosimDevice {
 
     fn write_to_device(&mut self) -> Result<()> {
         let started = Instant::now();
-        self.for_each_transfer(BufferAccess::loads_from_host, |_index, ptr, bytes, seg| {
+        self.for_each_transfer(BufferAccess::loads_from_host, |ptr, bytes, seg| {
             let len = bytes.min(seg.len());
             if len > 0 {
                 // SAFETY: ptr is non-null (validated above) and
