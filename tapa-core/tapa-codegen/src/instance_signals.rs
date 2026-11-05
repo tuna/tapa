@@ -1,7 +1,5 @@
-//! Instance handshake signal generation.
-//!
-//! Implements: generates state, start,
-//! done, idle, ready signals for task instances.
+//! Instance handshake signal generation: generates the state, start,
+//! done, idle, and ready signals for task instances.
 
 use tapa_protocol::{HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_START};
 use tapa_rtl::builder::{Expr, PortArg};

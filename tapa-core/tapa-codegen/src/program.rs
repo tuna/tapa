@@ -123,18 +123,18 @@ pub struct GlobalFsmOutput {
     pub idle_assign: ContinuousAssign,
 }
 
-/// Pipeline signal names for start and done.
+/// Wire names for the start and done handshake nets.
 pub const START_Q: &str = "__tapa_start_q";
 pub const DONE_Q: &str = "__tapa_done_q";
 
 /// Apply global FSM signals and logic to an FSM module.
 ///
-/// Creates `start_q` and `done_q` pipeline signals:
-/// - `start_q[0] = ap_start` (immediate from handshake)
-/// - `done_q[0] = (state == STATE_DONE)` (combinational from FSM)
+/// Creates the `start_q` and `done_q` wires:
+/// - `start_q = ap_start` (immediate from handshake)
+/// - `done_q = (state == STATE_DONE)` (combinational from FSM)
 /// - `ap_idle = (state == STATE_IDLE)`
-/// - `ap_done = done_q` (pipelined output)
-/// - `ap_ready = done_q` (immediate completion signal)
+/// - `ap_done = done_q`
+/// - `ap_ready = done_q`
 ///
 /// Children use `start_q` for IDLE->RUNNING and `done_q` for DONE->IDLE.
 pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
@@ -162,7 +162,7 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
     // Add reset wire
     let _ = fsm_module.add_signal(wire(HANDSHAKE_RST));
 
-    // Add pipeline signals
+    // Add start/done wires
     let _ = fsm_module.add_signal(wire(START_Q));
     let _ = fsm_module.add_signal(wire(DONE_Q));
 
@@ -172,7 +172,7 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
         Expr::logical_not(Expr::ident(HANDSHAKE_RST_N)),
     ));
 
-    // start_q = ap_start (pipeline stage 0 = raw input)
+    // start_q = ap_start (raw handshake input)
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(START_Q),
         Expr::ident(HANDSHAKE_START),
@@ -189,12 +189,12 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
         Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_DONE)),
     ));
 
-    // ap_done driven from done_q (pipelined output)
+    // ap_done driven from done_q
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(HANDSHAKE_DONE),
         Expr::ident(DONE_Q),
     ));
-    // ap_ready driven from done_q (immediate)
+    // ap_ready driven from done_q
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(HANDSHAKE_READY),
         Expr::ident(DONE_Q),

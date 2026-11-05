@@ -187,8 +187,7 @@ impl TopologyWithRtl {
         for (child_task_name, instances) in &task.tasks {
             for (inst_idx, instance) in instances.iter().enumerate() {
                 for (child_port_name, arg) in &instance.args {
-                    let is_mmap = arg.cat.is_direct_mmap();
-                    if !is_mmap {
+                    if !arg.cat.is_direct_mmap() {
                         continue;
                     }
 
@@ -321,7 +320,9 @@ impl TopologyWithRtl {
     }
 }
 
-/// Compute parent-facing AXI ID width: 1 + ceil(log2(n)), minimum 1.
+/// Compute the parent-facing AXI ID width: the child's own ID width
+/// (`child_id_width`, at least 1) plus the routing bits needed to
+/// distinguish the `n` aggregated child threads.
 fn id_width_for_child_threads(child_id_width: u32, n: u32) -> u32 {
     child_id_width.max(1) + routing_id_bits(n)
 }
