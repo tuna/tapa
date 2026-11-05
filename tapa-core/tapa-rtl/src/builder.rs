@@ -33,7 +33,7 @@ pub enum Expr {
     },
     /// Concatenation: `{exprs[0], exprs[1], ...}`.
     Concat(Vec<Self>),
-    /// Unary not: `!expr` or `~expr`.
+    /// Unary not: `!expr`.
     Not(Box<Self>),
 }
 
