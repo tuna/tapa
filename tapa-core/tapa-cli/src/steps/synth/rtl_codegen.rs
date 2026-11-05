@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use tapa_codegen::generate_rtl;
 use tapa_codegen::rtl_state::TopologyWithRtl;
 use tapa_ir::transforms::FlatProjection;
-use tapa_ir::{Design, FloorplanResult, SynthTarget};
+use tapa_ir::{Design, SynthTarget};
 use tapa_rtl::VerilogModule;
 
 use crate::error::{CliError, Result};
@@ -126,11 +126,9 @@ pub fn generate_rtl_tree(
     work_dir: &Path,
     design: &Design,
     hdl_inputs: &TaskHdlInputs,
-    floorplan: Option<&FloorplanResult>,
     projection: Option<&FlatProjection>,
 ) -> Result<Vec<PathBuf>> {
     let mut state = prepare_rtl_state(design, hdl_inputs, projection)?;
-    state.floorplan = floorplan.cloned();
     emit_prepared_rtl_tree(work_dir, &mut state, hdl_inputs)
 }
 
@@ -296,8 +294,8 @@ mod tests {
     fn generate_rtl_tree_copies_verilog_support_assets() {
         let dir = tempfile::tempdir().expect("tempdir");
         let hdl_inputs = write_stub_inputs(dir.path(), &["Add", "VecAdd"]);
-        let written = generate_rtl_tree(dir.path(), &vadd_design(), &hdl_inputs, None, None)
-            .expect("generate");
+        let written =
+            generate_rtl_tree(dir.path(), &vadd_design(), &hdl_inputs, None).expect("generate");
 
         let rtl_dir = dir.path().join("rtl");
         let fifo = fs::read_to_string(rtl_dir.join("fifo.v")).expect("fifo.v");
@@ -335,7 +333,7 @@ mod tests {
         );
 
         let candidate_dir = dir.path().join("candidate");
-        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None, None)
+        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None)
             .expect("emit candidate RTL");
         assert_eq!(
             fs::read_to_string(candidate_dir.join("rtl/Add_sort_ip.tcl"))
@@ -347,7 +345,7 @@ mod tests {
         let inputs = collect_hdl_inputs(&work_dir, &vadd_design()).unwrap();
         fs::create_dir_all(candidate_dir.join("template")).unwrap();
         fs::write(candidate_dir.join("template/Removed.v"), "old shell").unwrap();
-        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None, None).unwrap();
+        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None).unwrap();
         assert!(!candidate_dir.join("rtl/Add_sort_ip.tcl").exists());
         assert!(!candidate_dir.join("template/Removed.v").exists());
         assert!(candidate_dir.join("rtl/Add.v").is_file());
@@ -420,8 +418,7 @@ mod tests {
             ("VecAdd".to_string(), vec![top_rtl]),
         ]);
 
-        let written =
-            generate_rtl_tree(dir.path(), &design, &hdl_inputs, None, None).expect("generate");
+        let written = generate_rtl_tree(dir.path(), &design, &hdl_inputs, None).expect("generate");
         let template_path = dir.path().join("template/Add_Upper.v");
         let placeholder_path = dir.path().join("rtl/Add_Upper.v");
         let template = fs::read_to_string(&template_path).expect("author template");

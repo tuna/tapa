@@ -137,13 +137,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         .then(|| tapa_ir::transforms::flatten_with_origins(&pl_graph))
         .transpose()
         .map_err(|error| CliError::Codegen(format!("cannot flatten the task graph: {error}")))?;
-    generate_rtl_tree(
-        &ctx.work_dir,
-        &pl_graph,
-        &hdl_inputs,
-        None,
-        projection.as_ref(),
-    )?;
+    generate_rtl_tree(&ctx.work_dir, &pl_graph, &hdl_inputs, projection.as_ref())?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
     // When disabled (the default), reports and topology consumers derive
