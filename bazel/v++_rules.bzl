@@ -153,11 +153,14 @@ def _xilinx_wrapper_impl(ctx):
         'if [ -z "$_TAPA_TOOL_DIR" ]; then',
         '  exec "$@"',
         "fi",
-        # Create a temp dir with sh -> bash: Xilinx tools use bash-specific syntax internally.
+        # Create temp dirs: one holds an sh -> bash symlink (Xilinx tools use
+        # bash-specific syntax internally), the other the RELR-stripped system
+        # libs populated below.
         '_TAPA_SH_DIR="$(mktemp -d)"',
+        '_TAPA_COMPAT="$(mktemp -d)"',
+        'trap \'rm -rf "$_TAPA_SH_DIR" "$_TAPA_COMPAT"\' EXIT',
         'ln -sf "$(command -v bash)" "$_TAPA_SH_DIR/sh"',
         'export PATH="$_TAPA_SH_DIR:$PATH"',
-        'trap \'rm -rf "$_TAPA_SH_DIR"\' EXIT',
         'source "$_TAPA_TOOL_DIR/settings64.sh"',
     ]
     if ctx.attr.xrt:
@@ -176,8 +179,6 @@ def _xilinx_wrapper_impl(ctx):
 
     # Bundled binutils-2.37 cannot handle RELR relocations (requires >= 2.38).
     # Create RELR-stripped copies of affected system libs and prepend to LIBRARY_PATH.
-    lines.append('_TAPA_COMPAT="$(mktemp -d)"')
-    lines.append('trap \'rm -rf "$_TAPA_SH_DIR" "$_TAPA_COMPAT"\' EXIT')
     lines.append('if readelf -S /lib/x86_64-linux-gnu/libc.so.6 2>/dev/null | grep -q "\\.relr\\.dyn"; then')
     lines.append("  if command -v objcopy >/dev/null 2>&1; then")
     lines.append("    for _lib in /lib/x86_64-linux-gnu/libc.so.6 /lib64/ld-linux-x86-64.so.2 /lib/x86_64-linux-gnu/libm.so.6 /lib/x86_64-linux-gnu/libmvec.so.1; do")
