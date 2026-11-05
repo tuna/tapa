@@ -102,26 +102,7 @@ but they do not remove a logical cycle by themselves.
 
 The `write_resp` FIFO fills up. Once full, the hardware stops accepting new write addresses and the kernel stalls.
 
-**Fix:** Always drain `write_resp` inside the same pipelined loop that issues writes. Use non-blocking `try_write` / `try_read` so both issue and drain progress every cycle:
-
-```cpp
-void WriteTask(tapa::async_mmap<int>& mem, tapa::istream<int>& data, int n) {
-  [[tapa::pipeline(1)]] for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
-    if (i_req < n && !data.empty() &&
-        !mem.write_addr.full() && !mem.write_data.full()) {
-      mem.write_addr.try_write(i_req);
-      mem.write_data.try_write(data.read(nullptr));
-      ++i_req;
-    }
-    uint8_t ack;
-    if (mem.write_resp.try_read(ack)) {
-      i_resp += unsigned(ack) + 1;  // ack encodes burst_length - 1
-    }
-  }
-}
-```
-
-Splitting writes and response drain into separate loops risks deadlock: if `write_resp` fills before all writes are issued, the hardware stops accepting write addresses and the first loop never completes.
+**Fix:** Always drain `write_resp` inside the same pipelined loop that issues writes, using the non-blocking pattern from [Memory Access: async_mmap](../concepts/async-mmap.md#writes-must-drain-write_resp) so both issue and drain progress every cycle. Splitting writes and response drain into separate loops risks deadlock: if `write_resp` fills before all writes are issued, the hardware stops accepting write addresses and the first loop never completes.
 
 ---
 

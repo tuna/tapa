@@ -59,32 +59,13 @@ How it works:
 
 ## Example 2: Sequential writes with burst detection
 
-Writes require coordinating three channels: `write_addr`, `write_data`, and `write_resp`. The pattern checks all three are ready before committing:
-
-```cpp
-void WriteKernel(tapa::async_mmap<float>& mem,
-                 tapa::istream<float>& data, uint64_t n) {
-  [[tapa::pipeline(1)]]
-  for (uint64_t i_req = 0, i_resp = 0; i_resp < n;) {
-    if (i_req < n && !data.empty() &&
-        !mem.write_addr.full() && !mem.write_data.full()) {
-      mem.write_addr.try_write(i_req);
-      mem.write_data.try_write(data.read(nullptr));
-      ++i_req;
-    }
-    uint8_t ack;
-    if (mem.write_resp.try_read(ack)) {
-      i_resp += unsigned(ack) + 1;  // ack encodes burst length - 1
-    }
-  }
-}
-```
-
-Key points:
-
-- Before issuing a write, all three preconditions must hold: the input stream must have data, and neither the address nor the data channel may be full. Checking them together prevents partial commits.
-- `write_resp` must be consumed even if you do not use the count. The hardware stops accepting new write addresses once the `write_resp` FIFO fills up, causing deadlock if the kernel never drains it.
-- The `ack` value encodes `burst_length - 1`. TAPA detects that you are issuing sequential addresses and merges them into AXI bursts at runtime. A single `write_resp` entry can therefore acknowledge many writes, which is why `i_resp += unsigned(ack) + 1` rather than `i_resp += 1`.
+Writes coordinate three channels: `write_addr`, `write_data`, and
+`write_resp`. Use the [write pattern with response
+drain](../concepts/async-mmap.md#writes-must-drain-write_resp) from the
+concept page. Two points matter here: `write_resp` must be drained even when
+the count is unused — a full `write_resp` FIFO deadlocks the kernel — and
+each `ack` encodes `burst_length - 1`, so one response can acknowledge a
+whole coalesced burst.
 
 ---
 

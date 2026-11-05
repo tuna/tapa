@@ -74,6 +74,43 @@ response in the same clock cycle.
 
 ---
 
+## Writes must drain `write_resp`
+
+Writes coordinate three channels: `write_addr`, `write_data`, and
+`write_resp`. Extend the two-counter loop so issue and drain both progress
+every cycle:
+
+```cpp
+void WriteKernel(tapa::async_mmap<float>& mem,
+                 tapa::istream<float>& data, uint64_t n) {
+  [[tapa::pipeline(1)]]
+  for (uint64_t i_req = 0, i_resp = 0; i_resp < n;) {
+    if (i_req < n && !data.empty() &&
+        !mem.write_addr.full() && !mem.write_data.full()) {
+      mem.write_addr.try_write(i_req);
+      mem.write_data.try_write(data.read(nullptr));
+      ++i_req;
+    }
+    uint8_t ack;
+    if (mem.write_resp.try_read(ack)) {
+      i_resp += unsigned(ack) + 1;  // ack encodes burst length - 1
+    }
+  }
+}
+```
+
+Before issuing a write, all three preconditions must hold: the input stream
+must have data, and neither the address nor the data channel may be full.
+Checking them together prevents partial commits. `write_resp` must be drained
+even when the count is unused: once its FIFO fills, the hardware stops
+accepting new write addresses and the kernel deadlocks. Splitting writes and
+response drain into separate loops risks the same deadlock if the FIFO fills
+before all writes are issued. Because `ack` encodes `burst_length - 1`, one
+response can acknowledge a whole coalesced burst, hence
+`i_resp += unsigned(ack) + 1`.
+
+---
+
 ## Sequential accesses and bursts
 
 TAPA can coalesce eligible sequential element addresses into AXI bursts.

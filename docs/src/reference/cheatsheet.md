@@ -109,19 +109,11 @@ for (int i = 0; i < n; ++i) out[i] = in[i];
   T val;
   if (mem.read_data.try_read(val)) result[i_resp++] = val;
 }
-
-// async_mmap — writes with response drain
-[[tapa::pipeline(1)]] for (int64_t i_req = 0, i_resp = 0; i_resp < n;) {
-  if (i_req < n && !src.empty() &&
-      !mem.write_addr.full() && !mem.write_data.full()) {
-    mem.write_addr.try_write(i_req);
-    mem.write_data.try_write(src.read(nullptr));
-    ++i_req;
-  }
-  uint8_t ack;
-  if (mem.write_resp.try_read(ack)) i_resp += unsigned(ack) + 1;
-}
 ```
+
+Writes must also drain `write_resp` in the same loop — see
+[Memory Access: async_mmap](../concepts/async-mmap.md#writes-must-drain-write_resp)
+for the write pattern.
 
 ---
 
