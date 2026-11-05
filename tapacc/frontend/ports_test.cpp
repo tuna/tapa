@@ -1,16 +1,11 @@
 #include "ports.h"
 
-#include <memory>
-#include <string>
 #include <vector>
 
 #include "gtest/gtest.h"
 
 #include "clang/AST/ASTContext.h"
-#include "clang/AST/Decl.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
 
 #include "clang/Basic/DiagnosticIDs.h"
 
@@ -19,21 +14,6 @@
 
 namespace tapa::cc {
 namespace {
-
-class ProbeFinder : public clang::RecursiveASTVisitor<ProbeFinder> {
- public:
-  const clang::FunctionDecl* found = nullptr;
-  bool VisitFunctionDecl(clang::FunctionDecl* f) {
-    if (f->getNameAsString() == "probe") found = f;
-    return true;
-  }
-};
-
-// Keep the ASTUnit alive: the FunctionDecl and its ASTContext live in it.
-struct Built {
-  std::unique_ptr<clang::ASTUnit> ast;
-  const clang::FunctionDecl* fn = nullptr;
-};
 
 // Diagnostics sink for error-path tests: the default TextDiagnosticPrinter
 // asserts on diagnostics emitted after source-file processing, which is
@@ -48,25 +28,14 @@ class CountingDiags : public clang::DiagnosticConsumer {
 };
 
 // Replace the AST's diagnostic client with the counting sink and build ports.
-std::vector<Port> BuildPortsExpectingError(Built& b, CountingDiags& diags) {
+std::vector<Port> BuildPortsExpectingError(ParsedProbe& b,
+                                           CountingDiags& diags) {
   b.ast->getDiagnostics().setClient(&diags, /*ShouldOwn=*/false);
   return BuildPorts(b.ast->getASTContext(), b.fn);
 }
 
-Built BuildProbe(const std::string& signature) {
-  const std::string code =
-      std::string(kTapaStubDecls) + "\n" + signature + "\n";
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  ProbeFinder finder;
-  finder.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  EXPECT_NE(finder.found, nullptr);
-  return Built{std::move(ast), finder.found};
-}
-
 TEST(Ports, MixedSignature) {
-  auto b = BuildProbe(
+  auto b = ParseProbe(
       "void probe(tapa::mmap<const float> a, tapa::istream<float>& s, int n, "
       "tapa::mmaps<float, 2> m, tapa::hmap<int, 4, 8> h);");
   const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
@@ -105,7 +74,7 @@ TEST(Ports, MixedSignature) {
 }
 
 TEST(Ports, StreamsCarryChanCountNotExpanded) {
-  auto b = BuildProbe("void probe(tapa::istreams<float, 3>& s);");
+  auto b = ParseProbe("void probe(tapa::istreams<float, 3>& s);");
   const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
   ASSERT_EQ(ports.size(), 1u);
   EXPECT_EQ(ports[0].name, "s");
@@ -117,7 +86,7 @@ TEST(Ports, StreamsCarryChanCountNotExpanded) {
 
 TEST(Ports, AsyncMmapAndOmmap) {
   auto b =
-      BuildProbe("void probe(tapa::async_mmap<int>& a, tapa::ommap<float> o);");
+      ParseProbe("void probe(tapa::async_mmap<int>& a, tapa::ommap<float> o);");
   const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
   ASSERT_EQ(ports.size(), 2u);
   EXPECT_STREQ(TapaKindCat(ports[0].kind), "async_mmap");
@@ -140,7 +109,7 @@ TEST(Ports, StreamsAndAsyncMmapRequireReference) {
       "void probe(tapa::async_mmap<int>&& m);",
   };
   for (const char* signature : bad) {
-    auto b = BuildProbe(signature);
+    auto b = ParseProbe(signature);
     CountingDiags diags;
     BuildPortsExpectingError(b, diags);
     EXPECT_GT(diags.errors, 0u) << signature;
@@ -160,7 +129,7 @@ TEST(Ports, StreamInstanceIsNotAPort) {
       "void probe(tapa::streams<int, 2>&& s);",
   };
   for (const char* signature : bad) {
-    auto b = BuildProbe(signature);
+    auto b = ParseProbe(signature);
     CountingDiags diags;
     BuildPortsExpectingError(b, diags);
     EXPECT_GT(diags.errors, 0u) << signature;
@@ -173,7 +142,7 @@ TEST(Ports, RawPointerIsNotAMemoryPort) {
       "void probe(const float* mem);",
   };
   for (const char* signature : bad) {
-    auto b = BuildProbe(signature);
+    auto b = ParseProbe(signature);
     CountingDiags diags;
     BuildPortsExpectingError(b, diags);
     EXPECT_GT(diags.errors, 0u) << signature;
@@ -194,7 +163,7 @@ TEST(Ports, MmapFamilyRequiresValue) {
       "void probe(tapa::hmap<int, 4, 8>&& m);",
   };
   for (const char* signature : bad) {
-    auto b = BuildProbe(signature);
+    auto b = ParseProbe(signature);
     CountingDiags diags;
     BuildPortsExpectingError(b, diags);
     EXPECT_GT(diags.errors, 0u) << signature;

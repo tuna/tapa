@@ -86,11 +86,16 @@ cc_library(
     ],
 )
 
-# Shared TAPA stand-in declarations for frontend unit tests.
+# Shared TAPA stand-in declarations and probe-snippet parsing for frontend
+# unit tests.
 cc_library(
     name = "tapa_stub_decls",
     testonly = True,
     hdrs = ["tapa_stub_decls.h"],
+    deps = [
+        "@googletest//:gtest",
+        CLANG_TOOLING,
+    ],
 )
 
 cc_test(

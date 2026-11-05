@@ -1,6 +1,18 @@
 #ifndef TAPA_FRONTEND_TAPA_STUB_DECLS_H_
 #define TAPA_FRONTEND_TAPA_STUB_DECLS_H_
 
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "gtest/gtest.h"
+
+#include "clang/AST/ASTContext.h"
+#include "clang/AST/Decl.h"
+#include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Frontend/ASTUnit.h"
+#include "clang/Tooling/Tooling.h"
+
 namespace tapa::cc {
 
 // Minimal stand-in declarations for the TAPA types, prepended to test snippets
@@ -81,6 +93,42 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct executable {};
   }  // namespace tapa
 )cpp";
+
+// A test snippet parsed on top of the stub decls: `ast` owns the parsed code,
+// so it must outlive every use of `fn` (the function named `probe`).
+struct ParsedProbe {
+  std::unique_ptr<clang::ASTUnit> ast;
+  const clang::FunctionDecl* fn = nullptr;
+};
+
+// Parses `code` (appended to the stub decls) and finds `probe` in it.
+inline ParsedProbe ParseProbe(const std::string& code) {
+  class Finder : public clang::RecursiveASTVisitor<Finder> {
+   public:
+    const clang::FunctionDecl* found = nullptr;
+    bool VisitFunctionDecl(clang::FunctionDecl* f) {
+      if (f->getNameAsString() == "probe") found = f;
+      return true;
+    }
+  };
+
+  ParsedProbe parsed;
+  parsed.ast = clang::tooling::buildASTFromCodeWithArgs(
+      std::string(kTapaStubDecls) + "\n" + code + "\n",
+      std::vector<std::string>{"-std=c++17"});
+  EXPECT_NE(parsed.ast, nullptr);
+  Finder finder;
+  finder.TraverseDecl(parsed.ast->getASTContext().getTranslationUnitDecl());
+  parsed.fn = finder.found;
+  EXPECT_NE(parsed.fn, nullptr);
+  return parsed;
+}
+
+// The first parameter of `fn`, or null when `fn` is null or takes none.
+inline const clang::ParmVarDecl* FirstParamOf(const clang::FunctionDecl* fn) {
+  if (fn == nullptr || fn->getNumParams() == 0) return nullptr;
+  return fn->getParamDecl(0);
+}
 
 }  // namespace tapa::cc
 

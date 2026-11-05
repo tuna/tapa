@@ -2,47 +2,29 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "gtest/gtest.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "clang/AST/RecursiveASTVisitor.h"
 #include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
 
 #include "tapa_stub_decls.h"
 
 namespace tapa::cc {
 namespace {
 
-class FirstParamFinder : public clang::RecursiveASTVisitor<FirstParamFinder> {
- public:
-  const clang::ParmVarDecl* found = nullptr;
-  bool VisitFunctionDecl(clang::FunctionDecl* f) {
-    if (f->getNameAsString() == "probe" && f->getNumParams() > 0) {
-      found = f->getParamDecl(0);
-    }
-    return true;
-  }
-};
-
+// Keep the ASTUnit alive: the ParmVarDecl and its ASTContext live in it.
 struct Built {
   std::unique_ptr<clang::ASTUnit> ast;
   const clang::ParmVarDecl* param = nullptr;
 };
 
 Built BuildParam(const std::string& signature) {
-  const std::string code =
-      std::string(kTapaStubDecls) + "\n" + signature + "\n";
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  FirstParamFinder finder;
-  finder.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  EXPECT_NE(finder.found, nullptr);
-  return Built{std::move(ast), finder.found};
+  ParsedProbe parsed = ParseProbe(signature);
+  Built b{std::move(parsed.ast), FirstParamOf(parsed.fn)};
+  EXPECT_NE(b.param, nullptr);
+  return b;
 }
 
 TEST(TypeArgs, ElementTypeName) {

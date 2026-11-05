@@ -1,42 +1,21 @@
 #include "classify.h"
 
 #include <string>
-#include <vector>
 
 #include "gtest/gtest.h"
 
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
-#include "clang/AST/RecursiveASTVisitor.h"
-#include "clang/Frontend/ASTUnit.h"
-#include "clang/Tooling/Tooling.h"
 
 #include "tapa_stub_decls.h"
 
 namespace tapa::cc {
 namespace {
 
-// Grab the first parameter of a function named `probe`.
-class ProbeParamFinder : public clang::RecursiveASTVisitor<ProbeParamFinder> {
- public:
-  const clang::ParmVarDecl* found = nullptr;
-  bool VisitFunctionDecl(clang::FunctionDecl* f) {
-    if (f->getNameAsString() == "probe" && f->getNumParams() > 0) {
-      found = f->getParamDecl(0);
-    }
-    return true;
-  }
-};
-
 TapaKind ClassifyFirstParam(const std::string& decl) {
-  const std::string code = std::string(kTapaStubDecls) + "\n" + decl + "\n";
-  auto ast = clang::tooling::buildASTFromCodeWithArgs(
-      code, std::vector<std::string>{"-std=c++17"});
-  EXPECT_NE(ast, nullptr);
-  ProbeParamFinder finder;
-  finder.TraverseDecl(ast->getASTContext().getTranslationUnitDecl());
-  EXPECT_NE(finder.found, nullptr);
-  return ClassifyTapaType(finder.found);
+  const ParsedProbe parsed = ParseProbe(decl);
+  const clang::ParmVarDecl* param = FirstParamOf(parsed.fn);
+  EXPECT_NE(param, nullptr);
+  return ClassifyTapaType(param);
 }
 
 TEST(Classify, StreamInterfaces) {
