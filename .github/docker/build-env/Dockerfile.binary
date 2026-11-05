@@ -10,7 +10,7 @@ ARG UBUNTU_PRO_TOKEN
 
 COPY bazel-release.pub.gpg /tmp/bazel-release.pub.gpg
 
-# Install system dependencies (inlined from Dockerfile.binary-dependencies)
+# Install system dependencies
 
 # Set the default timezone to UTC
 RUN ln -fs /usr/share/zoneinfo/UTC /etc/localtime

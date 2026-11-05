@@ -56,7 +56,7 @@ For Bazel installation on other OS, see the
 ```
 
 ```admonish note
-The [Dockerfile in the TAPA repository](https://github.com/tuna/tapa/blob/main/.github/docker/build-env/Dockerfile.binary-dependencies)
+The [Dockerfile in the TAPA repository](https://github.com/tuna/tapa/blob/main/.github/docker/build-env/Dockerfile.binary)
 provides a complete build environment. Use it for containerized builds or
 run the Ubuntu commands to install required tools.
 ```
