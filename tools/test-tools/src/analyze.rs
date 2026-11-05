@@ -11,7 +11,6 @@ const VALID_PORT_CATS: &[&str] = &[
 ];
 const VALID_LEVELS: &[&str] = &["upper", "lower"];
 
-#[derive(Clone, Copy)]
 struct AnalyzeApp {
     name: &'static str,
     /// The kernel translation units, one `analyze --input` each.
