@@ -23,10 +23,8 @@ log = { workspace = true }
 path-slash = { workspace = true }
 regex = { workspace = true }
 semver = { workspace = true }
-shellexpand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["preserve_order"] }
-serde_path_to_error = { workspace = true }
 serde_yaml = { workspace = true }
 walkdir = { workspace = true }
 tapa-codegen = { workspace = true }
