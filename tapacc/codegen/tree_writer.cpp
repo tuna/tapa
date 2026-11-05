@@ -203,6 +203,8 @@ const std::string* TreeLayout::KeyOf(llvm::StringRef abs_path) const {
 
 // ── Per-file buffer with #line re-snap ────────────────────────────────────
 
+namespace {
+
 // Writes the identity of original text at `loc`. In an ordinary file the
 // mirror keeps using its canonical physical path. If a user #line directive
 // remaps either component, the presumed identity is authoritative so the
@@ -226,6 +228,8 @@ void WriteOriginalLineIdentity(llvm::raw_ostream& os,
                             : sm.getSpellingLineNumber(loc))
      << " \"" << physical_path << "\"";
 }
+
+}  // namespace
 
 TreeFileBuffer::TreeFileBuffer(clang::SourceManager& sm,
                                clang::Rewriter& rewriter, clang::FileID file,
@@ -534,6 +538,8 @@ std::vector<std::string> TreeWriter::ExternalBuckets() const {
 constexpr char kOwnershipManifestName[] = ".tapa-tree-manifest";
 constexpr char kOwnershipManifestHeader[] = "tapa-tree-ownership-v1\n";
 
+namespace {
+
 // Reads the files TAPA owned on the previous run. An absent manifest means
 // that this directory has no TAPA-owned files yet; an unrecognized existing
 // manifest is a collision, not permission to adopt the directory.
@@ -619,6 +625,8 @@ bool PruneDirectory(const std::string& dir, const std::string& prefix,
   }
   return true;
 }
+
+}  // namespace
 
 bool TreeWriter::Write(std::string* error) {
   std::set<std::string> keys;

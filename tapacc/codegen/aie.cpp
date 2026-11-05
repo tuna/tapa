@@ -94,12 +94,16 @@ void AieBackend::LowerUnroll(int factor, const clang::Stmt* body,
                   : "chess_unroll_loop(" + std::to_string(factor) + ") ");
 }
 
+namespace {
+
 void ReportUnsupportedAttr(const clang::Attr& attr, EditSink& edits) {
   ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Remark,
                    attr.getRange().getBegin(),
                    "[[tapa::%0]] is ignored for the AI Engine")
       << attr.getSpelling();
 }
+
+}  // namespace
 
 void AieBackend::LowerFuncPipeline(int, const std::string&,
                                    const clang::Stmt* body,
