@@ -8,7 +8,7 @@ load("//bazel:sh_utils.bzl", "RESOLVER", "sh_quote")
 
 def _test_tool_test_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
-    argv = [ctx.attr.command] + ctx.attr.tool_args + [file.short_path for file in ctx.files.data_args]
+    argv = [ctx.attr.command] + [file.short_path for file in ctx.files.data_args]
     body = """#!/usr/bin/env bash
 set -euo pipefail
 
@@ -37,7 +37,6 @@ test_tool_test = rule(
             default = Label("//tools:test_tools"),
             executable = True,
         ),
-        "tool_args": attr.string_list(),
     },
     test = True,
 )

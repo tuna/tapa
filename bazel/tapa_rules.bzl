@@ -219,8 +219,6 @@ def _tapa_xo_impl(ctx):
     for include in ctx.files.include:
         analyze_cmd.extend(["--cflags", "-I" + include.path])
     analyze_cmd.extend(["--target", ctx.attr.target])
-    if ctx.attr.flatten_hierarchy:
-        analyze_cmd.extend(["--flatten-hierarchy"])
 
     analyze_inputs = srcs + ctx.files.hdrs
     if ctx.file.ssh_key:
@@ -425,7 +423,6 @@ _tapa_xo = rule(
             doc = "Extra Tcl appended verbatim to every generated HLS script.",
         ),
         "enable_synth_util": attr.bool(),
-        "flatten_hierarchy": attr.bool(),
         "hls_fixtures": attr.label_list(
             allow_files = True,
             doc = "HLS-output fixtures staged as the <work_dir>/hls tree " +
