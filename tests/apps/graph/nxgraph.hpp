@@ -2,7 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <cstddef>
 #include <cstdlib>
 
 #include <algorithm>
@@ -23,32 +22,15 @@
 
 namespace nxgraph {
 
-template <typename Vid, typename EdgeAttr = std::nullptr_t>
+template <typename Vid>
 struct Edge {
   Vid src;
   Vid dst;
-  EdgeAttr attr;
-  void LoadAttr(const char* ptr, const char** next_ptr) {
-    if (next_ptr != nullptr) {
-      *next_ptr = ptr;
-    }
-  }
 };
 
-template <typename Vid>
-struct Edge<Vid, std::nullptr_t> {
-  Vid src;
-  Vid dst;
-  void LoadAttr(const char* ptr, const char** next_ptr) {
-    if (next_ptr != nullptr) {
-      *next_ptr = ptr;
-    }
-  }
-};
-
-template <typename Vid, typename Eid, typename VertexAttr, typename EdgeAttr>
+template <typename Vid, typename Eid>
 struct Partition {
-  using EdgeType = Edge<Vid, EdgeAttr>;
+  using EdgeType = Edge<Vid>;
   Vid base_vid;
   Vid num_vertices;
   Eid num_edges;
@@ -57,17 +39,17 @@ struct Partition {
 
 // Processes text between begin_ptr and end_ptr and return the edge array as a
 // unique_ptr. If max_vid or min_vid is not nullptr, it will be updated.
-template <typename Vid, typename EdgeAttr = std::nullptr_t>
-inline std::vector<Edge<Vid, EdgeAttr>> ProcessEdgeList(
-    const char* begin_ptr, const char* end_ptr, Vid* max_vid = nullptr,
-    Vid* min_vid = nullptr) {
-  using std::nullptr_t;
+template <typename Vid>
+inline std::vector<Edge<Vid>> ProcessEdgeList(const char* begin_ptr,
+                                              const char* end_ptr,
+                                              Vid* max_vid = nullptr,
+                                              Vid* min_vid = nullptr) {
   using std::numeric_limits;
   using std::string;
   using std::strtoull;
   using std::unique_ptr;
   using std::vector;
-  using EdgeType = Edge<Vid, EdgeAttr>;
+  using EdgeType = Edge<Vid>;
   if (max_vid != nullptr) {
     *max_vid = numeric_limits<Vid>::min();
   }
@@ -127,10 +109,6 @@ inline std::vector<Edge<Vid, EdgeAttr>> ProcessEdgeList(
     }
 
     EdgeType edge{src, dst};
-    if (*ptr != '\n' && *ptr != '\r') {
-      edge.LoadAttr(ptr, &next_pos);
-      ptr = next_pos;
-    }
     if (max_vid != nullptr) {
       *max_vid = std::max({*max_vid, src, dst});
     }
@@ -142,13 +120,12 @@ inline std::vector<Edge<Vid, EdgeAttr>> ProcessEdgeList(
   return edges;
 }
 
-template <typename Vid, typename Eid, typename VertexAttr,
-          typename EdgeAttr = std::nullptr_t>
-std::vector<Partition<Vid, Eid, VertexAttr, EdgeAttr>> LoadEdgeList(
-    const std::string& filename, Vid partition_size) {
+template <typename Vid, typename Eid>
+std::vector<Partition<Vid, Eid>> LoadEdgeList(const std::string& filename,
+                                              Vid partition_size) {
   using std::runtime_error;
-  using PartitionType = Partition<Vid, Eid, VertexAttr, EdgeAttr>;
-  using EdgeType = Edge<Vid, EdgeAttr>;
+  using PartitionType = Partition<Vid, Eid>;
+  using EdgeType = Edge<Vid>;
 
   int fd = open(filename.c_str(), O_RDONLY);
   if (fd == -1) {
@@ -169,7 +146,7 @@ std::vector<Partition<Vid, Eid, VertexAttr, EdgeAttr>> LoadEdgeList(
 
   Vid max_vid;
   Vid min_vid;
-  std::vector<EdgeType> edges = ProcessEdgeList<Vid, EdgeAttr>(
+  std::vector<EdgeType> edges = ProcessEdgeList<Vid>(
       mmap_ptr, mmap_ptr + mmap_length, &max_vid, &min_vid);
   Vid num_vertices = max_vid - min_vid + 1;
   VLOG(8) << "max: " << max_vid << " min: " << min_vid

@@ -38,8 +38,7 @@ int main(int argc, char* argv[]) {
   CHECK_GE(argc, 2) << "Usage: ./graph-host <edge_list> [partition_size]";
 
   const size_t partition_size = argc > 2 ? atoi(argv[2]) : 1024;
-  auto partitions =
-      nxgraph::LoadEdgeList<Vid, Eid, VertexAttr>(argv[1], partition_size);
+  auto partitions = nxgraph::LoadEdgeList<Vid, Eid>(argv[1], partition_size);
   for (const auto& partition : partitions) {
     VLOG(6) << "partition";
     VLOG(6) << "num vertices: " << partition.num_vertices;
