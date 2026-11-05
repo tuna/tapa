@@ -42,8 +42,8 @@ pub fn get_tapa_cflags() -> Vec<String> {
 }
 
 /// Compose the CFLAGS that `tapacc` itself wants.
-pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
-    let include_gcc = is_linux() || for_remote_hls;
+pub fn get_tapacc_cflags() -> Vec<String> {
+    let include_gcc = is_linux();
     let mut flags = Vec::<String>::new();
 
     let vendor_paths = vendor_include_paths(include_gcc);
@@ -58,12 +58,6 @@ pub fn get_tapacc_cflags(for_remote_hls: bool) -> Vec<String> {
     }
     flags.extend(get_tapa_cflags());
     flags.append(&mut vendor_flags);
-
-    if for_remote_hls && is_macos() {
-        flags.push(
-            "-D__assert_rtn(func,file,line,expr)=__assert_fail(expr,file,line,func)".to_string(),
-        );
-    }
 
     flags
 }

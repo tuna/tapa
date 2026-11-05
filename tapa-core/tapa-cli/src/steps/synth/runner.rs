@@ -351,7 +351,7 @@ fn build_hls_cflags(remote: bool) -> Vec<String> {
     if remote {
         flags.extend(get_remote_hls_cflags());
     } else {
-        flags.extend(get_tapacc_cflags(false));
+        flags.extend(get_tapacc_cflags());
     }
     flags.push("-DTAPA_TARGET_DEVICE_".to_string());
     flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());

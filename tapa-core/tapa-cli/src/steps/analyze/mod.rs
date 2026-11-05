@@ -215,7 +215,7 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     user_cflags.push("-std=c++14".to_string());
 
     let mut all_cflags = user_cflags.clone();
-    all_cflags.extend(get_tapacc_cflags(false));
+    all_cflags.extend(get_tapacc_cflags());
     all_cflags.extend(get_system_cflags());
 
     let work_dir = ctx.work_dir.as_path();
