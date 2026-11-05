@@ -413,14 +413,18 @@ constexpr char kLeakedAttr[] = R"cpp(
   }
 )cpp";
 
+// Run twice in one process: each run reports its own leaks, so the second
+// must not be silenced by what the first already reported.
 TEST(Rewrite, AttrThatCannotLowerIsAnError) {
-  const TreePipelineRun run = test_support::RunTreePipeline(
-      {VirtualTu{"/proj/src/leak.cpp", kLeakedAttr}}, "LeakTop",
-      TempRoot("rewrite", "leak"), {"-std=c++17"});
-  EXPECT_FALSE(run.ok);
-  ASSERT_EQ(run.diags.size(), 1u);
-  EXPECT_TRUE(Contains(run.diags.front(), "[[tapa::partition]]"))
-      << run.diags.front();
+  for (int pass = 0; pass < 2; ++pass) {
+    const TreePipelineRun run = test_support::RunTreePipeline(
+        {VirtualTu{"/proj/src/leak.cpp", kLeakedAttr}}, "LeakTop",
+        TempRoot("rewrite", "leak"), {"-std=c++17"});
+    EXPECT_FALSE(run.ok) << "pass " << pass;
+    ASSERT_EQ(run.diags.size(), 1u) << "pass " << pass;
+    EXPECT_TRUE(Contains(run.diags.front(), "[[tapa::partition]]"))
+        << run.diags.front();
+  }
 }
 
 // A comment or string literal QUOTING an attribute spelling is not a leaked
