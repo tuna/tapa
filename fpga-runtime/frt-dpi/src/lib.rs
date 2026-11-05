@@ -36,7 +36,7 @@ pub unsafe fn c_port_str<'a>(port: *const std::ffi::c_char) -> &'a str {
         .unwrap_or("")
 }
 
-/// Emit the eight `tapa_*` DPI entry points with backend-specific marshalling.
+/// Emit the seven `tapa_*` DPI entry points with backend-specific marshalling.
 ///
 /// The two backend cdylibs (frt-dpi-verilator, frt-dpi-xsim) expose the same
 /// symbols to the simulators but differ in wire representation, so each
@@ -140,23 +140,6 @@ macro_rules! dpi_export {
                 port,
                 $flag_of(consume),
                 $mut_ptr(out),
-            ))
-        }
-
-        #[no_mangle]
-        pub unsafe extern "C" fn tapa_stream_ostream_step(
-            port: *const ::libc::c_char,
-            write: $flag,
-            data: $const_arr,
-        ) -> $ret {
-            // SAFETY: `port` is a C string provided by the DPI caller; it
-            // remains valid for the duration of this call.
-            let port = unsafe { $crate::c_port_str(port) };
-            $ret_of($crate::stream::stream_ostream_step_impl(
-                $crate::get_or_init(),
-                port,
-                $flag_of(write),
-                $const_ptr(data),
             ))
         }
 

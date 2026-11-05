@@ -13,7 +13,6 @@ pub struct DpiStreamInner {
     /// Host tokens can have trailing object padding beyond the compact DPI bytes.
     pub bytes: Vec<u8>,
     pub last_istream_valid: bool,
-    pub last_ostream_ready: bool,
 }
 
 pub struct DpiContext {
@@ -64,7 +63,6 @@ impl DpiContext {
                         bytes: vec![0; q.width()],
                         queue: q,
                         last_istream_valid: false,
-                        last_ostream_ready: false,
                     }),
                     dpi_width_bytes: entry.dpi_width_bytes,
                 },

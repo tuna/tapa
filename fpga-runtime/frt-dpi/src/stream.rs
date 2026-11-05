@@ -188,40 +188,6 @@ pub fn stream_try_write_impl(ctx: &DpiContext, port: &str, data: *const u8) -> b
     ok
 }
 
-pub fn stream_ostream_step_impl(
-    ctx: &DpiContext,
-    port: &str,
-    write: bool,
-    data: *const u8,
-) -> bool {
-    let Some((stream, mut s)) = lock_stream(ctx, port, "stream_ostream_step") else {
-        return false;
-    };
-
-    let mut known_full = false;
-    if s.last_ostream_ready && write {
-        match s.push_from_dpi(data, stream.dpi_width_bytes) {
-            Ok(full_after) => {
-                WRITE_OK.fetch_add(1, Ordering::Relaxed);
-                known_full = full_after;
-                if stream_debug_enabled() {
-                    eprintln!(
-                        "frt-dpi: stream_ostream_step '{port}': wrote {} bytes",
-                        s.queue.width()
-                    );
-                }
-            }
-            Err(_) => {
-                known_full = true;
-            }
-        }
-    }
-
-    let can = write_ready(&s, port, known_full);
-    s.last_ostream_ready = can;
-    can
-}
-
 pub fn stream_hls_ostream_step_impl(
     ctx: &DpiContext,
     port: &str,
@@ -289,7 +255,6 @@ mod tests {
                         bytes: vec![0; q.width()],
                         queue: q,
                         last_istream_valid: false,
-                        last_ostream_ready: false,
                     }),
                     dpi_width_bytes,
                 },
@@ -426,23 +391,6 @@ mod tests {
                 true,
                 out.as_mut_ptr()
             ));
-        }
-    }
-
-    #[test]
-    fn ostream_step_only_commits_data_after_prior_ready_cycle() {
-        let port = "stream_ostream_step_prior_ready";
-        for width in [5, 8] {
-            let ctx = make_ctx_with_stream(port, 1, width, 5);
-            let first = [7, 0, 0, 0, 1];
-
-            assert!(stream_ostream_step_impl(&ctx, port, false, first.as_ptr()));
-            let mut out = [0u8; 5];
-            assert!(!stream_try_read_impl(&ctx, port, out.as_mut_ptr()));
-
-            assert!(!stream_ostream_step_impl(&ctx, port, true, first.as_ptr()));
-            assert!(stream_try_read_impl(&ctx, port, out.as_mut_ptr()));
-            assert_eq!(out, first);
         }
     }
 

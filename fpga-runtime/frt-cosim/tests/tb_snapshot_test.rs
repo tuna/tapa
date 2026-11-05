@@ -522,10 +522,6 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         tb.contains("if (!tapa_stream_try_write(\"s_out\", stream_out_bytes_s_out))"),
         "{tb}"
     );
-    assert!(
-        !tb.contains("stream_out_ready_s_out = tapa_stream_ostream_step("),
-        "{tb}"
-    );
     // tready must be refreshed after the push so the next cycle sees the
     // room the push consumed.
     let consume = tb.find("tapa_stream_try_write(\"s_out\"").expect("push");
@@ -605,10 +601,6 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
     let edge = tb.find("dut->ap_clk = 1;").expect("rising edge");
     assert!(
         settle < transfer && transfer < capture && capture < edge,
-        "{tb}"
-    );
-    assert!(
-        !tb.contains("dut->s_out_TREADY = tapa_stream_ostream_step("),
         "{tb}"
     );
 }
