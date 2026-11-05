@@ -273,12 +273,7 @@ fn candidates() -> Vec<String> {
 }
 
 fn candidates_with_override(override_path: Option<&OsStr>) -> Vec<String> {
-    let mut paths = Vec::new();
-    if let Some(path) = override_path.filter(|path| !path.is_empty()) {
-        paths.push(path.to_string_lossy().into_owned());
-    }
-    paths.push(LIBRARY.to_owned());
-    paths
+    crate::dl::candidates_with_override(override_path, [LIBRARY.to_owned()])
 }
 
 fn load() -> std::result::Result<Api, String> {

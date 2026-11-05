@@ -2,7 +2,21 @@
 //! (XRT, libvrtd, libzmq): each backend keeps only its candidate list and
 //! symbol table.
 
-use std::ffi::{c_int, c_void, CStr, CString};
+use std::ffi::{c_int, c_void, CStr, CString, OsStr};
+
+/// Candidate paths for one library: a non-empty explicit `override_path`
+/// wins, then the backend's fixed `fallbacks` in order.
+pub fn candidates_with_override(
+    override_path: Option<&OsStr>,
+    fallbacks: impl IntoIterator<Item = String>,
+) -> Vec<String> {
+    let mut paths = Vec::new();
+    if let Some(path) = override_path.filter(|path| !path.is_empty()) {
+        paths.push(path.to_string_lossy().into_owned());
+    }
+    paths.extend(fallbacks);
+    paths
+}
 
 /// Open the first loadable library among `candidates`, reporting every
 /// loader reason in order. `header` leads the error when none loads.

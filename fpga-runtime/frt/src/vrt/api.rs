@@ -87,19 +87,17 @@ fn candidates() -> Vec<String> {
 /// The explicit path wins. The remaining entries cover the loader's soname
 /// search and SLASH's documented `/usr/local` and system install prefixes.
 fn candidates_with_override(override_path: Option<&OsStr>) -> Vec<String> {
-    let mut paths = Vec::new();
-    if let Some(path) = override_path.filter(|path| !path.is_empty()) {
-        paths.push(path.to_string_lossy().into_owned());
-    }
-    paths.extend([
-        SONAME.to_owned(),
-        LIBRARY.to_owned(),
-        format!("/usr/local/lib/{SONAME}"),
-        format!("/usr/local/lib/{LIBRARY}"),
-        format!("/usr/lib/{SONAME}"),
-        format!("/usr/lib/{LIBRARY}"),
-    ]);
-    paths
+    crate::dl::candidates_with_override(
+        override_path,
+        [
+            SONAME.to_owned(),
+            LIBRARY.to_owned(),
+            format!("/usr/local/lib/{SONAME}"),
+            format!("/usr/local/lib/{LIBRARY}"),
+            format!("/usr/lib/{SONAME}"),
+            format!("/usr/lib/{LIBRARY}"),
+        ],
+    )
 }
 
 fn load() -> std::result::Result<Api, String> {

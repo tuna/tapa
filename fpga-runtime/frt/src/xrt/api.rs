@@ -82,14 +82,13 @@ pub fn api() -> Result<&'static Api> {
 /// `setup.sh` puts its `lib` on `LD_LIBRARY_PATH`, but that only reaches
 /// processes started after it is sourced.
 fn candidates() -> Vec<String> {
-    let mut paths = Vec::new();
-    if let Some(root) = std::env::var_os("XILINX_XRT").filter(|v| !v.is_empty()) {
-        let path = std::path::Path::new(&root).join("lib").join(LIBRARY);
-        paths.push(path.to_string_lossy().into_owned());
-    }
-    paths.push(LIBRARY.to_owned());
-    paths.push(format!("/opt/xilinx/xrt/lib/{LIBRARY}"));
-    paths
+    let installed = std::env::var_os("XILINX_XRT")
+        .filter(|root| !root.is_empty())
+        .map(|root| std::path::Path::new(&root).join("lib").join(LIBRARY));
+    crate::dl::candidates_with_override(
+        installed.as_deref().map(std::path::Path::as_os_str),
+        [LIBRARY.to_owned(), format!("/opt/xilinx/xrt/lib/{LIBRARY}")],
+    )
 }
 
 fn load() -> std::result::Result<Api, String> {
