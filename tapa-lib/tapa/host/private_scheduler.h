@@ -8,11 +8,11 @@
 // A single OS thread that owns a set of coroutines and round-robins them.
 
 class worker {
-  // keyed by detach flag; list for stable pointer (used in handle_table)
-  unordered_map<bool, std::list<push_type>> coroutines;
+  // list for stable pointer (used in handle_table)
+  std::list<push_type> coroutines;
   unordered_map<push_type*, pull_type*> handle_table;
 
-  std::queue<std::tuple<bool, function<void()>>> tasks;
+  std::queue<function<void()>> tasks;
   mutex mtx;
   condition_variable task_cv;
   bool done = false;
@@ -35,12 +35,9 @@ class worker {
           if (this->done && this->tasks.empty()) break;
 
           while (!this->tasks.empty()) {
-            bool detach;
-            function<void()> f;
-            std::tie(detach, f) = this->tasks.front();
+            function<void()> f = this->tasks.front();
             this->tasks.pop();
 
-            auto& l = this->coroutines[detach];
             auto coroutine = new push_type*;
             auto call_back = [this, f, coroutine](pull_type& handle) {
               this->handle_table[*coroutine] = current_handle = &handle;
@@ -49,8 +46,9 @@ class worker {
             };
             // Use 8 MB per coroutine so tasks with large local arrays do not
             // overflow the small default stack.
-            l.emplace_back(coroutine_stack(8 * 1024 * 1024), call_back);
-            *coroutine = &l.back();
+            this->coroutines.emplace_back(coroutine_stack(8 * 1024 * 1024),
+                                          call_back);
+            *coroutine = &this->coroutines.back();
           }
         }
 
@@ -58,21 +56,19 @@ class worker {
 
         bool debugging = this->signal;
         if (debugging) debug = true;
-        for (auto& pair : this->coroutines) {
-          auto& coroutines = pair.second;
-          for (auto it = coroutines.begin(); it != coroutines.end();) {
-            if (auto& coroutine = *it) {
-              current_handle = this->handle_table[&coroutine];
-              coroutine();
-              coroutine_executed = true;
-            }
+        for (auto it = this->coroutines.begin();
+             it != this->coroutines.end();) {
+          if (auto& coroutine = *it) {
+            current_handle = this->handle_table[&coroutine];
+            coroutine();
+            coroutine_executed = true;
+          }
 
-            if (*it) {
-              ++it;
-            } else {
-              unique_lock lock(this->mtx);
-              it = coroutines.erase(it);
-            }
+          if (*it) {
+            ++it;
+          } else {
+            unique_lock lock(this->mtx);
+            it = this->coroutines.erase(it);
           }
         }
 
@@ -96,10 +92,10 @@ class worker {
     });
   }
 
-  void add_task(bool detach, const function<void()>& f) {
+  void add_task(const function<void()>& f) {
     {
       unique_lock lock(this->mtx);
-      this->tasks.emplace(detach, f);
+      this->tasks.emplace(f);
     }
     this->task_cv.notify_one();
   }
@@ -147,7 +143,7 @@ class thread_pool {
     it = workers.begin();
   }
 
-  void add_worker(size_t count = 1) {
+  void add_worker(size_t count) {
     unique_lock lock(this->worker_mtx);
     for (size_t i = 0; i < count; ++i) {
       this->workers.emplace_back();
@@ -157,9 +153,9 @@ class thread_pool {
   void add_task(bool detach, const function<void()>& f) {
     unique_lock lock(this->worker_mtx);
     if (detach) {
-      it->add_task(true, f);
+      it->add_task(f);
     } else {
-      it->add_task(false, [this, f] {
+      it->add_task([this, f] {
         f();
         unique_lock lock(this->worker_mtx);
         if (--this->joined_tasks == 0) this->wait_cv.notify_all();
