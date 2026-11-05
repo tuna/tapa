@@ -111,28 +111,30 @@ pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
     let _ = unsafe { Box::from_raw(handle.cast::<QueueHandle>()) };
 }
 
-#[no_mangle]
-pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
+/// Shared body for the boolean queue-state queries: a null handle or a
+/// poisoned lock maps to -1.
+fn queue_state_query(
+    handle: *const c_void,
+    predicate: impl FnOnce(&SharedMemoryQueue) -> bool,
+) -> c_int {
     clear_last_error();
     with_handle(handle, |h| {
         let Some(q) = lock_queue(h) else {
             return -1;
         };
-        i32::from(q.is_empty())
+        i32::from(predicate(&q))
     })
     .unwrap_or(-1)
 }
 
 #[no_mangle]
+pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
+    queue_state_query(handle, SharedMemoryQueue::is_empty)
+}
+
+#[no_mangle]
 pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
-    clear_last_error();
-    with_handle(handle, |h| {
-        let Some(q) = lock_queue(h) else {
-            return -1;
-        };
-        i32::from(q.is_full())
-    })
-    .unwrap_or(-1)
+    queue_state_query(handle, SharedMemoryQueue::is_full)
 }
 
 #[no_mangle]
