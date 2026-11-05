@@ -196,10 +196,9 @@ impl DirectAxiPipelinePlan {
 
         for routed in self.routed.values() {
             let interface = &routed.interface;
-            let child_prefix = format!(
-                "__tapa_axi_{}_child",
-                sanitize_identifier_name(&interface.endpoint.top_port),
-            );
+            let child_prefix = self
+                .child_wire_prefix(&interface.endpoint)
+                .expect("instantiate only iterates routed endpoints");
             let top_prefix = format!(
                 "{M_AXI_PREFIX}{}",
                 sanitize_array_name(&interface.endpoint.top_port),
