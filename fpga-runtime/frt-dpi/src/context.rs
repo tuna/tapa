@@ -47,7 +47,7 @@ impl DpiContext {
         let mut streams = HashMap::new();
         for (name, entry) in cfg.streams {
             let q = SharedMemoryQueue::open(&entry.path)?;
-            if frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG) {
+            if crate::stream::stream_debug_enabled() {
                 eprintln!(
                     "frt-dpi: stream '{name}' path={} depth={} width={} dpi_width={}",
                     entry.path,

@@ -33,7 +33,7 @@ impl DpiStreamInner {
     }
 }
 
-fn stream_debug_enabled() -> bool {
+pub(crate) fn stream_debug_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
     *ENABLED.get_or_init(|| frt_shm::env_bool(frt_shm::env::FRT_STREAM_DEBUG))
 }
