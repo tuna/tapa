@@ -78,10 +78,7 @@ fn now_unix() -> u64 {
 /// `$HOME/.cache`), or `None` when no home is known — in which case
 /// the whole feature inertly switches off.
 fn cache_file_path() -> Option<PathBuf> {
-    let base = directories::BaseDirs::new()
-        .map(|d| d.cache_dir().to_path_buf())
-        .or_else(|| std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from))
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
+    let base = directories::BaseDirs::new().map(|d| d.cache_dir().to_path_buf())?;
     Some(base.join("tapa").join("update-check.json"))
 }
 
