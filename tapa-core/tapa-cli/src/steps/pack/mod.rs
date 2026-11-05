@@ -47,12 +47,9 @@ pub struct PackArgs {
     pub custom_rtl: Vec<PathBuf>,
 }
 
-pub(super) fn published_floorplan_xdc(
-    work_dir: &Path,
-    state: &WorkState,
-) -> Result<Option<PathBuf>> {
+pub(super) fn published_floorplan_xdc(work_dir: &Path, state: &WorkState) -> Result<()> {
     if state.floorplan.is_none() {
-        return Ok(None);
+        return Ok(());
     }
     let path = work_dir.join(crate::steps::floorplan::FLOORPLAN_XDC);
     if !path.is_file() {
@@ -61,7 +58,7 @@ pub(super) fn published_floorplan_xdc(
             path,
         });
     }
-    Ok(Some(path))
+    Ok(())
 }
 
 /// Dispatch packaging according to the target stored by `analyze`.
