@@ -205,18 +205,16 @@ impl SolveOpts {
                 "the solver thread count must be greater than zero".to_string(),
             ));
         }
-        validate_gap("absolute MIP gap", self.mip_gap_abs)?;
+        if self
+            .mip_gap_abs
+            .is_some_and(|gap| !gap.is_finite() || gap < 0.0)
+        {
+            return Err(SolverError::InvalidOptions(
+                "the absolute MIP gap must be finite and non-negative".to_string(),
+            ));
+        }
         Ok(())
     }
-}
-
-fn validate_gap(name: &str, gap: Option<f64>) -> Result<(), SolverError> {
-    if gap.is_some_and(|gap| !gap.is_finite() || gap < 0.0) {
-        return Err(SolverError::InvalidOptions(format!(
-            "the {name} must be finite and non-negative",
-        )));
-    }
-    Ok(())
 }
 
 /// Why a [`Solver`] run failed to produce a solution.
