@@ -25,7 +25,7 @@ use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use super::model::{Comparison, LpModel, LpVar, Sense, VarKind};
+use super::model::{LpModel, LpVar, VarKind};
 use super::solve::{LpSolution, LpStatus, SolveOpts, Solver, SolverError};
 
 /// FNV-1a 64: dependency-free, deterministic across platforms and runs.
@@ -50,8 +50,6 @@ fn hex64(hash: u64) -> String {
 pub struct SolveFingerprint {
     /// 0-based sequence number within the phase's recording.
     pub index: usize,
-    /// Objective sense, `"minimize"` or `"maximize"`.
-    pub sense: &'static str,
     /// Number of variables.
     pub vars: usize,
     /// Number of constraint rows (as built, before the writer drops any
@@ -78,7 +76,6 @@ impl SolveFingerprint {
     fn of_model(model: &LpModel, index: usize) -> Self {
         Self {
             index,
-            sense: sense_str(model.sense),
             vars: model.vars.len(),
             constraints: model.constraints.len(),
             nonzeros: count_nonzeros(model),
@@ -92,20 +89,6 @@ impl SolveFingerprint {
             solve_status: "unrecorded",
             solve_objective: f64::NAN,
         }
-    }
-}
-
-fn sense_str(sense: Sense) -> &'static str {
-    match sense {
-        Sense::Minimize => "minimize",
-    }
-}
-
-fn op_str(op: Comparison) -> &'static str {
-    match op {
-        Comparison::Le => "<=",
-        Comparison::Eq => "=",
-        Comparison::Ge => ">=",
     }
 }
 
@@ -158,7 +141,7 @@ fn canonical_row(constraint: &super::model::ConstraintDef) -> String {
     let rhs = constraint.rhs - constraint.expr.constant;
     format!(
         "{}{:016x}|{}",
-        op_str(constraint.op),
+        constraint.op.as_str(),
         rhs.to_bits(),
         canonical_terms_string(&constraint.expr.terms),
     )
@@ -248,10 +231,10 @@ impl<S: Solver> Solver for RecordingSolver<S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::model::{LinExpr, Sense};
+    use crate::solver::model::{Comparison, LinExpr};
 
     fn two_row_model() -> LpModel {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let a = model.add_binary("a");
         let b = model.add_binary("b");
         model.set_objective(LinExpr::sum([(1.0, a), (2.0, b)]).plus_constant(1.0));
@@ -261,7 +244,7 @@ mod tests {
             Comparison::Le,
             4.0,
         );
-        model.add_constraint("row_b", LinExpr::sum([(2.0, a)]), Comparison::Ge, 1.0);
+        model.add_constraint("row_b", LinExpr::sum([(2.0, a)]), Comparison::Le, 1.0);
         model
     }
 
@@ -269,12 +252,12 @@ mod tests {
     fn term_reordering_fingerprints_equal() {
         let model = two_row_model();
 
-        let mut reordered = LpModel::new(Sense::Minimize);
+        let mut reordered = LpModel::new();
         let a = reordered.add_binary("a");
         let b = reordered.add_binary("b");
         // Same rows with terms inserted in the other order.
         reordered.set_objective(LinExpr::sum([(2.0, b), (1.0, a)]).plus_constant(1.0));
-        reordered.add_constraint("row_b", LinExpr::sum([(2.0, a)]), Comparison::Ge, 1.0);
+        reordered.add_constraint("row_b", LinExpr::sum([(2.0, a)]), Comparison::Le, 1.0);
         reordered.add_constraint(
             "row_a",
             LinExpr::sum([(3.0, b), (1.0, a)]),
@@ -296,12 +279,12 @@ mod tests {
 
     #[test]
     fn duplicate_terms_combine_before_hashing() {
-        let mut combined = LpModel::new(Sense::Minimize);
+        let mut combined = LpModel::new();
         let x = combined.add_binary("x");
         combined.set_objective(LinExpr::new());
         combined.add_constraint("row", LinExpr::sum([(5.0, x)]), Comparison::Le, 1.0);
 
-        let mut split = LpModel::new(Sense::Minimize);
+        let mut split = LpModel::new();
         let y = split.add_binary("x");
         split.set_objective(LinExpr::new());
         split.add_constraint(

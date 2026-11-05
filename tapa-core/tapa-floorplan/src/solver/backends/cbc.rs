@@ -293,7 +293,7 @@ pub(crate) fn missing_cbc() -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::model::{Comparison, LinExpr, LpModel, Sense};
+    use crate::solver::model::{Comparison, LinExpr, LpModel};
 
     fn approx(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-6
@@ -373,7 +373,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn invalid_options_are_rejected_before_solver_launch() {
-        let model = LpModel::new(Sense::Minimize);
+        let model = LpModel::new();
         let opts = SolveOpts {
             time_limit: Some(std::time::Duration::ZERO),
             ..SolveOpts::default()
@@ -388,7 +388,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn all_column_output_ignores_rows_but_requires_every_variable() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let selected = model.add_binary("selected");
         let zero = model.add_binary("zero");
         model.set_objective(LinExpr::sum([(1.0, selected)]));
@@ -425,7 +425,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn objective_header_accepts_affine_constant_conventions() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
 
@@ -439,7 +439,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn objective_header_rejects_an_unrelated_value() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
         let solution = parse_sol("Optimal - objective value 4\n0 x0 1 0\n").expect("parse");
@@ -452,7 +452,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn objective_is_canonicalized_when_constant_is_within_tolerance() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2_000_000.0, x)]).plus_constant(1.0));
         let solution = parse_sol("Optimal - objective value 2000000\n0 x0 1 0\n").expect("parse");
@@ -465,7 +465,7 @@ Optimal - objective value 12.00000000
     fn negated_minimize_objective_is_rejected() {
         // A report whose objective contradicts the model value must stay
         // rejected: the constant-omitted retry cannot rescue it.
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2.0, x)]));
         model.add_constraint("pick", LinExpr::sum([(1.0, x)]), Comparison::Eq, 1.0);
@@ -478,7 +478,7 @@ Optimal - objective value 12.00000000
     fn cbc_solves_a_known_milp() {
         // minimize -(3 x0 + 2 x1)  s.t.  x0 + x1 <= 4,  x0 + 3 x1 <= 6
         // binary optimum: x0 = x1 = 1, objective -5.
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x0 = model.add_binary("x0");
         let x1 = model.add_binary("x1");
         model.set_objective(LinExpr::sum([(-3.0, x0), (-2.0, x1)]));
@@ -517,7 +517,7 @@ Optimal - objective value 12.00000000
 
     #[test]
     fn cbc_returns_the_full_affine_objective() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(2.0, x)]).plus_constant(1.0));
         model.add_constraint("pick", LinExpr::sum([(1.0, x)]), Comparison::Eq, 1.0);
@@ -535,9 +535,9 @@ Optimal - objective value 12.00000000
     #[test]
     fn cbc_reports_infeasible_model() {
         // x binary, x >= 1 and x <= 0 — no solution.
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
-        model.add_constraint("lo", LinExpr::sum([(1.0, x)]), Comparison::Ge, 1.0);
+        model.add_constraint("lo", LinExpr::sum([(-1.0, x)]), Comparison::Le, -1.0);
         model.add_constraint("hi", LinExpr::sum([(1.0, x)]), Comparison::Le, 0.0);
 
         match CbcSolver::new().solve(&model, &SolveOpts::default()) {

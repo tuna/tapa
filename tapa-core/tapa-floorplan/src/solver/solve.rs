@@ -106,7 +106,6 @@ impl LpSolution {
             let satisfied = match constraint.op {
                 Comparison::Le => lhs <= constraint.rhs + tolerance,
                 Comparison::Eq => (lhs - constraint.rhs).abs() <= tolerance,
-                Comparison::Ge => lhs >= constraint.rhs - tolerance,
             };
             if !satisfied {
                 return Err(SolverError::InvalidSolution(format!(
@@ -264,10 +263,10 @@ pub trait Solver {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::model::{LinExpr, Sense};
+    use crate::solver::model::LinExpr;
 
     fn binary_model() -> (LpModel, LpVar) {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let x = model.add_binary("x");
         model.set_objective(LinExpr::sum([(1.0, x)]));
         model.add_constraint("pick", LinExpr::sum([(1.0, x)]), Comparison::Eq, 1.0);
@@ -275,7 +274,7 @@ mod tests {
     }
 
     fn bound_model_with_reported_max(reported_max: f64) -> (LpModel, LpSolution) {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let max_crossings = model.add_continuous("max_crossings", 0.0, f64::INFINITY);
         let path = model.add_binary("path");
         let demand = 1_498.0;

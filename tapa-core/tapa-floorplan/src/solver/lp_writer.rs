@@ -2,12 +2,12 @@
 //!
 //! Variables are emitted by index as `x{index}`, which is LP-safe and unique
 //! by construction; each variable's human label rides along as a `\` comment.
-//! Binary variables go in the `Binaries` section, integers in `General`;
-//! only non-default bounds are written.
+//! Binary variables go in the `Binaries` section; only non-default bounds are
+//! written.
 
 use std::fmt::Write as _;
 
-use crate::solver::model::{Comparison, LinExpr, LpModel, Sense, VarKind};
+use crate::solver::model::{Comparison, LinExpr, LpModel, VarKind};
 
 /// Why a model could not be rendered as CPLEX-LP text.
 #[derive(Debug, thiserror::Error)]
@@ -41,12 +41,7 @@ pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
         }
     }
 
-    lines.push(
-        match model.sense {
-            Sense::Minimize => "Minimize",
-        }
-        .to_string(),
-    );
+    lines.push("Minimize".to_string());
     lines.push(format!(" obj: {}", write_objective(&model.objective)));
 
     lines.push("Subject To".to_string());
@@ -70,7 +65,7 @@ pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
             " {}: {} {} {}",
             sanitize_name(&constraint.name),
             write_terms(&constraint.expr.terms),
-            op_str(constraint.op),
+            constraint.op.as_str(),
             format_num(rhs),
         ));
     }
@@ -146,7 +141,6 @@ fn is_zero(coef: f64) -> bool {
 fn empty_constraint_is_vacuous(op: Comparison, rhs: f64) -> bool {
     match op {
         Comparison::Le => rhs >= 0.0,
-        Comparison::Ge => rhs <= 0.0,
         Comparison::Eq => rhs.abs() < f64::EPSILON,
     }
 }
@@ -187,14 +181,6 @@ fn section_vars(model: &LpModel, kind: VarKind) -> Vec<String> {
         .collect()
 }
 
-fn op_str(op: Comparison) -> &'static str {
-    match op {
-        Comparison::Le => "<=",
-        Comparison::Eq => "=",
-        Comparison::Ge => ">=",
-    }
-}
-
 /// Format a number for the LP body: whole values print without a trailing
 /// `.0` (f64 `Display` already does this), keeping the text terse.
 fn format_num(value: f64) -> String {
@@ -227,11 +213,11 @@ fn sanitize_name(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::model::{Comparison, LinExpr, LpModel, Sense};
+    use crate::solver::model::{Comparison, LinExpr, LpModel};
 
     #[test]
     fn golden_lp_text() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let pick = model.add_binary("pick");
         let count = model.add_continuous("count", 0.0, 5.0);
         let flow = model.add_continuous("flow_amt", 0.0, f64::INFINITY);
@@ -255,7 +241,7 @@ mod tests {
         model.add_constraint(
             "off",
             LinExpr::sum([(1.0, pick)]).plus_constant(1.0),
-            Comparison::Ge,
+            Comparison::Le,
             2.0,
         );
 
@@ -268,7 +254,7 @@ Minimize
 Subject To
  cap: 1 x0 + 2 x1 <= 5
  flow: 1 x1 - 1 x2 = 0
- off: 1 x0 >= 1
+ off: 1 x0 <= 1
 Bounds
  0 <= x1 <= 5
 Binaries
@@ -280,7 +266,7 @@ End
 
     #[test]
     fn constraint_names_never_enter_the_variable_namespace() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let v = model.add_binary("");
         for name in ["x0", "x42", "x_0", "x"] {
             model.add_constraint(name, LinExpr::sum([(1.0, v)]), Comparison::Le, 1.0);
@@ -297,7 +283,7 @@ End
 
     #[test]
     fn constraint_names_are_sanitized() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let v = model.add_binary("");
         model.add_constraint(
             "cut_x=3_capacity",
@@ -315,29 +301,29 @@ End
 
     #[test]
     fn vacuous_constant_constraints_are_dropped() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let v = model.add_binary("v");
         model.set_objective(LinExpr::sum([(1.0, v)]));
-        // `0 <= 5` and `0 >= -1` hold regardless of any assignment.
+        // `0 <= 5` and `0 <= 0` hold regardless of any assignment.
         model.add_constraint("vacuous_le", LinExpr::sum([(0.0, v)]), Comparison::Le, 5.0);
-        model.add_constraint("vacuous_ge", LinExpr::default(), Comparison::Ge, -1.0);
+        model.add_constraint("vacuous_eq", LinExpr::default(), Comparison::Eq, 0.0);
         let text = write_cplex_lp(&model).expect("vacuous rows are dropped");
         assert!(!text.contains("vacuous"), "got:\n{text}");
     }
 
     #[test]
     fn unsatisfiable_constant_constraints_are_an_error() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let v = model.add_binary("v");
         model.set_objective(LinExpr::sum([(1.0, v)]));
-        model.add_constraint("impossible", LinExpr::sum([(0.0, v)]), Comparison::Ge, 1.0);
-        let err = write_cplex_lp(&model).expect_err("0 >= 1 cannot be rendered");
+        model.add_constraint("impossible", LinExpr::sum([(0.0, v)]), Comparison::Le, -1.0);
+        let err = write_cplex_lp(&model).expect_err("0 <= -1 cannot be rendered");
         assert!(
             matches!(err, LpWriteError::UnsatisfiableConstant { .. }),
             "got {err}"
         );
 
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         model.add_constraint("bad_eq", LinExpr::default(), Comparison::Eq, 0.5);
         assert!(
             write_cplex_lp(&model).is_err(),

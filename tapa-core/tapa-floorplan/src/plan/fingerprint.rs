@@ -62,7 +62,6 @@ fn record_json(phase: &str, record: &SolveFingerprint) -> Value {
     json!({
         "index": record.index,
         "phase": phase,
-        "sense": record.sense,
         "vars": record.vars,
         "constraints": record.constraints,
         "nonzeros": record.nonzeros,

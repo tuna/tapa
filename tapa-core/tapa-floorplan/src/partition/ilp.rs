@@ -31,8 +31,7 @@ use crate::route::paths::Cell;
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
 use crate::solver::{
-    Comparison, LinExpr, LpModel, LpSolution, LpStatus, LpVar, Sense, SolveOpts, Solver,
-    SolverError,
+    Comparison, LinExpr, LpModel, LpSolution, LpStatus, LpVar, SolveOpts, Solver, SolverError,
 };
 use crate::ExactInt;
 
@@ -1016,7 +1015,7 @@ impl FloorplanModel {
             domains.len(),
             "every graph vertex needs one sparse candidate row"
         );
-        let mut lp = LpModel::new(Sense::Minimize);
+        let mut lp = LpModel::new();
         let x = add_assignment_vars(&mut lp, graph, domains);
         let y = add_edge_vars(&mut lp, graph, domains);
         add_coupling(&mut lp, graph, domains, &x, &y);

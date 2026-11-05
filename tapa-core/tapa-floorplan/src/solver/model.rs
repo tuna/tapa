@@ -16,12 +16,6 @@ pub enum VarKind {
     Continuous,
 }
 
-/// The objective direction; the formulations always minimize.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Sense {
-    Minimize,
-}
-
 /// A constraint's comparison operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Comparison {
@@ -29,8 +23,16 @@ pub enum Comparison {
     Le,
     /// `=`
     Eq,
-    /// `≥`
-    Ge,
+}
+
+impl Comparison {
+    /// The CPLEX-LP operator text.
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Le => "<=",
+            Self::Eq => "=",
+        }
+    }
 }
 
 /// A linear expression: `Σ coef·var + constant`.
@@ -86,24 +88,29 @@ pub(crate) struct ConstraintDef {
 }
 
 /// A mixed-integer linear program: variables, an objective, and constraints.
+/// The formulations always minimize.
 ///
-/// Variables are added with [`LpModel::add_binary`] / [`LpModel::add_integer`]
-/// / [`LpModel::add_continuous`], which return an [`LpVar`] handle. The
-/// objective is a [`LinExpr`]; constraints are `expr op rhs`.
+/// Variables are added with [`LpModel::add_binary`] / [`LpModel::add_continuous`],
+/// which return an [`LpVar`] handle. The objective is a [`LinExpr`]; constraints
+/// are `expr op rhs`.
 #[derive(Debug, Clone)]
 pub struct LpModel {
-    pub(crate) sense: Sense,
     pub(crate) objective: LinExpr,
     pub(crate) vars: Vec<VarDef>,
     pub(crate) constraints: Vec<ConstraintDef>,
 }
 
+impl Default for LpModel {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LpModel {
-    /// A fresh model with the given optimization sense and an empty objective.
+    /// A fresh minimization model with an empty objective.
     #[must_use]
-    pub fn new(sense: Sense) -> Self {
+    pub fn new() -> Self {
         Self {
-            sense,
             objective: LinExpr::new(),
             vars: Vec::new(),
             constraints: Vec::new(),

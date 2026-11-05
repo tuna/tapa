@@ -107,11 +107,11 @@ pub fn read_one_of_k(solution: &LpSolution, vars: &[LpVar]) -> Result<usize, One
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::{LpStatus, Sense, VarKind};
+    use crate::solver::{LpStatus, VarKind};
 
     #[test]
     fn one_of_k_row_shape() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let vars = add_one_of_k_row(&mut model, "chooser", 3, |index| format!("c_{index}"));
         assert_eq!(vars.len(), 3);
         assert_eq!(model.num_vars(), 3);
@@ -134,7 +134,7 @@ mod tests {
 
     #[test]
     fn read_one_of_k_accepts_a_tolerant_single_selection() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let vars = add_one_of_k_row(&mut model, "chooser", 3, |index| format!("c_{index}"));
         let solution = solution(&vars, &[1e-9, 1.0 - 1e-9, 0.0]);
         assert_eq!(
@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn read_one_of_k_rejects_malformed_selections() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let vars = add_one_of_k_row(&mut model, "chooser", 3, |index| format!("c_{index}"));
 
         let missing = solution(&vars[1..], &[1.0, 0.0]);

@@ -37,11 +37,11 @@ impl SparseRow {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::solver::{LpModel, Sense};
+    use crate::solver::LpModel;
 
     #[test]
     fn insertion_order_is_preserved() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let a = model.add_binary("a");
         let b = model.add_binary("b");
         let c = model.add_binary("c");
@@ -61,7 +61,7 @@ mod tests {
 
     #[test]
     fn a_cloned_row_extends_independently() {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let a = model.add_binary("a");
         let b = model.add_binary("b");
         let cap = model.add_continuous("cap", 0.0, f64::INFINITY);

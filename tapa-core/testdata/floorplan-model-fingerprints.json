@@ -6,7 +6,6 @@
     {
       "index": 0,
       "phase": "partition",
-      "sense": "minimize",
       "vars": 178,
       "constraints": 136,
       "nonzeros": 1105,
@@ -20,7 +19,6 @@
     {
       "index": 1,
       "phase": "partition",
-      "sense": "minimize",
       "vars": 178,
       "constraints": 137,
       "nonzeros": 1125,
@@ -34,7 +32,6 @@
     {
       "index": 0,
       "phase": "routing",
-      "sense": "minimize",
       "vars": 16,
       "constraints": 26,
       "nonzeros": 146,
@@ -48,7 +45,6 @@
     {
       "index": 1,
       "phase": "routing",
-      "sense": "minimize",
       "vars": 16,
       "constraints": 27,
       "nonzeros": 155,

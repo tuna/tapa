@@ -549,7 +549,6 @@ fn canonical_placement_model_matches_expected_formulation() {
     let consumer_x = [format!("x_B_0_{bottom_name}"), format!("x_B_0_{top_name}")];
     let route_y = ["y_0_0_0", "y_0_0_1", "y_0_1_0", "y_0_1_1"];
 
-    assert_eq!(lp.sense, Sense::Minimize);
     assert_eq!(lp.num_vars(), 8, "four sparse x plus four sparse y");
     assert!(lp.vars.iter().all(|var| var.kind == VarKind::Binary
         && var.lower.to_bits() == 0.0_f64.to_bits()

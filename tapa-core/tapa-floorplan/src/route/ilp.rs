@@ -19,7 +19,7 @@ use crate::route::paths::{enumerate_paths, Cell};
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
 use crate::solver::{
-    Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
+    Comparison, LinExpr, LpModel, LpStatus, LpVar, SolveOpts, Solver, SolverError,
 };
 use crate::ExactInt;
 
@@ -531,7 +531,7 @@ pub fn route_nets(
     let candidates = candidates_for(nets, device)?;
     let limits = boundaries(device);
 
-    let mut lp = LpModel::new(Sense::Minimize);
+    let mut lp = LpModel::new();
     // Created first so it stays `x0` whenever the balancing objective applies.
     let max_crossings = limits
         .iter()
@@ -1224,7 +1224,7 @@ mod tests {
             width,
         };
         let nets = [net(8), net(8), net(9), net(8)];
-        let mut lp = LpModel::new(Sense::Minimize);
+        let mut lp = LpModel::new();
         let path_vars: Vec<Vec<LpVar>> = (0..nets.len())
             .map(|net_index| {
                 add_one_of_k_row(&mut lp, &format!("net_{net_index}"), 3, |path| {

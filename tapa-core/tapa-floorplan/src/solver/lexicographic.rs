@@ -80,7 +80,7 @@ fn rank_objective(rank_rows: &[Vec<LpVar>]) -> LinExpr {
 mod tests {
     use super::*;
     use crate::solver::assign::add_one_of_k_row;
-    use crate::solver::{LpStatus, Sense};
+    use crate::solver::LpStatus;
 
     /// A scripted solver: hands back a fixed solution and forgets nothing
     /// about the model, letting the test inspect the mutated model.
@@ -105,7 +105,7 @@ mod tests {
     }
 
     fn tiny_model() -> (LpModel, Vec<Vec<LpVar>>) {
-        let mut model = LpModel::new(Sense::Minimize);
+        let mut model = LpModel::new();
         let first = add_one_of_k_row(&mut model, "first", 2, |i| format!("a_{i}"));
         let second = add_one_of_k_row(&mut model, "second", 3, |i| format!("b_{i}"));
         model.set_objective(LinExpr::sum([(1.0, first[0])]));
