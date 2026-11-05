@@ -47,16 +47,16 @@ benchmarks are described below the table.
 | [serpens-16ch](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-16ch), [24ch](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-24ch), [32ch](https://github.com/tuna/tapa/tree/main/tests/regression/serpens-32ch) | Sparse SpMV | Same Serpens architecture at three HBM parallelism levels | [DAC'22](https://arxiv.org/pdf/2111.12555.pdf) |
 | [Sextans U55C](https://github.com/tuna/tapa/tree/main/tests/regression/spmm/sextans-u55c-3x3floorplan), [split BRAM/URAM](https://github.com/tuna/tapa/tree/main/tests/regression/spmm/sextans-u280-split-bram-uram) | Sparse SpMM | Streaming HBM architecture with fixed and runtime dimensions | [FPGA'22](https://dl.acm.org/doi/pdf/10.1145/3490422.3502357) |
 | [spmv-hisparse-mmap](https://github.com/tuna/tapa/tree/main/tests/regression/spmv-hisparse-mmap) | Sparse SpMV | HiSparse mmap-based data path | [FPGA'22](https://www.csl.cornell.edu/~zhiruz/pdfs/spmv-fpga2022.pdf) |
-| [hbm-bandwidth](https://github.com/tuna/tapa/tree/main/tests/regression/hbm-bandwidth) | HBM bandwidth | `async_mmap` over all 32 HBM channels | Repository-only |
-| [hbm-bandwidth-1-ch](https://github.com/tuna/tapa/tree/main/tests/regression/hbm-bandwidth-1-ch) | HBM bandwidth | Minimal single-channel `async_mmap` baseline | Repository-only |
+| [hbm-bandwidth](https://github.com/tuna/tapa/tree/main/tests/regression/hbm-bandwidth) | HBM bandwidth | `async_mmap` over all 32 HBM channels, or one | Repository-only |
 | [stencil-dilate](https://github.com/tuna/tapa/tree/main/tests/regression/stencil-dilate) | Image dilation | 15 parallel 512-bit, 13-point stencil pipelines | Repository-only |
 
 ### Repository-only benchmarks
 
 - **hbm-bandwidth** drives independent asynchronous readers and writers on all
   32 HBM channels to stress aggregate memory bandwidth.
-- **hbm-bandwidth-1-ch** is the corresponding one-channel baseline, useful for
-  isolating the `async_mmap` protocol without the full replicated design.
+  The `hbm-bandwidth-1-ch` test builds the same source with one channel, a
+  baseline that isolates the `async_mmap` protocol without the full
+  replicated design.
 - **stencil-dilate** partitions a fixed 4096 × 4096 grid over 15 memory-channel
   pipelines and computes a 13-point maximum (morphological dilation) stencil.
 
