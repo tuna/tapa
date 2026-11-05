@@ -29,19 +29,6 @@ namespace tapa::cc {
 
 namespace {
 
-// The body of a loop statement, or nullptr if it is not a loop.
-const clang::Stmt* GetLoopBody(const clang::Stmt* stmt) {
-  if (const auto* s = llvm::dyn_cast<clang::DoStmt>(stmt)) return s->getBody();
-  if (const auto* s = llvm::dyn_cast<clang::ForStmt>(stmt)) return s->getBody();
-  if (const auto* s = llvm::dyn_cast<clang::WhileStmt>(stmt)) {
-    return s->getBody();
-  }
-  if (const auto* s = llvm::dyn_cast<clang::CXXForRangeStmt>(stmt)) {
-    return s->getBody();
-  }
-  return nullptr;
-}
-
 // The braces an attribute on a non-loop statement should scope to.
 //
 // A vendor region pragma is written INSIDE the braces it constrains, so
@@ -239,7 +226,7 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
       return;
     }
   }
-  const clang::Stmt* body = GetLoopBody(sub);
+  const clang::Stmt* body = LoopBody(sub);
   if (body == nullptr) body = GetRegionBody(sub);
   if (body == nullptr) body = sub;
   for (const clang::Attr* attr : attributed->getAttrs()) {

@@ -29,6 +29,9 @@ std::vector<const clang::CXXMemberCallExpr*> GetInvokes(
 // visible in the invoking TU, not the definition.
 const clang::FunctionDecl* InvokeCallee(const clang::CXXMemberCallExpr* invoke);
 
+// The body of a loop statement, or nullptr if it is not a loop.
+const clang::Stmt* LoopBody(const clang::Stmt* stmt);
+
 // Whether a function is marked `[[tapa::target("ignore")]]`.
 bool IsIgnored(const clang::FunctionDecl* func);
 

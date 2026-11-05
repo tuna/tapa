@@ -142,6 +142,7 @@ cc_library(
     deps = [
         ":backend",
         ":edit_sink",
+        "//tapacc/frontend:discover",
         CLANG_TOOLING,
     ],
 )

@@ -1,6 +1,8 @@
 #include "discover.h"
 
 #include "clang/AST/Attr.h"
+#include "clang/AST/Stmt.h"
+#include "clang/AST/StmtCXX.h"
 
 #include "classify.h"
 
@@ -56,6 +58,18 @@ const clang::FunctionDecl* InvokeCallee(
   const auto* ref = llvm::dyn_cast<clang::DeclRefExpr>(arg0);
   if (ref == nullptr) return nullptr;
   return llvm::dyn_cast<clang::FunctionDecl>(ref->getDecl());
+}
+
+const clang::Stmt* LoopBody(const clang::Stmt* stmt) {
+  if (const auto* s = llvm::dyn_cast<clang::DoStmt>(stmt)) return s->getBody();
+  if (const auto* s = llvm::dyn_cast<clang::ForStmt>(stmt)) return s->getBody();
+  if (const auto* s = llvm::dyn_cast<clang::WhileStmt>(stmt)) {
+    return s->getBody();
+  }
+  if (const auto* s = llvm::dyn_cast<clang::CXXForRangeStmt>(stmt)) {
+    return s->getBody();
+  }
+  return nullptr;
 }
 
 bool IsIgnored(const clang::FunctionDecl* func) {

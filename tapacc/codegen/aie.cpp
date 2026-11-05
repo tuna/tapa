@@ -9,6 +9,7 @@
 #include "clang/AST/TypeLoc.h"
 
 #include "frontend/diag.h"
+#include "frontend/discover.h"
 
 namespace tapa::cc {
 
@@ -53,22 +54,6 @@ bool HasUnrollAttr(const clang::Stmt* stmt) {
     if (attr->getKind() == clang::attr::TapaUnroll) return true;
   }
   return false;
-}
-
-const clang::Stmt* LoopBody(const clang::Stmt* stmt) {
-  if (const auto* loop = clang::dyn_cast<clang::ForStmt>(stmt)) {
-    return loop->getBody();
-  }
-  if (const auto* loop = clang::dyn_cast<clang::WhileStmt>(stmt)) {
-    return loop->getBody();
-  }
-  if (const auto* loop = clang::dyn_cast<clang::DoStmt>(stmt)) {
-    return loop->getBody();
-  }
-  if (const auto* loop = clang::dyn_cast<clang::CXXForRangeStmt>(stmt)) {
-    return loop->getBody();
-  }
-  return nullptr;
 }
 
 void FlattenNestedLoops(const clang::Stmt* stmt, EditSink& edits) {
