@@ -13,27 +13,18 @@ use crate::passes::DesignPassCtx;
 pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
     let design = ctx.design.design();
 
-    // `Ignore` tasks: emit the authoritative template file from the
-    // shell built by the `ignore-task-shells` pass.
-    let task_names: Vec<String> = design.tasks.keys().cloned().collect();
-    for task_name in &task_names {
-        let task = &design.tasks[task_name];
-        if task.synth == SynthTarget::Ignore {
-            let template = ctx.modules[task_name].emit();
-            ctx.outputs
-                .insert_template(format!("{task_name}.v"), template);
-        }
-    }
-
-    // Collect emitted files. Lower HLS modules were already copied from
-    // their original Verilog sources by the CLI; re-emitting them from the
-    // parsed model drops legal port-reg redeclarations used by HLS.
+    // `Ignore` tasks emit the authoritative template file from the shell
+    // built by the `ignore-task-shells` pass. Lower HLS modules were already
+    // copied from their original Verilog sources by the CLI; re-emitting them
+    // from the parsed model drops legal port-reg redeclarations used by HLS.
     for (name, mm) in ctx.modules.iter() {
-        if design
-            .tasks
-            .get(name.as_str())
-            .is_some_and(|task| task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore)
-        {
+        let Some(task) = design.tasks.get(name.as_str()) else {
+            continue;
+        };
+        if task.synth == SynthTarget::Ignore {
+            ctx.outputs.insert_template(format!("{name}.v"), mm.emit());
+        }
+        if task.level == TaskLevel::Upper || task.synth == SynthTarget::Ignore {
             ctx.outputs.insert_generated(format!("{name}.v"), mm.emit());
         }
     }
