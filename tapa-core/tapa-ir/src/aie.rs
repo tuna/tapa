@@ -167,14 +167,7 @@ impl AiePartition {
                 continue;
             }
             for (index, instance) in instances.iter().enumerate() {
-                if instance.step > 0 {
-                    return Err(AieError(format!(
-                        "the AI Engine task `{child}` is invoked sequentially (step {}); \
-                         AI Engine kernels run concurrently, so invoke it joined or detached",
-                        instance.step
-                    )));
-                }
-                builder.partition.run_forever |= instance.step < 0;
+                check_invoke_step(child, instance.step, &mut builder.partition.run_forever)?;
                 let name = instance.canonical_name(child, index).into_owned();
                 let mut scope = BTreeMap::new();
                 for (port, arg) in &instance.args {
@@ -361,6 +354,19 @@ fn task<'g>(graph: &'g TaskGraph, name: &str) -> Result<&'g Task, AieError> {
         .ok_or_else(|| AieError(format!("the task graph has no task `{name}`")))
 }
 
+/// AI Engine kernels run concurrently: a sequential invoke is an error, and a
+/// detached invoke means the graph runs until the host ends it.
+fn check_invoke_step(child: &str, step: i64, run_forever: &mut bool) -> Result<(), AieError> {
+    if step > 0 {
+        return Err(AieError(format!(
+            "the AI Engine task `{child}` is invoked sequentially (step {step}); \
+             AI Engine kernels run concurrently, so invoke it joined or detached"
+        )));
+    }
+    *run_forever |= step < 0;
+    Ok(())
+}
+
 /// What a name in a task's scope is bound to.
 #[derive(Debug, Clone)]
 enum Binding {
@@ -502,14 +508,7 @@ impl Builder<'_> {
         }
         for (child, instances) in &def.tasks {
             for (child_index, instance) in instances.iter().enumerate() {
-                if instance.step > 0 {
-                    return Err(AieError(format!(
-                        "the AI Engine task `{child}` is invoked sequentially (step {}); \
-                         AI Engine kernels run concurrently, so invoke it joined or detached",
-                        instance.step
-                    )));
-                }
-                self.partition.run_forever |= instance.step < 0;
+                check_invoke_step(child, instance.step, &mut self.partition.run_forever)?;
                 let mut child_scope = BTreeMap::new();
                 for (port, arg) in &instance.args {
                     let binding = match &arg.arg {
