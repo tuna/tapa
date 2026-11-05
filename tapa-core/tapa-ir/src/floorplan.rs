@@ -285,10 +285,7 @@ impl Coor {
     /// `self` is a (non-strict) superset of `other`.
     #[must_use]
     pub fn covers(&self, other: &Self) -> bool {
-        self.dl_x <= other.dl_x
-            && self.dl_y <= other.dl_y
-            && self.ur_x >= other.ur_x
-            && self.ur_y >= other.ur_y
+        other.is_inside(self)
     }
 
     /// Every atomic grid cell `(x, y)` the region covers, row-major.
