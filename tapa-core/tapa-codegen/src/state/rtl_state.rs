@@ -4,7 +4,11 @@
 //! parsed from HLS output, plus FSM modules created during codegen.
 
 pub use crate::state::mmap::direct::DirectMmapInterface;
-pub use crate::state::mmap::{MMapConnection, MMapSlave};
+pub(crate) use crate::state::mmap::MMapConnection;
+// Only crossbar unit tests consume this re-export; direct consumers use
+// `crate::state::mmap` paths.
+#[cfg(test)]
+pub(crate) use crate::state::mmap::MMapSlave;
 
 use std::collections::BTreeMap;
 
@@ -124,7 +128,7 @@ impl TopologyWithRtl {
     clippy::manual_bit_width,
     reason = "u32::bit_width is unstable on the pinned stable toolchain"
 )]
-pub fn routing_id_bits(n: u32) -> u32 {
+pub(crate) fn routing_id_bits(n: u32) -> u32 {
     if n <= 1 {
         return 0;
     }
