@@ -67,6 +67,7 @@ pub tapa_rtl::builder::Expr::Range::base: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::lsb: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::msb: alloc::boxed::Box<Self>
 impl tapa_rtl::builder::Expr
+pub fn tapa_rtl::builder::Expr::all(impl core::iter::traits::collect::IntoIterator<Item = Self>) -> Self
 pub fn tapa_rtl::builder::Expr::concat(alloc::vec::Vec<Self>) -> Self
 pub fn tapa_rtl::builder::Expr::eq(Self, Self) -> Self
 pub fn tapa_rtl::builder::Expr::ident(impl core::convert::Into<alloc::string::String>) -> Self

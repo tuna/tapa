@@ -93,6 +93,14 @@ impl Expr {
         Self::bin_op(lhs, BinOperator::And, rhs)
     }
 
+    /// The logical AND of `terms`; no terms yield the AND identity `1'b1`.
+    pub fn all(terms: impl IntoIterator<Item = Self>) -> Self {
+        terms
+            .into_iter()
+            .reduce(Self::logical_and)
+            .unwrap_or_else(|| Self::lit("1'b1"))
+    }
+
     pub fn logical_not(inner: Self) -> Self {
         Self::Not(Box::new(inner))
     }

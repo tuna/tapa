@@ -20,8 +20,7 @@ use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wire};
 
 use super::{
-    invalid_floorplan, logical_reduction, mmap_offset_source, parse_atomic_region, scalar_driver,
-    width_wire,
+    invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver, width_wire,
 };
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
@@ -709,16 +708,7 @@ impl DistributedControlPlan {
         module.add_signal(wire(CHILDREN_CLEAR))?;
         module.add_signal(wire(FABRIC_RESET_N))?;
 
-        let done = logical_reduction(
-            completion_signals
-                .iter()
-                .map(|signal| Expr::ident(signal.clone())),
-        );
-        let clear = logical_reduction(
-            completion_signals
-                .iter()
-                .map(|signal| Expr::logical_not(Expr::ident(signal.clone()))),
-        );
+        let (done, clear) = done_and_clear(completion_signals);
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_DONE), done));
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_CLEAR), clear));
         module.add_instance(
@@ -756,13 +746,7 @@ impl DistributedControlPlan {
         let release = scope_signal(Some(&scope.instance), "release");
         module.add_signal(wire(&start))?;
         module.add_signal(wire(&release))?;
-        let done = logical_reduction(scope.completion_signals.iter().map(Expr::ident));
-        let clear = logical_reduction(
-            scope
-                .completion_signals
-                .iter()
-                .map(|signal| Expr::logical_not(Expr::ident(signal))),
-        );
+        let (done, clear) = done_and_clear(&scope.completion_signals);
         module.add_instance(
             ModuleInstance::new(
                 "tapa_global_controller",
@@ -784,6 +768,18 @@ impl DistributedControlPlan {
         );
         Ok(())
     }
+}
+
+/// A controller's `children_done` and `children_clear` conditions: every
+/// completion signal high, and every one low.
+fn done_and_clear(completion_signals: &[String]) -> (Expr, Expr) {
+    let done = Expr::all(completion_signals.iter().map(Expr::ident));
+    let clear = Expr::all(
+        completion_signals
+            .iter()
+            .map(|signal| Expr::logical_not(Expr::ident(signal))),
+    );
+    (done, clear)
 }
 
 fn validate_scope_inventory(

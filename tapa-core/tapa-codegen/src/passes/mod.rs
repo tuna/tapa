@@ -385,13 +385,6 @@ fn mmap_offset_source(parent: &str, mmap_connections: &BTreeMap<String, MMapConn
     }
 }
 
-/// Reduce to a logical AND; the empty set yields the and-identity `1'b1`.
-pub fn logical_reduction(expressions: impl Iterator<Item = Expr>) -> Expr {
-    expressions
-        .reduce(Expr::logical_and)
-        .unwrap_or_else(|| Expr::lit("1'b1"))
-}
-
 /// A wire named `name` of `width` bits; a 1-bit wire carries no range.
 fn width_wire(name: &str, width: u32) -> tapa_rtl::signal::Signal {
     if width > 1 {
