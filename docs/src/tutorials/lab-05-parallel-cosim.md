@@ -37,8 +37,8 @@ void Gather(tapa::mmap<beat_t> matrix,
             tapa::istreams<float, p * p>& block) { ... }
 ```
 
-`beat_t`, declared in `cannon.h`, is a 512-bit memory beat of 16 floats, so
-each memory access moves 16 floats.
+`beat_t`, declared in `cannon.h` as `tapa::vec_t<float, 16>`, is a 512-bit
+memory beat, so each memory access moves 16 floats.
 
 The top-level function declares the shared streams and gives each kernel its
 own bitstream flag wrapped in `tapa::executable`:

@@ -37,27 +37,30 @@ U* checked_reinterpret(T* ptr, uint64_t size) {
     constexpr auto N = sizeof(U) / sizeof(T);
     CHECK_EQ(sizeof(U) % sizeof(T), 0)
         << "sizeof(U) must be a multiple of sizeof(T) when mmap<T> is "
-           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()` or "
+           "`vectorized<N>()`); got "
            "sizeof(U) = "
         << sizeof(U) << ", sizeof(T) = " << sizeof(T);
     CHECK_EQ(size % N, 0)
         << "size of mmap<T> must be a multiple of N (= sizeof(U)/sizeof(T)) "
-           "when reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "when reinterpreted as mmap<U> (i.e., `reinterpret<U>()` or "
+           "`vectorized<N>()`); got "
            "size = "
         << size << ", N = " << sizeof(U) << " / " << sizeof(T) << " = " << N
         << ", but " << size << " % " << N << " != 0";
   } else if (sizeof(U) < sizeof(T)) {
     CHECK_EQ(sizeof(T) % sizeof(U), 0)
         << "sizeof(T) must be a multiple of sizeof(U) when mmap<T> is "
-           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()`); got "
+           "reinterpreted as mmap<U> (i.e., `reinterpret<U>()` or "
+           "`vectorized<N>()`); got "
            "sizeof(T) = "
         << sizeof(T) << ", sizeof(U) = " << sizeof(U);
   }
   CHECK_EQ(reinterpret_cast<std::size_t>(ptr) % alignof(U), 0)
       << "data of mmap<T> must be " << alignof(U)
       << "-byte aligned when reinterpreted as mmap<U> (i.e., "
-         "`reinterpret<U>()`) because alignof(U) = "
-      << alignof(U);
+         "`reinterpret<U>()` or `vectorized<N>()`) because alignof(U) = "
+      << alignof(U) << "; allocate it with tapa::aligned_allocator";
   return reinterpret_cast<U*>(ptr);
 }
 
@@ -101,15 +104,11 @@ class mmap {
   T* get() const { return ptr_; }
   uint64_t size() const { return size_; }
 
-  /// Reinterprets as @c mmap<vec_t<T,N>>. Size must be a multiple of @c N.
+  /// Reinterprets as @c mmap<vec_t<T,N>>. Size must be a multiple of @c N,
+  /// and the data aligned like @c vec_t<T,N>.
   template <uint64_t N>
   mmap<vec_t<T, N>> vectorized() const {
-    CHECK_EQ(size() % N, 0)
-        << "size of mmap<T> must be a multiple of N when vectorized as a "
-           "mmap<vec_t<T, N>> (i.e., `vectorized<N>()`); got size = "
-        << size() << ", N = " << N << ", but " << size() << " % " << N
-        << " != 0";
-    return mmap<vec_t<T, N>>(reinterpret_cast<vec_t<T, N>*>(get()), size() / N);
+    return reinterpret<vec_t<T, N>>();
   }
 
   /// Reinterprets element type as @c U. Both @c T and @c U must have standard
@@ -260,21 +259,10 @@ class mmaps {
   }
 
   /// Reinterprets each element as @c vec_t<T,N>. Each size must be a multiple
-  /// of @c N.
+  /// of @c N, and the data aligned like @c vec_t<T,N>.
   template <uint64_t N>
   mmaps<vec_t<T, N>, S> vectorized() const {
-    std::array<vec_t<T, N>*, S> ptrs;
-    std::array<uint64_t, S> sizes;
-    for (uint64_t i = 0; i < S; ++i) {
-      CHECK_EQ(mmaps_[i].size() % N, 0)
-          << "size of mmap<T> must be a multiple of N when vectorized as a "
-             "mmap<vec_t<T, N>> (i.e., `vectorized<N>()`); got size = "
-          << mmaps_[i].size() << ", N = " << N << ", but " << mmaps_[i].size()
-          << " % " << N << " != 0";
-      ptrs[i] = reinterpret_cast<vec_t<T, N>*>(mmaps_[i].get());
-      sizes[i] = mmaps_[i].size() / N;
-    }
-    return mmaps<vec_t<T, N>, S>(ptrs, sizes);
+    return reinterpret<vec_t<T, N>>();
   }
 
   /// Reinterprets each element type as @c U.

@@ -42,6 +42,16 @@ TEST(VecTest, LengthAndWidthDescribeTheLayout) {
   EXPECT_EQ((vec_t<Vec4, 2>::width), widthof<int>() * 8);
 }
 
+// A power-of-two vector is aligned to its size, up to a 64-byte memory beat,
+// so HLS reads it from memory as whole bus words; other sizes keep the
+// element's alignment, and the size never changes.
+static_assert(alignof(vec_t<float, 4>) == 16, "16-byte vector");
+static_assert(alignof(vec_t<float, 16>) == 64, "one 512-bit beat");
+static_assert(alignof(vec_t<float, 32>) == 64, "capped at one beat");
+static_assert(alignof(vec_t<float, 3>) == alignof(float), "not a power of two");
+static_assert(sizeof(vec_t<float, 3>) == 3 * sizeof(float), "no padding");
+static_assert(sizeof(vec_t<float, 32>) == 32 * sizeof(float), "no padding");
+
 TEST(VecTest, ElementsAreReadAndWrittenByPosition) {
   Vec4 v = MakeVec4(1, 2, 3, 4);
   EXPECT_TRUE(Equals(v, 1, 2, 3, 4));

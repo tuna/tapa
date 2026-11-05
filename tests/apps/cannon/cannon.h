@@ -26,12 +26,8 @@ constexpr int p = TAPA_CANNON_P;
 constexpr int kN = p * TAPA_CANNON_B;
 
 // The matrices move to and from memory in 512-bit beats, as wide as a memory
-// port. Aligning a beat to its size lets HLS make each one a single bus word;
-// it realigns every access to a `tapa::vec_t<float, 16>`, which is aligned
-// only as a float.
-struct alignas(64) beat_t {
-  float floats[16];
-};
+// port; a 64-byte vec_t is aligned to its size, so each is one bus word.
+using beat_t = tapa::vec_t<float, 16>;
 constexpr int kBeatFloats = sizeof(beat_t) / sizeof(float);
 static_assert((kN / p) * (kN / p) % kBeatFloats == 0,
               "a block must be whole 512-bit beats");

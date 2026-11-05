@@ -186,7 +186,8 @@ class mmap {
   uint64_t size() const;
 
   template <uint64_t N>
-  mmap<vec_t<T, N>> vectorized() const;  // reinterpret as wider element type
+  mmap<vec_t<T, N>> vectorized() const;  // reinterpret as wider element type;
+                                         // data must be aligned like vec_t<T, N>
 
   template <typename U>
   mmap<U> reinterpret() const;  // reinterpret element type
@@ -283,6 +284,8 @@ void Reader(tapa::async_mmap<float>& mem, tapa::ostream<float>& out, int n) {
 ### `tapa::vec_t<T, N>`
 
 An N-element SIMD vector of type `T`. Stores elements as a packed bit array, which maps directly to wide AXI ports. Supports element access via `operator[]`, arithmetic operators element-wise, and common reductions (`sum`, `product`).
+
+A vector whose size is a power of two is aligned to that size, up to 64 bytes, so as a memory element each one is a single bus word. This also pads a struct that holds a `vec_t` next to smaller members. `mmap<T>::vectorized<N>()` therefore needs host data aligned like `vec_t<T, N>`: allocate it with `tapa::aligned_allocator` once the vector is wider than the 16 bytes `malloc` guarantees.
 
 ```cpp
 template <typename T, int N>
