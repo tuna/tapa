@@ -161,7 +161,7 @@ impl SimRunner for VerilatorRunner {
         ];
         for f in std::fs::read_dir(&rtl_dir)? {
             let path = f?.path();
-            if is_verilog_like(&path) {
+            if crate::has_ext(&path, &["v", "sv", "vh"], false) {
                 args.push(path.to_string_lossy().to_string());
             }
         }
@@ -275,7 +275,7 @@ fn read_rtl_sources(rtl_dir: &Path) -> Result<Vec<(PathBuf, String)>> {
     let mut sources = Vec::new();
     for entry in std::fs::read_dir(rtl_dir)? {
         let path = entry?.path();
-        if !is_verilog_like(&path) {
+        if !crate::has_ext(&path, &["v", "sv", "vh"], false) {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(&path) else {
@@ -425,12 +425,6 @@ fn rewrite_combinational_nba(content: &str) -> String {
         result.push('\n');
     }
     result
-}
-
-fn is_verilog_like(path: &Path) -> bool {
-    path.extension()
-        .and_then(|x| x.to_str())
-        .is_some_and(|x| matches!(x, "v" | "sv" | "vh"))
 }
 
 fn parse_xilinx_ip_model(ip_module: &str, rtl_dir: &Path) -> Result<Option<XilinxIpModel>> {

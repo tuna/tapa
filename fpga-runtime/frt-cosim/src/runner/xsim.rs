@@ -78,10 +78,7 @@ impl SimRunner for XsimRunner {
 fn apply_default_nettype_wire(spec: &KernelSpec) -> Result<()> {
     const PREFIX: &[u8] = b"`default_nettype";
     for file in &spec.verilog_files {
-        let Some(ext) = file.extension().and_then(|e| e.to_str()) else {
-            continue;
-        };
-        if !matches!(ext, "v" | "sv") {
+        if !crate::has_ext(file, &["v", "sv"], false) {
             continue;
         }
         // Read only enough bytes to check for the prefix, avoiding a full

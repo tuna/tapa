@@ -254,24 +254,17 @@ struct ExtractedFiles {
 
 impl ExtractedFiles {
     fn classify(&mut self, name: &str, path: PathBuf) {
-        if has_ext(name, &["v", "sv", "vh", "dat"]) {
+        let name_path = Path::new(name);
+        if crate::has_ext(name_path, &["v", "sv", "vh", "dat"], true) {
             self.verilog.push(path.clone());
         }
-        if has_ext(name, &["tcl"]) {
+        if crate::has_ext(name_path, &["tcl"], true) {
             self.tcl.push(path.clone());
         }
-        if has_ext(name, &["xci"]) && !is_deeply_nested(name) {
+        if crate::has_ext(name_path, &["xci"], true) && !is_deeply_nested(name) {
             self.xci.push(path);
         }
     }
-}
-
-fn has_ext(name: &str, exts: &[&str]) -> bool {
-    let ext = std::path::Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("");
-    exts.iter().any(|x| ext.eq_ignore_ascii_case(x))
 }
 
 /// Join a zip entry name under `out_dir`, refusing entries that would
