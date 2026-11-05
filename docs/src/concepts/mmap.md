@@ -47,24 +47,6 @@ void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b,
 
 ---
 
-## Minimal correct example
-
-`Mmap2Stream` from the vector-add example reads from a read-only mmap and
-writes the values into a stream:
-
-```cpp
-void Mmap2Stream(tapa::mmap<const float> mmap, uint64_t n,
-                 tapa::ostream<float>& stream) {
-  for (uint64_t i = 0; i < n; ++i) {
-    stream << mmap[i];
-  }
-}
-```
-
-Note that `mmap` is passed by value (no `&`).
-
----
-
 ## Host-side wrappers
 
 On the host, wrappers in the `tapa::invoke` call describe what the kernel does
