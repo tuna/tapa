@@ -20,7 +20,8 @@ pub fn instantiate_top_control_s_axi(
     top_instantiates_control_s_axi: bool,
 ) {
     let design = design.design();
-    if task_name != design.top || !top_instantiates_control_s_axi {
+    // The pass driver gates on is_top_task already.
+    if !top_instantiates_control_s_axi {
         return;
     }
     let Some(task) = design.tasks.get(task_name) else {
