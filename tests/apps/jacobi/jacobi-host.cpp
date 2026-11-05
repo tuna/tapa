@@ -9,6 +9,7 @@
 
 #include <gflags/gflags.h>
 
+#include "host_util.h"
 #include "jacobi.h"
 
 using std::clog;
@@ -43,7 +44,6 @@ int main(int argc, char* argv[]) {
   clog << "kernel time: " << kernel_time_ns * 1e-9 << " s" << endl;
 
   uint64_t num_errors = 0;
-  const uint64_t threshold = 10;  // only report up to these errors
   for (uint64_t i = 1; i < height - 1; ++i) {
     for (uint64_t j = 1; j < width - 1; ++j) {
       auto expected =
@@ -52,22 +52,9 @@ int main(int argc, char* argv[]) {
                                 .2f);
       auto actual = static_cast<uint64_t>(t0[i][j]);
       if (actual != expected) {
-        if (num_errors < threshold) {
-          clog << "expected: " << expected << ", actual: " << actual << endl;
-        } else if (num_errors == threshold) {
-          clog << "...";
-        }
-        ++num_errors;
+        TAPA_TEST_RECORD_MISMATCH(num_errors, clog, "", expected, actual);
       }
     }
   }
-  if (num_errors == 0) {
-    clog << "PASS!" << endl;
-  } else {
-    if (num_errors > threshold) {
-      clog << " (+" << (num_errors - threshold) << " more errors)" << endl;
-    }
-    clog << "FAIL!" << endl;
-  }
-  return num_errors > 0 ? 1 : 0;
+  TAPA_TEST_RETURN_VERDICT(num_errors, clog, clog);
 }

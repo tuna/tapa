@@ -68,6 +68,7 @@ _P_CONFIGS = [
         tags = tags,
         deps = [
             "//tapa-lib:tapa-host",
+            "//tests:host_util",
             "@gflags",
         ],
     )

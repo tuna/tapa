@@ -52,6 +52,7 @@ cc_binary(
     ]),
     deps = [
         "//tapa-lib:tapa-host",
+        "//tests:host_util",
         "@gflags",
     ],
 )

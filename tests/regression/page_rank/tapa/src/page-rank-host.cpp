@@ -16,11 +16,13 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <tapa.h>
 
+#include "host_util.h"
 #include "nxgraph.hpp"
 
 #include "page-rank.h"
@@ -384,29 +386,15 @@ int main(int argc, char* argv[]) {
   }
 
   uint64_t num_errors = 0;
-  const uint64_t threshold = 10;  // only report up to these errors
   for (Vid i = 0; i < best_baseline.size(); ++i) {
     auto expected = best_baseline[i].ranking;
     auto actual = best[i];
     if (actual < expected - kConvergenceThreshold ||
         actual > expected + kConvergenceThreshold) {
-      if (num_errors < threshold) {
-        LOG(ERROR) << "vertex #" << base_vid + i << ": "
-                   << "expected: " << expected << ", actual: " << actual;
-      } else if (num_errors == threshold) {
-        LOG(ERROR) << "...";
-      }
-      ++num_errors;
+      TAPA_TEST_RECORD_MISMATCH(
+          num_errors, LOG(ERROR),
+          "vertex #" + std::to_string(base_vid + i) + ": ", expected, actual);
     }
   }
-  if (num_errors == 0) {
-    clog << "PASS!" << endl;
-  } else {
-    if (num_errors > threshold) {
-      clog << " (+" << (num_errors - threshold) << " more errors)" << endl;
-    }
-    clog << "FAIL!" << endl;
-  }
-
-  return num_errors ? 1 : 0;
+  TAPA_TEST_RETURN_VERDICT(num_errors, clog, clog);
 }

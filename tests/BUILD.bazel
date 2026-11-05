@@ -1,0 +1,10 @@
+"""Shared helpers for the test host programs."""
+
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "host_util",
+    hdrs = ["host_util.h"],
+    includes = ["."],
+    visibility = ["//tests:__subpackages__"],
+)

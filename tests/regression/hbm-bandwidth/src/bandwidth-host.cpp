@@ -10,6 +10,7 @@
 #include <tapa.h>
 
 #include "bandwidth.h"
+#include "host_util.h"
 
 template <typename T>
 using vector = std::vector<T, tapa::aligned_allocator<T>>;
@@ -39,29 +40,15 @@ int main(int argc, char* argv[]) {
 
   if (!((flags & kRead) && (flags & kWrite))) return 0;
 
-  int64_t num_errors = 0;
-  const int64_t threshold = 10;  // only report up to these errors
+  uint64_t num_errors = 0;
   for (int64_t i = 0; i < kBankCount; ++i) {
     for (int64_t j = 0; j < n * Elem::length; ++j) {
       int64_t expected = i ^ j;
       int64_t actual = chan[i][j];
       if (actual != expected) {
-        if (num_errors < threshold) {
-          LOG(ERROR) << "expected: " << expected << ", actual: " << actual;
-        } else if (num_errors == threshold) {
-          LOG(ERROR) << "...";
-        }
-        ++num_errors;
+        TAPA_TEST_RECORD_MISMATCH(num_errors, LOG(ERROR), "", expected, actual);
       }
     }
   }
-  if (num_errors == 0) {
-    LOG(INFO) << "PASS!";
-  } else {
-    if (num_errors > threshold) {
-      LOG(WARNING) << " (+" << (num_errors - threshold) << " more errors)";
-    }
-    LOG(INFO) << "FAIL!";
-  }
-  return num_errors > 0 ? 1 : 0;
+  TAPA_TEST_RETURN_VERDICT(num_errors, LOG(INFO), LOG(WARNING));
 }
