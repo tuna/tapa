@@ -269,7 +269,6 @@ pub fn stream_can_write_impl(ctx: &DpiContext, port: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::{DpiContext, DpiStream, DpiStreamInner};
     use frt_shm::SharedMemoryQueue;
     use std::collections::HashMap;
     use std::sync::Mutex;

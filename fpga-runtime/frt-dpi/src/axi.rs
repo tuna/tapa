@@ -53,8 +53,6 @@ pub fn axi_write_impl(ctx: &DpiContext, port: &str, addr: u64, width: u32, data:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::context::DpiContext;
-    use frt_shm::MmapSegment;
     use std::collections::HashMap;
 
     fn make_ctx_with_buf(name: &str, data: &[u8]) -> DpiContext {
