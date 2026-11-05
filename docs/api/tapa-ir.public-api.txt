@@ -2096,7 +2096,7 @@ impl core::str::traits::FromStr for tapa_ir::port::ArgCategory
 pub type tapa_ir::port::ArgCategory::Err = strum::ParseError
 pub fn tapa_ir::port::ArgCategory::from_str(&str) -> core::result::Result<tapa_ir::port::ArgCategory, <Self as core::str::traits::FromStr>::Err>
 impl serde_core::ser::Serialize for tapa_ir::port::ArgCategory
-pub fn tapa_ir::port::ArgCategory::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn tapa_ir::port::ArgCategory::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl<'_derivative_strum> core::convert::From<&'_derivative_strum tapa_ir::port::ArgCategory> for &'static str
 pub fn &'static str::from(&'_derivative_strum tapa_ir::port::ArgCategory) -> &'static str
 impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::port::ArgCategory
@@ -2275,7 +2275,7 @@ impl core::str::traits::FromStr for tapa_ir::target::Target
 pub type tapa_ir::target::Target::Err = strum::ParseError
 pub fn tapa_ir::target::Target::from_str(&str) -> core::result::Result<tapa_ir::target::Target, <Self as core::str::traits::FromStr>::Err>
 impl serde_core::ser::Serialize for tapa_ir::target::Target
-pub fn tapa_ir::target::Target::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn tapa_ir::target::Target::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::target::Target
 pub fn tapa_ir::target::Target::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
 impl core::marker::Freeze for tapa_ir::target::Target
@@ -2907,7 +2907,7 @@ impl core::str::traits::FromStr for tapa_ir::port::ArgCategory
 pub type tapa_ir::port::ArgCategory::Err = strum::ParseError
 pub fn tapa_ir::port::ArgCategory::from_str(&str) -> core::result::Result<tapa_ir::port::ArgCategory, <Self as core::str::traits::FromStr>::Err>
 impl serde_core::ser::Serialize for tapa_ir::port::ArgCategory
-pub fn tapa_ir::port::ArgCategory::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn tapa_ir::port::ArgCategory::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl<'_derivative_strum> core::convert::From<&'_derivative_strum tapa_ir::port::ArgCategory> for &'static str
 pub fn &'static str::from(&'_derivative_strum tapa_ir::port::ArgCategory) -> &'static str
 impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::port::ArgCategory
@@ -3515,7 +3515,7 @@ impl core::str::traits::FromStr for tapa_ir::target::Target
 pub type tapa_ir::target::Target::Err = strum::ParseError
 pub fn tapa_ir::target::Target::from_str(&str) -> core::result::Result<tapa_ir::target::Target, <Self as core::str::traits::FromStr>::Err>
 impl serde_core::ser::Serialize for tapa_ir::target::Target
-pub fn tapa_ir::target::Target::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+pub fn tapa_ir::target::Target::serialize<S: serde_core::ser::Serializer>(&self, S) -> core::result::Result<<S as serde_core::ser::Serializer>::Ok, <S as serde_core::ser::Serializer>::Error>
 impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::target::Target
 pub fn tapa_ir::target::Target::deserialize<D: serde_core::de::Deserializer<'de>>(D) -> core::result::Result<Self, <D as serde_core::de::Deserializer>::Error>
 impl core::marker::Freeze for tapa_ir::target::Target

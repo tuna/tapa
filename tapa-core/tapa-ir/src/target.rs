@@ -11,9 +11,8 @@ use strum::EnumString;
 /// `"xilinx-hls"`.
 /// [`crate::TaskGraph::target`] is its single home — it is deliberately not
 /// duplicated into the flow settings block alongside it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EnumString)]
 #[strum(serialize_all = "kebab-case")]
-#[serde(rename_all = "kebab-case")]
 pub enum Target {
     XilinxVitis,
     XilinxSlash,
@@ -29,6 +28,12 @@ impl Target {
             Self::XilinxSlash => "xilinx-slash",
             Self::XilinxHls => "xilinx-hls",
         }
+    }
+}
+
+impl Serialize for Target {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
     }
 }
 
