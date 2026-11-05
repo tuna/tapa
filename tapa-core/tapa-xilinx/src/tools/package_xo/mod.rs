@@ -376,22 +376,8 @@ pub fn pack_ip(
             "pack_ip output directory already exists: {output}"
         )));
     }
-    copy_directory(&source, output.as_std_path())?;
+    crate::util::copy_tree(&crate::util::utf8(&source), &output)?;
     Ok(output)
-}
-
-fn copy_directory(source: &std::path::Path, destination: &std::path::Path) -> Result<()> {
-    std::fs::create_dir(destination)?;
-    for entry in std::fs::read_dir(source)? {
-        let entry = entry?;
-        let target = destination.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_directory(&entry.path(), &target)?;
-        } else if entry.file_type()?.is_file() {
-            std::fs::copy(entry.path(), target)?;
-        }
-    }
-    Ok(())
 }
 
 /// Same as [`pack_xo`] but returns the raw Vivado-produced `.xo`

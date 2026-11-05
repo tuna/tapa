@@ -254,29 +254,6 @@ fn solution_name(job: &HlsJob) -> &str {
     }
 }
 
-/// Copy every regular file under `src` into `dest`, recreating the
-/// directory layout as it goes. Does nothing if `src` does not exist.
-fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Result<()> {
-    if !src.is_dir() {
-        return Ok(());
-    }
-    for entry in walkdir::WalkDir::new(src) {
-        let entry = entry?;
-        if !entry.file_type().is_file() {
-            continue;
-        }
-        let src_path = entry.path();
-        let rel = src_path.strip_prefix(src).expect("prefix must match");
-        let rel = crate::util::utf8(rel);
-        let dest_path = dest.join(&rel);
-        if let Some(parent) = dest_path.parent() {
-            fs_err::create_dir_all(parent)?;
-        }
-        fs_err::copy(src_path, dest_path)?;
-    }
-    Ok(())
-}
-
 fn normalize_staged_reports(dir: &camino::Utf8Path) -> std::io::Result<()> {
     for entry in walkdir::WalkDir::new(dir) {
         let entry = entry?;
@@ -337,7 +314,7 @@ fn harvest_and_stage(
             fs_err::remove_dir_all(destination)?;
         }
         fs_err::create_dir_all(destination)?;
-        copy_tree(source, destination)?;
+        crate::util::copy_tree(source, destination)?;
     }
     normalize_staged_reports(&job.reports_out_dir)?;
     let verilog_files = collect_files(&job.hdl_out_dir)?;
