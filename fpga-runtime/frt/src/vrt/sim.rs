@@ -1,7 +1,7 @@
 //! RTL simulation of one SLASH VBIN through its `vpp_sim` process.
 
 use super::ctrl::{ControlChannel, ExecutionState};
-use super::vbin::{Kernel, MemoryTarget, Platform, Vbin};
+use super::vbin::{Kernel, MemoryTarget, Vbin};
 use super::zmq::{FrameTransport, ZmqTransport};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
@@ -220,11 +220,6 @@ fn json_reply<T: DeserializeOwned>(reply: &[u8], what: &str) -> Result<T> {
 }
 
 fn validated_vpp_sim(vbin: &Vbin) -> Result<PathBuf> {
-    if vbin.platform != Platform::Simulation {
-        return Err(FrtError::Vrt(
-            "SimDevice requires a Platform=Simulation VBIN".into(),
-        ));
-    }
     let executable = vbin
         .simulation_executable
         .as_ref()

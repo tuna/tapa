@@ -5,7 +5,7 @@ use super::api::{
     ALLOC_DIR_HOST_TO_DEVICE, ALLOC_TYPE_DDR, ALLOC_TYPE_HBM, ALLOC_TYPE_HBM_VNOC,
     CLOCK_REGION_USER,
 };
-use super::vbin::{Kernel, MemoryTarget, Platform, Vbin};
+use super::vbin::{Kernel, MemoryTarget, Vbin};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_shm::env_non_empty;
@@ -131,11 +131,6 @@ fn normalize_bdf(bdf: &str) -> String {
 
 impl VrtDevice {
     pub fn open(vbin: &Vbin) -> Result<Self> {
-        if vbin.platform != Platform::Hardware {
-            return Err(FrtError::Vrt(
-                "VrtDevice requires a Platform=Hardware VBIN".into(),
-            ));
-        }
         if vbin.pdi_paths.is_empty() {
             return Err(FrtError::Vrt(
                 "hardware VBIN contains no PDI to program".into(),
