@@ -379,16 +379,17 @@ fn scalar_driver(source: &tapa_ir::ArgSource) -> Expr {
 /// parent's `<arg>_offset` wire, or `64'd0` for hmap connections.
 fn mmap_offset_source(parent: &str, mmap_connections: &BTreeMap<String, MMapConnection>) -> Expr {
     let parent_name = sanitize_array_name(parent);
-    mmap_connections.get(parent).map_or_else(
-        || Expr::ident(format!("{parent_name}_offset")),
-        |connection| {
-            if connection.geometry.is_hmap() {
-                Expr::lit("64'd0")
-            } else {
-                Expr::ident(format!("{parent_name}_offset"))
-            }
-        },
-    )
+    match mmap_connections.get(parent) {
+        Some(connection) if connection.geometry.is_hmap() => Expr::lit("64'd0"),
+        _ => Expr::ident(format!("{parent_name}_offset")),
+    }
+}
+
+/// Reduce to a logical AND; the empty set yields the and-identity `1'b1`.
+pub fn logical_reduction(expressions: impl Iterator<Item = Expr>) -> Expr {
+    expressions
+        .reduce(Expr::logical_and)
+        .unwrap_or_else(|| Expr::lit("1'b1"))
 }
 
 /// A wire named `name` of `width` bits; a 1-bit wire carries no range.

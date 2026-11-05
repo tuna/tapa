@@ -17,6 +17,8 @@ use tapa_protocol::{
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 use tapa_rtl::mutation::{wide_reg, wire, MutableModule};
 
+use crate::passes::logical_reduction;
+
 /// FSM state constants for the global program FSM (2-bit).
 pub const GLOBAL_STATE_IDLE: &str = "2'b00";
 pub const GLOBAL_STATE_RUNNING: &str = "2'b01";
@@ -99,11 +101,7 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
 
     // Build the RUNNING->DONE transition condition; no children = always done.
     let state = Expr::ident("__tapa_state");
-    let all_done_cond = is_done_signal_names
-        .iter()
-        .map(|name| Expr::ident(name.clone()))
-        .reduce(Expr::logical_and)
-        .unwrap_or_else(|| Expr::lit("1'b1"));
+    let all_done_cond = logical_reduction(is_done_signal_names.iter().map(Expr::ident));
 
     // FSM always block
     fsm_module.add_always(AlwaysBlock::posedge(

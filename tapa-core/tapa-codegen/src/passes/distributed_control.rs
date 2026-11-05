@@ -19,7 +19,9 @@ use tapa_rtl::builder::{
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wire};
 
-use super::{invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver};
+use super::{
+    invalid_floorplan, logical_reduction, mmap_offset_source, parse_atomic_region, scalar_driver,
+};
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
@@ -710,13 +712,11 @@ impl DistributedControlPlan {
             completion_signals
                 .iter()
                 .map(|signal| Expr::ident(signal.clone())),
-            "1'b1",
         );
         let clear = logical_reduction(
             completion_signals
                 .iter()
                 .map(|signal| Expr::logical_not(Expr::ident(signal.clone()))),
-            "1'b1",
         );
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_DONE), done));
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_CLEAR), clear));
@@ -755,13 +755,12 @@ impl DistributedControlPlan {
         let release = scope_signal(Some(&scope.instance), "release");
         module.add_signal(wire(&start))?;
         module.add_signal(wire(&release))?;
-        let done = logical_reduction(scope.completion_signals.iter().map(Expr::ident), "1'b1");
+        let done = logical_reduction(scope.completion_signals.iter().map(Expr::ident));
         let clear = logical_reduction(
             scope
                 .completion_signals
                 .iter()
                 .map(|signal| Expr::logical_not(Expr::ident(signal))),
-            "1'b1",
         );
         module.add_instance(
             ModuleInstance::new(
@@ -1039,12 +1038,6 @@ fn concat_or_scalar(mut fields: Vec<Expr>) -> Expr {
     } else {
         Expr::concat(fields)
     }
-}
-
-fn logical_reduction(expressions: impl Iterator<Item = Expr>, identity: &str) -> Expr {
-    expressions
-        .reduce(Expr::logical_and)
-        .unwrap_or_else(|| Expr::lit(identity))
 }
 
 fn control_wire_prefix(instance: &str) -> String {
