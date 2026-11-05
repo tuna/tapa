@@ -618,21 +618,16 @@ impl DistributedControlPlan {
         } else {
             Expr::index(Expr::ident(&launch_output), Expr::int(1))
         };
-        let child_done = if child.is_autorun {
-            Expr::lit("1'b0")
-        } else {
-            Expr::ident(signals.done_name())
+        let tie_low_if_autorun = |signal: String| {
+            if child.is_autorun {
+                Expr::lit("1'b0")
+            } else {
+                Expr::ident(signal)
+            }
         };
-        let child_ready = if child.is_autorun {
-            Expr::lit("1'b0")
-        } else {
-            Expr::ident(signals.ready_name())
-        };
-        let child_idle = if child.is_autorun {
-            Expr::lit("1'b0")
-        } else {
-            Expr::ident(signals.idle_name())
-        };
+        let child_done = tie_low_if_autorun(signals.done_name());
+        let child_ready = tie_low_if_autorun(signals.ready_name());
+        let child_idle = tie_low_if_autorun(signals.idle_name());
         module.add_instance(
             ModuleInstance::new(
                 "tapa_local_controller",
