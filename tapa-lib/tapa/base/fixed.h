@@ -226,9 +226,7 @@ struct frtype {
   using mult = kind<W1 + W2, I1 + I2, kS>;
   using plus = kind<kI + 1 + kF, kI + 1, kS>;
   using minus = kind<kI + 1 + kF, kI + 1, true>;
-  using logic = kind<kI + kF, kI, kS>;
   using div = kind<S2 + W1 + imax(kF2, 0), S2 + I1 + kF2, kS>;
-  using arg1 = kind<W1, I1, S1>;
 };
 
 struct raw_tag {};
