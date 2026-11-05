@@ -103,7 +103,7 @@ fn match_array_name(name: &str) -> Option<(&str, u32)> {
     }
     let base = &name[..lb];
     let idx_str = &name[lb + 1..rb];
-    if base.is_empty() || idx_str.is_empty() {
+    if base.is_empty() {
         return None;
     }
     if !base.chars().all(|c| c.is_alphanumeric() || c == '_') {
