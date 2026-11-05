@@ -221,7 +221,7 @@ impl fmt::Display for AlwaysBlock {
 mod tests {
     use super::*;
     use crate::builder::CaseItem;
-    use crate::expression::{Token, TokenKind};
+    use crate::expression::Token;
 
     #[test]
     fn expr_ident() {
@@ -260,11 +260,9 @@ mod tests {
     fn width_display() {
         let w = Width {
             msb: vec![Token {
-                kind: TokenKind::Literal,
                 repr: "31".to_owned(),
             }],
             lsb: vec![Token {
-                kind: TokenKind::Literal,
                 repr: "0".to_owned(),
             }],
         };
@@ -278,11 +276,9 @@ mod tests {
             direction: Direction::Input,
             width: Some(Width {
                 msb: vec![Token {
-                    kind: TokenKind::Literal,
                     repr: "31".to_owned(),
                 }],
                 lsb: vec![Token {
-                    kind: TokenKind::Literal,
                     repr: "0".to_owned(),
                 }],
             }),
