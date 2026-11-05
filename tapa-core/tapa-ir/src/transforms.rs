@@ -170,10 +170,8 @@ pub fn flatten_with_origins(graph: &TaskGraph) -> Result<FlatProjection, Transfo
         &mut collected,
     )?;
 
-    // Post-pass: now that every instantiation has its final argument
-    // bindings, fill in each FIFO's `consumed_by` / `produced_by`
-    // against the flattened leaf set after all globally named arguments have
-    // been produced.
+    // Endpoints resolve only once every instantiation's argument
+    // bindings are final.
     for (fifo_name, fifo) in &mut collected.fifos {
         if fifo.consumed_by.is_some() {
             fifo.consumed_by = find_endpoint(&collected.leaves, fifo_name, EndpointRole::Consumer);
@@ -255,11 +253,6 @@ fn collect_leaves_recursive(
 
     for (child_def_name, instances) in &def.tasks {
         for (idx, inst) in instances.iter().enumerate() {
-            // Resolve every arg: first check if it names a local
-            // FIFO (→ global form), then check the parent binding
-            // (→ promoted arg), else leave as-is (scalar or
-            // external port that keeps its name per current
-            // `ExternalPort.global_name = name` rule).
             let mut resolved_args: BTreeMap<String, Arg> = BTreeMap::new();
             for (port_name, arg) in &inst.args {
                 let resolved = match &arg.arg {

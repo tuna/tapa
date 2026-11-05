@@ -1,4 +1,4 @@
-//! Unit tests for `super::flatten`.
+//! Unit tests for the flattening transforms.
 
 use super::{flatten, flatten_with_origins, OccurrenceId};
 use crate::graph::TaskGraph;
