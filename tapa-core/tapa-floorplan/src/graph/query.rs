@@ -107,12 +107,14 @@ impl FloorGraph {
     }
     /// Build the placement graph from an already-*flattened* graph (every leaf
     /// instance directly under the top task).
-    pub fn build(flat: &TaskGraph) -> Result<Self, GraphError> {
+    #[cfg(test)]
+    pub(crate) fn build(flat: &TaskGraph) -> Result<Self, GraphError> {
         Self::build_with_memory(flat, &[])
     }
 
     /// Build the placement graph with exact direct-M_AXI bank endpoints.
-    pub fn build_with_memory(
+    #[cfg(test)]
+    pub(crate) fn build_with_memory(
         flat: &TaskGraph,
         memory: &[MemoryInterface],
     ) -> Result<Self, GraphError> {
@@ -124,6 +126,7 @@ impl FloorGraph {
     /// Orchestration only — build-graph → cluster → interfaces → finish. The
     /// step order fixes vertex/edge insertion order, which feeds the
     /// canonical placement-model fingerprint; do not re-order.
+    #[cfg(test)]
     pub(crate) fn build_with_interfaces(
         flat: &TaskGraph,
         memory: &[MemoryInterface],
