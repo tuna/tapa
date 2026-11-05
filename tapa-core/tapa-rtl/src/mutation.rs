@@ -115,7 +115,7 @@ impl MutableModule {
         if port.name.is_empty() {
             return Err(BuilderError::EmptyName);
         }
-        if self.has_port(&port.name) {
+        if self.inner.find_port(&port.name).is_some() {
             return Err(BuilderError::DuplicatePort(port.name));
         }
         self.inner.ports.push(port);
@@ -127,7 +127,7 @@ impl MutableModule {
         if signal.name.is_empty() {
             return Err(BuilderError::EmptyName);
         }
-        if self.has_signal(&signal.name) {
+        if self.inner.signals.iter().any(|s| s.name == signal.name) {
             return Err(BuilderError::DuplicateSignal(signal.name));
         }
         self.inner.signals.push(signal);
@@ -238,16 +238,6 @@ impl MutableModule {
         self.inner
             .parameters
             .retain(|p| !p.name.starts_with("ap_ST_fsm"));
-    }
-
-    /// Check if a port name exists.
-    fn has_port(&self, name: &str) -> bool {
-        self.inner.ports.iter().any(|p| p.name == name)
-    }
-
-    /// Check if a signal name exists.
-    fn has_signal(&self, name: &str) -> bool {
-        self.inner.signals.iter().any(|s| s.name == name)
     }
 
     /// Emit the complete module as Verilog text.
@@ -439,10 +429,7 @@ mod tests {
     use crate::builder::{Expr, PortArg};
 
     fn parse_fixture(name: &str) -> VerilogModule {
-        let path = format!(
-            "{}/testdata/rtl/{name}",
-            env!("CARGO_MANIFEST_DIR").replace("/tapa-rtl", "")
-        );
+        let path = format!("{}/../testdata/rtl/{name}", env!("CARGO_MANIFEST_DIR"));
         let source =
             std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
         VerilogModule::parse(&source).unwrap_or_else(|e| panic!("failed to parse {path}: {e}"))

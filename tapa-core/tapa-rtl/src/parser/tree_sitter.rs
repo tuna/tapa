@@ -579,8 +579,7 @@ pub(super) fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError>
             None => ModuleParse::NoModule,
         });
     };
-    let mut cursor = root.walk();
-    for child in root.children(&mut cursor) {
+    for child in children_of(root) {
         if child.end_byte() <= mod_node.start_byte() {
             if !is_preamble_trivia(child, src) {
                 return Ok(ModuleParse::NoModule);
