@@ -64,12 +64,7 @@ impl Instance {
         self.device.set_scalar_arg(index, value)
     }
 
-    pub fn set_buffer_arg_raw(&mut self, index: u32, ptr: *mut u8, bytes: usize) -> Result<()> {
-        self.device
-            .set_buffer_arg(index, ptr, bytes, BufferAccess::ReadWrite)
-    }
-
-    pub(crate) fn set_buffer_arg_raw_with_access(
+    pub fn set_buffer_arg_raw_with_access(
         &mut self,
         index: u32,
         ptr: *mut u8,

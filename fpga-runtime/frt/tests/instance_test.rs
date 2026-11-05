@@ -1,4 +1,4 @@
-use frt::{Instance, Simulator};
+use frt::{BufferAccess, Instance, Simulator};
 use frt_shm::SharedMemoryQueue;
 use std::fs::File;
 use std::io::Write;
@@ -188,10 +188,11 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw(
+        .set_buffer_arg_raw_with_access(
             0,
             mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
+            BufferAccess::ReadWrite,
         )
         .expect("set mmap arg");
 
@@ -497,10 +498,11 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw(
+        .set_buffer_arg_raw_with_access(
             0,
             mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
+            BufferAccess::ReadWrite,
         )
         .expect("set mmap arg");
     instance
