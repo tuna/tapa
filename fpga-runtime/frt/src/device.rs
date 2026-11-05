@@ -27,9 +27,7 @@ impl BufferAccess {
             _ => None,
         }
     }
-}
 
-impl BufferAccess {
     pub fn loads_from_host(self) -> bool {
         matches!(self, Self::ReadOnly | Self::ReadWrite)
     }
