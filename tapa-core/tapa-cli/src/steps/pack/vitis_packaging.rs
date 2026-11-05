@@ -244,7 +244,7 @@ fn resolve_top_task(design: &Design) -> Result<&tapa_ir::Task> {
 }
 
 fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(String, ClockPeriod)> {
-    let state_path = work_dir.join("tapa.json");
+    let state_path = crate::state::work::path_in(work_dir);
     let missing = |field: &str| CliError::MissingState {
         name: format!("`{field}` (run `synth` first to populate it)"),
         path: state_path.clone(),
