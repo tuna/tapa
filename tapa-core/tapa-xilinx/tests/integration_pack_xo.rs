@@ -50,13 +50,7 @@ fn zip_inventory(bytes: &[u8]) -> Vec<ZipEntryInventory> {
         );
         let mut buf: Vec<u8> = Vec::new();
         entry.read_to_end(&mut buf).expect("read entry");
-        let digest = Sha256::digest(&buf);
-        let mut hex = String::with_capacity(64);
-        for b in digest {
-            use std::fmt::Write as _;
-            let _ = write!(hex, "{b:02x}");
-        }
-        out.push((name, size, tuple, hex));
+        out.push((name, size, tuple, hex::encode(Sha256::digest(&buf))));
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
     out
