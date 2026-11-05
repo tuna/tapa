@@ -8,6 +8,25 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
+
+/// Acquire an exclusive `flock`-based lock on the given path.
+///
+/// Creates the file (and parent directories) if they don't exist.
+/// Returns the open `File` whose lifetime holds the lock.
+#[cfg(unix)]
+fn acquire_exclusive_lock(lock_path: &Path) -> Result<std::fs::File> {
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let file = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(lock_path)?;
+    file.lock()?;
+    Ok(file)
+}
 use which::which;
 
 const VERILATOR_BUILD_LOCK_ENV: &str = frt_shm::env::FRT_VERILATOR_BUILD_LOCK;
@@ -228,7 +247,7 @@ impl VerilatorBuildGate {
     fn acquire() -> Result<Self> {
         #[cfg(unix)]
         {
-            let file = super::acquire_exclusive_lock(&verilator_build_lock_path())?;
+            let file = acquire_exclusive_lock(&verilator_build_lock_path())?;
             Ok(Self { _file: file })
         }
         #[cfg(not(unix))]
