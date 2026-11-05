@@ -89,8 +89,6 @@ class TreeLayout {
 
   explicit TreeLayout(std::string src_root);
 
-  const std::string& src_root() const { return src_root_; }
-
   // Component-boundary prefix test: root "/a" does not contain "/ab/c.h".
   bool InRoot(llvm::StringRef abs_path) const;
   // The src-root-relative key; call only when InRoot().
