@@ -290,7 +290,6 @@ pub tapa_ir::aie::AiePartition::run_forever: bool
 pub tapa_ir::aie::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
-impl tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::pl_projection(&self, &tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::aie::AieError>
 impl core::clone::Clone for tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::clone(&self) -> tapa_ir::aie::AiePartition
@@ -3783,7 +3782,6 @@ pub tapa_ir::AiePartition::run_forever: bool
 pub tapa_ir::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
-impl tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::pl_projection(&self, &tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::aie::AieError>
 impl core::clone::Clone for tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::clone(&self) -> tapa_ir::aie::AiePartition
