@@ -19,6 +19,7 @@ load(
 )
 load("@vitis_hls//:defs.bzl", "VITIS_HLS_RUNNER_AVAILABLE", "VIVADO_AVAILABLE")
 load("//bazel:sh_utils.bzl", "sh_quote")
+load("//bazel:tool_constraints.bzl", "incompatible_unless_available")
 load("//bazel:xilinx_versions.bzl", "remote_xilinx_settings")
 
 def _remote_host_flag():
@@ -104,19 +105,13 @@ def _pack_exec_requirements(remote_host):
     }
 
 def _with_tool_constraints(target, kwargs):
-    kwargs = dict(kwargs)
-    constraints = list(kwargs.get("target_compatible_with", []))
-
     # HLS fixtures impersonate the HLS step's output, so synth invokes no
     # vendor tool; for the HLS target, pack (a pure zip writer) needs none
     # either. The .xo packager remains the only fixture-path vendor gate.
     fixtures = bool(kwargs.get("hls_fixtures"))
     needs_hls_runner = not fixtures and not VITIS_HLS_RUNNER_AVAILABLE
     needs_vivado = target in ["xilinx-vitis", "xilinx-slash"] and not VIVADO_AVAILABLE
-    if (needs_hls_runner or needs_vivado) and "@platforms//:incompatible" not in constraints:
-        constraints.append("@platforms//:incompatible")
-    kwargs["target_compatible_with"] = constraints
-    return kwargs
+    return incompatible_unless_available(not needs_hls_runner and not needs_vivado, kwargs)
 
 def _staged_tapa_command(source, destination, arguments, pre_exec = []):
     """Copy one content-addressed stage, then execute TAPA in the next."""
@@ -521,11 +516,7 @@ def tapa_slash_link(name, **kwargs):
       name: Target name.
       **kwargs: Attributes forwarded to the underlying rule.
     """
-    constraints = list(kwargs.get("target_compatible_with", []))
-    if not VIVADO_AVAILABLE and "@platforms//:incompatible" not in constraints:
-        constraints.append("@platforms//:incompatible")
-    kwargs["target_compatible_with"] = constraints
-    _tapa_slash_link(name = name, **kwargs)
+    _tapa_slash_link(name = name, **incompatible_unless_available(VIVADO_AVAILABLE, kwargs))
 
 def tapa_reuse_work_dir_xo(name, **kwargs):
     """Build the work-dir reuse fixture when XO tools are available.
