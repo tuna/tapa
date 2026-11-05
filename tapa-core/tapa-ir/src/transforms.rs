@@ -437,7 +437,7 @@ fn find_endpoint(
         for (idx, inst) in insts.iter().enumerate() {
             for arg in inst.args.values() {
                 if arg.name() == Some(fifo_global) && role.matches(arg.cat) {
-                    let idx_u32 = u32::try_from(idx).unwrap_or(u32::MAX);
+                    let idx_u32 = u32::try_from(idx).expect("instance count fits u32");
                     return Some(EndpointRef(task_name.clone(), idx_u32));
                 }
             }
