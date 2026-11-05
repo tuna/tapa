@@ -40,7 +40,11 @@ fn stream_debug_enabled() -> bool {
 
 fn cosim_yield_enabled() -> bool {
     static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *ENABLED.get_or_init(|| frt_shm::env_bool_default_true(frt_shm::env::FRT_COSIM_YIELD))
+    // Opt-out: enabled unless the variable is set to an explicit falsy value.
+    *ENABLED.get_or_init(|| match std::env::var(frt_shm::env::FRT_COSIM_YIELD) {
+        Ok(v) => !matches!(v.as_str(), "0" | "false" | "FALSE" | "no" | "NO"),
+        Err(_) => true,
+    })
 }
 
 fn maybe_yield() {
