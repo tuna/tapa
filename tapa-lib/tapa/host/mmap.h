@@ -218,29 +218,8 @@ class async_mmap : public mmap<T> {
   }
 
   static async_mmap schedule(super mem) {
-    using i_addr_t = istream<addr_t>&;
-    using i_data_t = istream<T>&;
-    using o_addr_t = ostream<addr_t>&;
-    using o_data_t = ostream<T>&;
-    using i_resp_t = istream<resp_t>&;
-    using o_resp_t = ostream<resp_t>&;
-    using s_addr_t = stream<addr_t, 64>&;
-    using s_data_t = stream<T, 64>&;
-    using s_resp_t = stream<resp_t, 64>&;
-    using internal::accessor;
-
     async_mmap async_mem(mem);
-    accessor<i_addr_t, s_addr_t>::access(async_mem.read_addr_q_, false);
-    accessor<o_data_t, s_data_t>::access(async_mem.read_data_q_, false);
-    accessor<i_addr_t, s_addr_t>::access(async_mem.write_addr_q_, false);
-    accessor<i_data_t, s_data_t>::access(async_mem.write_data_q_, false);
-    accessor<o_resp_t, s_resp_t>::access(async_mem.write_resp_q_, false);
     internal::schedule(/*detach=*/true, async_mem);
-    accessor<o_addr_t, s_addr_t>::access(async_mem.read_addr_q_, false);
-    accessor<i_data_t, s_data_t>::access(async_mem.read_data_q_, false);
-    accessor<o_addr_t, s_addr_t>::access(async_mem.write_addr_q_, false);
-    accessor<o_data_t, s_data_t>::access(async_mem.write_data_q_, false);
-    accessor<i_resp_t, s_resp_t>::access(async_mem.write_resp_q_, false);
     return async_mem;
   }
 };
