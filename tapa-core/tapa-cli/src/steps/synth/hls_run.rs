@@ -68,7 +68,7 @@ pub struct HlsRunOptions {
 /// the parent module's port surface is parseable. Tasks whose
 /// `target == "ignore"` are skipped (promotes them to
 /// `gen_templates`).
-pub fn run_hls_for_leaves(
+pub fn run_hls_for_tasks(
     runner: &dyn ToolRunner,
     work_dir: &Path,
     design: &Design,
@@ -231,7 +231,7 @@ fn dispatch_plan(
     plan: &[(String, TaskHlsLayout, Work)],
     worker_count: usize,
 ) -> Result<Vec<Result<Option<HlsOutput>>>> {
-    crate::util::run_in_pool(worker_count.max(1), "HLS worker", CliError::Codegen, || {
+    crate::util::run_in_pool(worker_count, "HLS worker", CliError::Codegen, || {
         plan.par_iter()
             .map(|(_, _, work)| work.execute(runner))
             .collect()
@@ -651,7 +651,7 @@ mod tests {
         // Ignore the run result (no csynth.xml staged, so harvest
         // fails) — what we care about is that the runner was called
         // at all, which proves the stale-skip bug is gone.
-        let _ = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts);
+        let _ = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts);
         let calls = runner.calls();
         assert_eq!(
             calls.len(),
@@ -676,7 +676,7 @@ mod tests {
             reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
-        let error = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
+        let error = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
             .expect_err("a required cache miss must fail");
         assert!(error.to_string().contains("missing or stale"), "{error}");
         assert!(runner.calls().is_empty(), "a strict miss must not run HLS");
@@ -704,7 +704,7 @@ mod tests {
             reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
-        let error = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
+        let error = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
             .expect_err("a required report must be present");
         assert!(
             error.to_string().contains("cached csynth report"),
@@ -739,12 +739,12 @@ mod tests {
             ..skip_hls_options()
         };
         std::thread::sleep(std::time::Duration::from_millis(10));
-        run_hls_for_leaves(&runner, work, &design, &sources, &original).unwrap();
+        run_hls_for_tasks(&runner, work, &design, &sources, &original).unwrap();
         let required = HlsRunOptions {
             reuse: HlsReuse::Required,
             ..original.clone()
         };
-        run_hls_for_leaves(&runner, work, &design, &sources, &required).expect("unchanged cache");
+        run_hls_for_tasks(&runner, work, &design, &sources, &required).expect("unchanged cache");
 
         for change in 0..5 {
             let mut changed = required.clone();
@@ -756,7 +756,7 @@ mod tests {
                 3 => changed.cflags.push("-DNEW_FLAG".into()),
                 _ => graph.cflags.push("-DUSER_FLAG".into()),
             }
-            run_hls_for_leaves(&runner, work, &graph, &sources, &changed)
+            run_hls_for_tasks(&runner, work, &graph, &sources, &changed)
                 .expect_err("changed synthesis settings must invalidate the cache");
         }
         assert_eq!(runner.calls().len(), 1, "strict misses must never run HLS");
@@ -767,10 +767,10 @@ mod tests {
             reuse: HlsReuse::Never,
             ..original
         };
-        run_hls_for_leaves(&runner, work, &design, &sources, &rerun)
+        run_hls_for_tasks(&runner, work, &design, &sources, &rerun)
             .expect_err("must reject incompatible output");
         assert!(!work.join("hls/Add/settings").exists());
-        run_hls_for_leaves(&runner, work, &design, &sources, &required)
+        run_hls_for_tasks(&runner, work, &design, &sources, &required)
             .expect_err("must reject incompatible output");
 
         // Explicit fixtures do not silently become a certified cache entry.
@@ -778,13 +778,13 @@ mod tests {
             reuse: HlsReuse::Fixtures,
             ..required
         };
-        run_hls_for_leaves(&runner, work, &design, &sources, &fixtures).unwrap();
+        run_hls_for_tasks(&runner, work, &design, &sources, &fixtures).unwrap();
         assert!(!work.join("hls/Add/settings").exists());
         let wrong_part = HlsRunOptions {
             part_num: "xcu250".into(),
             ..fixtures
         };
-        run_hls_for_leaves(&runner, work, &design, &sources, &wrong_part)
+        run_hls_for_tasks(&runner, work, &design, &sources, &wrong_part)
             .expect_err("must reject incompatible output");
     }
 
@@ -815,7 +815,7 @@ mod tests {
         let runner = MockToolRunner::new();
 
         let opts = skip_hls_options();
-        let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
+        let out = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
             .expect("cache hit path must succeed");
         assert_eq!(out.len(), 1);
         let (_, _, hls_out) = &out[0];
@@ -850,7 +850,7 @@ mod tests {
         let design = leaf_design();
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
-        let _ = run_hls_for_leaves(
+        let _ = run_hls_for_tasks(
             &runner,
             work,
             &design,
@@ -883,7 +883,7 @@ mod tests {
 
         let design = leaf_design();
         let runner = MockToolRunner::new();
-        run_hls_for_leaves(
+        run_hls_for_tasks(
             &runner,
             work,
             &design,
@@ -915,7 +915,7 @@ mod tests {
         let design = leaf_design();
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
-        let _ = run_hls_for_leaves(
+        let _ = run_hls_for_tasks(
             &runner,
             work,
             &design,
@@ -953,7 +953,7 @@ mod tests {
         let opts = skip_hls_options();
         let runner = MockToolRunner::new();
         let design = leaf_design();
-        let out = run_hls_for_leaves(&runner, work, &design, &staged(work, &design), &opts)
+        let out = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
             .expect("fresh emitted file must produce a cache hit");
         assert_eq!(out.len(), 1);
         assert!(

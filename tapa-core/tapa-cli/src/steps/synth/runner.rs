@@ -16,7 +16,7 @@ use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
 use crate::tapacc::discover::find_resource;
 
 use super::device_resolve::resolve_device_info;
-use super::hls_run::{run_hls_for_leaves, HlsReuse, HlsRunOptions};
+use super::hls_run::{run_hls_for_tasks, HlsReuse, HlsRunOptions};
 use super::hls_sources::stage_hls_sources;
 use super::post_synth_util::emit_post_synth_util;
 use super::report::write_top_report;
@@ -116,7 +116,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         jobs: args.jobs,
         keep_work_dir: args.keep_hls_work_dir,
     };
-    let hls_results = run_hls_for_leaves(runner, &ctx.work_dir, &pl_graph, &sources, &opts)?;
+    let hls_results = run_hls_for_tasks(runner, &ctx.work_dir, &pl_graph, &sources, &opts)?;
 
     let mut hdl_inputs: TaskHdlInputs = TaskHdlInputs::new();
     for (task_name, layout, out) in &hls_results {
