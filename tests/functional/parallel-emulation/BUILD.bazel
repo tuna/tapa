@@ -105,11 +105,11 @@ sh_test(
         "//bazel:is_macos": ["//bazel:sim_env.sh"],
         "//conditions:default": ["//bazel:v++_env.sh"],
     }),
-    args = ["$(rootpath cannon-host)"] + select({
+    args = ["$(rootpath cannon-host-4x4)"] + select({
         "//bazel:is_macos": ["1000"],
         "//conditions:default": [],
     }),
-    data = [":cannon-host"],
+    data = [":cannon-host-4x4"],
     env = {"TAPA_CONCURRENCY": "1"},
 )
 
