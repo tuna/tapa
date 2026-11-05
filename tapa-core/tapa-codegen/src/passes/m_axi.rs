@@ -20,7 +20,12 @@ use crate::state::views::{ModuleTable, OutputSet};
 ///
 /// Iterates all AXI channels (AR, AW, B, R, W) and their sub-ports,
 /// adding properly-typed ports to the module.
-pub fn add_m_axi_ports(module: &mut MutableModule, name: &str, data_width: u32, addr_width: u32) {
+pub(crate) fn add_m_axi_ports(
+    module: &mut MutableModule,
+    name: &str,
+    data_width: u32,
+    addr_width: u32,
+) {
     add_m_axi_ports_with_id_width(module, name, data_width, addr_width, AXI_ID_WIDTH);
 }
 
@@ -66,12 +71,12 @@ pub(crate) fn build_m_axi_ports(
 /// Determine if an AXI crossbar is needed for an mmap connection:
 /// multiple child ports share the argument, or the port is an hmap
 /// (any explicit channel count, including 1).
-pub fn needs_crossbar(conn: &MMapConnection) -> bool {
+pub(crate) fn needs_crossbar(conn: &MMapConnection) -> bool {
     conn.thread_count() > 1 || conn.geometry.is_hmap()
 }
 
 /// Build crossbar module name: `axi_crossbar_{slaves}x{channels}`.
-pub fn crossbar_module_name(conn: &MMapConnection) -> String {
+pub(crate) fn crossbar_module_name(conn: &MMapConnection) -> String {
     format!(
         "axi_crossbar_{}x{}",
         conn.thread_count(),
@@ -80,7 +85,7 @@ pub fn crossbar_module_name(conn: &MMapConnection) -> String {
 }
 
 /// Internal wire prefix for a crossbar slave-side child connection.
-pub fn crossbar_slave_prefix(arg_name: &str, slave_idx: usize) -> String {
+pub(crate) fn crossbar_slave_prefix(arg_name: &str, slave_idx: usize) -> String {
     format!(
         "{M_AXI_PREFIX}{}_s{slave_idx}",
         sanitize_array_name(arg_name)
@@ -88,7 +93,7 @@ pub fn crossbar_slave_prefix(arg_name: &str, slave_idx: usize) -> String {
 }
 
 /// Internal raw address signal emitted by a multi-channel crossbar.
-pub fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) -> String {
+pub(crate) fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) -> String {
     format!(
         "{M_AXI_PREFIX}{}_{channel_idx}{suffix}_raw",
         sanitize_array_name(arg_name)
@@ -96,7 +101,9 @@ pub fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix: &str) 
 }
 
 /// Build crossbar parameter arguments after validating the connection.
-pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>, CodegenError> {
+pub(crate) fn try_build_crossbar_params(
+    conn: &MMapConnection,
+) -> Result<Vec<ParamArg>, CodegenError> {
     validate_mmap_connection(conn)?;
     let addr_width = conn.geometry.channel_addr_width().unwrap_or(AXI_ADDR_WIDTH);
     let mut params = vec![
@@ -146,13 +153,13 @@ pub fn try_build_crossbar_params(conn: &MMapConnection) -> Result<Vec<ParamArg>,
     Ok(params)
 }
 
-pub fn crossbar_slave_id_width(conn: &MMapConnection) -> u32 {
+pub(crate) fn crossbar_slave_id_width(conn: &MMapConnection) -> u32 {
     conn.id_width()
         .saturating_sub(routing_id_bits(conn.thread_count()))
         .max(1)
 }
 
-pub fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
+pub(crate) fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
     if matches!(suffix, "_ARID" | "_AWID" | "_BID" | "_RID") {
         crossbar_slave_id_width(conn)
     } else {
@@ -161,7 +168,9 @@ pub fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -> u32 {
 }
 
 /// Build a crossbar instance after validating the connection.
-pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstance, CodegenError> {
+pub(crate) fn try_build_crossbar_instance(
+    conn: &MMapConnection,
+) -> Result<ModuleInstance, CodegenError> {
     let module_name = crossbar_module_name(conn);
     let arg_name = sanitize_array_name(&conn.arg_name);
     let instance_name = format!("axi_crossbar__{arg_name}");
@@ -216,7 +225,7 @@ pub fn try_build_crossbar_instance(conn: &MMapConnection) -> Result<ModuleInstan
 /// Uses the default address/ID widths ([`AXI_ADDR_WIDTH`],
 /// [`AXI_ID_WIDTH`]); unknown subports yield 1 via
 /// [`tapa_protocol::axi_subport_width`].
-pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
+pub(crate) fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
     tapa_protocol::axi_subport_width(
         tapa_protocol::axi_subport_from_suffix(suffix),
         data_width,
@@ -226,7 +235,7 @@ pub fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 }
 
 /// Validate an mmap connection before crossbar generation.
-pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
+pub(crate) fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
     if conn.slaves.iter().any(|slave| slave.threads == 0) {
         return Err(CodegenError::InvalidMmapConnection(format!(
             "M-AXI slave thread count is 0 for argument `{}`",
@@ -251,7 +260,7 @@ pub fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenErro
     reason = "crossbar RTL emission is inherently sequential; \
               splitting would fragment the AXI channel wiring"
 )]
-pub fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
+pub(crate) fn generate_crossbar_rtl(conn: &MMapConnection) -> String {
     let module_name = crossbar_module_name(conn);
     let slaves = conn.thread_count();
     let channels = conn.channel_count();
