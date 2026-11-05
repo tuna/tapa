@@ -120,23 +120,10 @@ mod tests {
 
     use tapa_ir::{
         port::{ArgCategory, Port},
-        SynthTarget, Target, Task, TaskGraph, TaskLevel,
+        Target, Task, TaskGraph, TaskLevel,
     };
 
-    fn port(name: &str, cat: ArgCategory) -> Port {
-        Port {
-            cat,
-            name: name.to_owned(),
-            ctype: "int".to_owned(),
-            width: 32,
-            chan_count: None,
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
-        }
-    }
+    use crate::testutil::{port, task};
 
     fn state_with_ports(ports: Vec<Port>) -> WorkState {
         let mut tasks = BTreeMap::new();
@@ -144,19 +131,10 @@ mod tests {
             "Top".to_owned(),
             Task {
                 level: TaskLevel::Upper,
-                srcs: vec!["Top.cpp".to_owned()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
                 ports,
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
                 readable_name: "Top".to_owned(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
                 clock_period: Some(ClockPeriod::from_picoseconds(3330)),
+                ..task("Top")
             },
         );
         WorkState::new(TaskGraph {
@@ -175,13 +153,13 @@ mod tests {
     #[test]
     fn stamp_fills_stream_depth_and_mmap_addr_width_where_applicable() {
         let state = state_with_ports(vec![
-            port("gmem", ArgCategory::Mmap),
-            port("amap", ArgCategory::AsyncMmap),
-            port("si", ArgCategory::Istream),
-            port("so", ArgCategory::Ostreams),
-            port("n", ArgCategory::Scalar),
-            port("ro", ArgCategory::Immap),
-            port("wo", ArgCategory::Ommap),
+            port("gmem", ArgCategory::Mmap, "int", 32),
+            port("amap", ArgCategory::AsyncMmap, "int", 32),
+            port("si", ArgCategory::Istream, "int", 32),
+            port("so", ArgCategory::Ostreams, "int", 32),
+            port("n", ArgCategory::Scalar, "int", 32),
+            port("ro", ArgCategory::Immap, "int", 32),
+            port("wo", ArgCategory::Ommap, "int", 32),
         ]);
         let stamped = stamp_cosim_port_metadata(&state);
         let ports = stamped_ports(&stamped);
@@ -219,7 +197,7 @@ mod tests {
 
     #[test]
     fn stamp_preserves_values_a_producer_already_set() {
-        let mut s = port("si", ArgCategory::Istream);
+        let mut s = port("si", ArgCategory::Istream, "int", 32);
         s.stream_depth = Some(8);
         let stamped = stamp_cosim_port_metadata(&state_with_ports(vec![s]));
         assert_eq!(
@@ -231,7 +209,7 @@ mod tests {
 
     #[test]
     fn stamp_tolerates_a_missing_top_task() {
-        let mut state = state_with_ports(vec![port("gmem", ArgCategory::Mmap)]);
+        let mut state = state_with_ports(vec![port("gmem", ArgCategory::Mmap, "int", 32)]);
         state.graph.top = "Gone".to_owned();
         let stamped = stamp_cosim_port_metadata(&state);
         assert_eq!(stamped.graph.top, "Gone", "stamping is a no-op");
@@ -240,13 +218,13 @@ mod tests {
     #[test]
     fn frontier_accepts_every_supported_category() {
         let state = state_with_ports(vec![
-            port("gmem", ArgCategory::Mmap),
-            port("amap", ArgCategory::AsyncMmap),
-            port("si", ArgCategory::Istream),
-            port("so", ArgCategory::Ostreams),
-            port("qi", ArgCategory::Istreams),
-            port("qo", ArgCategory::Ostream),
-            port("n", ArgCategory::Scalar),
+            port("gmem", ArgCategory::Mmap, "int", 32),
+            port("amap", ArgCategory::AsyncMmap, "int", 32),
+            port("si", ArgCategory::Istream, "int", 32),
+            port("so", ArgCategory::Ostreams, "int", 32),
+            port("qi", ArgCategory::Istreams, "int", 32),
+            port("qo", ArgCategory::Ostream, "int", 32),
+            port("n", ArgCategory::Scalar, "int", 32),
         ]);
         check_cosim_supported_categories(&state).expect("all supported");
     }
@@ -254,9 +232,9 @@ mod tests {
     #[test]
     fn frontier_rejects_immap_and_ommap_with_names_and_remediation() {
         let state = state_with_ports(vec![
-            port("gmem", ArgCategory::Mmap),
-            port("ro_bank", ArgCategory::Immap),
-            port("wo_bank", ArgCategory::Ommap),
+            port("gmem", ArgCategory::Mmap, "int", 32),
+            port("ro_bank", ArgCategory::Immap, "int", 32),
+            port("wo_bank", ArgCategory::Ommap, "int", 32),
         ]);
         let err = check_cosim_supported_categories(&state)
             .expect_err("immap/ommap must be rejected before the archive ships");

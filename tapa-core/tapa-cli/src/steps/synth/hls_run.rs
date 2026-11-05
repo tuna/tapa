@@ -465,7 +465,7 @@ mod tests {
 
     fn leaf_design() -> Design {
         let mut tasks = BTreeMap::new();
-        tasks.insert("Add".to_string(), fixtures::task("Add"));
+        tasks.insert("Add".to_string(), crate::testutil::task("Add"));
         Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Add".to_string(),
@@ -489,7 +489,7 @@ mod tests {
                 "common".to_string(),
             ],
             defines: vec!["TAPA_TASK_DEF_Add".to_string()],
-            ..fixtures::task("Add")
+            ..crate::testutil::task("Add")
         };
         let flags = task_cflags(
             &["-std=c++14".to_string(), "-I/app".to_string()],
@@ -554,7 +554,7 @@ mod tests {
         let task = Task {
             srcs: vec!["src/Add.cpp".to_string()],
             include_dirs: vec![String::new(), "include".to_string()],
-            ..fixtures::task("Add")
+            ..crate::testutil::task("Add")
         };
         let flags = task_cflags(
             &[format!("-I{}", original_include.display())],

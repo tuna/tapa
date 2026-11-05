@@ -546,12 +546,13 @@ mod tests {
     use tapa_xilinx::tools::aie::report::{AieKernelReport, AiePlioReport, AieTile};
 
     use crate::steps::synth::fixtures;
+    use crate::testutil::task;
 
     fn leaf(name: &str, clock: Option<ClockPeriod>, area: Option<tapa_ir::Area>) -> Task {
         Task {
             total_area: area,
             clock_period: clock,
-            ..fixtures::task(name)
+            ..task(name)
         }
     }
 
@@ -570,7 +571,7 @@ mod tests {
             tasks,
             self_area: Some(self_area),
             clock_period: clock,
-            ..fixtures::task(name)
+            ..task(name)
         }
     }
 
@@ -808,7 +809,7 @@ mod tests {
                     level: TaskLevel::Upper,
                     tasks: BTreeMap::from([("Custom".to_string(), fixtures::instances(1))]),
                     clock_period: Some(ClockPeriod::from_picoseconds(2500)),
-                    ..fixtures::task("Top")
+                    ..task("Top")
                 },
             ),
         ]);
@@ -937,7 +938,7 @@ mod tests {
                     ..tapa_ir::Area::default()
                 }),
                 clock_period: Some(ClockPeriod::from_picoseconds(3330)),
-                ..fixtures::task("VecAdd")
+                ..task("VecAdd")
             },
         );
         tasks.insert(

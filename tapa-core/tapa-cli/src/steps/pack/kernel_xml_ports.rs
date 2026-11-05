@@ -89,45 +89,14 @@ fn projected_port_names(port: &Port, m_axi_bases: &BTreeSet<String>) -> Vec<Stri
 mod tests {
     use super::*;
 
+    use crate::testutil::port;
+
     #[test]
     fn build_kernel_xml_ports_translates_categories() {
         let ports = vec![
-            Port {
-                cat: ArgCategory::Scalar,
-                name: "n".into(),
-                ctype: "int".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            },
-            Port {
-                cat: ArgCategory::Mmap,
-                name: "gmem".into(),
-                ctype: "int*".into(),
-                width: 512,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            },
-            Port {
-                cat: ArgCategory::Istream,
-                name: "i0".into(),
-                ctype: "tapa::istream<int>".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            },
+            port("n", ArgCategory::Scalar, "int", 32),
+            port("gmem", ArgCategory::Mmap, "int*", 512),
+            port("i0", ArgCategory::Istream, "tapa::istream<int>", 32),
         ];
         let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out.len(), 3);
@@ -139,16 +108,8 @@ mod tests {
     #[test]
     fn build_kernel_xml_ports_unrolls_chan_count() {
         let ports = vec![Port {
-            cat: ArgCategory::Mmap,
-            name: "gmem".into(),
-            ctype: "int*".into(),
-            width: 64,
             chan_count: Some(3),
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
+            ..port("gmem", ArgCategory::Mmap, "int*", 64)
         }];
         let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out.len(), 3);
@@ -159,18 +120,7 @@ mod tests {
 
     #[test]
     fn build_kernel_xml_ports_sanitizes_indexed_names() {
-        let ports = vec![Port {
-            cat: ArgCategory::Mmap,
-            name: "chan[0]".into(),
-            ctype: "int*".into(),
-            width: 64,
-            chan_count: None,
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
-        }];
+        let ports = vec![port("chan[0]", ArgCategory::Mmap, "int*", 64)];
         let out = build_kernel_xml_ports(&ports, &BTreeSet::new());
         assert_eq!(out[0].name, "chan_0");
         let block = m_axi_param_block(&ports, &BTreeSet::new());
@@ -180,16 +130,8 @@ mod tests {
     #[test]
     fn rtl_m_axi_bases_override_chan_count_unrolling() {
         let ports = vec![Port {
-            cat: ArgCategory::Mmap,
-            name: "mat_a".into(),
-            ctype: "int*".into(),
-            width: 512,
             chan_count: Some(2),
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
+            ..port("mat_a", ArgCategory::Mmap, "int*", 512)
         }];
         let m_axi_bases = BTreeSet::from(["mat_a".to_owned()]);
 
@@ -205,30 +147,8 @@ mod tests {
     #[test]
     fn m_axi_param_block_emits_default_burst_params_for_mmap_only() {
         let ports = vec![
-            Port {
-                cat: ArgCategory::Scalar,
-                name: "n".into(),
-                ctype: "int".into(),
-                width: 32,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            },
-            Port {
-                cat: ArgCategory::Mmap,
-                name: "gmem".into(),
-                ctype: "int*".into(),
-                width: 512,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            },
+            port("n", ArgCategory::Scalar, "int", 32),
+            port("gmem", ArgCategory::Mmap, "int*", 512),
         ];
         let block = m_axi_param_block(&ports, &BTreeSet::new());
         assert_eq!(block.len(), 1);

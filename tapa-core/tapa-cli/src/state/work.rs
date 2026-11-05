@@ -82,27 +82,15 @@ mod tests {
     use std::collections::BTreeMap;
     use tapa_ir::ClockPeriod;
 
-    use tapa_ir::{SynthTarget, Target, Task, TaskGraph, TaskLevel};
+    use tapa_ir::{Target, Task, TaskGraph};
 
     fn sample_state() -> WorkState {
         let mut tasks = BTreeMap::new();
         tasks.insert(
             "Top".to_string(),
             Task {
-                level: TaskLevel::Lower,
-                srcs: vec!["Top.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
                 readable_name: "Top".to_string(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
+                ..crate::testutil::task("Top")
             },
         );
         WorkState::new(TaskGraph {

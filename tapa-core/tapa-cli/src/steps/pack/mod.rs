@@ -343,10 +343,11 @@ mod tests {
 
     use tapa_ir::{
         port::{ArgCategory, Port},
-        SynthTarget, Task, TaskGraph, TaskLevel,
+        Task, TaskGraph, TaskLevel,
     };
 
     use crate::globals::GlobalArgs;
+    use crate::testutil::{port, task};
 
     fn parse_pack(extra: &[&str]) -> PackArgs {
         let mut argv = vec!["pack"];
@@ -371,44 +372,13 @@ mod tests {
             "Top".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                srcs: vec!["Top.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
                 ports: vec![
-                    Port {
-                        cat: ArgCategory::Mmap,
-                        name: "gmem0".to_string(),
-                        ctype: "int*".to_string(),
-                        width: 512,
-                        chan_count: None,
-                        chan_size: None,
-                        aie_frame: None,
-                        aie_plio: None,
-                        stream_depth: None,
-                        mmap_addr_width: None,
-                    },
-                    Port {
-                        cat: ArgCategory::Istream,
-                        name: "s_in".to_string(),
-                        ctype: "int".to_string(),
-                        width: 32,
-                        chan_count: None,
-                        chan_size: None,
-                        aie_frame: None,
-                        aie_plio: None,
-                        stream_depth: None,
-                        mmap_addr_width: None,
-                    },
+                    port("gmem0", ArgCategory::Mmap, "int*", 512),
+                    port("s_in", ArgCategory::Istream, "int", 32),
                 ],
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
                 readable_name: "Top".to_string(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
                 clock_period: Some(ClockPeriod::from_picoseconds(3330)),
+                ..task("Top")
             },
         );
         let mut state = WorkState::new(TaskGraph {
@@ -629,18 +599,7 @@ mod tests {
             ("ro_bank", ArgCategory::Immap),
             ("wo_bank", ArgCategory::Ommap),
         ] {
-            top.ports.push(Port {
-                cat,
-                name: name.to_string(),
-                ctype: "int*".to_string(),
-                width: 512,
-                chan_count: None,
-                chan_size: None,
-                aie_frame: None,
-                aie_plio: None,
-                stream_depth: None,
-                mmap_addr_width: None,
-            });
+            top.ports.push(port(name, cat, "int*", 512));
         }
         work_io::store(dir.path(), &state).expect("store");
 

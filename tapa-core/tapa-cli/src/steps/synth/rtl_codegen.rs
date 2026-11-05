@@ -198,6 +198,7 @@ mod tests {
     use tapa_ir::{SynthTarget, Task, TaskInstance};
 
     use crate::steps::synth::fixtures;
+    use crate::testutil::{port, task};
 
     fn write_stub_module(dir: &Path, task_name: &str) -> Utf8PathBuf {
         let path = dir.join(format!("{task_name}.v"));
@@ -304,9 +305,9 @@ mod tests {
             "Add_Upper".to_string(),
             Task {
                 srcs: Vec::new(),
-                ports: vec![fixtures::port("n", ArgCategory::Scalar, "uint64_t", 64)],
+                ports: vec![port("n", ArgCategory::Scalar, "uint64_t", 64)],
                 synth: SynthTarget::Ignore,
-                ..fixtures::task("Add_Upper")
+                ..task("Add_Upper")
             },
         );
         let top = design.tasks.get_mut("VecAdd").expect("top task");
@@ -439,9 +440,9 @@ mod tests {
             "Stub".to_string(),
             Task {
                 srcs: Vec::new(),
-                ports: vec![fixtures::port("n", ArgCategory::Scalar, "uint64_t", 64)],
+                ports: vec![port("n", ArgCategory::Scalar, "uint64_t", 64)],
                 synth: SynthTarget::Ignore,
-                ..fixtures::task("Stub")
+                ..task("Stub")
             },
         );
         let dir = tempfile::tempdir().expect("tempdir");

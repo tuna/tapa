@@ -239,7 +239,7 @@ mod tests {
             srcs: srcs.iter().map(|s| (*s).to_string()).collect(),
             include_dirs: include_dirs.iter().map(|s| (*s).to_string()).collect(),
             defines: defines.iter().map(|s| (*s).to_string()).collect(),
-            ..fixtures::task("Add")
+            ..crate::testutil::task("Add")
         }
     }
 
@@ -432,7 +432,7 @@ mod tests {
         write_src(dir.path(), "Top");
         let mut top = task(&["Top.cpp"]);
         top.level = TaskLevel::Upper;
-        top.ports = vec![fixtures::port("in", ArgCategory::Mmap, "int*", 32)];
+        top.ports = vec![crate::testutil::port("in", ArgCategory::Mmap, "int*", 32)];
         let d = design(&[("Top", top)]);
         let err = stage_hls_sources(dir.path(), &d).expect_err("must reject reserved name");
         assert!(

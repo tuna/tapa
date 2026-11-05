@@ -1,55 +1,19 @@
-//! Test fixtures shared by the synth step's test modules: a minimal
-//! typed task/port builder, the rewritten-tree ownership manifest
-//! writer, the source-staging shortcut, and the two-task `VecAdd` design.
+//! Test fixtures shared by the synth step's test modules: the
+//! rewritten-tree ownership manifest writer, the source-staging
+//! shortcut, and the two-task `VecAdd` design. The typed task/port
+//! builders live in [`crate::testutil`].
 
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
-use tapa_ir::{ArgCategory, ClockPeriod, Design, Port, SynthTarget, Task, TaskInstance, TaskLevel};
+use tapa_ir::{ClockPeriod, Design, Task, TaskInstance, TaskLevel};
+
+use crate::testutil::task;
 
 use super::hls_sources::{
     stage_hls_sources, TaskSources, TREE_MANIFEST_HEADER, TREE_MANIFEST_NAME,
 };
-
-/// A minimal lower-level HLS task: `{name}.cpp` as its only source, no
-/// ports or children. Call sites override fields with struct-update
-/// syntax.
-pub fn task(name: &str) -> Task {
-    Task {
-        level: TaskLevel::Lower,
-        srcs: vec![format!("{name}.cpp")],
-        include_dirs: Vec::new(),
-        defines: Vec::new(),
-        ports: Vec::new(),
-        tasks: BTreeMap::new(),
-        fifos: BTreeMap::new(),
-        readable_name: String::new(),
-        aie_location: Vec::new(),
-        aie_stack_bytes: None,
-        synth: SynthTarget::Hls,
-        self_area: None,
-        total_area: None,
-        clock_period: None,
-    }
-}
-
-/// A port with no stream, AIE, or mmap metadata; only the identity
-/// fields vary across the synth test fixtures.
-pub fn port(name: &str, cat: ArgCategory, ctype: &str, width: u32) -> Port {
-    Port {
-        cat,
-        name: name.to_string(),
-        ctype: ctype.to_string(),
-        width,
-        chan_count: None,
-        chan_size: None,
-        aie_frame: None,
-        aie_plio: None,
-        stream_depth: None,
-        mmap_addr_width: None,
-    }
-}
 
 /// `count` child instances with empty args and step 0, mirroring
 /// the `[{"args": {}, "step": 0}, ...]` JSON the untyped fixtures

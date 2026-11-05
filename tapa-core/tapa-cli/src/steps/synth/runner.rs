@@ -408,7 +408,7 @@ mod tests {
             level,
             readable_name: name.to_string(),
             synth,
-            ..fixtures::task(name)
+            ..crate::testutil::task(name)
         }
     }
 
@@ -417,7 +417,7 @@ mod tests {
     fn aie_work_state() -> WorkState {
         let mut top = task("Top", TaskLevel::Upper, SynthTarget::Hls);
         top.ports
-            .push(fixtures::port("n", ArgCategory::Scalar, "int", 32));
+            .push(crate::testutil::port("n", ArgCategory::Scalar, "int", 32));
         top.tasks.insert("Add".to_string(), fixtures::instances(1));
         WorkState::new(TaskGraph {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
@@ -786,7 +786,7 @@ mod tests {
                 ..Area::default()
             }),
             clock_period: Some(ClockPeriod::from_picoseconds(9990)),
-            ..fixtures::task("Add")
+            ..crate::testutil::task("Add")
         };
         let report = CsynthReport {
             top: "Add".to_string(),

@@ -1,13 +1,54 @@
 //! Test-only fixture builders shared across the step test modules:
 //! the mock floorplan publication marker, a JSON [`WorkState`] parser,
-//! and a minimal [`CliContext`].
+//! minimal typed task/port builders, and a minimal [`CliContext`].
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use tapa_ir::{FloorplanResult, TaskGraph, WorkState};
+use tapa_ir::{
+    ArgCategory, FloorplanResult, Port, SynthTarget, Task, TaskGraph, TaskLevel, WorkState,
+};
 
 use crate::context::CliContext;
+
+/// A minimal lower-level HLS task: `{name}.cpp` as its only source, no
+/// ports or children. Call sites override fields with struct-update
+/// syntax.
+pub fn task(name: &str) -> Task {
+    Task {
+        level: TaskLevel::Lower,
+        srcs: vec![format!("{name}.cpp")],
+        include_dirs: Vec::new(),
+        defines: Vec::new(),
+        ports: Vec::new(),
+        tasks: BTreeMap::new(),
+        fifos: BTreeMap::new(),
+        readable_name: String::new(),
+        aie_location: Vec::new(),
+        aie_stack_bytes: None,
+        synth: SynthTarget::Hls,
+        self_area: None,
+        total_area: None,
+        clock_period: None,
+    }
+}
+
+/// A port with no stream, AIE, or mmap metadata; only the identity
+/// fields vary across the test fixtures.
+pub fn port(name: &str, cat: ArgCategory, ctype: &str, width: u32) -> Port {
+    Port {
+        cat,
+        name: name.to_string(),
+        ctype: ctype.to_string(),
+        width,
+        chan_count: None,
+        chan_size: None,
+        aie_frame: None,
+        aie_plio: None,
+        stream_depth: None,
+        mmap_addr_width: None,
+    }
+}
 
 /// An empty floorplan publication marker: its presence alone flips the
 /// floorplan path, so regions and routes are irrelevant here.
