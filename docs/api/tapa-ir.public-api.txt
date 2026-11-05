@@ -847,7 +847,6 @@ pub fn tapa_ir::connectivity::MemoryBinding::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryBinding where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::connectivity::MemoryBindings
 impl tapa_ir::connectivity::MemoryBindings
-pub fn tapa_ir::connectivity::MemoryBindings::as_slice(&self) -> &[tapa_ir::connectivity::MemoryBinding]
 pub fn tapa_ir::connectivity::MemoryBindings::get(&self, &str, &str) -> core::option::Option<tapa_ir::connectivity::MemoryBank>
 pub fn tapa_ir::connectivity::MemoryBindings::is_empty(&self) -> bool
 pub fn tapa_ir::connectivity::MemoryBindings::iter(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &tapa_ir::connectivity::MemoryBinding>
@@ -4759,7 +4758,6 @@ pub fn tapa_ir::connectivity::MemoryBinding::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryBinding where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::MemoryBindings
 impl tapa_ir::connectivity::MemoryBindings
-pub fn tapa_ir::connectivity::MemoryBindings::as_slice(&self) -> &[tapa_ir::connectivity::MemoryBinding]
 pub fn tapa_ir::connectivity::MemoryBindings::get(&self, &str, &str) -> core::option::Option<tapa_ir::connectivity::MemoryBank>
 pub fn tapa_ir::connectivity::MemoryBindings::is_empty(&self) -> bool
 pub fn tapa_ir::connectivity::MemoryBindings::iter(&self) -> impl core::iter::traits::exact_size::ExactSizeIterator<Item = &tapa_ir::connectivity::MemoryBinding>

@@ -63,10 +63,14 @@ impl std::str::FromStr for MemoryBank {
             .map(|rest| (MemoryKind::Hbm, rest))
             .or_else(|| tag.strip_prefix("DDR[").map(|rest| (MemoryKind::Ddr, rest)))
             .ok_or_else(|| MemoryBankParseError(tag.to_string()))?;
-        let index = rest
+        let digits = rest
             .strip_suffix(']')
-            .and_then(|digits| digits.parse::<u32>().ok())
+            .map(str::trim)
+            .filter(|digits| !digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()))
             .ok_or_else(|| MemoryBankParseError(tag.to_string()))?;
+        let index = digits
+            .parse()
+            .map_err(|_| MemoryBankParseError(tag.to_string()))?;
         Ok(Self { kind, index })
     }
 }
@@ -141,11 +145,6 @@ impl MemoryBindings {
             }
         }
         Ok(Self { bindings })
-    }
-
-    /// Return all bindings in their first-occurrence order.
-    pub fn as_slice(&self) -> &[MemoryBinding] {
-        &self.bindings
     }
 
     /// Iterate over all bindings in their first-occurrence order.
@@ -291,8 +290,12 @@ mod tests {
             assert_eq!((bank.kind, bank.index), (kind, index));
             assert_eq!(bank.to_string(), tag);
         }
-        for bad in ["HBM", "DDR", "HBM[]", "HBM[x]", "PLRAM[0]", "hbm[1]"] {
+        for bad in [
+            "HBM", "DDR", "HBM[]", "HBM[x]", "HBM[+1]", "PLRAM[0]", "hbm[1]",
+        ] {
             assert!(bad.parse::<MemoryBank>().is_err(), "{bad} must not parse");
         }
+        // Connectivity files tolerate whitespace around the index.
+        assert_eq!("HBM[ 3 ]".parse::<MemoryBank>().unwrap().index, 3);
     }
 }

@@ -375,37 +375,12 @@ fn is_port_name(value: &str) -> bool {
 }
 
 fn parse_bank(value: &str, line: usize) -> Result<MemoryBank, ConnectivityParseError> {
-    let (kind, index) = if let Some(index) = value
-        .strip_prefix("HBM[")
-        .and_then(|value| value.strip_suffix(']'))
-    {
-        (MemoryKind::Hbm, index)
-    } else if let Some(index) = value
-        .strip_prefix("DDR[")
-        .and_then(|value| value.strip_suffix(']'))
-    {
-        (MemoryKind::Ddr, index)
-    } else {
-        return Err(ConnectivityParseError::UnknownTarget {
-            line,
-            target: value.to_string(),
-        });
-    };
-
-    let index = index.trim();
-    if index.is_empty() || !index.bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(ConnectivityParseError::UnknownTarget {
-            line,
-            target: value.to_string(),
-        });
-    }
-    let index = index
+    value
         .parse()
         .map_err(|_| ConnectivityParseError::UnknownTarget {
             line,
             target: value.to_string(),
-        })?;
-    Ok(MemoryBank { kind, index })
+        })
 }
 
 #[cfg(test)]
@@ -510,7 +485,7 @@ mod tests {
             "first-occurrence order must be stable",
         );
         assert_eq!(
-            bindings.as_slice()[2].bank.to_string(),
+            bindings.iter().nth(2).unwrap().bank.to_string(),
             "HBM[31]",
             "bank display must match configuration syntax",
         );
