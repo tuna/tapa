@@ -96,7 +96,7 @@ pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
 pub fn load_spec(path: &Path) -> Result<(KernelSpec, tempfile::TempDir)> {
     let file = std::fs::File::open(path)?;
     let reader = std::io::BufReader::new(file);
-    let mut zip = zip::ZipArchive::new(reader).map_err(|e| CosimError::Metadata(e.to_string()))?;
+    let mut zip = zip::ZipArchive::new(reader).map_err(CosimError::metadata)?;
 
     match path.extension().and_then(|e| e.to_str()) {
         Some("xo") => load_xo_spec(&mut zip, path),
@@ -113,12 +113,10 @@ pub fn load_spec(path: &Path) -> Result<(KernelSpec, tempfile::TempDir)> {
 /// the metadata reader and leaves existing fast-cosim setup unchanged.
 fn zip_contains_kernel_xml<R: Read + std::io::Seek>(zip: &mut zip::ZipArchive<R>) -> Result<bool> {
     for index in 0..zip.len() {
-        let entry = zip
-            .by_index(index)
-            .map_err(|error| CosimError::Metadata(error.to_string()))?;
+        let entry = zip.by_index(index).map_err(CosimError::metadata)?;
         if entry
             .name()
-            .map_err(|error| CosimError::Metadata(error.to_string()))?
+            .map_err(CosimError::metadata)?
             .ends_with("kernel.xml")
         {
             return Ok(true);
@@ -142,7 +140,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         }
         if name.ends_with(tapa_ir::work_state::FILE_NAME) {
             let state = tapa_ir::WorkState::from_json(&std::fs::read_to_string(path)?)
-                .map_err(|error| CosimError::Metadata(error.to_string()))?;
+                .map_err(CosimError::metadata)?;
             part_num = state.flow.part_num;
             return Ok(());
         }
@@ -195,8 +193,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
             src.display(),
         ))
     })?;
-    let state =
-        tapa_ir::WorkState::from_json(&json).map_err(|e| CosimError::Metadata(e.to_string()))?;
+    let state = tapa_ir::WorkState::from_json(&json).map_err(CosimError::metadata)?;
     let mut spec = zip_pkg::spec_from_task_graph(&state.graph)?;
     spec.part_num = state.flow.part_num;
     spec.verilog_files = files.verilog;
@@ -216,13 +213,8 @@ fn extract_archive<R: Read + std::io::Seek>(
     let mut files = ExtractedFiles::default();
     let extract_dir = make_extract_dir(tag)?;
     for i in 0..zip.len() {
-        let mut file = zip
-            .by_index(i)
-            .map_err(|e| CosimError::Metadata(e.to_string()))?;
-        let name = file
-            .name()
-            .map_err(|e| CosimError::Metadata(e.to_string()))?
-            .into_owned();
+        let mut file = zip.by_index(i).map_err(CosimError::metadata)?;
+        let name = file.name().map_err(CosimError::metadata)?.into_owned();
         if name.ends_with('/') {
             continue;
         }

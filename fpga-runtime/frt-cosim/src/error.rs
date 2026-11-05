@@ -10,4 +10,11 @@ pub enum CosimError {
     ToolNotFound(String),
 }
 
+impl CosimError {
+    /// Wrap a source error's message as a metadata parse error.
+    pub(crate) fn metadata(source: impl std::fmt::Display) -> Self {
+        Self::Metadata(source.to_string())
+    }
+}
+
 pub type Result<T> = std::result::Result<T, CosimError>;

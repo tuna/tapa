@@ -153,9 +153,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
                         .attributes()
                         .flatten()
                         .any(|a| a.key.0 == "name" && a.value.as_ref() == "tapa_aie_pl_control");
-                    reader
-                        .read_to_end(e.name())
-                        .map_err(|e| CosimError::Metadata(e.to_string()))?;
+                    reader.read_to_end(e.name()).map_err(CosimError::metadata)?;
                     if is_pl_control {
                         aie_pl_control = true;
                         continue;
@@ -170,7 +168,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
                     }
                     kernel = Some(
                         quick_xml::de::from_str(&xml[start..reader.buffer_position() as usize])
-                            .map_err(|e| CosimError::Metadata(e.to_string()))?,
+                            .map_err(CosimError::metadata)?,
                     );
                 }
                 "platform" => {
@@ -188,7 +186,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
                 _ => {}
             },
             Ok(Event::Eof) => break,
-            Err(e) => return Err(CosimError::Metadata(e.to_string())),
+            Err(e) => return Err(CosimError::metadata(e)),
             _ => {}
         }
     }
