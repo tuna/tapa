@@ -196,9 +196,10 @@ impl DirectAxiPipelinePlan {
 
         for routed in self.routed.values() {
             let interface = &routed.interface;
-            let child_prefix = self
-                .child_wire_prefix(&interface.endpoint)
-                .expect("instantiate only iterates routed endpoints");
+            let child_prefix = format!(
+                "__tapa_axi_{}_child",
+                sanitize_identifier_name(&interface.endpoint.top_port),
+            );
             let top_prefix = format!(
                 "{M_AXI_PREFIX}{}",
                 sanitize_array_name(&interface.endpoint.top_port),
@@ -219,9 +220,6 @@ impl DirectAxiPipelinePlan {
                     let name = format!("{child_prefix}{suffix}");
                     module.add_signal(super::width_wire(&name, width))?;
                 }
-            }
-
-            for (channel, _) in interface.channel_widths.enabled_channels() {
                 let body_level = routed.body_levels[&channel];
                 module.add_instance(build_channel_instance(
                     interface,
