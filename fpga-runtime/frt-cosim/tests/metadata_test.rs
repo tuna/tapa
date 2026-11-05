@@ -388,7 +388,7 @@ fn zero_channel_hmap_is_rejected() {
 /// A top-level `mmaps<T, N>` is expanded by the frontend into N ports named
 /// `chan[0]`, `chan[1]`, ... -- but the generated RTL, the `kernel.xml` args
 /// and the `_offset` registers all spell them `chan_0`. These names are what
-/// the testbench binds by (`lookup_register_offset`, `detect_axi_id_width`,
+/// the testbench binds  by (`lookup_register_offset`, `detect_axi_port_width`,
 /// the shm buffer), so a bracketed name matches nothing. Exercised by
 /// `tests/apps/bandwidth`.
 #[test]
