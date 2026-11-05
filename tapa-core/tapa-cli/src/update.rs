@@ -222,7 +222,7 @@ fn spawn_check_if_stale() {
     };
     // Give the child a work dir inside the cache so it does not create
     // `./work.out` in the user's cwd as a side effect of `main`.
-    let work_dir = path.with_file_name("update-check-work");
+    let work_dir = update_flow_work_dir();
     let _ = Command::new(exe)
         .arg("--work-dir")
         .arg(work_dir)
