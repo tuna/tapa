@@ -37,20 +37,21 @@ pub(super) fn pre_synth_hook(hbm_indices: &[u32]) -> String {
         )
     });
     let hbm_slices = hbm_slices.unwrap_or_default();
-    let mut hook = "# TAPA: one generated hook for implementation constraints.\n\
-     set tapa_hook_dir [file dirname [file normalize [info script]]]\n\
-     # Match slashkit's implementation strategy before installing hooks. Its\n\
-     # later assignment of the same strategy then preserves these properties.\n\
-     set_property strategy Congestion_SSI_SpreadLogic_high [get_runs impl_1]\n\
-     # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
-     set tapa_place_hook [file join $tapa_hook_dir tapa_pre_place.tcl]\n\
-     add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
-     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files [file tail $tapa_place_hook]]] [get_runs impl_1]\n\
-     set tapa_user_clock_xdc [file join $tapa_hook_dir tapa_user_clock.xdc]\n\
-     add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
-     set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
-     set_property USED_IN_IMPLEMENTATION true [get_files $tapa_user_clock_xdc]\n"
-        .to_string();
+    let mut hook = format!(
+        "# TAPA: one generated hook for implementation constraints.\n\
+         set tapa_hook_dir [file dirname [file normalize [info script]]]\n\
+         # Match slashkit's implementation strategy before installing hooks. Its\n\
+         # later assignment of the same strategy then preserves these properties.\n\
+         set_property strategy Congestion_SSI_SpreadLogic_high [get_runs impl_1]\n\
+         # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
+         set tapa_place_hook [file join $tapa_hook_dir {PLACE_HOOK_NAME}]\n\
+         add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
+         set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files [file tail $tapa_place_hook]]] [get_runs impl_1]\n\
+         set tapa_user_clock_xdc [file join $tapa_hook_dir {CLOCK_XDC_NAME}]\n\
+         add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
+         set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
+         set_property USED_IN_IMPLEMENTATION true [get_files $tapa_user_clock_xdc]\n"
+    );
     hook.push_str(&hbm_slices);
     hook
 }
