@@ -117,8 +117,9 @@ tapa_xo(
 
 tapa_xo(
     name = "hbm-bandwidth-1-ch-xo",
-    srcs = ["hbm-bandwidth-1-ch/src/bandwidth.cpp"],
-    hdrs = ["hbm-bandwidth-1-ch/src/bandwidth.h"],
+    srcs = ["hbm-bandwidth/src/bandwidth.cpp"],
+    hdrs = ["hbm-bandwidth/src/bandwidth.h"],
+    cflags = "-DBANDWIDTH_BANK_COUNT=1",
     clock_period = "3.33",
     jobs = 8,
     part_num = "xcu55c-fsvh2892-2L-e",
@@ -220,10 +221,11 @@ tapa_xo(
 
 regression_xosim(
     name = "hbm-bandwidth-1-ch",
+    host_defines = ["BANDWIDTH_BANK_COUNT=1"],
     host_srcs = [
-        "hbm-bandwidth-1-ch/src/bandwidth.cpp",
-        "hbm-bandwidth-1-ch/src/bandwidth-host.cpp",
-        "hbm-bandwidth-1-ch/src/bandwidth.h",
+        "hbm-bandwidth/src/bandwidth.cpp",
+        "hbm-bandwidth/src/bandwidth-host.cpp",
+        "hbm-bandwidth/src/bandwidth.h",
     ],
     hw_test_args = ["64"],
     xo = ":hbm-bandwidth-1-ch-xo",

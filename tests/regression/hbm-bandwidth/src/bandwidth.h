@@ -4,8 +4,12 @@
 
 #include <tapa.h>
 
+#ifndef BANDWIDTH_BANK_COUNT
+#define BANDWIDTH_BANK_COUNT 32
+#endif
+
 using Elem = tapa::vec_t<float, 16>;
-constexpr int kBankCount = 32;
+constexpr int kBankCount = BANDWIDTH_BANK_COUNT;
 
 constexpr uint64_t kRead = 1 << 1;
 constexpr uint64_t kWrite = 1 << 2;
