@@ -162,19 +162,8 @@ class async_mmap : public mmap<T> {
         write_data(write_data_q_),
         write_resp(write_resp_q_) {}
 
-  // Direct pointer operations are not permitted; use channel APIs instead.
-  operator T*() { return super::ptr_; }
-  T& operator[](std::size_t idx) { return super::ptr_[idx]; }
-  const T& operator[](std::size_t idx) const { return super::ptr_[idx]; }
-  T& operator*() { return *super::ptr_; }
-  const T& operator*() const { return *super::ptr_; }
-  T& operator++() { return *++super::ptr_; }
-  T& operator--() { return *--super::ptr_; }
-  T operator++(int) { return *super::ptr_++; }
-  T operator--(int) { return *super::ptr_--; }
-  async_mmap<T> operator+(std::ptrdiff_t diff) { return super::ptr_ + diff; }
-  async_mmap<T> operator-(std::ptrdiff_t diff) { return super::ptr_ - diff; }
-  std::ptrdiff_t operator-(async_mmap<T> ptr) { return super::ptr_ - ptr; }
+  // Direct pointer conversion is not permitted; use the channel APIs.
+  operator T*() = delete;
 
  public:
   /// Read address channel: write an address to trigger an async read.
