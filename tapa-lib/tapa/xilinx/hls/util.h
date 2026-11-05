@@ -22,21 +22,6 @@ namespace tapa {
 inline void wait() noexcept { ap_wait(); }
 inline void wait(int n) noexcept { ap_wait_n(n); }
 
-namespace internal {
-template <typename T>
-inline constexpr int ap_data_bits(T) {
-  return 0;
-}
-template <int width>
-inline constexpr int ap_data_bits(const ap_int<width>&&) {
-  return width;
-}
-template <int width>
-inline constexpr int ap_data_bits(const ap_uint<width>&&) {
-  return width;
-}
-}  // namespace internal
-
 template <typename To, typename From>
 inline typename std::enable_if<sizeof(To) == sizeof(From), To>::type  //
 bit_cast(From from) noexcept {
