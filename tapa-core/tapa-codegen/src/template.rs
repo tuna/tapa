@@ -140,14 +140,17 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
                 Direction::Input,
                 task_port.width,
             )),
-            ArgCategory::Istream | ArgCategory::Istreams => {
+            ArgCategory::Istream
+            | ArgCategory::Istreams
+            | ArgCategory::Ostream
+            | ArgCategory::Ostreams => {
+                let add_stream_ports = if task_port.cat.is_input_stream() {
+                    add_istream_ports
+                } else {
+                    add_ostream_ports
+                };
                 for stream in stream_names(&task_port.name, task_port.cat, task_port.chan_count) {
-                    add_istream_ports(&mut ports, &stream, task_port.width);
-                }
-            }
-            ArgCategory::Ostream | ArgCategory::Ostreams => {
-                for stream in stream_names(&task_port.name, task_port.cat, task_port.chan_count) {
-                    add_ostream_ports(&mut ports, &stream, task_port.width);
+                    add_stream_ports(&mut ports, &stream, task_port.width);
                 }
             }
             ArgCategory::AsyncMmap => {
