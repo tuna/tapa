@@ -3,7 +3,7 @@
 use std::fmt;
 
 use crate::builder::{
-    AlwaysBlock, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg, Sensitivity, Statement,
+    AlwaysBlock, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg, Statement,
 };
 use crate::expression::expression_source;
 use crate::port::{Direction, Port, Width};
@@ -210,8 +210,7 @@ impl fmt::Display for ContinuousAssign {
 
 impl fmt::Display for AlwaysBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Sensitivity::Posedge(clk) = &self.sensitivity;
-        writeln!(f, "always @(posedge {clk}) begin")?;
+        writeln!(f, "always @(posedge {}) begin", self.clk)?;
         write_statements(f, &self.body, 1)?;
         writeln!(f, "end")
     }

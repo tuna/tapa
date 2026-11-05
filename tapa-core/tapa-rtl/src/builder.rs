@@ -202,13 +202,6 @@ impl ContinuousAssign {
 
 // ── Procedural blocks ────────────────────────────────────────────────
 
-/// Sensitivity list for always blocks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Sensitivity {
-    /// `always @(posedge clk)`
-    Posedge(String),
-}
-
 /// A statement inside a procedural block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
@@ -244,14 +237,14 @@ impl CaseItem {
 /// `always @(posedge clk) begin ... end`
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlwaysBlock {
-    pub sensitivity: Sensitivity,
+    pub clk: String,
     pub body: Vec<Statement>,
 }
 
 impl AlwaysBlock {
     pub fn posedge(clk: impl Into<String>, body: Vec<Statement>) -> Self {
         Self {
-            sensitivity: Sensitivity::Posedge(clk.into()),
+            clk: clk.into(),
             body,
         }
     }

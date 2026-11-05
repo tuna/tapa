@@ -123,49 +123,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Expr where T: core::cl
 pub unsafe fn tapa_rtl::builder::Expr::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::Expr
 pub fn tapa_rtl::builder::Expr::from(T) -> T
-pub enum tapa_rtl::builder::Sensitivity
-pub tapa_rtl::builder::Sensitivity::Posedge(alloc::string::String)
-impl core::clone::Clone for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::clone(&self) -> tapa_rtl::builder::Sensitivity
-impl core::cmp::Eq for tapa_rtl::builder::Sensitivity
-impl core::cmp::PartialEq for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::eq(&self, &tapa_rtl::builder::Sensitivity) -> bool
-impl core::fmt::Debug for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_rtl::builder::Sensitivity
-impl core::marker::Freeze for tapa_rtl::builder::Sensitivity
-impl core::marker::Send for tapa_rtl::builder::Sensitivity
-impl core::marker::Sync for tapa_rtl::builder::Sensitivity
-impl core::marker::Unpin for tapa_rtl::builder::Sensitivity
-impl core::marker::UnsafeUnpin for tapa_rtl::builder::Sensitivity
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::builder::Sensitivity
-impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::builder::Sensitivity
-impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::builder::Sensitivity where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_rtl::builder::Sensitivity::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::builder::Sensitivity where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_rtl::builder::Sensitivity::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_rtl::builder::Sensitivity where U: core::convert::From<T>
-pub fn tapa_rtl::builder::Sensitivity::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_rtl::builder::Sensitivity where U: core::convert::Into<T>
-pub type tapa_rtl::builder::Sensitivity::Error = core::convert::Infallible
-pub fn tapa_rtl::builder::Sensitivity::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_rtl::builder::Sensitivity where U: core::convert::TryFrom<T>
-pub type tapa_rtl::builder::Sensitivity::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_rtl::builder::Sensitivity::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_rtl::builder::Sensitivity where T: core::clone::Clone
-pub type tapa_rtl::builder::Sensitivity::Owned = T
-pub fn tapa_rtl::builder::Sensitivity::clone_into(&self, &mut T)
-pub fn tapa_rtl::builder::Sensitivity::to_owned(&self) -> T
-impl<T> core::any::Any for tapa_rtl::builder::Sensitivity where T: 'static + ?core::marker::Sized
-pub fn tapa_rtl::builder::Sensitivity::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_rtl::builder::Sensitivity where T: ?core::marker::Sized
-pub fn tapa_rtl::builder::Sensitivity::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_rtl::builder::Sensitivity where T: ?core::marker::Sized
-pub fn tapa_rtl::builder::Sensitivity::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Sensitivity where T: core::clone::Clone
-pub unsafe fn tapa_rtl::builder::Sensitivity::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::from(T) -> T
 pub enum tapa_rtl::builder::Statement
 pub tapa_rtl::builder::Statement::Case
 pub tapa_rtl::builder::Statement::Case::default: alloc::vec::Vec<Self>
@@ -221,7 +178,7 @@ impl<T> core::convert::From<T> for tapa_rtl::builder::Statement
 pub fn tapa_rtl::builder::Statement::from(T) -> T
 pub struct tapa_rtl::builder::AlwaysBlock
 pub tapa_rtl::builder::AlwaysBlock::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
-pub tapa_rtl::builder::AlwaysBlock::sensitivity: tapa_rtl::builder::Sensitivity
+pub tapa_rtl::builder::AlwaysBlock::clk: alloc::string::String
 impl tapa_rtl::builder::AlwaysBlock
 pub fn tapa_rtl::builder::AlwaysBlock::posedge(impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
 impl core::clone::Clone for tapa_rtl::builder::AlwaysBlock
