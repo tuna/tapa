@@ -210,14 +210,19 @@ cargo_test = rule(
     toolchains = use_cc_toolchain(),
 )
 
-def _parse_artifacts(ctx, attr_name):
-    artifacts = []
+def _outputs_by_short_path(ctx):
+    """Every declared output by short path, and by package-relative path."""
     outputs_by_short_path = {}
     package_prefix = ctx.label.package + "/" if ctx.label.package else ""
     for output in ctx.outputs.outs:
         outputs_by_short_path[output.short_path] = output
         if output.short_path.startswith(package_prefix):
             outputs_by_short_path[output.short_path.removeprefix(package_prefix)] = output
+    return outputs_by_short_path
+
+def _parse_artifacts(ctx, attr_name):
+    artifacts = []
+    outputs_by_short_path = _outputs_by_short_path(ctx)
     for spec in getattr(ctx.attr, attr_name):
         parts = spec.split(":", 1)
         if len(parts) != 2:
@@ -277,13 +282,8 @@ exec "${{EXECROOT}}/{host_rustc}" "$@"
             artifact = artifact,
             output = sh_quote(output.path),
         )
+    outputs_by_short_path = _outputs_by_short_path(ctx)
     for output_path in ctx.attr.executable_outputs:
-        package_prefix = ctx.label.package + "/" if ctx.label.package else ""
-        outputs_by_short_path = {}
-        for out in outputs:
-            outputs_by_short_path[out.short_path] = out
-            if out.short_path.startswith(package_prefix):
-                outputs_by_short_path[out.short_path.removeprefix(package_prefix)] = out
         output = outputs_by_short_path.get(output_path)
         if output == None:
             fail("executable_outputs references undeclared output {}".format(output_path))
