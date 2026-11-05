@@ -17,6 +17,7 @@
 
 #include "gtest/gtest.h"
 
+#include "test_util.h"
 #include "tree_pipeline.h"
 
 namespace tapa::cc {
@@ -24,17 +25,10 @@ namespace {
 
 // ── Test scaffolding ──────────────────────────────────────────────────────
 
-// One writable directory per test, under the gtest temp root.
-std::string TempRoot(const std::string& name) {
-  return testing::TempDir() + "/macro_rewrite_" + name;
-}
-
+using test_support::Contains;
+using test_support::TempRoot;
 using test_support::TreePipelineRun;
 using test_support::VirtualTu;
-
-bool Contains(const std::string& haystack, const std::string& needle) {
-  return haystack.find(needle) != std::string::npos;
-}
 
 // ── Fixtures ──────────────────────────────────────────────────────────────
 
@@ -93,8 +87,8 @@ void LoopTask(tapa::istream<float>& q, tapa::mmap<float> c,
 }
 )tapa";
   const TreePipelineRun run = test_support::RunTreePipeline(
-      {VirtualTu{"/proj/src/loop.cpp", code}}, "LoopTop", TempRoot("loop"),
-      {"-std=c++17"});
+      {VirtualTu{"/proj/src/loop.cpp", code}}, "LoopTop",
+      TempRoot("macro_rewrite", "loop"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   ASSERT_EQ(run.files.size(), 1u) << "one TU, no includes";
   const std::string& file = run.files.at("loop.cpp");
@@ -130,9 +124,9 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
   tapa::task().invoke(Prod, q, n).invoke(MacroTask, q, c, n);
 }
 )tapa";
-  const TreePipelineRun run =
-      test_support::RunTreePipeline({VirtualTu{"/proj/src/body.cpp", code}},
-                                    "Top", TempRoot("body"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/body.cpp", code}}, "Top",
+      TempRoot("macro_rewrite", "body"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   const std::string& file = run.files.at("body.cpp");
   // The guard opens in user source (before the signature, its own #line
@@ -179,8 +173,8 @@ void AttrTop(tapa::mmap<const float> a, tapa::mmap<float> c,
 }
 )tapa";
   const TreePipelineRun run = test_support::RunTreePipeline(
-      {VirtualTu{"/proj/src/attr.cpp", code}}, "AttrTop", TempRoot("attr"),
-      {"-std=c++17"});
+      {VirtualTu{"/proj/src/attr.cpp", code}}, "AttrTop",
+      TempRoot("macro_rewrite", "attr"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   const std::string& file = run.files.at("attr.cpp");
   // The brackets went with the attribute (an empty `[[]]` would not
@@ -227,9 +221,9 @@ void DefTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   tapa::task().invoke(Prod, q, n).invoke(MacroTask, q, c);
 }
 )tapa";
-  const TreePipelineRun run =
-      test_support::RunTreePipeline({VirtualTu{"/proj/src/def.cpp", code}},
-                                    "DefTop", TempRoot("def"), {"-std=c++17"});
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/def.cpp", code}}, "DefTop",
+      TempRoot("macro_rewrite", "def"), {"-std=c++17"});
   // One diagnostic: the macro-defined task. The helper referencing it is
   // not itself an error, and no tree is materialized from a failed run.
   ASSERT_EQ(run.diags.size(), 1u)
@@ -255,7 +249,7 @@ void InvokeTop(tapa::mmap<const float> a, tapa::mmap<float> c,
 )tapa";
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/invoke.cpp", code}}, "InvokeTop",
-      TempRoot("invoke"), {"-std=c++17"});
+      TempRoot("macro_rewrite", "invoke"), {"-std=c++17"});
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   ASSERT_EQ(run.files.size(), 1u);
   // The graph carries the edge through the macro (the tapa.json payload).
@@ -289,8 +283,8 @@ void MidTop(tapa::mmap<const float> a, tapa::mmap<float> c,
 }
 )tapa";
   const TreePipelineRun run = test_support::RunTreePipeline(
-      {VirtualTu{"/proj/src/overlap.cpp", code}}, "MidTop", TempRoot("overlap"),
-      {"-std=c++17"});
+      {VirtualTu{"/proj/src/overlap.cpp", code}}, "MidTop",
+      TempRoot("macro_rewrite", "overlap"), {"-std=c++17"});
   ASSERT_FALSE(run.diags.empty());
   const std::string& error = run.diags.front();
   // The error carries the construct, the reason, and the user-source
@@ -324,7 +318,8 @@ TEST(MacroRewrite, SharedHeaderSplicesIdenticallyAcrossTus) {
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/a.cpp", SharedHeaderTu("A")},
        VirtualTu{"/proj/src/sub/b.cpp", SharedHeaderTu("B")}},
-      "A", TempRoot("shared_ok"), {"-std=c++17", "-I/proj/src"}, files);
+      "A", TempRoot("macro_rewrite", "shared_ok"),
+      {"-std=c++17", "-I/proj/src"}, files);
   ASSERT_TRUE(run.diags.empty()) << run.diags.front();
   // One header in the tree, spliced identically by both TUs: the attribute
   // is gone (brackets swallowed), the expansion baked LIMIT at its default.
@@ -345,7 +340,8 @@ TEST(MacroRewrite, DivergentSharedHeaderSpliceIsAHardError) {
        VirtualTu{"/proj/src/sub/b.cpp",
                  SharedHeaderTu("B"),
                  {"-std=c++17", "-I/proj/src", "-DLIMIT=16"}}},
-      "A", TempRoot("shared_diverge"), {"-std=c++17", "-I/proj/src"}, files);
+      "A", TempRoot("macro_rewrite", "shared_diverge"),
+      {"-std=c++17", "-I/proj/src"}, files);
   ASSERT_FALSE(run.diags.empty());
   const std::string& error = run.diags.front();
   EXPECT_TRUE(Contains(error, "'/proj/src/shared.h'")) << error;

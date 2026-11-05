@@ -240,6 +240,17 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "test_util",
+    testonly = True,
+    hdrs = ["test_util.h"],
+    includes = [".."],
+    deps = [
+        "@googletest//:gtest",
+        "@tapa-llvm-project//llvm:Support",
+    ],
+)
+
 # The full tapacc pipeline over virtual TUs (index pass, merge, rewrite
 # pass with token recording, tree materialization), shared by the tests that
 # assert on the production shape.
@@ -269,6 +280,7 @@ cc_test(
     includes = [".."],
     deps = [
         ":test_fs",
+        ":test_util",
         ":tree_writer",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -298,6 +310,7 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":test_util",
         ":tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
@@ -323,6 +336,7 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":test_util",
         ":tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

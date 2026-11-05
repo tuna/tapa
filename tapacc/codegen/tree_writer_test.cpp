@@ -24,6 +24,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include "test_fs.h"
+#include "test_util.h"
 
 namespace tapa::cc {
 namespace {
@@ -31,17 +32,7 @@ namespace {
 using clang::tooling::FileContentMappings;
 using test_support::ReadFile;
 using test_support::ReadTree;
-
-// ── Test scaffolding ──────────────────────────────────────────────────────
-
-// A fresh writable directory per test.
-std::string TempRoot(const std::string& name) {
-  const std::string root = testing::TempDir() + "/tree_writer_" + name;
-  llvm::sys::fs::remove_directories(root);
-  // Both calls report success as a null error code.
-  EXPECT_FALSE(llvm::sys::fs::create_directories(root));
-  return root;
-}
+using test_support::TempRoot;
 
 // Parses one virtual TU (code mapped at `main_file`, extra virtual files,
 // extra args) with the include recorder attached, and absorbs the log into
@@ -207,7 +198,7 @@ TEST(TreeLayout, KeyCollisionIsAHardError) {
 // ── Recording + rewriting ─────────────────────────────────────────────────
 
 TEST(IncludeRecorder, RecordsResolutionKindAndSpelling) {
-  const RunResult run = RunComposition(TempRoot("records"));
+  const RunResult run = RunComposition(TempRoot("tree_writer", "records"));
   ASSERT_TRUE(run.ok) << run.error;
   ASSERT_EQ(run.log.size(), 3u);
 
@@ -232,7 +223,7 @@ TEST(IncludeRecorder, RecordsResolutionKindAndSpelling) {
 }
 
 TEST(TreeWriter, MirrorsTheTreeAndRewritesOnlyMovedIncludes) {
-  const std::string root = TempRoot("mirror");
+  const std::string root = TempRoot("tree_writer", "mirror");
   ASSERT_TRUE(RunComposition(root).ok);
 
   const std::map<std::string, std::string> files = ReadTree(root);
@@ -541,7 +532,7 @@ TEST(TreeFileBuffer, UneditedBuffersRenderByteIdentical) {
 // ── (e) same-content skip ─────────────────────────────────────────────────
 
 TEST(TreeWriter, UnchangedBytesAreNotRewritten) {
-  const std::string root = TempRoot("skip");
+  const std::string root = TempRoot("tree_writer", "skip");
   ASSERT_TRUE(RunComposition(root).ok);
 
   // Make every written file read-only: a skipped file is never opened for
@@ -575,7 +566,7 @@ TEST(TreeWriter, UnchangedBytesAreNotRewritten) {
 // A reused out_root prunes only files owned by TAPA's earlier mirror. An
 // arbitrary existing directory and files added outside TAPA stay intact.
 TEST(TreeWriter, OnlyOwnedStaleFilesArePruned) {
-  const std::string root = TempRoot("prune");
+  const std::string root = TempRoot("tree_writer", "prune");
   {
     std::error_code ec;
     llvm::raw_fd_ostream(root + "/user.txt", ec) << "keep me\n";
@@ -610,7 +601,7 @@ TEST(TreeWriter, OnlyOwnedStaleFilesArePruned) {
 }
 
 TEST(TreeWriter, UnownedOutputCollisionIsRejected) {
-  const std::string root = TempRoot("collision");
+  const std::string root = TempRoot("tree_writer", "collision");
   {
     std::error_code ec;
     llvm::raw_fd_ostream(root + "/main.cpp", ec) << "user-owned\n";
@@ -627,8 +618,8 @@ TEST(TreeWriter, UnownedOutputCollisionIsRejected) {
 // ── (f) determinism ───────────────────────────────────────────────────────
 
 TEST(TreeWriter, IdenticalInputsProduceIdenticalTrees) {
-  const std::string root_a = TempRoot("det_a");
-  const std::string root_b = TempRoot("det_b");
+  const std::string root_a = TempRoot("tree_writer", "det_a");
+  const std::string root_b = TempRoot("tree_writer", "det_b");
   ASSERT_TRUE(RunComposition(root_a).ok);
   ASSERT_TRUE(RunComposition(root_b).ok);
   EXPECT_EQ(ReadTree(root_a), ReadTree(root_b));
@@ -729,7 +720,7 @@ TEST(TreeWriter, TwoTusShareTheTreeAndTheirHeaders) {
   // Two TUs under one src root, both including the shared out-of-root
   // header and each their own in-root header. Both TUs' logs feed one
   // writer; the shared headers land once, referenced by both TUs.
-  const std::string root = TempRoot("twotus");
+  const std::string root = TempRoot("tree_writer", "twotus");
   TreeWriter writer(root, {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
   const FileContentMappings files = FileContentMappings{
       {"/w/vendor/move.h", "inline int moved() { return 2; }\n"},
@@ -810,7 +801,7 @@ TEST(TreeWriter, DivergentHeaderRewriteIsAHardError) {
   // one mirror serves every task variant, so that has no single honest
   // rendering and the second TU's absorption fails, naming both TUs.
   const TuComposition c = SharedHeaderComposition();
-  const std::string root = TempRoot("diverge");
+  const std::string root = TempRoot("tree_writer", "diverge");
   TreeWriter writer(root, {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
   std::string error;
   ASSERT_TRUE(AbsorbRenamingTu(&writer, c.tu_a, "/proj/src/a.cpp", c.args,
@@ -828,7 +819,7 @@ TEST(TreeWriter, IdenticalHeaderRewritesMergeSilently) {
   // Same header, same rewrite in both TUs: the first sighting owns the
   // bytes, the second agrees, and the tree carries one edited header.
   const TuComposition c = SharedHeaderComposition();
-  const std::string root = TempRoot("converge");
+  const std::string root = TempRoot("tree_writer", "converge");
   TreeWriter writer(root, {"/proj/src/a.cpp", "/proj/src/sub/b.cpp"});
   std::string error;
   ASSERT_TRUE(AbsorbRenamingTu(&writer, c.tu_a, "/proj/src/a.cpp", c.args,

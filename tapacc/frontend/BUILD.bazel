@@ -12,6 +12,7 @@ cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":vendor_scan",
+        "//tapacc/codegen:test_util",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         CLANG_TOOLING,
@@ -256,6 +257,7 @@ cc_test(
     deps = [
         ":program",
         ":program_builder",
+        "//tapacc/codegen:test_util",
         "//tapacc/codegen:tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",

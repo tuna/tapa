@@ -16,28 +16,23 @@
 
 #include "nlohmann/json.hpp"
 
+#include "codegen/test_util.h"
 #include "codegen/tree_pipeline.h"
 
 namespace tapa::cc {
 namespace {
 
+using test_support::Contains;
+using test_support::TempRoot;
 using test_support::TreePipelineRun;
 using test_support::VirtualTu;
-
-std::string TempRoot(const std::string& name) {
-  return testing::TempDir() + "/merge_" + name;
-}
 
 // A two-TU run over independent files, both indexed before the merge.
 TreePipelineRun RunTwoTus(const std::string& name, const std::string& code_a,
                           const std::string& code_b, const std::string& top) {
   return test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", code_a}, VirtualTu{"/proj/b.cpp", code_b}}, top,
-      TempRoot(name), {"-std=c++17"});
-}
-
-bool Contains(const std::string& haystack, const std::string& needle) {
-  return haystack.find(needle) != std::string::npos;
+      TempRoot("merge", name), {"-std=c++17"});
 }
 
 std::string OneError(const ProgramBuilder& builder) {
@@ -150,7 +145,7 @@ TEST(Merge, HeaderTaskSightedByBothTusMerges) {
   const TreePipelineRun m = test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", kHeaderTop},
        VirtualTu{"/proj/b.cpp", "#include \"shared.h\"\n"}},
-      "Top", TempRoot("header"), {"-std=c++17", "-I/proj"},
+      "Top", TempRoot("merge", "header"), {"-std=c++17", "-I/proj"},
       {{"/proj/shared.h", kHeaderH}});
   EXPECT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
   EXPECT_EQ(m.builder.errors().size(), 0u);
@@ -228,7 +223,7 @@ TreePipelineRun RunConsumerTus(const std::string& name,
                                const std::string& tu_b) {
   return test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", kConsumerTuA}, VirtualTu{"/proj/b.cpp", tu_b}},
-      "Top", TempRoot(name), {"-std=c++17", "-I/proj"},
+      "Top", TempRoot("merge", name), {"-std=c++17", "-I/proj"},
       {{"/proj/shared.h", kConsumerHeader}});
 }
 
@@ -313,7 +308,7 @@ TEST(Merge, InternalLinkageUpperTaskIsAnError) {
           "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
           "  tapa::task().invoke(Pass<float>, x, y);\n"
           "}\n"}},
-      "Top", TempRoot("internal_upper"), {"-std=c++17"});
+      "Top", TempRoot("merge", "internal_upper"), {"-std=c++17"});
   EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'Hidden'"));
@@ -331,7 +326,7 @@ TEST(Merge, InternalLinkageInvokedTaskIsAnError) {
           "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
           "  tapa::task().invoke(SLeaf, x, y);\n"
           "}\n"}},
-      "Top", TempRoot("internal_invoked"), {"-std=c++17"});
+      "Top", TempRoot("merge", "internal_invoked"), {"-std=c++17"});
   EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'SLeaf' invoked by 'Top'"));
@@ -361,7 +356,7 @@ TEST(Merge, HeaderTopSightedBySeveralTusIsOneDefinition) {
   const std::string tu = "#include \"shared.h\"\n";
   const TreePipelineRun m = test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", tu}, VirtualTu{"/proj/b.cpp", tu}}, "Top",
-      TempRoot("headertop"), {"-std=c++17", "-I/proj"},
+      TempRoot("merge", "headertop"), {"-std=c++17", "-I/proj"},
       {{"/proj/shared.h", header}});
   EXPECT_TRUE(m.ok) << (m.diags.empty() ? "" : m.diags.front());
   EXPECT_TRUE(m.builder.errors().empty());
@@ -407,9 +402,9 @@ constexpr char kProgram[] = R"cpp(
 )cpp";
 
 TreePipelineRun BuildSingle() {
-  auto run =
-      test_support::RunTreePipeline({VirtualTu{"/proj/single.cpp", kProgram}},
-                                    "Top", TempRoot("single"), {"-std=c++17"});
+  auto run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/single.cpp", kProgram}}, "Top",
+      TempRoot("merge", "single"), {"-std=c++17"});
   EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
   return run;
 }
@@ -500,7 +495,7 @@ constexpr char kTuB[] = R"cpp(
 TreePipelineRun RunComposition(const std::string& name) {
   return test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", kTuA}, VirtualTu{"/proj/b.cpp", kTuB}}, "Top",
-      TempRoot(name), {"-std=c++17", "-I/proj"},
+      TempRoot("merge", name), {"-std=c++17", "-I/proj"},
       {{"/proj/shared.h", kSharedHeader}});
 }
 
@@ -568,7 +563,7 @@ TEST(TreeMerge, DivergentHeaderRewriteFailsTheRewritePass) {
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/a.cpp", "#define DEPTH 2\n" + top},
        VirtualTu{"/proj/b.cpp", "#define DEPTH 3\n#include \"shared.h\"\n"}},
-      "Top", TempRoot("diverge"), {"-std=c++17", "-I/proj"},
+      "Top", TempRoot("merge", "diverge"), {"-std=c++17", "-I/proj"},
       {{"/proj/shared.h", header}});
   EXPECT_FALSE(run.ok);
   ASSERT_EQ(run.diags.size(), 1u) << "the divergence must fail the rewrite";

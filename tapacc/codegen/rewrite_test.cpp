@@ -13,18 +13,16 @@
 
 #include "llvm/ADT/StringRef.h"
 
+#include "test_util.h"
 #include "tree_pipeline.h"
 
 namespace tapa::cc {
 namespace {
 
+using test_support::Contains;
+using test_support::TempRoot;
 using test_support::TreePipelineRun;
 using test_support::VirtualTu;
-
-// The out root of the run under test: one per test, under the gtest tmp.
-std::string TempRoot(const std::string& name) {
-  return testing::TempDir() + "/rewrite_" + name;
-}
 
 constexpr char kVadd[] = R"cpp(
   void Mmap2Stream(tapa::mmap<const float> mem, unsigned long long n,
@@ -68,18 +66,14 @@ constexpr char kVadd[] = R"cpp(
 std::string Rewrite(const std::string& name, const std::string& code,
                     const std::string& top) {
   const TreePipelineRun run = test_support::RunTreePipeline(
-      {VirtualTu{"/proj/src/" + name + ".cpp", code}}, top, TempRoot(name),
-      {"-std=c++17"});
+      {VirtualTu{"/proj/src/" + name + ".cpp", code}}, top,
+      TempRoot("rewrite", name), {"-std=c++17"});
   EXPECT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
   EXPECT_EQ(run.files.size(), 1u) << "one TU, no includes";
   return run.files.at(name + ".cpp");
 }
 
 std::string RewriteVadd() { return Rewrite("vadd", kVadd, "VecAdd"); }
-
-bool Contains(const std::string& haystack, const std::string& needle) {
-  return haystack.find(needle) != std::string::npos;
-}
 
 TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
   const TreePipelineRun run = test_support::RunTreePipeline(
@@ -95,7 +89,7 @@ TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
                      tapa::task().invoke(Copy, in, out, narrow);
                    }
                  )cpp"}},
-      "Top", TempRoot("stream"), {"-std=c++17"},
+      "Top", TempRoot("rewrite", "stream"), {"-std=c++17"},
       {{"/proj/src/stream.h", R"cpp(
           namespace tapa {
           template <int W>
@@ -314,7 +308,7 @@ TEST(Rewrite, OutOfRangePositionalIntIsRejected) {
                    }
                    void Top(tapa::ostream<float>& out) { tapa::task().invoke(Task, out); }
                  )cpp"}},
-      "Top", TempRoot("oor"), {"-std=c++17"});
+      "Top", TempRoot("rewrite", "oor"), {"-std=c++17"});
   EXPECT_FALSE(run.ok);
   EXPECT_FALSE(run.diags.empty()) << "a factor below -1 must be diagnosed";
 }
@@ -329,7 +323,7 @@ TEST(Rewrite, PipelineOnDeclarationIsRejected) {
                    void Task(tapa::ostream<float>& out) { out.write(1.f); }
                    void Top(tapa::ostream<float>& out) { tapa::task().invoke(Task, out); }
                  )cpp"}},
-      "Top", TempRoot("pipedecl"), {"-std=c++17"});
+      "Top", TempRoot("rewrite", "pipedecl"), {"-std=c++17"});
   EXPECT_FALSE(run.ok);
   ASSERT_EQ(run.diags.size(), 1u) << run.json;
   EXPECT_TRUE(Contains(run.diags.front(), "on a function declaration"))
@@ -422,7 +416,7 @@ constexpr char kLeakedAttr[] = R"cpp(
 TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/leak.cpp", kLeakedAttr}}, "LeakTop",
-      TempRoot("leak"), {"-std=c++17"});
+      TempRoot("rewrite", "leak"), {"-std=c++17"});
   EXPECT_FALSE(run.ok);
   ASSERT_EQ(run.diags.size(), 1u);
   EXPECT_TRUE(Contains(run.diags.front(), "[[tapa::partition]]"))
@@ -493,7 +487,7 @@ TEST(Rewrite, VitisDeclarationOnlyTuClosesExternCAtSemicolon) {
        VirtualTu{"/proj/src/blank.cpp",
                  "void Top(tapa::mmap<const float> mem);\n\n"
                  "int Next();\n"}},
-      "Top", TempRoot("decl_only_extern_c"), {"-std=c++17"});
+      "Top", TempRoot("rewrite", "decl_only_extern_c"), {"-std=c++17"});
   ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
   const auto suffix = [](const std::string& code) {
     const size_t begin = code.find("extern \"C\" {");

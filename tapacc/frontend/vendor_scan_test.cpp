@@ -13,6 +13,8 @@
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/Tooling.h"
 
+#include "codegen/test_util.h"
+
 namespace tapa::cc {
 namespace {
 
@@ -54,9 +56,7 @@ class ScanAction : public clang::ASTFrontendAction {
   CapturingDiags* consumer_;
 };
 
-bool Contains(const std::string& haystack, const std::string& needle) {
-  return haystack.find(needle) != std::string::npos;
-}
+using test_support::Contains;
 
 std::vector<std::string> RunScan(
     const std::string& code,
