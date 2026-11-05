@@ -60,7 +60,7 @@ void DataSinkNonBlocking(tapa::istream<float>& data_in_q,
     }
   }
 
-  // Since `tapa::hls_simulate:task()` schedules tasks sequentially, we should
+  // The source and sink run sequentially in this direct test, so we should
   // only be able to read `kDepth` elements.
   EXPECT_EQ(read_count, kDepth);
 
