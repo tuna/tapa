@@ -74,15 +74,17 @@ pub(super) fn top_module_contents<'a>(
     verilog_contents: &'a [String],
     top_name: &str,
 ) -> &'a [String] {
-    let module_decl = regex_lite::Regex::new(
-        r"(?ms)^\s*(?:\(\*.*?\*\)\s*)*module\s+(\\[^\s]+|[^\s(#;]+)(?:\s|[#(;])",
-    )
-    .unwrap();
+    static MODULE_DECL: std::sync::LazyLock<regex_lite::Regex> = std::sync::LazyLock::new(|| {
+        regex_lite::Regex::new(
+            r"(?ms)^\s*(?:\(\*.*?\*\)\s*)*module\s+(\\[^\s]+|[^\s(#;]+)(?:\s|[#(;])",
+        )
+        .unwrap()
+    });
     verilog_contents
         .iter()
         .find(|text| {
             let code = crate::tb::verilog_code(text);
-            module_decl
+            MODULE_DECL
                 .captures_iter(&code)
                 .any(|decl| decl[1].strip_prefix('\\').unwrap_or(&decl[1]) == top_name)
         })

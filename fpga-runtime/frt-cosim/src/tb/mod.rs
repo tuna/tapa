@@ -100,7 +100,8 @@ pub(crate) fn direct_offset_port_name(verilog_contents: &[String], name: &str) -
 ///
 /// This is the one declaration probe for the testbenches.
 pub(crate) fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize> {
-    let width_re = regex_lite::Regex::new(r"\[\s*(\d+)\s*:\s*0\s*\]").unwrap();
+    static WIDTH_RE: std::sync::LazyLock<regex_lite::Regex> =
+        std::sync::LazyLock::new(|| regex_lite::Regex::new(r"\[\s*(\d+)\s*:\s*0\s*\]").unwrap());
     let is_word = |c: char| c.is_alphanumeric() || c == '_';
     for text in verilog_contents {
         let code = verilog_code(text);
@@ -136,7 +137,7 @@ pub(crate) fn port_declaration(verilog_contents: &[String], port: &str) -> Optio
                 let Some(seg_start) = dir else {
                     continue;
                 };
-                let width = width_re
+                let width = WIDTH_RE
                     .captures_iter(&head[seg_start..])
                     .last()
                     .and_then(|c| c[1].parse::<usize>().ok())
