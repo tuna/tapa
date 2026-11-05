@@ -219,9 +219,9 @@ def _xilinx_wrapper_impl(ctx):
     gcc_candidates = [
         d + "/tps/lnx64/gcc-9.3.0"
         for d in xilinx_tool_dir_candidates(
-            ctx.attr.tool_path,
+            XILINX_TOOL_PATH,
             "Vivado",
-            ctx.attr.tool_version,
+            XILINX_TOOL_VERSION,
         )
     ]
     lines.append('    _tapa_gcc_dir=""')
