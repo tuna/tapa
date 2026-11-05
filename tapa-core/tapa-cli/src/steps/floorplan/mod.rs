@@ -438,7 +438,12 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let interfaces = rtl_state
         .direct_mmap_interfaces(&projection.flat.top)
         .map_err(|error| CliError::Floorplan(error.to_string()))?;
-    let connectivity = if state.flow.platform.as_deref() == Some("slash_v80_service") {
+    let connectivity = if state
+        .flow
+        .platform
+        .as_deref()
+        .is_some_and(|p| tapa_xilinx::find_slash_platform(p).is_some())
+    {
         args.connectivity
             .as_ref()
             .map(|path| {
