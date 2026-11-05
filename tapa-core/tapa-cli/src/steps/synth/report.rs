@@ -178,11 +178,11 @@ pub fn write_top_report(
 /// `tapa aiesim --cycle-accurate` run.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 pub struct AiesimStreamTiming {
-    beats: usize,
-    first_beat_ns: f64,
-    last_beat_ns: f64,
+    pub(crate) beats: usize,
+    pub(crate) first_beat_ns: f64,
+    pub(crate) last_beat_ns: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    mean_beat_spacing_ns: Option<f64>,
+    pub(crate) mean_beat_spacing_ns: Option<f64>,
 }
 
 impl AiesimStreamTiming {

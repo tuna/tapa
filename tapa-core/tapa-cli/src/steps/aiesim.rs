@@ -120,17 +120,15 @@ fn compare_output(
     }
 
     let mut line = format!("{fifo}: {} of {} words", produced.len(), expected.len());
-    if let (Some(first), Some(last)) = (trace.beat_times_ns.first(), trace.beat_times_ns.last()) {
-        let gaps = u32::try_from(trace.beat_times_ns.len() - 1).unwrap_or(u32::MAX);
-        let spacing = if gaps > 0 {
-            (last - first) / f64::from(gaps)
-        } else {
-            0.0
-        };
+    if let Some(timing) = AiesimStreamTiming::from_beat_times(&trace.beat_times_ns) {
         let _ = write!(
             line,
-            ", beats at {first:.1}..{last:.1} ns ({spacing:.2} ns apart)"
+            ", beats at {:.1}..{:.1} ns",
+            timing.first_beat_ns, timing.last_beat_ns
         );
+        if let Some(spacing) = timing.mean_beat_spacing_ns {
+            let _ = write!(line, " ({spacing:.2} ns apart)");
+        }
     }
     if let Some(index) = mismatch {
         if index < expected.len() && index < produced.len() {
