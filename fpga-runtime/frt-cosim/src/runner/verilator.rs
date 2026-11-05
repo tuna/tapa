@@ -248,7 +248,8 @@ fn num_cpus_str() -> String {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct XilinxFpIpConfig {
-    dpi_func: String,
+    dpi_func: &'static str,
+    is_double: bool,
     latency: usize,
     operands: usize,
 }
@@ -502,7 +503,8 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
     };
 
     Ok(Some(XilinxFpIpConfig {
-        dpi_func: dpi_func.to_owned(),
+        dpi_func,
+        is_double,
         latency,
         operands,
     }))
@@ -581,18 +583,14 @@ fn warn_if_unmodeled_fp_ip(ip_module: &str) {
 }
 
 fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) -> String {
-    let bit_width = if model.dpi_func.contains("64") {
-        64
-    } else {
-        32
-    };
+    let bit_width = if model.is_double { 64 } else { 32 };
     let ret_type = if bit_width == 64 {
         "longint unsigned"
     } else {
         "int unsigned"
     };
     let latency = model.latency;
-    let dpi_func = model.dpi_func.as_str();
+    let dpi_func = model.dpi_func;
     let third_port = if model.operands == 3 {
         format!(
             "    input  wire        s_axis_c_tvalid,\n    input  wire [{data_hi}:0] s_axis_c_tdata,\n",
@@ -976,7 +974,8 @@ set_property -dict [list CONFIG.dividend_and_quotient_width 32 \
     #[test]
     fn generates_behavioral_replacement_for_floating_point_ip() {
         let model = XilinxFpIpConfig {
-            dpi_func: "fp32_mul".into(),
+            dpi_func: "fp32_mul",
+            is_double: false,
             latency: 5,
             operands: 2,
         };
