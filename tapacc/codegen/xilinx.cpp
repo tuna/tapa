@@ -34,10 +34,6 @@ Lvl LvlOf(TaskLevel level, bool is_top, bool is_vitis) {
   return Lvl::kMiddle;
 }
 
-bool IsMmapArray(TapaKind k) {
-  return k == TapaKind::kMmaps || k == TapaKind::kHmap;
-}
-
 // HLS interface pragmas for a stream port's FIFO(s).
 void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
                      CodeSink& out) {

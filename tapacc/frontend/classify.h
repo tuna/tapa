@@ -67,6 +67,10 @@ constexpr bool IsMmapInterface(TapaKind k) {
          k == TapaKind::kOmmap || k == TapaKind::kHmap;
 }
 constexpr bool IsAsyncMmap(TapaKind k) { return k == TapaKind::kAsyncMmap; }
+// mmaps / hmap (the array forms of mmap interfaces).
+constexpr bool IsMmapArray(TapaKind k) {
+  return k == TapaKind::kMmaps || k == TapaKind::kHmap;
+}
 
 // The canonical serialized category ("cat") for a port/arg, e.g. "istream",
 // "mmap", "scalar". Centralized with the enum; the values are the stable
