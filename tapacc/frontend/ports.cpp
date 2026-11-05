@@ -66,7 +66,7 @@ void CheckParamShape(const clang::ASTContext& ctx,
         auto builder = ReportCustomDiag(
             ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
             "%0 parameter '%1' must be passed by reference");
-        builder.AddString(KindSpelling(ClassifyTapaType(param)));
+        builder.AddString(KindSpelling(kind));
         builder.AddString(param->getNameAsString());
       }
       break;
@@ -100,7 +100,7 @@ void CheckParamShape(const clang::ASTContext& ctx,
             ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
             "%0 parameter '%1' must be passed by value "
             "(not by reference)");
-        builder.AddString(KindSpelling(ClassifyTapaType(param)));
+        builder.AddString(KindSpelling(kind));
         builder.AddString(param->getNameAsString());
       }
       break;
