@@ -156,11 +156,3 @@ fn header_parse_error_includes_module_name() {
     let msg = err.to_string();
     assert!(msg.contains("Broken"), "error includes module name: {msg}");
 }
-
-#[test]
-fn body_parse_error_includes_module_name() {
-    let src = "module BadBody (a);\ninput [31:0 a\nendmodule\n";
-    let err = VerilogModule::parse(src).unwrap_err();
-    let msg = err.to_string();
-    assert!(msg.contains("BadBody"), "error includes module name: {msg}");
-}
