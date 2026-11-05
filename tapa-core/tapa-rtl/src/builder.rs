@@ -8,8 +8,6 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::error::BuilderError;
-
 // ── Expressions ──────────────────────────────────────────────────────
 
 /// A typed expression for code generation (richer than token-level).
@@ -43,24 +41,16 @@ pub enum Expr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BinOperator {
     Eq,
-    Ne,
     Plus,
     And,
-    Or,
-    BitAnd,
-    BitOr,
 }
 
 impl fmt::Display for BinOperator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = match self {
             Self::Eq => "==",
-            Self::Ne => "!=",
             Self::Plus => "+",
             Self::And => "&&",
-            Self::Or => "||",
-            Self::BitAnd => "&",
-            Self::BitOr => "|",
         };
         f.write_str(s)
     }
@@ -85,7 +75,7 @@ impl Expr {
         Self::Lit(format!("{width}'d{val}"))
     }
 
-    pub fn bin_op(lhs: Self, op: BinOperator, rhs: Self) -> Self {
+    fn bin_op(lhs: Self, op: BinOperator, rhs: Self) -> Self {
         Self::BinOp {
             lhs: Box::new(lhs),
             op,
@@ -184,24 +174,6 @@ impl ModuleInstance {
         }
     }
 
-    /// Validated constructor that rejects empty names.
-    pub fn try_new(
-        module_name: impl Into<String>,
-        instance_name: impl Into<String>,
-    ) -> Result<Self, BuilderError> {
-        let module_name = module_name.into();
-        let instance_name = instance_name.into();
-        if module_name.is_empty() || instance_name.is_empty() {
-            return Err(BuilderError::EmptyName);
-        }
-        Ok(Self {
-            module_name,
-            instance_name,
-            params: Vec::new(),
-            ports: Vec::new(),
-        })
-    }
-
     #[must_use]
     pub fn with_params(mut self, params: Vec<ParamArg>) -> Self {
         self.params = params;
@@ -212,20 +184,6 @@ impl ModuleInstance {
     pub fn with_ports(mut self, ports: Vec<PortArg>) -> Self {
         self.ports = ports;
         self
-    }
-
-    /// Validate that the instance has at least one port connection.
-    pub fn validate(&self) -> Result<(), BuilderError> {
-        if self.module_name.is_empty() || self.instance_name.is_empty() {
-            return Err(BuilderError::EmptyName);
-        }
-        if self.ports.is_empty() {
-            return Err(BuilderError::NoPortConnections {
-                module: self.module_name.clone(),
-                instance: self.instance_name.clone(),
-            });
-        }
-        Ok(())
     }
 }
 
@@ -251,8 +209,6 @@ impl ContinuousAssign {
 pub enum Sensitivity {
     /// `always @(posedge clk)`
     Posedge(String),
-    /// `always @(*)` — combinational.
-    Star,
 }
 
 /// A statement inside a procedural block.
@@ -260,8 +216,6 @@ pub enum Sensitivity {
 pub enum Statement {
     /// `lhs <= rhs;`
     NonblockingAssign { lhs: Expr, rhs: Expr },
-    /// `lhs = rhs;`
-    BlockingAssign { lhs: Expr, rhs: Expr },
     /// `if (cond) begin ... end [else begin ... end]`
     If {
         cond: Expr,
@@ -274,8 +228,6 @@ pub enum Statement {
         items: Vec<CaseItem>,
         default: Vec<Self>,
     },
-    /// `begin ... end` block (for grouping).
-    Block(Vec<Self>),
 }
 
 /// A single case item: `value: begin ... end`.
@@ -291,7 +243,7 @@ impl CaseItem {
     }
 }
 
-/// `always @(...) begin ... end`
+/// `always @(posedge clk) begin ... end`
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AlwaysBlock {
     pub sensitivity: Sensitivity,
@@ -299,15 +251,10 @@ pub struct AlwaysBlock {
 }
 
 impl AlwaysBlock {
-    pub fn new(sensitivity: Sensitivity, body: Vec<Statement>) -> Self {
-        Self { sensitivity, body }
-    }
-
     pub fn posedge(clk: impl Into<String>, body: Vec<Statement>) -> Self {
-        Self::new(Sensitivity::Posedge(clk.into()), body)
-    }
-
-    pub fn combinational(body: Vec<Statement>) -> Self {
-        Self::new(Sensitivity::Star, body)
+        Self {
+            sensitivity: Sensitivity::Posedge(clk.into()),
+            body,
+        }
     }
 }

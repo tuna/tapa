@@ -2,11 +2,7 @@ pub mod tapa_rtl
 pub mod tapa_rtl::builder
 pub enum tapa_rtl::builder::BinOperator
 pub tapa_rtl::builder::BinOperator::And
-pub tapa_rtl::builder::BinOperator::BitAnd
-pub tapa_rtl::builder::BinOperator::BitOr
 pub tapa_rtl::builder::BinOperator::Eq
-pub tapa_rtl::builder::BinOperator::Ne
-pub tapa_rtl::builder::BinOperator::Or
 pub tapa_rtl::builder::BinOperator::Plus
 impl core::clone::Clone for tapa_rtl::builder::BinOperator
 pub fn tapa_rtl::builder::BinOperator::clone(&self) -> tapa_rtl::builder::BinOperator
@@ -76,7 +72,6 @@ pub tapa_rtl::builder::Expr::Range::base: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::lsb: alloc::boxed::Box<Self>
 pub tapa_rtl::builder::Expr::Range::msb: alloc::boxed::Box<Self>
 impl tapa_rtl::builder::Expr
-pub fn tapa_rtl::builder::Expr::bin_op(Self, tapa_rtl::builder::BinOperator, Self) -> Self
 pub fn tapa_rtl::builder::Expr::concat(alloc::vec::Vec<Self>) -> Self
 pub fn tapa_rtl::builder::Expr::eq(Self, Self) -> Self
 pub fn tapa_rtl::builder::Expr::ident(impl core::convert::Into<alloc::string::String>) -> Self
@@ -140,7 +135,6 @@ pub fn tapa_rtl::builder::Expr::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Expr where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::builder::Sensitivity
 pub tapa_rtl::builder::Sensitivity::Posedge(alloc::string::String)
-pub tapa_rtl::builder::Sensitivity::Star
 impl core::clone::Clone for tapa_rtl::builder::Sensitivity
 pub fn tapa_rtl::builder::Sensitivity::clone(&self) -> tapa_rtl::builder::Sensitivity
 impl core::cmp::Eq for tapa_rtl::builder::Sensitivity
@@ -188,10 +182,6 @@ impl<T> core::convert::From<T> for tapa_rtl::builder::Sensitivity
 pub fn tapa_rtl::builder::Sensitivity::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Sensitivity where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::builder::Statement
-pub tapa_rtl::builder::Statement::Block(alloc::vec::Vec<Self>)
-pub tapa_rtl::builder::Statement::BlockingAssign
-pub tapa_rtl::builder::Statement::BlockingAssign::lhs: tapa_rtl::builder::Expr
-pub tapa_rtl::builder::Statement::BlockingAssign::rhs: tapa_rtl::builder::Expr
 pub tapa_rtl::builder::Statement::Case
 pub tapa_rtl::builder::Statement::Case::default: alloc::vec::Vec<Self>
 pub tapa_rtl::builder::Statement::Case::expr: tapa_rtl::builder::Expr
@@ -253,8 +243,6 @@ pub struct tapa_rtl::builder::AlwaysBlock
 pub tapa_rtl::builder::AlwaysBlock::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
 pub tapa_rtl::builder::AlwaysBlock::sensitivity: tapa_rtl::builder::Sensitivity
 impl tapa_rtl::builder::AlwaysBlock
-pub fn tapa_rtl::builder::AlwaysBlock::combinational(alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
-pub fn tapa_rtl::builder::AlwaysBlock::new(tapa_rtl::builder::Sensitivity, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
 pub fn tapa_rtl::builder::AlwaysBlock::posedge(impl core::convert::Into<alloc::string::String>, alloc::vec::Vec<tapa_rtl::builder::Statement>) -> Self
 impl core::clone::Clone for tapa_rtl::builder::AlwaysBlock
 pub fn tapa_rtl::builder::AlwaysBlock::clone(&self) -> tapa_rtl::builder::AlwaysBlock
@@ -419,8 +407,6 @@ pub tapa_rtl::builder::ModuleInstance::params: alloc::vec::Vec<tapa_rtl::builder
 pub tapa_rtl::builder::ModuleInstance::ports: alloc::vec::Vec<tapa_rtl::builder::PortArg>
 impl tapa_rtl::builder::ModuleInstance
 pub fn tapa_rtl::builder::ModuleInstance::new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> Self
-pub fn tapa_rtl::builder::ModuleInstance::try_new(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> core::result::Result<Self, tapa_rtl::BuilderError>
-pub fn tapa_rtl::builder::ModuleInstance::validate(&self) -> core::result::Result<(), tapa_rtl::BuilderError>
 pub fn tapa_rtl::builder::ModuleInstance::with_params(self, alloc::vec::Vec<tapa_rtl::builder::ParamArg>) -> Self
 pub fn tapa_rtl::builder::ModuleInstance::with_ports(self, alloc::vec::Vec<tapa_rtl::builder::PortArg>) -> Self
 impl core::clone::Clone for tapa_rtl::builder::ModuleInstance
@@ -1185,9 +1171,6 @@ pub enum tapa_rtl::BuilderError
 pub tapa_rtl::BuilderError::DuplicatePort(alloc::string::String)
 pub tapa_rtl::BuilderError::DuplicateSignal(alloc::string::String)
 pub tapa_rtl::BuilderError::EmptyName
-pub tapa_rtl::BuilderError::NoPortConnections
-pub tapa_rtl::BuilderError::NoPortConnections::instance: alloc::string::String
-pub tapa_rtl::BuilderError::NoPortConnections::module: alloc::string::String
 impl core::error::Error for tapa_rtl::BuilderError
 impl core::fmt::Debug for tapa_rtl::BuilderError
 pub fn tapa_rtl::BuilderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

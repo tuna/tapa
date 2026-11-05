@@ -21,9 +21,6 @@ pub enum BuilderError {
     #[error("a module, instance, port, or signal name must not be empty")]
     EmptyName,
 
-    #[error("module instance `{instance}` of `{module}` has no port connections")]
-    NoPortConnections { module: String, instance: String },
-
     #[error("duplicate port name: `{0}`")]
     DuplicatePort(String),
 

@@ -2,7 +2,7 @@
 
 use crate::instance_signals::InstanceSignals;
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
-use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Sensitivity, Statement};
+use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 
 // Re-exported from `crate::program` (see its module doc) under the
 // historical `STATE_*` names used below.
@@ -98,8 +98,8 @@ pub fn generate_is_done_assign(sig: &InstanceSignals) -> ContinuousAssign {
 /// Autorun instances latch their start signal when the global `ap_start`
 /// is first asserted and keep it high until reset.
 pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
-    AlwaysBlock::new(
-        Sensitivity::Posedge(HANDSHAKE_CLK.into()),
+    AlwaysBlock::posedge(
+        HANDSHAKE_CLK,
         vec![Statement::If {
             cond: Expr::ident(HANDSHAKE_RST),
             then_body: vec![Statement::NonblockingAssign {

@@ -40,10 +40,6 @@ fn write_statement(f: &mut fmt::Formatter<'_>, stmt: &Statement, indent: usize) 
             write_indent(f, indent)?;
             writeln!(f, "{lhs} <= {rhs};")
         }
-        Statement::BlockingAssign { lhs, rhs } => {
-            write_indent(f, indent)?;
-            writeln!(f, "{lhs} = {rhs};")
-        }
         Statement::If {
             cond,
             then_body,
@@ -83,13 +79,6 @@ fn write_statement(f: &mut fmt::Formatter<'_>, stmt: &Statement, indent: usize) 
             }
             write_indent(f, indent)?;
             writeln!(f, "endcase")
-        }
-        Statement::Block(stmts) => {
-            write_indent(f, indent)?;
-            writeln!(f, "begin")?;
-            write_statements(f, stmts, indent + 1)?;
-            write_indent(f, indent)?;
-            writeln!(f, "end")
         }
     }
 }
@@ -221,10 +210,8 @@ impl fmt::Display for ContinuousAssign {
 
 impl fmt::Display for AlwaysBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.sensitivity {
-            Sensitivity::Posedge(clk) => writeln!(f, "always @(posedge {clk}) begin")?,
-            Sensitivity::Star => writeln!(f, "always @(*) begin")?,
-        }
+        let Sensitivity::Posedge(clk) = &self.sensitivity;
+        writeln!(f, "always @(posedge {clk}) begin")?;
         write_statements(f, &self.body, 1)?;
         writeln!(f, "end")
     }
@@ -373,25 +360,6 @@ mod tests {
     }
 
     #[test]
-    fn always_combinational_with_if() {
-        let block = AlwaysBlock::combinational(vec![Statement::If {
-            cond: Expr::ident("sel"),
-            then_body: vec![Statement::BlockingAssign {
-                lhs: Expr::ident("out"),
-                rhs: Expr::ident("a"),
-            }],
-            else_body: vec![Statement::BlockingAssign {
-                lhs: Expr::ident("out"),
-                rhs: Expr::ident("b"),
-            }],
-        }]);
-        let text = block.to_string();
-        assert!(text.contains("always @(*) begin"), "got: {text}");
-        assert!(text.contains("if (sel) begin"), "got: {text}");
-        assert!(text.contains("end else begin"), "got: {text}");
-    }
-
-    #[test]
     fn case_statement() {
         let block = AlwaysBlock::posedge(
             "clk",
@@ -424,30 +392,5 @@ mod tests {
         assert!(text.contains("2'd0: begin"), "got: {text}");
         assert!(text.contains("default: begin"), "got: {text}");
         assert!(text.contains("endcase"), "got: {text}");
-    }
-
-    // ── Validation tests (negative paths) ────────────────────────────
-
-    #[test]
-    fn try_new_rejects_empty_module_name() {
-        ModuleInstance::try_new("", "inst").unwrap_err();
-    }
-
-    #[test]
-    fn try_new_rejects_empty_instance_name() {
-        ModuleInstance::try_new("mod", "").unwrap_err();
-    }
-
-    #[test]
-    fn validate_rejects_zero_port_instance() {
-        let inst = ModuleInstance::new("mod", "inst");
-        inst.validate().unwrap_err();
-    }
-
-    #[test]
-    fn validate_accepts_instance_with_ports() {
-        let inst = ModuleInstance::new("mod", "inst")
-            .with_ports(vec![PortArg::new("clk", Expr::ident("ap_clk"))]);
-        inst.validate().unwrap();
     }
 }
