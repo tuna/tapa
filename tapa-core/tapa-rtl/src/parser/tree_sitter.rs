@@ -227,8 +227,7 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
                 if c.kind() == "param_assignment" {
                     let mut name = None;
                     let mut default_str = None;
-                    for k in 0..c.child_count() {
-                        let d = c.child(k).unwrap();
+                    for d in children_of(c) {
                         match d.kind() {
                             "simple_identifier" => name = Some(text_of(d, src).to_owned()),
                             "constant_param_expression"
@@ -360,8 +359,7 @@ fn declarator_names(node: Node, src: &[u8]) -> Vec<String> {
             }
             // The declared name is the first identifier child; later
             // identifiers belong to unpacked dimensions or initializers.
-            for k in 0..assignment.child_count() {
-                let child = assignment.child(k).unwrap();
+            for child in children_of(assignment) {
                 if matches!(child.kind(), "simple_identifier" | "escaped_identifier") {
                     names.push(text_of(child, src).to_owned());
                     break;
@@ -578,8 +576,7 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
         if child.kind() == "list_of_ports" {
             for c in children_of(child) {
                 if c.kind() == "port" {
-                    for k in 0..c.child_count() {
-                        let d = c.child(k).unwrap();
+                    for d in children_of(c) {
                         if d.kind() == "simple_identifier" || d.kind() == "escaped_identifier" {
                             port_names.push(text_of(d, src).to_owned());
                         }
