@@ -46,17 +46,17 @@ pub fn cpp_identifier(name: &str) -> String {
     out
 }
 
-pub fn infer_peek_name(stream_name: &str) -> Option<String> {
+pub fn infer_peek_name(stream_name: &str) -> String {
     if let Some(base) = stream_name.strip_suffix("_s") {
-        return Some(format!("{base}_peek"));
+        return format!("{base}_peek");
     }
     let mut iter = stream_name.rsplitn(2, '_');
     if let (Some(suffix), Some(base)) = (iter.next(), iter.next()) {
         if suffix.chars().all(|c| c.is_ascii_digit()) {
-            return Some(format!("{base}_peek_{suffix}"));
+            return format!("{base}_peek_{suffix}");
         }
     }
-    Some(format!("{stream_name}_peek"))
+    format!("{stream_name}_peek")
 }
 
 pub fn stream_peek_ports_exist(
@@ -128,17 +128,14 @@ mod tests {
 
     #[test]
     fn infer_peek_name_handles_plain_stream_names() {
-        assert_eq!(infer_peek_name("i_next").as_deref(), Some("i_next_peek"));
-        assert_eq!(infer_peek_name("a").as_deref(), Some("a_peek"));
+        assert_eq!(infer_peek_name("i_next"), "i_next_peek");
+        assert_eq!(infer_peek_name("a"), "a_peek");
     }
 
     #[test]
     fn infer_peek_name_preserves_special_suffix_forms() {
-        assert_eq!(infer_peek_name("stream_s").as_deref(), Some("stream_peek"));
-        assert_eq!(
-            infer_peek_name("stream_3").as_deref(),
-            Some("stream_peek_3")
-        );
+        assert_eq!(infer_peek_name("stream_s"), "stream_peek");
+        assert_eq!(infer_peek_name("stream_3"), "stream_peek_3");
     }
 
     #[test]

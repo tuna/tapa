@@ -1,4 +1,4 @@
-pub mod names;
+pub(crate) mod names;
 pub mod verilator;
 pub mod xsim;
 
@@ -7,14 +7,14 @@ use std::collections::HashMap;
 use crate::error::{CosimError, Result};
 use crate::metadata::{normalized_scalar_bytes, ArgKind, ArgSpec, KernelSpec, Mode};
 
-pub struct ScalarWord {
+pub(crate) struct ScalarWord {
     pub reg_offset: u32,
     pub value_u32: u32,
 }
 
 /// Look up an arg name in the scalar register map without case sensitivity.
 /// Falls back to `"{name}_offset"` if the direct spelling is not found.
-pub fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u32> {
+pub(crate) fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u32> {
     let lookup = |key: &str| {
         spec.scalar_register_map.get(key).copied().or_else(|| {
             spec.scalar_register_map
@@ -47,7 +47,7 @@ fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
 }
 
 /// Read all Verilog file contents for peek-port detection and similar scans.
-pub fn read_verilog_contents(spec: &KernelSpec) -> Vec<String> {
+pub(crate) fn read_verilog_contents(spec: &KernelSpec) -> Vec<String> {
     spec.verilog_files
         .iter()
         .filter_map(|f| std::fs::read_to_string(f).ok())
@@ -77,7 +77,7 @@ pub(super) fn verilog_code(text: &str) -> std::borrow::Cow<'_, str> {
 /// `<name>_r`. Prefer the conventional spelling and fall back to the
 /// 2025 one only when the RTL declares it exclusively, so the
 /// testbench pins whatever port the packaged module actually has.
-pub fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> String {
+pub(crate) fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> String {
     let conventional = format!("{name}_offset");
     if port_declaration(verilog_contents, &conventional).is_some() {
         return conventional;
@@ -101,7 +101,7 @@ pub fn direct_offset_port_name(verilog_contents: &[String], name: &str) -> Strin
 /// This is the one declaration probe for the testbenches; matching used to
 /// be re-implemented per call site with subtly different rules (single-line
 /// only vs spanning, keyword-anchored or not).
-pub fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize> {
+pub(crate) fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize> {
     let width_re = regex_lite::Regex::new(r"\[\s*(\d+)\s*:\s*0\s*\]").unwrap();
     let is_word = |c: char| c.is_alphanumeric() || c == '_';
     for text in verilog_contents {
@@ -152,14 +152,14 @@ pub fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize
 
 /// The four groups [`classify_args`] sorts a spec's args into:
 /// mmaps, scalars, input streams, output streams.
-pub type ClassifiedArgs = (Vec<MmapArg>, Vec<ScalarArg>, Vec<StreamArg>, Vec<StreamArg>);
+pub(crate) type ClassifiedArgs = (Vec<MmapArg>, Vec<ScalarArg>, Vec<StreamArg>, Vec<StreamArg>);
 
 /// Classify spec args into four groups by applying backend-specific constructors.
 #[allow(
     clippy::implicit_hasher,
     reason = "generic hasher adds no value for internal helper"
 )]
-pub fn classify_args(
+pub(crate) fn classify_args(
     spec: &KernelSpec,
     scalar_values: &HashMap<u32, Vec<u8>>,
     verilog_contents: &[String],
@@ -195,13 +195,9 @@ pub fn classify_args(
             } => {
                 let w = (*width as usize).div_ceil(8);
                 let axis = *protocol == StreamProtocol::Axis;
-                let peek = if spec.mode == Mode::Hls && *dir == StreamDir::In {
-                    infer_peek_name(&arg.name).filter(|cand| {
-                        stream_peek_ports_exist(verilog_contents, &spec.top_name, cand)
-                    })
-                } else {
-                    None
-                };
+                let peek = (spec.mode == Mode::Hls && *dir == StreamDir::In)
+                    .then(|| infer_peek_name(&arg.name))
+                    .filter(|cand| stream_peek_ports_exist(verilog_contents, &spec.top_name, cand));
                 let payload_width_bits = if spec.mode == Mode::Hls && !axis {
                     let top_file = top_module_contents(verilog_contents, &spec.top_name);
                     let suffix = if *dir == StreamDir::In {
@@ -254,7 +250,7 @@ pub fn classify_args(
 /// A backend is fully described by this pair, so adding one is a matter of
 /// supplying it rather than duplicating the argument model below.
 #[derive(Clone, Copy)]
-pub struct Naming {
+pub(crate) struct Naming {
     /// A bare identifier safe to embed in generated variable names.
     pub ident: fn(&str) -> String,
     /// A reference to a port the packaged RTL already declares, in the
@@ -270,7 +266,7 @@ impl Naming {
 }
 
 /// AXI4 signal names for a single mmap port, in one backend's spelling.
-pub struct AxiSignals {
+pub(crate) struct AxiSignals {
     pub araddr: String,
     pub arburst: String,
     pub arcache: String,
@@ -356,7 +352,7 @@ impl AxiSignals {
 }
 
 /// Stream signal names for a single stream port.
-pub struct StreamSignals {
+pub(crate) struct StreamSignals {
     pub empty_n: String,
     pub dout: String,
     pub din: String,
@@ -392,7 +388,7 @@ impl StreamSignals {
 }
 
 /// One mmap argument as both testbench templates see it.
-pub struct MmapArg {
+pub(crate) struct MmapArg {
     /// Raw argument name, as the host runtime knows it.
     pub name: String,
     /// Backend identifier used to name this argument's generated state.
@@ -467,7 +463,7 @@ impl MmapArg {
 }
 
 /// One scalar argument as both testbench templates see it.
-pub struct ScalarArg {
+pub(crate) struct ScalarArg {
     /// Backend spelling of the DUT port carrying this scalar.
     pub port: String,
     /// The value, spelled in the template's own language.
@@ -487,7 +483,7 @@ impl ScalarArg {
 }
 
 /// One stream argument as both testbench templates see it.
-pub struct StreamArg {
+pub(crate) struct StreamArg {
     /// Raw argument name, as the host runtime knows it.
     pub name: String,
     /// Backend identifier used to name this argument's generated state.
@@ -533,7 +529,7 @@ impl StreamArg {
 
 /// Minimum width needed to address every AXI-Lite control register programmed
 /// by a testbench, including the fixed interrupt/control registers through 0x0c.
-pub fn control_addr_width(mmap_args: &[MmapArg], scalar_args: &[ScalarArg]) -> u32 {
+pub(crate) fn control_addr_width(mmap_args: &[MmapArg], scalar_args: &[ScalarArg]) -> u32 {
     let mmap_offsets = mmap_args
         .iter()
         .flat_map(|arg| [arg.reg_offset_lo, arg.reg_offset_hi]);
@@ -548,7 +544,7 @@ pub fn control_addr_width(mmap_args: &[MmapArg], scalar_args: &[ScalarArg]) -> u
     max_offset.bit_width()
 }
 
-pub fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
+pub(crate) fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
     let mut words = Vec::new();
     for (i, chunk) in bytes.chunks(4).enumerate() {
         let mut raw = [0u8; 4];
