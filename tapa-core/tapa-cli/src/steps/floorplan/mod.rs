@@ -423,7 +423,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
 
     let mut state = work_io::load(&ctx.work_dir)?;
     // Completed-synthesis validation lives in `PipelineStep::check`
-    // (steps/chain.rs).
+    // (chain.rs).
     let implementation_target = (args.run_impl || args.dse)
         .then(|| implementation::validate_target(&state, args.vivado_threads))
         .transpose()?;
