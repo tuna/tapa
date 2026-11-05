@@ -553,12 +553,6 @@ pub(crate) fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
             value_u32: u32::from_le_bytes(raw),
         });
     }
-    if words.is_empty() {
-        words.push(ScalarWord {
-            reg_offset: base_offset,
-            value_u32: 0,
-        });
-    }
     words
 }
 
