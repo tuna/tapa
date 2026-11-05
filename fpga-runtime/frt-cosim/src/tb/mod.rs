@@ -7,7 +7,6 @@ use std::collections::HashMap;
 use crate::error::{CosimError, Result};
 use crate::metadata::{normalized_scalar_bytes, ArgKind, ArgSpec, KernelSpec, Mode};
 
-#[derive(Clone)]
 pub struct ScalarWord {
     pub reg_offset: u32,
     pub value_u32: u32,
@@ -271,7 +270,6 @@ impl Naming {
 }
 
 /// AXI4 signal names for a single mmap port, in one backend's spelling.
-#[derive(Clone)]
 pub struct AxiSignals {
     pub araddr: String,
     pub arburst: String,
@@ -358,7 +356,6 @@ impl AxiSignals {
 }
 
 /// Stream signal names for a single stream port.
-#[derive(Clone)]
 pub struct StreamSignals {
     pub empty_n: String,
     pub dout: String,
@@ -395,7 +392,6 @@ impl StreamSignals {
 }
 
 /// One mmap argument as both testbench templates see it.
-#[derive(Clone)]
 pub struct MmapArg {
     /// Raw argument name, as the host runtime knows it.
     pub name: String,
@@ -471,7 +467,6 @@ impl MmapArg {
 }
 
 /// One scalar argument as both testbench templates see it.
-#[derive(Clone)]
 pub struct ScalarArg {
     /// Backend spelling of the DUT port carrying this scalar.
     pub port: String,
@@ -492,7 +487,6 @@ impl ScalarArg {
 }
 
 /// One stream argument as both testbench templates see it.
-#[derive(Clone)]
 pub struct StreamArg {
     /// Raw argument name, as the host runtime knows it.
     pub name: String,
