@@ -23,7 +23,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "test_fs.h"
 #include "test_util.h"
 
 namespace tapa::cc {

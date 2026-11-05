@@ -8,7 +8,7 @@
 #include "builder_action.h"
 #include "diag_capture.h"
 #include "frontend/tapa_stub_decls.h"
-#include "test_fs.h"
+#include "test_util.h"
 #include "tree_writer.h"
 
 namespace tapa::cc::test_support {

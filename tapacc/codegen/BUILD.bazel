@@ -231,16 +231,6 @@ cc_library(
 )
 
 cc_library(
-    name = "test_fs",
-    testonly = True,
-    hdrs = ["test_fs.h"],
-    deps = [
-        "@googletest//:gtest",
-        "@tapa-llvm-project//llvm:Support",
-    ],
-)
-
-cc_library(
     name = "test_util",
     testonly = True,
     hdrs = ["test_util.h"],
@@ -264,7 +254,7 @@ cc_library(
     deps = [
         ":builder_action",
         ":diag_capture",
-        ":test_fs",
+        ":test_util",
         ":tree_writer",
         "//tapacc/frontend:program_builder",
         "//tapacc/frontend:tapa_stub_decls",
@@ -279,7 +269,6 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
-        ":test_fs",
         ":test_util",
         ":tree_writer",
         "@googletest//:gtest",
