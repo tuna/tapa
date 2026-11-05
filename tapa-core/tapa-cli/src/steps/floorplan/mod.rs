@@ -9,13 +9,13 @@
 use std::path::{Path, PathBuf};
 
 use clap::{Parser, ValueEnum};
-use tapa_codegen::rtl_state::DirectMmapInterface;
+use tapa_codegen::rtl_state::{DirectMmapInterface, TopologyWithRtl};
 use tapa_floorplan::{
     dse::{explore, DseCandidate, DseOptions},
     plan_with_inputs, render_xdc, ControlInterface, MemoryInterface, PartitionStrategy, PlanInputs,
     PlanOptions,
 };
-use tapa_ir::transforms::{flatten_with_origins, FlatProjection};
+use tapa_ir::transforms::flatten_with_origins;
 use tapa_ir::{MemoryBindings, PipelineScheme, WorkState};
 use tapa_xilinx::connectivity::parse_vitis_config;
 
@@ -372,7 +372,7 @@ fn plan_implementation_candidates(
 fn publish_implementation_winner(
     work_dir: &Path,
     state: &mut WorkState,
-    projection: &FlatProjection,
+    rtl_state: &mut TopologyWithRtl,
     hdl_inputs: &TaskHdlInputs,
     connectivity: Option<&ConnectivityInput>,
     target_mhz: u32,
@@ -385,9 +385,8 @@ fn publish_implementation_winner(
         &xdc,
         connectivity.map(|input| input.bytes.as_slice()),
         || {
-            let mut canonical_rtl = prepare_rtl_state(&state.graph, hdl_inputs, Some(projection))?;
-            canonical_rtl.floorplan = Some(result.clone());
-            emit_prepared_rtl_tree(work_dir, &mut canonical_rtl, hdl_inputs)?;
+            rtl_state.floorplan = Some(result.clone());
+            emit_prepared_rtl_tree(work_dir, rtl_state, hdl_inputs)?;
 
             state.floorplan = Some(result);
             work_io::store(work_dir, state)?;
@@ -492,7 +491,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
                     publish_implementation_winner(
                         &ctx.work_dir,
                         &mut state,
-                        &projection,
+                        &mut rtl_state,
                         &hdl_inputs,
                         connectivity.as_ref(),
                         target.target_mhz(),
