@@ -39,9 +39,10 @@ sh_test(
 
 cc_binary(
     name = "custom-rtl-target-host",
-    srcs = glob([
-        "*.cpp",
-    ]),
+    srcs = [
+        "vadd.cpp",
+        "//tests/functional/eot:vadd-host.cpp",
+    ],
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",
