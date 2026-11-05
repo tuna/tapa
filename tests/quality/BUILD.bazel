@@ -14,8 +14,6 @@ sh_test(
         "axis_adapter_smoke_tb.sv",
         "//tapa-core:tapa-codegen/assets/verilog/axis_adapter.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo.v",
-        "//tapa-core:tapa-codegen/assets/verilog/fifo_bram.v",
-        "//tapa-core:tapa-codegen/assets/verilog/fifo_fwd.v",
         "//tapa-core:tapa-codegen/assets/verilog/fifo_srl.v",
         "@verilator//:verilator_executable",
     ],
