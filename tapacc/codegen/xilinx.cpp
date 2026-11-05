@@ -100,11 +100,7 @@ void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, CodeSink& out) {
 std::string GeneratePreamble(const Backend& backend, const TaskModel& task,
                              bool is_top) {
   CodeSink sink;
-  for (const clang::ParmVarDecl* param : task.def->parameters()) {
-    const PortContext p{param, ClassifyTapaType(param), task.level, is_top};
-    backend.EmitPortPreamble(p, sink);
-    sink.Line("");  // blank line between parameters
-  }
+  backend.EmitPortPreambles(task.def, task.level, is_top, sink);
   return sink.Str();
 }
 

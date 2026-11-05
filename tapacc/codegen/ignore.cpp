@@ -34,12 +34,7 @@ void IgnoreBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
   if (!func->hasBody()) return;
   // Replace the body with a shell of dummy port reads/writes only.
   CodeSink sink;
-  for (const clang::ParmVarDecl* param : func->parameters()) {
-    EmitPortPreamble(
-        PortContext{param, ClassifyTapaType(param), TaskLevel::kLower, false},
-        sink);
-    sink.Line("");  // blank line between parameters (and a trailing newline)
-  }
+  EmitPortPreambles(func, TaskLevel::kLower, false, sink);
   edits.ReplaceText(func->getBody()->getSourceRange(),
                     "{\n" + sink.Str() + "}\n");
 }

@@ -42,6 +42,17 @@ class Backend {
     }
   }
 
+  // The per-parameter form of the router above: every parameter's preamble,
+  // blank-line separated (the lower-level body preamble / ignore shell).
+  void EmitPortPreambles(const clang::FunctionDecl* func, TaskLevel level,
+                         bool is_top, CodeSink& out) const {
+    for (const clang::ParmVarDecl* param : func->parameters()) {
+      EmitPortPreamble(
+          PortContext{param, ClassifyTapaType(param), level, is_top}, out);
+      out.Line("");  // blank line between parameters
+    }
+  }
+
   // Whole-function operations. Signature rewriting depends on the function's
   // own level (a task's TaskModel.level + whether it is the top), so it is
   // applied to every task in a file, not just the current one.
