@@ -283,7 +283,7 @@ fn parse_objective(header: &str) -> Option<f64> {
 /// CBC is a hard build requirement for tapa-floorplan's test suite; these
 /// tests never silently skip.
 #[cfg(test)]
-pub(crate) fn missing_cbc() -> ! {
+pub fn missing_cbc() -> ! {
     panic!(
         "`cbc` was not found on PATH: the CBC solver is required to test \
          tapa-floorplan (Debian/Ubuntu: `sudo apt install coinor-cbc`)"

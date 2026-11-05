@@ -12,7 +12,7 @@
 //! Module map:
 //! - [`device`] — device model (`Area`/`Coor`/`Slot`/`Device`), embedded
 //!   per-part JSON tables, and `part_num → Device` selection.
-//! - `solver` — an `LpModel` + CPLEX-LP writer + `Solver` trait, with a first
+//! - `solver` — an `LpModel` + CPLEX-LP writer + `Solver` trait, with a
 //!   backend that spawns the external `cbc` binary.
 //! - `graph`/`partition` — the `FloorGraph` and the floorplan ILP.
 //! - `route`/`pipeline` — inter-slot routing and the pipeline plan.
