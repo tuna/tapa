@@ -108,7 +108,6 @@ quick-xml = { version = "0.42", features = ["serialize"] }
 const-str = "1"
 hex = "0.4"
 rust-embed = "8"
-which = "8"
 rayon = "1"
 regex = "1"
 # `regex-lite` (not `regex`) in tapa-ir: the port-name pattern is trivial, and
@@ -143,4 +142,3 @@ tapa-rtl = { path = "tapa-rtl" }
 tapa-codegen = { path = "tapa-codegen" }
 tapa-xilinx = { path = "tapa-xilinx" }
 tapa-floorplan = { path = "tapa-floorplan" }
-tapa-cli = { path = "tapa-cli" }
