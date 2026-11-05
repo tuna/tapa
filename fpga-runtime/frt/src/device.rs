@@ -82,9 +82,7 @@ pub trait Device: Send {
     /// killed. `frt_instance_close` relies on this to decide between
     /// a clean drop and a [`Self::kill`].
     fn is_finished(&mut self) -> Result<bool>;
-    fn load_ns(&self) -> u64;
     fn compute_ns(&self) -> u64;
-    fn store_ns(&self) -> u64;
 }
 
 #[cfg(test)]

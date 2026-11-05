@@ -53,9 +53,7 @@ pub struct XrtDevice {
     scalars: HashMap<u32, Vec<u8>>,
     buffers: HashMap<u32, BufferBinding>,
     execution_state: ExecutionState,
-    load_ns: u64,
     compute_ns: u64,
-    store_ns: u64,
 }
 
 // SAFETY: XrtDevice is only accessed from a single thread at a time; the
@@ -144,9 +142,7 @@ impl XrtDevice {
                 scalars: HashMap::new(),
                 buffers: HashMap::new(),
                 execution_state: ExecutionState::Idle,
-                load_ns: 0,
                 compute_ns: 0,
-                store_ns: 0,
             };
             // SAFETY: live device handle and a valid C string.
             let rc = unsafe { (api.device_load_xclbin_file)(candidate.device, path.as_ptr()) };
@@ -559,7 +555,6 @@ impl Device for XrtDevice {
     }
 
     fn write_to_device(&mut self) -> Result<()> {
-        let start = Instant::now();
         for (index, binding) in &self.buffers {
             if !binding.access.loads_from_host() {
                 continue;
@@ -575,7 +570,6 @@ impl Device for XrtDevice {
             let rc = unsafe { (self.api.bo_sync)(binding.bo, SYNC_TO_DEVICE, binding.bytes, 0) };
             check(rc, &format!("write argument {index} to the device"))?;
         }
-        self.load_ns = elapsed_ns(start);
         Ok(())
     }
 
@@ -583,7 +577,6 @@ impl Device for XrtDevice {
         if matches!(self.execution_state, ExecutionState::Running(_)) {
             self.finish()?;
         }
-        let start = Instant::now();
         for (index, binding) in &self.buffers {
             if !binding.access.stores_to_host() {
                 continue;
@@ -598,7 +591,6 @@ impl Device for XrtDevice {
                 check(rc, &format!("unstage argument {index}"))?;
             }
         }
-        self.store_ns = elapsed_ns(start);
         Ok(())
     }
 
@@ -707,16 +699,8 @@ impl Device for XrtDevice {
         Ok(false)
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
     fn compute_ns(&self) -> u64 {
         self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
     }
 }
 

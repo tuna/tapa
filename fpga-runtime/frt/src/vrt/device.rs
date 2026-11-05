@@ -13,10 +13,9 @@ use std::collections::BTreeMap;
 use std::ffi::{c_int, c_ulong, CString};
 use std::path::Path;
 use std::ptr;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use super::ctrl::{ControlChannel, FINISH_TIMEOUT};
-use crate::elapsed_ns;
 
 const VRTD_SOCKET: &str = "/run/vrtd.sock";
 const PROGRAM_SETTLE: Duration = Duration::from_secs(1);
@@ -77,9 +76,7 @@ pub struct VrtDevice {
     scalars: BTreeMap<u32, Vec<u8>>,
     buffers: BTreeMap<u32, BufferBinding>,
     execution_state: ExecutionState,
-    load_ns: u64,
     compute_ns: u64,
-    store_ns: u64,
 }
 
 // SAFETY: a VrtDevice is moved, never shared: all operations require &mut self
@@ -167,9 +164,7 @@ impl VrtDevice {
             scalars: BTreeMap::new(),
             buffers: BTreeMap::new(),
             execution_state: ExecutionState::Idle,
-            load_ns: 0,
             compute_ns: 0,
-            store_ns: 0,
         };
         let mut device_index = 0;
         // SAFETY: live socket and C string; device_index points to writable
@@ -499,7 +494,6 @@ impl Device for VrtDevice {
     fn write_to_device(&mut self) -> Result<()> {
         self.execution_state
             .ensure_not_running("upload buffers", "VRT kernel")?;
-        let start = Instant::now();
         for (index, binding) in &self.buffers {
             if !binding.access.loads_from_host() {
                 continue;
@@ -515,7 +509,6 @@ impl Device for VrtDevice {
             let rc = unsafe { (self.api.buffer_sync_to_device)(binding.handle, 0, size) };
             check(rc, &format!("write buffer argument {index} to the device"))?;
         }
-        self.load_ns = elapsed_ns(start);
         Ok(())
     }
 
@@ -523,7 +516,6 @@ impl Device for VrtDevice {
         if matches!(self.execution_state, ExecutionState::Running(_)) {
             self.finish()?;
         }
-        let start = Instant::now();
         for (index, binding) in &self.buffers {
             if !binding.access.stores_to_host() {
                 continue;
@@ -539,7 +531,6 @@ impl Device for VrtDevice {
             // staging map is a distinct region of at least that size.
             unsafe { ptr::copy_nonoverlapping(staging, binding.ptr, binding.bytes) };
         }
-        self.store_ns = elapsed_ns(start);
         Ok(())
     }
 
@@ -574,16 +565,8 @@ impl Device for VrtDevice {
         self.poll_finished()
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
     fn compute_ns(&self) -> u64 {
         self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
     }
 }
 

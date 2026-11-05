@@ -82,11 +82,9 @@ int frt_instance_kill(void *handle);
 
 int frt_instance_is_finished(void *handle);
 
-uint64_t frt_instance_load_ns(void *handle);
-
+/// The launched compute's duration; an invalid handle maps to 0 (the error
+/// is still recorded for `frt_last_error_message`).
 uint64_t frt_instance_compute_ns(void *handle);
-
-uint64_t frt_instance_store_ns(void *handle);
 
 void *frt_shmq_create(uint32_t depth, uint32_t width, char *out_path, uintptr_t out_path_len);
 

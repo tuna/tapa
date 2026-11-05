@@ -55,18 +55,6 @@ fn instance_method_call(
     0
 }
 
-/// Shared body for the `frt_instance_*_ns` timing getters: an invalid
-/// handle maps to 0 (the error is still recorded for `frt_last_error_message`).
-fn instance_timing_ns(
-    handle: *mut std::ffi::c_void,
-    getter: impl FnOnce(&dyn Device) -> u64,
-) -> u64 {
-    let Some(h) = with_handle_ref(handle.cast_const()) else {
-        return 0;
-    };
-    getter(&*h.device)
-}
-
 thread_local! {
     /// Per-thread slot for the most recent FFI error message.
     ///
@@ -383,19 +371,11 @@ pub extern "C" fn frt_instance_is_finished(handle: *mut std::ffi::c_void) -> c_i
     }
 }
 
-#[no_mangle]
-pub extern "C" fn frt_instance_load_ns(handle: *mut std::ffi::c_void) -> u64 {
-    instance_timing_ns(handle, |device| device.load_ns())
-}
-
+/// The launched compute's duration; an invalid handle maps to 0 (the error
+/// is still recorded for `frt_last_error_message`).
 #[no_mangle]
 pub extern "C" fn frt_instance_compute_ns(handle: *mut std::ffi::c_void) -> u64 {
-    instance_timing_ns(handle, |device| device.compute_ns())
-}
-
-#[no_mangle]
-pub extern "C" fn frt_instance_store_ns(handle: *mut std::ffi::c_void) -> u64 {
-    instance_timing_ns(handle, |device| device.store_ns())
+    with_handle_ref(handle.cast_const()).map_or(0, |h| h.device.compute_ns())
 }
 
 #[cfg(test)]

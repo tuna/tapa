@@ -14,8 +14,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
-use crate::elapsed_ns;
-
 const HBM_BASE: u64 = 0x40_0000_0000;
 const DDR_BASE: u64 = 0x600_0000_0000;
 const MEMORY_WINDOW_BYTES: u64 = 128 * 1024 * 1024;
@@ -177,9 +175,7 @@ pub struct SimDevice {
     buffers: BTreeMap<u32, BufferBinding>,
     execution_state: ExecutionState,
     session_active: bool,
-    load_ns: u64,
     compute_ns: u64,
-    store_ns: u64,
 }
 
 // SAFETY: SimDevice is moved, never shared; all operations require &mut self.
@@ -289,9 +285,7 @@ impl SimDevice {
             buffers: BTreeMap::new(),
             execution_state: ExecutionState::Idle,
             session_active: false,
-            load_ns: 0,
             compute_ns: 0,
-            store_ns: 0,
         }
     }
 
@@ -460,7 +454,6 @@ impl Device for SimDevice {
     fn write_to_device(&mut self) -> Result<()> {
         self.execution_state
             .ensure_not_running("upload buffers", "SLASH simulation kernel")?;
-        let started = Instant::now();
         let buffers = self
             .buffers
             .iter()
@@ -477,7 +470,6 @@ impl Device for SimDevice {
                 ))
             })?;
         }
-        self.load_ns = elapsed_ns(started);
         Ok(())
     }
 
@@ -485,7 +477,6 @@ impl Device for SimDevice {
         if matches!(self.execution_state, ExecutionState::Running(_)) {
             self.finish()?;
         }
-        let started = Instant::now();
         let buffers = self
             .buffers
             .iter()
@@ -504,7 +495,6 @@ impl Device for SimDevice {
             // fetch_buffer validated exactly that returned length.
             unsafe { std::ptr::copy_nonoverlapping(data.as_ptr(), binding.ptr, binding.bytes) };
         }
-        self.store_ns = elapsed_ns(started);
         Ok(())
     }
 
@@ -530,16 +520,8 @@ impl Device for SimDevice {
         self.poll_finished()
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
     fn compute_ns(&self) -> u64 {
         self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
     }
 }
 

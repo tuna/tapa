@@ -74,9 +74,7 @@ pub struct CosimDevice {
     pending_buffers: HashMap<u32, BufferBinding>,
     simulation_state: SimulationState,
     readback_scheduled: bool,
-    load_ns: u64,
     compute_ns: u64,
-    store_ns: u64,
 }
 
 // SAFETY: CosimDevice is only accessed from a single owner thread.
@@ -162,9 +160,7 @@ impl CosimDevice {
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
-            load_ns: 0,
             compute_ns: 0,
-            store_ns: 0,
         })
     }
 
@@ -195,7 +191,6 @@ impl CosimDevice {
     }
 
     fn copy_back_to_host(&mut self) -> Result<()> {
-        let started = Instant::now();
         self.for_each_transfer(BufferAccess::stores_to_host, |ptr, bytes, seg| {
             let len = bytes.min(seg.len());
             if len > 0 {
@@ -206,12 +201,6 @@ impl CosimDevice {
                 dst.copy_from_slice(&seg.as_slice()[..len]);
             }
         })?;
-        self.store_ns = crate::elapsed_ns(started);
-        // Ensure non-zero to signal "copy-back completed" (callers use
-        // store_ns() == 0 to mean "not yet run").
-        if self.store_ns == 0 {
-            self.store_ns = 1;
-        }
         Ok(())
     }
 
@@ -687,7 +676,6 @@ impl Device for CosimDevice {
     }
 
     fn write_to_device(&mut self) -> Result<()> {
-        let started = Instant::now();
         self.for_each_transfer(BufferAccess::loads_from_host, |ptr, bytes, seg| {
             let len = bytes.min(seg.len());
             if len > 0 {
@@ -698,7 +686,6 @@ impl Device for CosimDevice {
                 seg.as_mut_slice()[..len].copy_from_slice(src);
             }
         })?;
-        self.load_ns = crate::elapsed_ns(started);
         Ok(())
     }
 
@@ -778,16 +765,8 @@ impl Device for CosimDevice {
         self.poll_simulation()
     }
 
-    fn load_ns(&self) -> u64 {
-        self.load_ns
-    }
-
     fn compute_ns(&self) -> u64 {
         self.compute_ns
-    }
-
-    fn store_ns(&self) -> u64 {
-        self.store_ns
     }
 }
 
@@ -860,9 +839,7 @@ mod tests {
             pending_buffers: HashMap::new(),
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
-            load_ns: 0,
             compute_ns: 0,
-            store_ns: 0,
         }
     }
 
@@ -997,13 +974,11 @@ mod tests {
         assert_eq!(dev.compute_ns(), 0);
         dev.read_from_device().expect("schedule readback");
         assert_eq!(host_word, 10);
-        assert_eq!(dev.store_ns(), 0);
         assert!(dev.is_finished().expect("resumed simulation is complete"));
         assert_eq!(host_word, 10, "polling must not copy back a scheduled read");
         assert_eq!(dev.compute_ns(), 0, "resume does not execute a simulator");
         dev.finish().expect("finish resume-from-post-sim");
         assert_eq!(host_word, 42);
-        assert!(dev.store_ns() > 0);
     }
 
     #[test]
@@ -1025,7 +1000,6 @@ mod tests {
             .copy_from_slice(&42u32.to_le_bytes());
         dev.read_from_device().expect("schedule readback");
         assert_eq!(host_word, 42);
-        assert!(dev.store_ns() > 0);
         dev.finish().expect("finish idle readback");
         assert_eq!(host_word, 42);
     }
