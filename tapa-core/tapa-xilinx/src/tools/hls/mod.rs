@@ -39,13 +39,6 @@ pub struct HlsJob {
     pub hdl_out_dir: Utf8PathBuf,
     #[builder(default)]
     pub cflags: Vec<String>,
-    /// Additional files the runner needs to stage up (remote tar-pipe
-    /// uploads).
-    #[builder(default)]
-    pub uploads: Vec<Utf8PathBuf>,
-    /// Files the runner must stage down after the tool exits.
-    #[builder(default)]
-    pub downloads: Vec<Utf8PathBuf>,
     /// Optional HLS `other_configs` TCL fragment. Appended verbatim.
     #[builder(default)]
     pub other_configs: String,
@@ -243,8 +236,8 @@ fn run_hls_attempt(
     // the value to its rootfs counterpart.
     inv.env.insert("HOME".into(), ToolValue::path(stage_dir));
     // Uploads: TCL, every source file's parent directory (the remote
-    // runner dedupes), every `-I` / `-isystem` include directory
-    // referenced by the cflags, plus any caller extras.
+    // runner dedupes), and every `-I` / `-isystem` include directory
+    // referenced by the cflags.
     inv.uploads.push(tcl_path);
     for src in &job.srcs {
         match src.parent() {
@@ -256,7 +249,6 @@ fn run_hls_attempt(
     }
     let (cflags, include_dirs) = kernel_flags(&job.cflags);
     inv.uploads.extend(include_dirs);
-    inv.uploads.extend(job.uploads.iter().cloned());
 
     // Kernel metadata via env entries — the `TAPA_*` prefix passes
     // the remote-env forwarding allowlist, and the remote runner's
@@ -267,12 +259,10 @@ fn run_hls_attempt(
     }
 
     // Ask the runner to bring the HLS project tree — at least the
-    // `syn/{report,verilog}` subtree — back onto the local filesystem
-    // alongside everything else the caller requested. On local runs
-    // the files are already under `cwd` (stage_dir); on remote runs
-    // the runner tar-pipes the rootfs mirror back in place.
+    // `syn/{report,verilog}` subtree — back onto the local filesystem.
+    // On local runs the files are already under `cwd` (stage_dir); on
+    // remote runs the runner tar-pipes the rootfs mirror back in place.
     inv.downloads.push(stage_dir.to_path_buf());
-    inv.downloads.extend(job.downloads.iter().cloned());
     runner.run(&inv)
 }
 
