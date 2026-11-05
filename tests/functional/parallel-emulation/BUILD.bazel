@@ -46,50 +46,57 @@ sh_test(
     tags = ["cpu:8"],
 )
 
-cc_binary(
-    name = "cannon-host",
-    srcs = [
-        "cannon.cpp",
-        "cannon.h",
-        "//tests/apps/cannon:cannon-host.cpp",
-    ],
-    defines = ["TAPA_CANNON_P=2"],
-    includes = ["."],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-    ],
-)
+[
+    cc_binary(
+        name = "cannon-host" + suffix,
+        srcs = [
+            "cannon.cpp",
+            "cannon.h",
+            "//tests/apps/cannon:cannon-host.cpp",
+        ],
+        defines = ["TAPA_CANNON_P=%d" % p],
+        includes = ["."],
+        tags = tags,
+        deps = [
+            "//tapa-lib:tapa-host",
+            "@gflags",
+        ],
+    )
+    for p, suffix, tags in [
+        (2, "", []),
+        (
+            4,
+            "-4x4",
+            ["manual"],
+        ),
+    ]
+]
 
-tapa_xo(
-    name = "scatter",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=2",
-    target = "xilinx-hls",
-    top_name = "Scatter",
-)
-
-tapa_xo(
-    name = "proc-elem",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=2",
-    target = "xilinx-hls",
-    top_name = "ProcElem",
-)
-
-tapa_xo(
-    name = "gather",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=2",
-    target = "xilinx-hls",
-    top_name = "Gather",
-)
+[
+    tapa_xo(
+        name = task_name + suffix,
+        srcs = ["cannon.cpp"],
+        hdrs = ["cannon.h"],
+        include = ["."],
+        cflags = "-DTAPA_CANNON_P=%d" % p,
+        tags = tags,
+        target = "xilinx-hls",
+        top_name = top_name,
+    )
+    for p, suffix, tags in [
+        (2, "", []),
+        (
+            4,
+            "-4x4",
+            ["manual"],
+        ),
+    ]
+    for task_name, top_name in [
+        ("scatter", "Scatter"),
+        ("proc-elem", "ProcElem"),
+        ("gather", "Gather"),
+    ]
+]
 
 sh_test(
     name = "cannon-4x4",
@@ -129,53 +136,4 @@ sh_test(
         "cpu:20",
         "manual",
     ],
-)
-
-cc_binary(
-    name = "cannon-host-4x4",
-    srcs = [
-        "cannon.cpp",
-        "cannon.h",
-        "//tests/apps/cannon:cannon-host.cpp",
-    ],
-    defines = ["TAPA_CANNON_P=4"],
-    includes = ["."],
-    tags = ["manual"],
-    deps = [
-        "//tapa-lib:tapa-host",
-        "@gflags",
-    ],
-)
-
-tapa_xo(
-    name = "scatter-4x4",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=4",
-    tags = ["manual"],
-    target = "xilinx-hls",
-    top_name = "Scatter",
-)
-
-tapa_xo(
-    name = "proc-elem-4x4",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=4",
-    tags = ["manual"],
-    target = "xilinx-hls",
-    top_name = "ProcElem",
-)
-
-tapa_xo(
-    name = "gather-4x4",
-    srcs = ["cannon.cpp"],
-    hdrs = ["cannon.h"],
-    include = ["."],
-    cflags = "-DTAPA_CANNON_P=4",
-    tags = ["manual"],
-    target = "xilinx-hls",
-    top_name = "Gather",
 )
