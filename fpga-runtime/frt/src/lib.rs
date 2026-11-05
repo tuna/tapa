@@ -1,13 +1,14 @@
-pub mod cosim;
-pub mod device;
+mod cosim;
+mod device;
 mod dl;
-pub mod error;
-pub mod ffi;
-pub mod instance;
+mod error;
+mod ffi;
+mod instance;
 mod shm_ffi;
 pub mod vrt;
-pub mod xrt;
+mod xrt;
 
+pub use device::BufferAccess;
 pub use error::{FrtError, Result};
 pub use instance::{Instance, Simulator};
 

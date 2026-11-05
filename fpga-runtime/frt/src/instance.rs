@@ -56,7 +56,7 @@ impl Instance {
     }
 
     /// The stream arguments the host binds, in argument order.
-    pub fn host_streams(&self) -> Vec<crate::device::HostStream> {
+    pub(crate) fn host_streams(&self) -> Vec<crate::device::HostStream> {
         self.device.host_streams()
     }
 
@@ -69,7 +69,7 @@ impl Instance {
             .set_buffer_arg(index, ptr, bytes, BufferAccess::ReadWrite)
     }
 
-    pub fn set_buffer_arg_raw_with_access(
+    pub(crate) fn set_buffer_arg_raw_with_access(
         &mut self,
         index: u32,
         ptr: *mut u8,
@@ -107,15 +107,15 @@ impl Instance {
         self.device.is_finished()
     }
 
-    pub fn load_ns(&self) -> u64 {
+    pub(crate) fn load_ns(&self) -> u64 {
         self.device.load_ns()
     }
 
-    pub fn compute_ns(&self) -> u64 {
+    pub(crate) fn compute_ns(&self) -> u64 {
         self.device.compute_ns()
     }
 
-    pub fn store_ns(&self) -> u64 {
+    pub(crate) fn store_ns(&self) -> u64 {
         self.device.store_ns()
     }
 }

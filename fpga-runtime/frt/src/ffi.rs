@@ -68,7 +68,7 @@ thread_local! {
 
 /// Record an error message on this thread's slot, replacing any previous
 /// one. Embedded NUL bytes are blanked so the message survives `CString`.
-pub(crate) fn set_last_error(msg: impl Into<String>) {
+pub fn set_last_error(msg: impl Into<String>) {
     let mut text = msg.into();
     if text.contains('\0') {
         text = text.replace('\0', " ");
@@ -79,7 +79,7 @@ pub(crate) fn set_last_error(msg: impl Into<String>) {
 /// Drop any previously recorded error on this thread's slot. Exported
 /// functions call this on entry so a stale message from an earlier call is
 /// not misattributed to a later, successful one.
-pub(crate) fn clear_last_error() {
+pub fn clear_last_error() {
     LAST_ERROR.with(|cell| *cell.borrow_mut() = None);
 }
 
@@ -313,8 +313,10 @@ pub extern "C" fn frt_instance_host_stream(
         // `len < name_len`; `bytes` is a valid slice and the two ranges do
         // not overlap.
         unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), name_out.cast::<u8>(), len) };
-        // SAFETY: `len < name_len`, so the NUL terminator lands in bounds.
-        unsafe { name_out.add(len).write(0) };
+        // SAFETY: `len < name_len`, so `name_out.add(len)` is in bounds.
+        let nul = unsafe { name_out.add(len) };
+        // SAFETY: `nul` is a valid, writable byte inside the caller's buffer.
+        unsafe { nul.write(0) };
     }
     if !kernel_reads.is_null() {
         // SAFETY: the caller provides a writable `c_int`.
