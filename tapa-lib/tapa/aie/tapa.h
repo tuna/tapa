@@ -5,6 +5,7 @@
 // body sees the stream and vector types below, while every other task is a
 // signature stub, so the PL-only port types only need to be declared.
 
+#include <cstddef>
 #include <cstdint>
 
 #include "tapa/base/logging_dummy.h"
@@ -35,5 +36,15 @@ class stream;
 template <typename T, uint64_t S, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class streams;
+
+// The core has no PL clock cycle to yield and no pipeline register to add,
+// so these keep only their software-simulation meaning.
+inline void wait() noexcept {}
+inline void wait(int) noexcept {}
+
+template <typename T, size_t Depth = 1>
+T reg(T x) {
+  return x;
+}
 
 }  // namespace tapa

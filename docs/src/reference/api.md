@@ -399,7 +399,7 @@ The vendor's `EnableSignals` bit field, which turns TKEEP/TSTRB/TLAST off indivi
 
 ### `tapa::wait()` / `tapa::wait(n)`
 
-Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`), or `n` cycles for the overload (`ap_wait_n(n)`). Both are no-ops in software simulation, where tasks run as coroutines without a clock. Use them in place of `ap_wait()` and `ap_wait_n()` to keep programs portable.
+Yields one clock cycle on synthesis targets (lowered to the vendor `ap_wait()`), or `n` cycles for the overload (`ap_wait_n(n)`). Both are no-ops in software simulation, where tasks run as coroutines without a clock, and on the AI Engine. Use them in place of `ap_wait()` and `ap_wait_n()` to keep programs portable.
 
 The simulation no-op is intentional: call `tapa::wait()` without a
 `__SYNTHESIS__` guard so the same source works in software and synthesis.
@@ -477,7 +477,8 @@ The `-1` sentinel in `partition` and `array_map` exists because the arguments ar
 
 ```admonish note
 `tapa::reg<T>(x)` returns `x` through a pipeline register, and
-`tapa::reg<T, Depth>(x)` through `Depth` of them. It replaces the hand-rolled
+`tapa::reg<T, Depth>(x)` through `Depth` of them; software simulation and the
+AI Engine return `x` unchanged. It replaces the hand-rolled
 `HLS_REG` helper that vendor designs carry (a no-inline function with
 `pipeline` and `interface ... register` pragmas). Note it is a real
 register: a design whose `HLS_REG` registered only the return *interface*
