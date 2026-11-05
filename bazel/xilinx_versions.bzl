@@ -23,7 +23,7 @@ def xilinx_tool_dir_candidates(root, tool, version):
       version: Numeric "MAJOR.MINOR" tool version string.
 
     Returns:
-      List of candidate directories, most specific layout first.
+      List of candidate directories, classic layout first.
     """
     return [
         "{}/{}/{}".format(root, tool, version),
