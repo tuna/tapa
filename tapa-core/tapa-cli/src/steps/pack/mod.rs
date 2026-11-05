@@ -76,6 +76,17 @@ pub fn run(args: &PackArgs, ctx: &CliContext) -> Result<()> {
     }
 }
 
+/// Apply the `--custom-rtl` overlay before the pack flow scans `rtl_dir`,
+/// warning about templates that stay unimplemented.
+fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, rtl_dir: &Path) -> Result<()> {
+    let templates = load_templates_info(&ctx.work_dir)?;
+    if !args.custom_rtl.is_empty() {
+        apply_custom_rtl(rtl_dir, &args.custom_rtl, &templates)?;
+    }
+    warn_unimplemented_templates(&ctx.work_dir, rtl_dir, &templates);
+    Ok(())
+}
+
 /// Yield `(task_name, report_dir)` for every
 /// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
 /// both walk this layout; file selection, staging, and redaction stay
@@ -253,11 +264,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
             path: rtl_dir,
         });
     }
-    let templates = load_templates_info(&ctx.work_dir)?;
-    if !args.custom_rtl.is_empty() {
-        apply_custom_rtl(&rtl_dir, &args.custom_rtl, &templates)?;
-    }
-    warn_unimplemented_templates(&ctx.work_dir, &rtl_dir, &templates);
+    apply_pack_overlays(args, ctx, &rtl_dir)?;
     let output_path = enforce_zip_suffix(args.output.as_ref());
     let mut z = create_zip(&output_path)?;
     let opts = zip_entry_options();

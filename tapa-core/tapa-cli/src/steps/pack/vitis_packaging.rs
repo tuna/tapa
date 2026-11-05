@@ -5,9 +5,8 @@
 //! against `<work_dir>/rtl` to produce the `.xo`. The runner picks
 //! between local and remote dispatch based on `ctx.remote_config`.
 //!
-//! Also threads the `--custom-rtl` overlay via
-//! [`super::custom_rtl::apply_custom_rtl`] *before* Vivado scans
-//! `rtl_dir`.
+//! The `--custom-rtl` overlay applied before Vivado scans `rtl_dir` is
+//! [`super::apply_pack_overlays`], shared with the other pack flows.
 
 use camino::Utf8PathBuf;
 use std::path::Path;
@@ -24,7 +23,6 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work::FlowSettings;
 
-use super::custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
 use super::{enforce_xo_suffix, enforce_zip_suffix, PackArgs};
 
@@ -46,7 +44,7 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
         });
     }
 
-    apply_pack_overlays(args, ctx, &hdl_dir)?;
+    super::apply_pack_overlays(args, ctx, &hdl_dir)?;
 
     let output_path = enforce_xo_suffix(args.output.as_ref());
     ctx.with_tool_runner(|runner| {
@@ -89,7 +87,7 @@ pub fn package_prepared_vitis_rtl(
 pub(super) fn pack_slash(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     validate_slash_top(state)?;
     let hdl_dir = ctx.work_dir.join("rtl");
-    apply_pack_overlays(args, ctx, &hdl_dir)?;
+    super::apply_pack_overlays(args, ctx, &hdl_dir)?;
     let output_path = enforce_zip_suffix(args.output.as_ref());
     ctx.with_tool_runner(|runner| {
         package_prepared_slash_zip(runner, state, &hdl_dir, &output_path, &ctx.work_dir)
@@ -260,16 +258,6 @@ fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(Stri
         ));
     }
     Ok((part_num, clock_period))
-}
-
-fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Result<()> {
-    // --custom-rtl: apply user overlays before Vivado scans `rtl_dir`.
-    let templates = load_templates_info(&ctx.work_dir)?;
-    if !args.custom_rtl.is_empty() {
-        apply_custom_rtl(hdl_dir, &args.custom_rtl, &templates)?;
-    }
-    warn_unimplemented_templates(&ctx.work_dir, hdl_dir, &templates);
-    Ok(())
 }
 
 fn top_rtl_m_axi_bases(
