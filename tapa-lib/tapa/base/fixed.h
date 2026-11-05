@@ -54,7 +54,6 @@ enum class o_mode {
 #include <cmath>
 #include <cstdint>
 #include <ostream>
-#include <string>
 #include <type_traits>
 #include <utility>
 

@@ -1,13 +1,9 @@
 #pragma once
 
-#include <climits>
 #include <cmath>
-#include <cstdint>
-#include <cstring>
 
 #include <algorithm>
 #include <array>
-#include <functional>
 #include <ostream>
 #include <type_traits>
 
