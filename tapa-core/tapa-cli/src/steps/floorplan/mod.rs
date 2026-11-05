@@ -528,6 +528,24 @@ mod tests {
 
     use crate::testutil::{ctx_at, state_from_json};
 
+    /// The default flag surface every `run` test starts from.
+    fn test_args() -> FloorplanArgs {
+        FloorplanArgs {
+            usage_limit: 0.7,
+            partition_strategy: PartitionMode::Auto,
+            pp_scheme: PpScheme::Double,
+            max_seconds: 60,
+            connectivity: None,
+            run_impl: false,
+            dse: false,
+            dse_min: 0.55,
+            dse_max: 0.90,
+            dse_step: 0.03,
+            dse_jobs: 1,
+            vivado_threads: 2,
+        }
+    }
+
     /// A minimal synthesized vadd state: top `VecAdd` with A -> fifo -> B.
     pub fn synthed_vadd_state() -> WorkState {
         let mut state = state_from_json(
@@ -765,17 +783,7 @@ mod tests {
         let err = run(
             &FloorplanArgs {
                 usage_limit: 0.0,
-                partition_strategy: PartitionMode::Auto,
-                pp_scheme: PpScheme::Double,
-                max_seconds: 60,
-                connectivity: None,
-                run_impl: false,
-                dse: false,
-                dse_min: 0.55,
-                dse_max: 0.90,
-                dse_step: 0.03,
-                dse_jobs: 1,
-                vivado_threads: 2,
+                ..test_args()
             },
             &ctx_at(dir.path()),
         )
@@ -876,18 +884,8 @@ mod tests {
             });
             let error = run(
                 &FloorplanArgs {
-                    usage_limit: 0.7,
-                    partition_strategy: PartitionMode::Auto,
-                    pp_scheme: PpScheme::Double,
-                    max_seconds: 60,
                     connectivity: connectivity_path,
-                    run_impl: false,
-                    dse: false,
-                    dse_min: 0.55,
-                    dse_max: 0.90,
-                    dse_step: 0.03,
-                    dse_jobs: 1,
-                    vivado_threads: 2,
+                    ..test_args()
                 },
                 &ctx_at(dir.path()),
             )
@@ -938,20 +936,7 @@ mod tests {
             "module B(input wire ap_clk, input wire ap_rst_n, input wire [31:0] in_dout, input wire in_empty_n, output wire in_read); endmodule",
         );
         let ctx = ctx_at(dir.path());
-        let args = FloorplanArgs {
-            usage_limit: 0.7,
-            partition_strategy: PartitionMode::Auto,
-            pp_scheme: PpScheme::Double,
-            max_seconds: 60,
-            connectivity: None,
-            run_impl: false,
-            dse: false,
-            dse_min: 0.55,
-            dse_max: 0.90,
-            dse_step: 0.03,
-            dse_jobs: 1,
-            vivado_threads: 2,
-        };
+        let args = test_args();
 
         match run(&args, &ctx) {
             Ok(()) => {
@@ -1093,20 +1078,7 @@ mod tests {
              input wire [31:0] in_dout,\n input wire in_empty_n,\n output wire in_read\n);\nendmodule",
         );
 
-        let args = FloorplanArgs {
-            usage_limit: 0.7,
-            partition_strategy: PartitionMode::Auto,
-            pp_scheme: PpScheme::Double,
-            max_seconds: 60,
-            connectivity: None,
-            run_impl: false,
-            dse: false,
-            dse_min: 0.55,
-            dse_max: 0.90,
-            dse_step: 0.03,
-            dse_jobs: 1,
-            vivado_threads: 2,
-        };
+        let args = test_args();
         match run(&args, &ctx_at(dir.path())) {
             Ok(()) => assert_pipelined_floorplan_outputs(dir.path()),
             Err(CliError::Floorplan(msg)) if msg.contains("cbc") || msg.contains("solver") => {
@@ -1124,20 +1096,7 @@ mod tests {
         let mut state = synthed_vadd_state();
         state.flow.synthed = false;
         work_io::store(dir.path(), &state).expect("store");
-        let args = FloorplanArgs {
-            usage_limit: 0.7,
-            partition_strategy: PartitionMode::Auto,
-            pp_scheme: PpScheme::Double,
-            max_seconds: 60,
-            connectivity: None,
-            run_impl: false,
-            dse: false,
-            dse_min: 0.55,
-            dse_max: 0.90,
-            dse_step: 0.03,
-            dse_jobs: 1,
-            vivado_threads: 2,
-        };
+        let args = test_args();
         let err = crate::chain::validate_pipeline_step(
             crate::chain::PipelineStep::Floorplan(&args),
             &ctx_at(dir.path()),
