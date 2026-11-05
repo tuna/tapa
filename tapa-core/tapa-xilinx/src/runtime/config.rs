@@ -81,38 +81,8 @@ impl RemoteConfig {
         }
     }
 
-    /// Parse a `.taparc`-style YAML document. Accepts either
-    /// `{remote: {...}}` (the `~/.taparc` top-level shape) or a bare
-    /// `RemoteConfig` mapping.
-    pub fn from_yaml_str(text: &str, path: impl AsRef<camino::Utf8Path>) -> Result<Self> {
-        let path = path.as_ref().to_path_buf();
-        let value: serde_yaml::Value =
-            serde_yaml::from_str(text).map_err(|source| XilinxError::Config {
-                path: path.clone(),
-                source,
-            })?;
-        let inner = match value {
-            serde_yaml::Value::Mapping(ref m) if m.contains_key("remote") => {
-                m.get("remote").cloned().unwrap_or(serde_yaml::Value::Null)
-            }
-            serde_yaml::Value::Null => {
-                return Err(XilinxError::Config {
-                    path,
-                    source: missing_mapping_error(),
-                });
-            }
-            serde_yaml::Value::Mapping(_)
-            | serde_yaml::Value::Bool(_)
-            | serde_yaml::Value::Number(_)
-            | serde_yaml::Value::String(_)
-            | serde_yaml::Value::Sequence(_)
-            | serde_yaml::Value::Tagged(_) => value,
-        };
-        Self::from_yaml_value(inner, path)
-    }
-
-    /// Decode a remote mapping already parsed by a configuration loader.
-    /// Applies the same defaults and path normalization as [`Self::from_yaml_str`].
+    /// Decode a remote mapping already parsed by a configuration loader,
+    /// applying schema defaults and tilde expansion.
     pub fn from_yaml_value(
         value: serde_yaml::Value,
         path: impl AsRef<camino::Utf8Path>,
@@ -162,10 +132,6 @@ impl RemoteConfig {
     }
 }
 
-fn missing_mapping_error() -> serde_yaml::Error {
-    serde_yaml::from_str::<RemoteConfig>("").unwrap_err()
-}
-
 /// Canonical rule used everywhere we need a remote `xilinx_settings`
 /// path: prefer an explicit settings script, otherwise treat a
 /// tool-root value as `<root>/settings64.sh`. The Rust layer only
@@ -207,19 +173,22 @@ mod tests {
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     const VALID: &str = "
-remote:
-  host: fpga01.example.com
-  user: alice
-  port: 2222
-  key_file: ~/.ssh/id_ed25519
-  xilinx_settings: /opt/xilinx/Vitis/2023.2/settings64.sh
+host: fpga01.example.com
+user: alice
+port: 2222
+key_file: ~/.ssh/id_ed25519
+xilinx_settings: /opt/xilinx/Vitis/2023.2/settings64.sh
 ";
+
+    fn cfg_from_yaml(text: &str) -> Result<RemoteConfig> {
+        RemoteConfig::from_yaml_value(serde_yaml::from_str(text).unwrap(), "/tmp/.taparc")
+    }
 
     #[test]
     fn parses_valid_taparc_and_expands_tilde() {
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("HOME", "/home/alice");
-        let cfg = RemoteConfig::from_yaml_str(VALID, "/tmp/.taparc").unwrap();
+        let cfg = cfg_from_yaml(VALID).unwrap();
         assert_eq!(cfg.host, "fpga01.example.com");
         assert_eq!(cfg.user, "alice");
         assert_eq!(cfg.port, 2222);
@@ -234,15 +203,14 @@ remote:
     fn default_user_is_current_username() {
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("USER", "testuser");
-        let cfg = RemoteConfig::from_yaml_str("remote:\n  host: h\n", "/tmp/.taparc").unwrap();
+        let cfg = cfg_from_yaml("host: h\n").unwrap();
         assert_eq!(cfg.user, "testuser");
     }
 
     #[test]
     fn unknown_fields_are_accepted() {
         // Unknown keys are ignored so newer config files remain readable.
-        let text = "remote:\n  host: h\n  future_field: yes\n";
-        let cfg = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap();
+        let cfg = cfg_from_yaml("host: h\nfuture_field: yes\n").unwrap();
         assert_eq!(cfg.host, "h");
     }
 
@@ -250,7 +218,7 @@ remote:
     fn round_trips_through_yaml() {
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("HOME", "/home/alice");
-        let cfg = RemoteConfig::from_yaml_str(VALID, "/tmp/.taparc").unwrap();
+        let cfg = cfg_from_yaml(VALID).unwrap();
         let emitted = serde_yaml::to_string(&cfg).unwrap();
         let again: RemoteConfig = serde_yaml::from_str(&emitted).unwrap();
         assert_eq!(cfg, again);
@@ -258,14 +226,7 @@ remote:
 
     #[test]
     fn wrong_type_surfaces_config_error() {
-        let text = "remote:\n  host: h\n  port: not-a-number\n";
-        let err = RemoteConfig::from_yaml_str(text, "/tmp/.taparc").unwrap_err();
-        assert!(matches!(err, XilinxError::Config { .. }));
-    }
-
-    #[test]
-    fn empty_document_is_error() {
-        let err = RemoteConfig::from_yaml_str("", "/tmp/.taparc").unwrap_err();
+        let err = cfg_from_yaml("host: h\nport: not-a-number\n").unwrap_err();
         assert!(matches!(err, XilinxError::Config { .. }));
     }
 
@@ -375,7 +336,7 @@ remote:
     fn yaml_defaults_are_applied_for_missing_fields() {
         let _lock = ENV_LOCK.lock().unwrap();
         std::env::set_var("HOME", "/home/test");
-        let cfg = RemoteConfig::from_yaml_str("remote:\n  host: h\n", "/tmp/.taparc").unwrap();
+        let cfg = cfg_from_yaml("host: h\n").unwrap();
         assert_eq!(cfg.host, "h");
         assert_eq!(cfg.port, 22);
         assert_eq!(cfg.work_dir, "/tmp/tapa-remote");
