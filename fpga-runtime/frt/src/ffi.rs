@@ -309,13 +309,12 @@ pub extern "C" fn frt_instance_host_stream(
     if !name_out.is_null() && name_len > 0 {
         let bytes = stream.name.as_bytes();
         let len = bytes.len().min(name_len - 1);
-        // SAFETY: the caller provides `name_len` writable bytes at
-        // `name_out`, and `len < name_len`.
-        let out = unsafe { std::slice::from_raw_parts_mut(name_out, len + 1) };
-        for (dst, src) in out.iter_mut().zip(bytes) {
-            *dst = c_char::from_ne_bytes([*src]);
-        }
-        out[len] = 0;
+        // SAFETY: `name_out` is non-null with `name_len` writable bytes and
+        // `len < name_len`; `bytes` is a valid slice and the two ranges do
+        // not overlap.
+        unsafe { std::ptr::copy_nonoverlapping(bytes.as_ptr(), name_out.cast::<u8>(), len) };
+        // SAFETY: `len < name_len`, so the NUL terminator lands in bounds.
+        unsafe { name_out.add(len).write(0) };
     }
     if !kernel_reads.is_null() {
         // SAFETY: the caller provides a writable `c_int`.
