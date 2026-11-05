@@ -504,22 +504,12 @@ mod tests {
         runner
     }
 
-    fn floorplan_fixture() -> FloorplanResult {
-        FloorplanResult {
-            device: "vck190".to_string(),
-            grid: (1, 1),
-            regions: BTreeMap::new(),
-            routes: Vec::new(),
-            slot_usage: BTreeMap::new(),
-        }
-    }
-
     fn synthesized_aie_state() -> WorkState {
         let mut state = aie_work_state();
         state.flow.part_num = Some(AIE_PART.to_string());
         state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state.flow.synthed = true;
-        state.floorplan = Some(floorplan_fixture());
+        state.floorplan = Some(crate::testutil::mock_floorplan_result("vck190", (1, 1)));
         let top = state.graph.tasks.get_mut("Top").expect("top");
         top.clock_period = Some(ClockPeriod::from_picoseconds(2000));
         top.self_area = Some(Area {
