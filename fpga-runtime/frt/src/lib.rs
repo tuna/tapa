@@ -5,7 +5,7 @@ mod error;
 mod ffi;
 mod instance;
 mod shm_ffi;
-pub mod vrt;
+mod vrt;
 mod xrt;
 
 pub use device::{BufferAccess, Device};

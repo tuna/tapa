@@ -16,20 +16,20 @@ use tempfile::TempDir;
 use crate::error::{FrtError, Result};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Platform {
+pub(super) enum Platform {
     Hardware,
     Simulation,
     Emulation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ArgKind {
+pub(super) enum ArgKind {
     Scalar,
     Buffer,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MemoryTarget {
+pub(super) enum MemoryTarget {
     Ddr,
     Hbm(u8),
     /// SLASH's allocator-selected HBM target (`HBM`, `HBM_VNOC`, or `MEM`).
@@ -37,36 +37,36 @@ pub enum MemoryTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Arg {
-    pub index: u32,
-    pub name: String,
-    pub kind: ArgKind,
-    pub offset: u32,
+pub(super) struct Arg {
+    pub(super) index: u32,
+    pub(super) name: String,
+    pub(super) kind: ArgKind,
+    pub(super) offset: u32,
     /// Width in bits as recorded in the system map. Zero means 32, matching
     /// VRT's treatment of an omitted register width.
-    pub range: u32,
-    pub writable: bool,
-    pub port: Option<String>,
+    pub(super) range: u32,
+    pub(super) writable: bool,
+    pub(super) port: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Kernel {
-    pub name: String,
-    pub base_address: u64,
-    pub args: Vec<Arg>,
+pub(super) struct Kernel {
+    pub(super) name: String,
+    pub(super) base_address: u64,
+    pub(super) args: Vec<Arg>,
     /// AXI port to its typed memory target.
-    pub connections: BTreeMap<String, MemoryTarget>,
+    pub(super) connections: BTreeMap<String, MemoryTarget>,
 }
 
 impl Kernel {
-    pub(crate) fn arg(&self, index: u32) -> Result<&Arg> {
+    pub(super) fn arg(&self, index: u32) -> Result<&Arg> {
         self.args
             .iter()
             .find(|arg| arg.index == index)
             .ok_or_else(|| FrtError::Vrt(format!("unknown VRT argument index {index}")))
     }
 
-    pub(crate) fn memory_target(&self, arg: &Arg) -> Result<MemoryTarget> {
+    pub(super) fn memory_target(&self, arg: &Arg) -> Result<MemoryTarget> {
         let port = arg.port.as_deref().ok_or_else(|| {
             FrtError::Vrt(format!(
                 "buffer argument {} (`{}`) has no AXI port",
@@ -83,7 +83,7 @@ impl Kernel {
 
     /// Reject a scalar binding whose kind, register width, or offset is
     /// invalid, before the caller stages it.
-    pub(crate) fn validate_scalar_arg(&self, index: u32, value: &[u8]) -> Result<()> {
+    pub(super) fn validate_scalar_arg(&self, index: u32, value: &[u8]) -> Result<()> {
         let arg = self.arg(index)?;
         if arg.kind != ArgKind::Scalar {
             return Err(FrtError::Vrt(format!(
@@ -97,7 +97,7 @@ impl Kernel {
 
     /// Reject an invalid buffer binding and resolve its memory target and
     /// byte size, before the caller allocates or stages anything.
-    pub(crate) fn validate_buffer_arg(
+    pub(super) fn validate_buffer_arg(
         &self,
         index: u32,
         ptr: *const u8,
@@ -129,19 +129,19 @@ impl Kernel {
 
 /// A fully extracted VBIN and the typed metadata shared by VRT backends.
 #[derive(Debug)]
-pub struct Vbin {
+pub(super) struct Vbin {
     /// Owns every extracted path for as long as a backend needs them.
     temp_dir: TempDir,
-    pub platform: Platform,
-    pub clock_frequency_hz: u64,
-    pub kernel: Kernel,
-    pub pdi_paths: Vec<PathBuf>,
+    pub(super) platform: Platform,
+    pub(super) clock_frequency_hz: u64,
+    pub(super) kernel: Kernel,
+    pub(super) pdi_paths: Vec<PathBuf>,
     /// Path to the extracted `vpp_sim`, when present.
-    pub simulation_executable: Option<PathBuf>,
+    pub(super) simulation_executable: Option<PathBuf>,
 }
 
 impl Vbin {
-    pub(crate) fn open(path: &Path) -> Result<Self> {
+    pub(super) fn open(path: &Path) -> Result<Self> {
         let temp_dir = tempfile::tempdir()
             .map_err(|error| FrtError::Vrt(format!("cannot create VBIN temp dir: {error}")))?;
         let files = extract(path, temp_dir.path())?;
@@ -168,7 +168,7 @@ impl Vbin {
     }
 
     /// Root of the owned archive extraction directory.
-    pub(crate) fn extraction_dir(&self) -> &Path {
+    pub(super) fn extraction_dir(&self) -> &Path {
         self.temp_dir.path()
     }
 }
@@ -513,7 +513,7 @@ fn parse_bool(text: &str, field: &str) -> Result<bool> {
 /// Lower a scalar or device address to little-endian 32-bit register writes.
 /// Values narrower than their recorded register are zero-padded, including
 /// sub-u32 scalars; wider host values are rejected rather than truncated.
-pub fn register_words(offset: u32, range: u32, value: &[u8]) -> Result<Vec<(u32, u32)>> {
+pub(super) fn register_words(offset: u32, range: u32, value: &[u8]) -> Result<Vec<(u32, u32)>> {
     if !offset.is_multiple_of(4) {
         return Err(FrtError::Vrt(format!(
             "register offset {offset:#x} is not 32-bit aligned"

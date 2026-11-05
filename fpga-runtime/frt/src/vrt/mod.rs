@@ -14,7 +14,7 @@ use vbin::{Platform, Vbin};
 
 /// Extract once and dispatch on the platform recorded in `system_map.xml`.
 /// Parsing and rejection happen before any attempt to load libvrtd.
-pub(crate) fn open(path: &Path) -> Result<Box<dyn Device>> {
+pub fn open(path: &Path) -> Result<Box<dyn Device>> {
     let vbin = Vbin::open(path)?;
     match vbin.platform {
         Platform::Hardware => Ok(Box::new(device::VrtDevice::open(&vbin)?)),
