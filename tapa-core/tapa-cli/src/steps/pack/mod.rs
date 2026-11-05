@@ -346,23 +346,12 @@ mod tests {
         Task, TaskGraph, TaskLevel,
     };
 
-    use crate::globals::GlobalArgs;
-    use crate::testutil::{port, task};
+    use crate::testutil::{ctx_at, port, task};
 
     fn parse_pack(extra: &[&str]) -> PackArgs {
         let mut argv = vec!["pack"];
         argv.extend_from_slice(extra);
         PackArgs::try_parse_from(argv).expect("parse pack args")
-    }
-
-    fn ctx_with_work_dir(work_dir: &Path) -> CliContext {
-        let globals = GlobalArgs::try_parse_from([
-            "tapa",
-            "--work-dir",
-            work_dir.to_str().expect("utf-8 work dir"),
-        ])
-        .expect("parse globals");
-        CliContext::from_globals(&globals)
     }
 
     fn write_state(work_dir: &Path, target: Target) {
@@ -438,7 +427,7 @@ mod tests {
         let text = fs_err::read_to_string(&path).expect("read state");
         fs_err::write(&path, text.replace("xilinx-hls", "cpu-sim")).expect("write state");
 
-        let ctx = ctx_with_work_dir(dir.path());
+        let ctx = ctx_at(dir.path());
         let err = run(&parse_pack(&[]), &ctx).expect_err("unknown target must reject");
         let text = err.to_string();
         assert!(
@@ -494,7 +483,7 @@ mod tests {
 
         let output_path = dir.path().join("work.zip");
         let output_str = output_path.to_str().expect("utf-8 output");
-        let ctx = ctx_with_work_dir(dir.path());
+        let ctx = ctx_at(dir.path());
         run(&parse_pack(&["--output", output_str]), &ctx).expect("xilinx-hls pack must succeed");
         assert!(output_path.exists(), "expected {output_str} to be written");
 
@@ -605,7 +594,7 @@ mod tests {
 
         let output_path = dir.path().join("work.zip");
         let output_str = output_path.to_str().expect("utf-8 output");
-        let ctx = ctx_with_work_dir(dir.path());
+        let ctx = ctx_at(dir.path());
         let err = run(&parse_pack(&["--output", output_str]), &ctx)
             .expect_err("cosim-unbindable ports must not ship in the archive");
         assert!(
@@ -629,7 +618,7 @@ mod tests {
     fn missing_rtl_dir_surfaces_missing_state() {
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), Target::XilinxVitis);
-        let ctx = ctx_with_work_dir(dir.path());
+        let ctx = ctx_at(dir.path());
         let err = run(&parse_pack(&[]), &ctx).expect_err("missing rtl dir must fail");
         assert!(matches!(err, CliError::MissingState { ref name, .. } if name.contains("RTL")));
     }
@@ -645,7 +634,7 @@ mod tests {
         let args = parse_pack(&[]);
         let error = crate::chain::validate_pipeline_step(
             crate::chain::PipelineStep::Pack(&args),
-            &ctx_with_work_dir(dir.path()),
+            &ctx_at(dir.path()),
         )
         .expect_err("pack must not consume partial synthesis outputs");
         assert!(
@@ -661,7 +650,7 @@ mod tests {
             write_state(dir.path(), target);
             activate_floorplan(dir.path());
 
-            let error = run(&parse_pack(&[]), &ctx_with_work_dir(dir.path()))
+            let error = run(&parse_pack(&[]), &ctx_at(dir.path()))
                 .expect_err("unpublished floorplan must not be packaged");
 
             assert!(
@@ -687,7 +676,7 @@ mod tests {
             let args = parse_pack(&["--custom-rtl", "replacement.v"]);
             let error = crate::chain::validate_pipeline_step(
                 crate::chain::PipelineStep::Pack(&args),
-                &ctx_with_work_dir(dir.path()),
+                &ctx_at(dir.path()),
             )
             .expect_err("post-floorplan RTL mutation must be rejected");
 

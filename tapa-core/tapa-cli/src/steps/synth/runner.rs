@@ -381,24 +381,14 @@ mod tests {
     use tapa_xilinx::tools::aie::report::{AieKernelReport, AieReport, AieTile};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
-    use crate::globals::GlobalArgs;
     use crate::state::work::WorkState;
     use crate::steps::synth::fixtures;
+    use crate::testutil::ctx_at;
 
     fn parse_synth(extra: &[&str]) -> SynthArgs {
         let mut argv = vec!["synth"];
         argv.extend_from_slice(extra);
         SynthArgs::try_parse_from(argv).expect("parse synth args")
-    }
-
-    fn ctx_with_work_dir(work_dir: &Path) -> CliContext {
-        let globals = GlobalArgs::try_parse_from([
-            "tapa",
-            "--work-dir",
-            work_dir.to_str().expect("utf-8 work dir"),
-        ])
-        .expect("parse globals");
-        CliContext::from_globals(&globals)
     }
 
     const AIE_PART: &str = "xcvc1902-vsva2197-2MP-e-S";
@@ -531,7 +521,7 @@ mod tests {
 
         let error = run_native(
             &aie_only_args(AIE_PART, "3.33"),
-            &ctx_with_work_dir(dir.path()),
+            &ctx_at(dir.path()),
             &runner,
         )
         .expect_err("no AIE partition");
@@ -550,7 +540,7 @@ mod tests {
         let mut args = aie_only_args(AIE_PART, "3.33");
         args.enable_synth_util = true;
 
-        run_native(&args, &ctx_with_work_dir(work), &runner).expect("AIE-only synth");
+        run_native(&args, &ctx_at(work), &runner).expect("AIE-only synth");
 
         assert_eq!(
             runner
@@ -591,12 +581,8 @@ mod tests {
         .expect("add stale aiesim timing");
         let runner = mock_aie_compile(work, 4096);
 
-        run_native(
-            &aie_only_args(AIE_PART, "3.33"),
-            &ctx_with_work_dir(work),
-            &runner,
-        )
-        .expect("AIE-only synth");
+        run_native(&aie_only_args(AIE_PART, "3.33"), &ctx_at(work), &runner)
+            .expect("AIE-only synth");
 
         let persisted = work_io::load(work).expect("load state");
         assert!(persisted.flow.synthed);
@@ -632,12 +618,8 @@ mod tests {
             write_current_report(work, &state, 1);
             let runner = mock_aie_compile(work, 4096);
 
-            run_native(
-                &aie_only_args(part, clock),
-                &ctx_with_work_dir(work),
-                &runner,
-            )
-            .expect("AIE-only synth");
+            run_native(&aie_only_args(part, clock), &ctx_at(work), &runner)
+                .expect("AIE-only synth");
 
             let persisted = work_io::load(work).expect("load state");
             assert!(!persisted.flow.synthed, "changed inputs: {part} at {clock}");
@@ -668,12 +650,8 @@ mod tests {
             let runner = MockToolRunner::new();
             runner.push_failure("aiecompiler", 1, "synthetic failure");
 
-            run_native(
-                &aie_only_args(AIE_PART, "3.33"),
-                &ctx_with_work_dir(work),
-                &runner,
-            )
-            .expect_err("compiler failure");
+            run_native(&aie_only_args(AIE_PART, "3.33"), &ctx_at(work), &runner)
+                .expect_err("compiler failure");
 
             let persisted = work_io::load(work).expect("load state");
             assert_eq!(persisted.flow.skip_aie, skip_aie);
@@ -854,7 +832,7 @@ mod tests {
             ("Add".into(), stub_module("Add")),
             ("VecAdd".into(), stub_module("VecAdd")),
         ]);
-        let ctx = ctx_with_work_dir(work);
+        let ctx = ctx_at(work);
         let args = parse_synth(&[
             "--part-num",
             "xcvu37p-fsvh2892-2L-e",
