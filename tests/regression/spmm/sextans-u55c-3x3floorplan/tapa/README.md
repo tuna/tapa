@@ -6,7 +6,7 @@ RapidStream Contributor License Agreement.
 
 This design was collected from [Sextans](https://github.com/linghaosong/Sextans).
 
-[run_tapa.sh](./run_tapa.sh) currently builds
+The `//tests/regression:sextans-xo` Bazel target builds
 `src/sextans-no-const-para.cpp`, which avoids aggressively passing constants
-through handshake interfaces. To build the constants variant instead, change
-the `-f` argument to `src/sextans.cpp`.
+through handshake interfaces. The constants variant (`src/sextans.cpp`) sits
+next to it for reference.
