@@ -325,7 +325,7 @@ pub(crate) fn resolve_strategy(
 /// Automatic schedule heuristic, including its row-count test for medium-sized
 /// designs.
 #[must_use]
-pub fn select_strategy(device: &Device, edge_count: usize) -> PartitionStrategy {
+pub(crate) fn select_strategy(device: &Device, edge_count: usize) -> PartitionStrategy {
     if device.cols == 1 || edge_count < FLAT_SCHEDULE_MAX_EDGE_COUNT {
         return PartitionStrategy::Flat;
     }
