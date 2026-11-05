@@ -1,8 +1,5 @@
 #include "tree_pipeline.h"
 
-#include <dirent.h>
-
-#include <functional>
 #include <memory>
 
 #include "clang/AST/ASTConsumer.h"
@@ -11,44 +8,15 @@
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
 
 #include "diag_capture.h"
 #include "frontend/tapa_stub_decls.h"
 #include "macro_splice.h"
+#include "test_fs.h"
 #include "tree_writer.h"
 
 namespace tapa::cc::test_support {
 namespace {
-
-std::string ReadFile(const std::string& path) {
-  const auto buffer = llvm::MemoryBuffer::getFile(path);
-  return buffer ? (*buffer)->getBuffer().str() : std::string();
-}
-
-std::map<std::string, std::string> ReadTree(const std::string& root) {
-  std::map<std::string, std::string> files;
-  std::function<void(const std::string&, const std::string&)> walk =
-      [&](const std::string& prefix, const std::string& dir) {
-        DIR* stream = opendir(dir.c_str());
-        if (stream == nullptr) return;
-        while (dirent* entry = readdir(stream)) {
-          const std::string name = entry->d_name;
-          if (name == "." || name == "..") continue;
-          const std::string path = dir + "/" + name;
-          const std::string relative = prefix + name;
-          if (relative == ".tapa-tree-manifest") continue;
-          if (entry->d_type == DT_DIR) {
-            walk(relative + "/", path);
-          } else {
-            files[relative] = ReadFile(path);
-          }
-        }
-        closedir(stream);
-      };
-  walk("", root);
-  return files;
-}
 
 // One frontend action over one TU, the exact shape of tapacc's
 // BuilderAction: the include log is always recorded, and only the rewrite

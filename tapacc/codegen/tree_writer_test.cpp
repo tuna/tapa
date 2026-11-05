@@ -6,9 +6,6 @@
 
 #include "tree_writer.h"
 
-#include <dirent.h>
-
-#include <functional>
 #include <map>
 #include <memory>
 #include <string>
@@ -23,14 +20,17 @@
 #include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include "test_fs.h"
 
 namespace tapa::cc {
 namespace {
 
 using clang::tooling::FileContentMappings;
+using test_support::ReadFile;
+using test_support::ReadTree;
 
 // ── Test scaffolding ──────────────────────────────────────────────────────
 
@@ -41,37 +41,6 @@ std::string TempRoot(const std::string& name) {
   // Both calls report success as a null error code.
   EXPECT_FALSE(llvm::sys::fs::create_directories(root));
   return root;
-}
-
-std::string ReadFile(const std::string& path) {
-  const auto buffer = llvm::MemoryBuffer::getFile(path);
-  EXPECT_TRUE(buffer) << path;
-  return buffer ? (*buffer)->getBuffer().str() : std::string();
-}
-
-// Every file under `root`, as "<relative path> -> <bytes>".
-std::map<std::string, std::string> ReadTree(const std::string& root) {
-  std::map<std::string, std::string> files;
-  std::function<void(const std::string&, const std::string&)> walk =
-      [&](const std::string& prefix, const std::string& dir) {
-        DIR* stream = opendir(dir.c_str());
-        ASSERT_NE(stream, nullptr);
-        while (dirent* entry = readdir(stream)) {
-          const std::string name = entry->d_name;
-          if (name == "." || name == "..") continue;
-          const std::string path = dir + "/" + name;
-          const std::string relative = prefix + name;
-          if (relative == ".tapa-tree-manifest") continue;
-          if (entry->d_type == DT_DIR) {
-            walk(relative + "/", path);
-          } else {
-            files[relative] = ReadFile(path);
-          }
-        }
-        closedir(stream);
-      };
-  walk("", root);
-  return files;
 }
 
 // Parses one virtual TU (code mapped at `main_file`, extra virtual files,
