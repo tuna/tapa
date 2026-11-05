@@ -56,15 +56,16 @@ pub enum PipelineError {
 /// - Double places one cell on each side of every boundary.
 /// - Single-H/Double-V adds one cell at each endpoint of every vertical
 ///   boundary to Single's intermediate cells.
+#[cfg(test)]
 #[must_use]
-pub fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<String> {
+fn pipeline_reg_regions(route: &[Cell], scheme: PipelineScheme) -> Vec<String> {
     pipeline_reg_cells(route, scheme)
         .into_iter()
         .map(slot_tag)
         .collect()
 }
 
-/// [`pipeline_reg_regions`] as grid cells, for the routing budget that has to
+/// The Body-cell regions as grid cells, for the routing budget that has to
 /// count how many Body registers a candidate path would leave in each slot.
 fn pipeline_reg_cells(route: &[Cell], scheme: PipelineScheme) -> Vec<Cell> {
     if route.len() < 2 {

@@ -2,5 +2,3 @@
 //! channels into [`PipelineRoute`](tapa_ir::PipelineRoute) records for codegen.
 
 pub mod plan;
-
-pub use plan::{plan_routes, PipelineError};
