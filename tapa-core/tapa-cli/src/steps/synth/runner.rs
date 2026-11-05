@@ -127,18 +127,12 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);
 
-        if let Some(task) = pl_graph.tasks.get_mut(task_name) {
-            apply_hls_metrics(task_name, task, &out.csynth)?;
-        }
-    }
-    // Fold the HLS annotations from the PL projection back into the
-    // whole graph the state persists; nothing else mutates `state.graph`
-    // in between, so one copy-back pass replaces re-deriving `pl_graph`.
-    for (name, task) in &pl_graph.tasks {
-        if let Some(original) = state.graph.tasks.get_mut(name) {
-            original.clock_period = task.clock_period;
-            original.self_area = task.self_area;
-            original.total_area = task.total_area;
+        // The report reads the PL projection; the state persists the whole
+        // graph. Both carry the same metrics.
+        for graph in [&mut pl_graph, &mut state.graph] {
+            if let Some(task) = graph.tasks.get_mut(task_name) {
+                apply_hls_metrics(task_name, task, &out.csynth)?;
+            }
         }
     }
     let projection = state
