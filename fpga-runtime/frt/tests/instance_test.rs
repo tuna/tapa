@@ -1,4 +1,4 @@
-use frt::{BufferAccess, Instance, Simulator};
+use frt::{BufferAccess, Simulator};
 use frt_shm::SharedMemoryQueue;
 use std::fs::File;
 use std::io::Write;
@@ -183,12 +183,11 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
     ensure_dpi_lib_built("frt-dpi-verilator");
 
     let zip_path = make_manual_zip();
-    let mut instance =
-        Instance::open(&zip_path, &Simulator::Verilator).expect("open cosim instance");
+    let mut instance = frt::open(&zip_path, &Simulator::Verilator).expect("open cosim instance");
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw_with_access(
+        .set_buffer_arg(
             0,
             mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
@@ -204,17 +203,17 @@ fn open_cosim_verilator_zip_mmap_stream_roundtrip() {
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
-        .set_stream_arg_raw(1, &stream_path)
+        .set_stream_arg(1, &stream_path)
         .expect("set stream shm path");
 
     let mut end_queue = SharedMemoryQueue::create("manual_end", 2, 2).expect("end queue");
     end_queue.try_push(&[0, 1]).expect("push 7-bit EoT");
     instance
-        .set_stream_arg_raw(2, &end_queue.path().to_string_lossy())
+        .set_stream_arg(2, &end_queue.path().to_string_lossy())
         .expect("bind 7-bit input");
     let mut output_queue = SharedMemoryQueue::create("manual_result", 4, 8).expect("output queue");
     instance
-        .set_stream_arg_raw(3, &output_queue.path().to_string_lossy())
+        .set_stream_arg(3, &output_queue.path().to_string_lossy())
         .expect("bind padded 17-bit output");
 
     instance.write_to_device().expect("write_to_device");
@@ -493,12 +492,11 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
     ensure_dpi_lib_built("frt-dpi-verilator");
 
     let xo_path = make_manual_xo();
-    let mut instance =
-        Instance::open(&xo_path, &Simulator::Verilator).expect("open cosim instance");
+    let mut instance = frt::open(&xo_path, &Simulator::Verilator).expect("open cosim instance");
 
     let mut mmap_word = [10u32];
     instance
-        .set_buffer_arg_raw_with_access(
+        .set_buffer_arg(
             0,
             mmap_word.as_mut_ptr().cast::<u8>(),
             std::mem::size_of_val(&mmap_word),
@@ -506,7 +504,7 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
         )
         .expect("set mmap arg");
     instance
-        .set_scalar_arg_bytes(2, &2u64.to_le_bytes())
+        .set_scalar_arg(2, &2u64.to_le_bytes())
         .expect("set scalar arg");
 
     let stream_name = format!("manual_axis_{}_{}", std::process::id(), mmap_word[0]);
@@ -517,7 +515,7 @@ fn open_cosim_verilator_xo_mmap_axis_roundtrip() {
         .expect("push stream word");
     let stream_path = stream_q.path().to_string_lossy().to_string();
     instance
-        .set_stream_arg_raw(1, &stream_path)
+        .set_stream_arg(1, &stream_path)
         .expect("set stream shm path");
 
     instance.write_to_device().expect("write_to_device");
@@ -571,12 +569,12 @@ fn open_cosim_verilator_axis_handshakes_use_settled_inputs() {
         .expect("second input");
     // A single output slot forces the second transfer to wait for host readback.
     let mut output = SharedMemoryQueue::create("axis_settle_output", 1, 5).expect("output queue");
-    let mut instance = Instance::open(&xo_path, &Simulator::Verilator).expect("open instance");
+    let mut instance = frt::open(&xo_path, &Simulator::Verilator).expect("open instance");
     instance
-        .set_stream_arg_raw(0, &input.path().to_string_lossy())
+        .set_stream_arg(0, &input.path().to_string_lossy())
         .expect("bind input");
     instance
-        .set_stream_arg_raw(1, &output.path().to_string_lossy())
+        .set_stream_arg(1, &output.path().to_string_lossy())
         .expect("bind output");
     instance.exec().expect("execute");
 

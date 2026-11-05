@@ -8,9 +8,9 @@ mod shm_ffi;
 pub mod vrt;
 mod xrt;
 
-pub use device::BufferAccess;
+pub use device::{BufferAccess, Device};
 pub use error::{FrtError, Result};
-pub use instance::{Instance, Simulator};
+pub use instance::{open, Simulator};
 
 pub(crate) use frt_shm::env_bool;
 

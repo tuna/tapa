@@ -1,13 +1,13 @@
-use crate::device::BufferAccess;
+use crate::device::{BufferAccess, Device};
 use crate::env_bool;
-use crate::instance::{ExecutionMode, Instance, Simulator};
+use crate::instance::{open, ExecutionMode, Simulator};
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::path::Path;
 
 struct FrtInstanceHandle {
-    instance: Instance,
+    device: Box<dyn Device>,
 }
 
 /// Obtain a shared reference to the `FrtInstanceHandle` behind an opaque pointer.
@@ -38,17 +38,17 @@ fn with_handle_mut(handle: *mut std::ffi::c_void) -> Option<&'static mut FrtInst
 }
 
 /// Shared body for the `frt_instance_*` wrappers around fallible,
-/// argument-free `Instance` methods: a null handle or an error is recorded
+/// argument-free `Device` methods: a null handle or an error is recorded
 /// via `set_last_error` and mapped to `-1`, success to `0`.
 fn instance_method_call(
     handle: *mut std::ffi::c_void,
-    method: impl FnOnce(&mut Instance) -> crate::error::Result<()>,
+    method: impl FnOnce(&mut dyn Device) -> crate::error::Result<()>,
 ) -> c_int {
     clear_last_error();
     let Some(h) = with_handle_mut(handle) else {
         return -1;
     };
-    if let Err(e) = method(&mut h.instance) {
+    if let Err(e) = method(&mut *h.device) {
         set_last_error(e.to_string());
         return -1;
     }
@@ -108,7 +108,7 @@ fn parse_simulator(sim: Option<&str>) -> Result<Simulator, String> {
     }
 }
 
-fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
+fn open_instance(path: &str, sim: Option<&str>) -> Result<Box<dyn Device>, String> {
     let path = Path::new(path);
     // Hardware ignores the simulator name, so only a cosim package may
     // reject an unknown one; a stray -cosim_simulator flag must not break
@@ -117,7 +117,7 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Instance, String> {
         ExecutionMode::Hardware | ExecutionMode::Vrt => Simulator::Xsim { legacy: false },
         ExecutionMode::Cosim => parse_simulator(sim)?,
     };
-    Instance::open(path, &simulator).map_err(|e| e.to_string())
+    open(path, &simulator).map_err(|e| e.to_string())
 }
 
 /// Return the error message recorded by the most recent failed `frt_*`
@@ -161,14 +161,14 @@ pub extern "C" fn frt_instance_open(
         }
     };
 
-    let instance = match open_instance(path, sim) {
-        Ok(i) => i,
+    let device = match open_instance(path, sim) {
+        Ok(d) => d,
         Err(e) => {
             set_last_error(e);
             return std::ptr::null_mut();
         }
     };
-    let handle = FrtInstanceHandle { instance };
+    let handle = FrtInstanceHandle { device };
     Box::into_raw(Box::new(handle)).cast::<std::ffi::c_void>()
 }
 
@@ -181,8 +181,8 @@ pub extern "C" fn frt_instance_close(handle: *mut std::ffi::c_void) {
     // this is the only place that reclaims ownership.  After this call the
     // handle must not be used again.
     let mut h = unsafe { Box::from_raw(handle.cast::<FrtInstanceHandle>()) };
-    if !matches!(h.instance.is_finished(), Ok(true)) {
-        let _ = h.instance.kill();
+    if !matches!(h.device.is_finished(), Ok(true)) {
+        let _ = h.device.kill();
     }
 }
 
@@ -208,7 +208,7 @@ pub extern "C" fn frt_instance_set_scalar_bytes(
     let Some(h) = with_handle_mut(handle) else {
         return -1;
     };
-    if let Err(e) = h.instance.set_scalar_arg_bytes(index, bytes) {
+    if let Err(e) = h.device.set_scalar_arg(index, bytes) {
         set_last_error(e.to_string());
         return -1;
     }
@@ -235,10 +235,7 @@ pub extern "C" fn frt_instance_set_buffer_arg_typed(
     let Some(h) = with_handle_mut(handle) else {
         return -1;
     };
-    if let Err(e) = h
-        .instance
-        .set_buffer_arg_raw_with_access(index, ptr, bytes, access)
-    {
+    if let Err(e) = h.device.set_buffer_arg(index, ptr, bytes, access) {
         set_last_error(e.to_string());
         return -1;
     }
@@ -263,7 +260,7 @@ pub extern "C" fn frt_instance_set_stream_arg(
     let Some(h) = with_handle_mut(handle) else {
         return -1;
     };
-    if let Err(e) = h.instance.set_stream_arg_raw(index, path) {
+    if let Err(e) = h.device.set_stream_arg(index, path) {
         set_last_error(e.to_string());
         return -1;
     }
@@ -278,7 +275,7 @@ pub extern "C" fn frt_instance_host_stream_count(handle: *const std::ffi::c_void
     let Some(h) = with_handle_ref(handle) else {
         return -1;
     };
-    c_int::try_from(h.instance.host_streams().len()).unwrap_or(-1)
+    c_int::try_from(h.device.host_streams().len()).unwrap_or(-1)
 }
 
 /// The `nth` stream argument the host binds, as its argument index.
@@ -298,7 +295,7 @@ pub extern "C" fn frt_instance_host_stream(
     let Some(h) = with_handle_ref(handle) else {
         return -1;
     };
-    let streams = h.instance.host_streams();
+    let streams = h.device.host_streams();
     let Some(stream) = streams.get(nth as usize) else {
         set_last_error(format!(
             "host stream {nth} out of range ({} declared)",
@@ -327,27 +324,27 @@ pub extern "C" fn frt_instance_host_stream(
 
 #[no_mangle]
 pub extern "C" fn frt_instance_write_to_device(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::write_to_device)
+    instance_method_call(handle, |device| device.write_to_device())
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_read_from_device(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::read_from_device)
+    instance_method_call(handle, |device| device.read_from_device())
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_exec(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::exec)
+    instance_method_call(handle, |device| device.exec())
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_finish(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::finish)
+    instance_method_call(handle, |device| device.finish())
 }
 
 #[no_mangle]
 pub extern "C" fn frt_instance_kill(handle: *mut std::ffi::c_void) -> c_int {
-    instance_method_call(handle, Instance::kill)
+    instance_method_call(handle, |device| device.kill())
 }
 
 #[no_mangle]
@@ -356,7 +353,7 @@ pub extern "C" fn frt_instance_is_finished(handle: *mut std::ffi::c_void) -> c_i
     let Some(h) = with_handle_mut(handle) else {
         return 0;
     };
-    match h.instance.is_finished() {
+    match h.device.is_finished() {
         Ok(done) => i32::from(done),
         Err(e) => {
             set_last_error(e.to_string());
@@ -370,7 +367,7 @@ pub extern "C" fn frt_instance_load_ns(handle: *mut std::ffi::c_void) -> u64 {
     let Some(h) = with_handle_ref(handle.cast_const()) else {
         return 0;
     };
-    h.instance.load_ns()
+    h.device.load_ns()
 }
 
 #[no_mangle]
@@ -378,7 +375,7 @@ pub extern "C" fn frt_instance_compute_ns(handle: *mut std::ffi::c_void) -> u64 
     let Some(h) = with_handle_ref(handle.cast_const()) else {
         return 0;
     };
-    h.instance.compute_ns()
+    h.device.compute_ns()
 }
 
 #[no_mangle]
@@ -386,7 +383,7 @@ pub extern "C" fn frt_instance_store_ns(handle: *mut std::ffi::c_void) -> u64 {
     let Some(h) = with_handle_ref(handle.cast_const()) else {
         return 0;
     };
-    h.instance.store_ns()
+    h.device.store_ns()
 }
 
 #[cfg(test)]
