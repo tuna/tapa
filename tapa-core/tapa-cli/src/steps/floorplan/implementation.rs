@@ -1,6 +1,5 @@
 //! Isolated implementation and frequency selection for floorplan candidates.
 
-use std::cmp::Ordering;
 use std::path::{Path, PathBuf};
 
 use rayon::prelude::*;
@@ -554,24 +553,20 @@ fn finish_with_winner(
 }
 
 fn winner_index(outcomes: &[CandidateOutcome]) -> Option<usize> {
-    let mut best: Option<(usize, usize, f64)> = None;
-    for (position, outcome) in outcomes.iter().enumerate() {
-        let CandidateOutcome::Success(success) = outcome else {
-            continue;
-        };
-        let fmax = success.timing.fmax_mhz;
-        if !fmax.is_finite() {
-            continue;
-        }
-        let index = success.candidate.index;
-        if best.is_none_or(|(_, best_index, best_fmax)| {
-            matches!(fmax.total_cmp(&best_fmax), Ordering::Greater)
-                || (matches!(fmax.total_cmp(&best_fmax), Ordering::Equal) && index < best_index)
-        }) {
-            best = Some((position, index, fmax));
-        }
-    }
-    best.map(|(position, _, _)| position)
+    outcomes
+        .iter()
+        .enumerate()
+        .filter_map(|(position, outcome)| match outcome {
+            CandidateOutcome::Success(success) => Some((position, success)),
+            CandidateOutcome::Failure { .. } => None,
+        })
+        .max_by(|(_, left), (_, right)| {
+            left.timing
+                .fmax_mhz
+                .total_cmp(&right.timing.fmax_mhz)
+                .then(right.candidate.index.cmp(&left.candidate.index))
+        })
+        .map(|(position, _)| position)
 }
 
 fn all_failed_error(outcomes: &[CandidateOutcome], infeasible: &[InfeasibleCandidate]) -> CliError {
@@ -833,7 +828,7 @@ fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
     })?;
     fs_err::create_dir_all(parent)?;
     let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
-    let mut input = fs_err::File::open(source.as_ref().to_path_buf())?;
+    let mut input = fs_err::File::open(source.as_ref())?;
     std::io::copy(&mut input, temporary.as_file_mut())?;
     temporary.as_file_mut().sync_all()?;
     fs_err::rename(temporary.path(), destination)?;
