@@ -27,6 +27,8 @@ use crate::context::CliContext;
 use crate::error::Result;
 
 mod device_resolve;
+#[cfg(test)]
+mod fixtures;
 mod hls_run;
 mod hls_sources;
 mod metrics;
@@ -140,4 +142,22 @@ pub struct SynthArgs {
 /// otherwise `LocalToolRunner`.
 pub fn run(args: &SynthArgs, ctx: &CliContext) -> Result<()> {
     ctx.with_tool_runner(|runner| run_native(args, ctx, runner))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::resolve_worker_count;
+
+    /// An explicit `--jobs` wins, zero/absent falls back to the host's
+    /// parallelism, and the result never exceeds the units of work.
+    #[test]
+    fn worker_count_honors_jobs_and_caps_at_work_count() {
+        assert_eq!(resolve_worker_count(Some(1), 4), 1);
+        assert_eq!(resolve_worker_count(Some(2), 4), 2);
+        assert_eq!(resolve_worker_count(Some(8), 3), 3);
+        assert_eq!(
+            resolve_worker_count(Some(0), 3),
+            resolve_worker_count(None, 3)
+        );
+    }
 }

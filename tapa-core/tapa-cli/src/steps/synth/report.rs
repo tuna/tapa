@@ -545,36 +545,13 @@ mod tests {
     use tapa_ir::{AieStream, SynthTarget, Task, TaskInstance, TaskLevel};
     use tapa_xilinx::tools::aie::report::{AieKernelReport, AiePlioReport, AieTile};
 
-    /// `count` child instances with empty args and step 0, mirroring
-    /// the `[{"args": {}, "step": 0}, ...]` JSON the untyped fixtures
-    /// used.
-    fn instances(count: usize) -> Vec<TaskInstance> {
-        vec![
-            TaskInstance {
-                name: None,
-                args: BTreeMap::new(),
-                step: 0,
-            };
-            count
-        ]
-    }
+    use crate::steps::synth::fixtures;
 
     fn leaf(name: &str, clock: Option<ClockPeriod>, area: Option<tapa_ir::Area>) -> Task {
         Task {
-            level: TaskLevel::Lower,
-            srcs: vec![format!("{name}.cpp")],
-            include_dirs: Vec::new(),
-            defines: Vec::new(),
-            ports: Vec::new(),
-            tasks: BTreeMap::new(),
-            fifos: BTreeMap::new(),
-            readable_name: String::new(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
-            synth: SynthTarget::Hls,
-            self_area: None,
             total_area: area,
             clock_period: clock,
+            ..fixtures::task(name)
         }
     }
 
@@ -590,19 +567,10 @@ mod tests {
             } else {
                 TaskLevel::Upper
             },
-            srcs: vec![format!("{name}.cpp")],
-            include_dirs: Vec::new(),
-            defines: Vec::new(),
-            ports: Vec::new(),
             tasks,
-            fifos: BTreeMap::new(),
-            readable_name: String::new(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
-            synth: SynthTarget::Hls,
             self_area: Some(self_area),
-            total_area: None,
             clock_period: clock,
+            ..fixtures::task(name)
         }
     }
 
@@ -679,7 +647,7 @@ mod tests {
                         "Top",
                         Some(ClockPeriod::from_picoseconds(2000)),
                         tapa_ir::Area::default(),
-                        BTreeMap::from([("Add".to_string(), instances(1))]),
+                        BTreeMap::from([("Add".to_string(), fixtures::instances(1))]),
                     ),
                 ),
                 (
@@ -838,19 +806,9 @@ mod tests {
                 "Top".to_string(),
                 Task {
                     level: TaskLevel::Upper,
-                    srcs: vec!["Top.cpp".to_string()],
-                    include_dirs: Vec::new(),
-                    defines: Vec::new(),
-                    ports: Vec::new(),
-                    tasks: BTreeMap::from([("Custom".to_string(), instances(1))]),
-                    fifos: BTreeMap::new(),
-                    readable_name: String::new(),
-                    aie_location: Vec::new(),
-                    aie_stack_bytes: None,
-                    synth: SynthTarget::Hls,
-                    self_area: None,
-                    total_area: None,
+                    tasks: BTreeMap::from([("Custom".to_string(), fixtures::instances(1))]),
                     clock_period: Some(ClockPeriod::from_picoseconds(2500)),
+                    ..fixtures::task("Top")
                 },
             ),
         ]);
@@ -904,7 +862,7 @@ mod tests {
                     ff: 2,
                     ..tapa_ir::Area::default()
                 },
-                BTreeMap::from([("Leaf".to_string(), instances(3))]),
+                BTreeMap::from([("Leaf".to_string(), fixtures::instances(3))]),
             ),
         );
         tasks.insert(
@@ -917,7 +875,7 @@ mod tests {
                     ff: 3,
                     ..tapa_ir::Area::default()
                 },
-                BTreeMap::from([("Middle".to_string(), instances(2))]),
+                BTreeMap::from([("Middle".to_string(), fixtures::instances(2))]),
             ),
         );
         let design = Design {
@@ -973,22 +931,13 @@ mod tests {
             "VecAdd".to_string(),
             Task {
                 level: TaskLevel::Upper,
-                srcs: vec!["VecAdd.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::from([("Add".to_string(), instances(2))]),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
+                tasks: BTreeMap::from([("Add".to_string(), fixtures::instances(2))]),
                 total_area: Some(tapa_ir::Area {
                     lut: 100,
                     ..tapa_ir::Area::default()
                 }),
                 clock_period: Some(ClockPeriod::from_picoseconds(3330)),
+                ..fixtures::task("VecAdd")
             },
         );
         tasks.insert(

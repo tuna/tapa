@@ -263,24 +263,14 @@ fn get_metric_int(util: &UtilizationReport, key: &str) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tapa_ir::ClockPeriod;
 
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::{Condvar, Mutex};
     use std::time::Duration;
 
-    use std::collections::BTreeMap;
-
-    use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput, XilinxError};
 
-    fn single_instance() -> Vec<TaskInstance> {
-        vec![TaskInstance {
-            name: None,
-            args: BTreeMap::new(),
-            step: 0,
-        }]
-    }
+    use crate::steps::synth::fixtures;
 
     fn sample_rpt(instance: &str) -> String {
         format!(
@@ -294,59 +284,8 @@ mod tests {
         )
     }
 
-    fn vadd_design() -> Design {
-        let mut tasks = BTreeMap::new();
-        tasks.insert(
-            "Add".to_string(),
-            Task {
-                level: TaskLevel::Lower,
-                srcs: vec!["Add.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
-            },
-        );
-        let mut child_tasks = BTreeMap::new();
-        child_tasks.insert("Add".to_string(), single_instance());
-        tasks.insert(
-            "VecAdd".to_string(),
-            Task {
-                level: TaskLevel::Upper,
-                srcs: vec!["VecAdd.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: child_tasks,
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
-            },
-        );
-        Design {
-            schema_version: tapa_ir::graph::SCHEMA_VERSION,
-            top: "VecAdd".to_string(),
-            target: tapa_ir::Target::XilinxHls,
-            tasks,
-            cflags: Vec::new(),
-        }
-    }
-
     fn two_child_design() -> Design {
-        let mut design = vadd_design();
+        let mut design = fixtures::vadd_design();
         let mut mul = design.tasks["Add"].clone();
         mul.srcs = vec!["Mul.cpp".to_string()];
         design.tasks.insert("Mul".to_string(), mul);
@@ -355,7 +294,7 @@ mod tests {
             .get_mut("VecAdd")
             .expect("VecAdd present")
             .tasks
-            .insert("Mul".to_string(), single_instance());
+            .insert("Mul".to_string(), fixtures::instances(1));
         design
     }
 
@@ -420,20 +359,6 @@ mod tests {
         }
     }
 
-    fn write_manifest(dir: &Path, entries: &[&str]) {
-        let mut contents = "tapa-tree-ownership-v1\n".to_string();
-        for entry in entries {
-            contents.push_str(entry);
-            contents.push('\n');
-        }
-        fs::write(
-            dir.join(crate::tapacc::REWRITTEN_DIR)
-                .join(".tapa-tree-manifest"),
-            contents,
-        )
-        .expect("write tree manifest");
-    }
-
     fn setup_work_dir(dir: &Path, tasks: &[(&str, &str)]) {
         fs::create_dir_all(dir.join(crate::tapacc::REWRITTEN_DIR)).expect("mkdir rewritten");
         fs::create_dir_all(dir.join("rtl")).expect("mkdir rtl");
@@ -444,12 +369,7 @@ mod tests {
             owned.push(src);
         }
         let owned = owned.iter().map(String::as_str).collect::<Vec<_>>();
-        write_manifest(dir, &owned);
-    }
-
-    /// Stage `design`'s manifest against `work`, as `run_native` does.
-    fn staged(work: &Path, design: &Design) -> crate::steps::synth::hls_sources::TaskSources {
-        crate::steps::synth::hls_sources::stage_hls_sources(work, design).expect("stage sources")
+        fixtures::write_manifest(dir, &owned);
     }
 
     /// Canned Vivado run: writes `sample_rpt(instance)` to the
@@ -462,11 +382,11 @@ mod tests {
             work,
             &[("Add", "void Add() {}\n"), ("VecAdd", "void VecAdd() {}\n")],
         );
-        let mut design = vadd_design();
+        let mut design = fixtures::vadd_design();
 
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
-        let sources = staged(work, &design);
+        let sources = fixtures::staged(work, &design);
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
         runner.attach_download(
             crate::util::utf8(rpt_path.clone()),
@@ -512,7 +432,7 @@ mod tests {
             work,
             &[("Add", "void Add() {}\n"), ("VecAdd", "void VecAdd() {}\n")],
         );
-        let mut design = vadd_design();
+        let mut design = fixtures::vadd_design();
 
         // Seed the rpt after the source and ownership manifest so it is
         // strictly newer. On systems where touch granularity is coarse,
@@ -534,7 +454,7 @@ mod tests {
         // MockToolRunner with no queued responses: any `.run(...)` call
         // surfaces a `ToolFailure`, so a pass here proves the skip.
         let runner = MockToolRunner::new();
-        let sources = staged(work, &design);
+        let sources = fixtures::staged(work, &design);
         emit_post_synth_util(
             work,
             &mut design,
@@ -562,7 +482,7 @@ mod tests {
         );
         let tree = work.join(crate::tapacc::REWRITTEN_DIR);
         fs::write(tree.join("Add.h"), "#define VALUE 1\n").expect("write header");
-        write_manifest(work, &["Add.cpp", "Add.h", "VecAdd.cpp"]);
+        fixtures::write_manifest(work, &["Add.cpp", "Add.h", "VecAdd.cpp"]);
 
         fs::create_dir_all(work.join("report")).expect("mkdir report");
         let rpt_path = work.join("report").join("Add.hier.util.rpt");
@@ -571,11 +491,11 @@ mod tests {
         std::thread::sleep(Duration::from_millis(10));
         fs::write(tree.join("Add.h"), "#define VALUE 2\n").expect("update header");
 
-        let mut design = vadd_design();
+        let mut design = fixtures::vadd_design();
         let runner = MockToolRunner::new();
         runner.push_ok("vivado", ToolOutput::default());
         runner.attach_download(crate::util::utf8(rpt_path), sample_rpt("Add").into_bytes());
-        let sources = staged(work, &design);
+        let sources = fixtures::staged(work, &design);
         emit_post_synth_util(
             work,
             &mut design,
@@ -608,7 +528,7 @@ mod tests {
         );
         let mut design = two_child_design();
         let runner = ConcurrentVivadoRunner::new(2);
-        let sources = staged(work, &design);
+        let sources = fixtures::staged(work, &design);
 
         emit_post_synth_util(
             work,
@@ -636,17 +556,6 @@ mod tests {
     }
 
     #[test]
-    fn post_synth_worker_count_honors_limit_and_task_count() {
-        assert_eq!(resolve_worker_count(Some(1), 4), 1);
-        assert_eq!(resolve_worker_count(Some(2), 4), 2);
-        assert_eq!(resolve_worker_count(Some(8), 3), 3);
-        assert_eq!(
-            resolve_worker_count(Some(0), 3),
-            resolve_worker_count(None, 3)
-        );
-    }
-
-    #[test]
     fn build_report_util_tcl_substitutes_placeholders() {
         let tcl = build_report_util_tcl("Add", "xcvu37p-fsvh2892-2L-e");
         assert!(tcl.contains("set_part xcvu37p-fsvh2892-2L-e"));
@@ -660,7 +569,7 @@ mod tests {
 
     #[test]
     fn top_task_child_names_covers_direct_children() {
-        let design = vadd_design();
+        let design = fixtures::vadd_design();
         let names = top_task_child_names(&design);
         assert_eq!(names, vec!["Add".to_string()]);
     }

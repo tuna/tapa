@@ -23,8 +23,8 @@ use crate::error::{CliError, Result};
 const DISABLED_MMAP_NAMES: &[&str] = &[
     "begin", "end", "in", "input", "out", "output", "reg", "wire",
 ];
-const TREE_MANIFEST_NAME: &str = ".tapa-tree-manifest";
-const TREE_MANIFEST_HEADER: &str = "tapa-tree-ownership-v1\n";
+pub(super) const TREE_MANIFEST_NAME: &str = ".tapa-tree-manifest";
+pub(super) const TREE_MANIFEST_HEADER: &str = "tapa-tree-ownership-v1\n";
 
 /// Every task's rewritten sources, resolved absolute against the work
 /// dir's `rewritten/` tree. Built once by [`stage_hls_sources`] before
@@ -226,10 +226,10 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
 
-    use tapa_ir::{
-        port::{ArgCategory, Port},
-        SynthTarget, Task,
-    };
+    use tapa_ir::port::ArgCategory;
+    use tapa_ir::Task;
+
+    use crate::steps::synth::fixtures;
 
     fn task(srcs: &[&str]) -> Task {
         task_with(srcs, &[], &[])
@@ -237,20 +237,10 @@ mod tests {
 
     fn task_with(srcs: &[&str], include_dirs: &[&str], defines: &[&str]) -> Task {
         Task {
-            level: TaskLevel::Lower,
             srcs: srcs.iter().map(|s| (*s).to_string()).collect(),
             include_dirs: include_dirs.iter().map(|s| (*s).to_string()).collect(),
             defines: defines.iter().map(|s| (*s).to_string()).collect(),
-            readable_name: String::new(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
-            synth: SynthTarget::Hls,
-            ports: Vec::new(),
-            tasks: BTreeMap::new(),
-            fifos: BTreeMap::new(),
-            self_area: None,
-            total_area: None,
-            clock_period: None,
+            ..fixtures::task("Add")
         }
     }
 
@@ -267,23 +257,12 @@ mod tests {
         }
     }
 
-    fn write_manifest(dir: &Path, entries: &[&str]) {
-        let tree = dir.join(crate::tapacc::REWRITTEN_DIR);
-        fs::create_dir_all(&tree).expect("mkdir rewritten");
-        let mut contents = TREE_MANIFEST_HEADER.to_string();
-        for entry in entries {
-            contents.push_str(entry);
-            contents.push('\n');
-        }
-        fs::write(tree.join(TREE_MANIFEST_NAME), contents).expect("write tree manifest");
-    }
-
     fn write_src(dir: &Path, name: &str) {
         let tree = dir.join(crate::tapacc::REWRITTEN_DIR);
         fs::create_dir_all(&tree).expect("mkdir rewritten");
         let src = format!("{name}.cpp");
         fs::write(tree.join(&src), "int main(){}\n").expect("write src");
-        write_manifest(dir, &[&src]);
+        fixtures::write_manifest(dir, &[&src]);
     }
 
     #[test]
@@ -305,7 +284,7 @@ mod tests {
     #[test]
     fn missing_src_names_the_task_and_tree() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_manifest(dir.path(), &["Add.cpp"]);
+        fixtures::write_manifest(dir.path(), &["Add.cpp"]);
         let d = design(&[("Add", task(&["Add.cpp"]))]);
         let err = stage_hls_sources(dir.path(), &d).expect_err("missing src must fail");
         let msg = err.to_string();
@@ -384,7 +363,7 @@ mod tests {
         write_src(dir.path(), "Add");
         let tree = dir.path().join(crate::tapacc::REWRITTEN_DIR);
         fs::write(tree.join("Add.h"), "#define VALUE 1\n").expect("write header");
-        write_manifest(dir.path(), &["Add.cpp", "Add.h"]);
+        fixtures::write_manifest(dir.path(), &["Add.cpp", "Add.h"]);
 
         let d = design(&[("Add", task(&["Add.cpp"]))]);
         let sources = stage_hls_sources(dir.path(), &d).expect("stage");
@@ -438,12 +417,12 @@ mod tests {
         write_src(dir.path(), "Add");
         let d = design(&[("Add", task(&["Add.cpp"]))]);
         for bad in ["../outside.h", "/outside.h", ""] {
-            write_manifest(dir.path(), &[bad]);
+            fixtures::write_manifest(dir.path(), &[bad]);
             let err = stage_hls_sources(dir.path(), &d).expect_err("bad path must fail");
             assert!(err.to_string().contains("relative file key"), "{err}");
         }
 
-        write_manifest(dir.path(), &[]);
+        fixtures::write_manifest(dir.path(), &[]);
         let err = stage_hls_sources(dir.path(), &d).expect_err("unlisted src must fail");
         assert!(err.to_string().contains("not listed"), "{err}");
     }
@@ -454,18 +433,7 @@ mod tests {
         write_src(dir.path(), "Top");
         let mut top = task(&["Top.cpp"]);
         top.level = TaskLevel::Upper;
-        top.ports = vec![Port {
-            cat: ArgCategory::Mmap,
-            name: "in".to_string(),
-            ctype: "int*".to_string(),
-            width: 32,
-            chan_count: None,
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
-        }];
+        top.ports = vec![fixtures::port("in", ArgCategory::Mmap, "int*", 32)];
         let d = design(&[("Top", top)]);
         let err = stage_hls_sources(dir.path(), &d).expect_err("must reject reserved name");
         assert!(

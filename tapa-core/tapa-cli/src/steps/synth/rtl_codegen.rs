@@ -194,9 +194,10 @@ fn codegen_to_cli_error(op: &str, task: &str, err: &dyn std::fmt::Display) -> Cl
 mod tests {
     use super::*;
     use std::collections::BTreeMap;
-    use tapa_ir::ClockPeriod;
 
-    use tapa_ir::{SynthTarget, Task, TaskInstance, TaskLevel};
+    use tapa_ir::{SynthTarget, Task, TaskInstance};
+
+    use crate::steps::synth::fixtures;
 
     fn write_stub_module(dir: &Path, task_name: &str) -> Utf8PathBuf {
         let path = dir.join(format!("{task_name}.v"));
@@ -224,68 +225,10 @@ mod tests {
             .collect()
     }
 
-    fn vadd_design() -> Design {
-        let mut tasks = BTreeMap::new();
-        tasks.insert(
-            "Add".to_string(),
-            Task {
-                level: TaskLevel::Lower,
-                srcs: Vec::new(),
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
-            },
-        );
-        let mut child_tasks = BTreeMap::new();
-        child_tasks.insert(
-            "Add".to_string(),
-            vec![TaskInstance {
-                name: None,
-                args: BTreeMap::new(),
-                step: 0,
-            }],
-        );
-        tasks.insert(
-            "VecAdd".to_string(),
-            Task {
-                level: TaskLevel::Upper,
-                srcs: Vec::new(),
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: child_tasks,
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
-            },
-        );
-        Design {
-            schema_version: tapa_ir::graph::SCHEMA_VERSION,
-            top: "VecAdd".to_string(),
-            target: tapa_ir::Target::XilinxHls,
-            tasks,
-            cflags: Vec::new(),
-        }
-    }
-
     #[test]
     fn templates_info_empty_for_vadd() {
         let dir = tempfile::tempdir().expect("tempdir");
-        write_templates_info(dir.path(), &vadd_design()).expect("write");
+        write_templates_info(dir.path(), &fixtures::vadd_design()).expect("write");
         let raw = fs::read_to_string(dir.path().join("templates_info.json")).expect("read");
         assert_eq!(raw, "{}");
     }
@@ -294,8 +237,8 @@ mod tests {
     fn generate_rtl_tree_copies_verilog_support_assets() {
         let dir = tempfile::tempdir().expect("tempdir");
         let hdl_inputs = write_stub_inputs(dir.path(), &["Add", "VecAdd"]);
-        let written =
-            generate_rtl_tree(dir.path(), &vadd_design(), &hdl_inputs, None).expect("generate");
+        let written = generate_rtl_tree(dir.path(), &fixtures::vadd_design(), &hdl_inputs, None)
+            .expect("generate");
 
         let rtl_dir = dir.path().join("rtl");
         let fifo = fs::read_to_string(rtl_dir.join("fifo.v")).expect("fifo.v");
@@ -326,14 +269,15 @@ mod tests {
         fs::write(&generator, "create_ip -module_name Add_sort_ip\n")
             .expect("write generator sidecar");
 
-        let inputs = collect_hdl_inputs(&work_dir, &vadd_design()).expect("collect HLS outputs");
+        let inputs =
+            collect_hdl_inputs(&work_dir, &fixtures::vadd_design()).expect("collect HLS outputs");
         assert!(
             inputs["Add"].iter().any(|path| path == &generator),
             "reconstructed inputs must retain non-Verilog generator assets"
         );
 
         let candidate_dir = dir.path().join("candidate");
-        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None)
+        generate_rtl_tree(&candidate_dir, &fixtures::vadd_design(), &inputs, None)
             .expect("emit candidate RTL");
         assert_eq!(
             fs::read_to_string(candidate_dir.join("rtl/Add_sort_ip.tcl"))
@@ -342,10 +286,10 @@ mod tests {
         );
         // Rerunning after HLS drops an IP must also drop its packaged sidecar.
         fs::remove_file(&generator).unwrap();
-        let inputs = collect_hdl_inputs(&work_dir, &vadd_design()).unwrap();
+        let inputs = collect_hdl_inputs(&work_dir, &fixtures::vadd_design()).unwrap();
         fs::create_dir_all(candidate_dir.join("template")).unwrap();
         fs::write(candidate_dir.join("template/Removed.v"), "old shell").unwrap();
-        generate_rtl_tree(&candidate_dir, &vadd_design(), &inputs, None).unwrap();
+        generate_rtl_tree(&candidate_dir, &fixtures::vadd_design(), &inputs, None).unwrap();
         assert!(!candidate_dir.join("rtl/Add_sort_ip.tcl").exists());
         assert!(!candidate_dir.join("template/Removed.v").exists());
         assert!(candidate_dir.join("rtl/Add.v").is_file());
@@ -353,37 +297,16 @@ mod tests {
 
     #[test]
     fn generate_rtl_tree_writes_ignored_task_template_and_placeholder() {
-        use tapa_ir::{ArgCategory, Port};
+        use tapa_ir::ArgCategory;
 
-        let mut design = vadd_design();
+        let mut design = fixtures::vadd_design();
         design.tasks.insert(
             "Add_Upper".to_string(),
             Task {
-                level: TaskLevel::Lower,
                 srcs: Vec::new(),
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: vec![Port {
-                    cat: ArgCategory::Scalar,
-                    name: "n".to_string(),
-                    ctype: "uint64_t".to_string(),
-                    width: 64,
-                    chan_count: None,
-                    chan_size: None,
-                    aie_frame: None,
-                    aie_plio: None,
-                    stream_depth: None,
-                    mmap_addr_width: None,
-                }],
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
+                ports: vec![fixtures::port("n", ArgCategory::Scalar, "uint64_t", 64)],
                 synth: SynthTarget::Ignore,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
+                ..fixtures::task("Add_Upper")
             },
         );
         let top = design.tasks.get_mut("VecAdd").expect("top task");
@@ -458,7 +381,7 @@ mod tests {
             ),
         ]);
 
-        let Err(error) = prepare_rtl_state(&vadd_design(), &inputs, None) else {
+        let Err(error) = prepare_rtl_state(&fixtures::vadd_design(), &inputs, None) else {
             panic!("a different extension cannot stand in for the exact task top file");
         };
         assert!(
@@ -483,7 +406,7 @@ mod tests {
             ),
         ]);
 
-        let Err(error) = prepare_rtl_state(&vadd_design(), &inputs, None) else {
+        let Err(error) = prepare_rtl_state(&fixtures::vadd_design(), &inputs, None) else {
             panic!("the top file must declare the task's exact module name");
         };
         assert!(
@@ -497,7 +420,8 @@ mod tests {
     fn prepared_state_is_reused_for_emission() {
         let dir = tempfile::tempdir().expect("tempdir");
         let inputs = write_stub_inputs(dir.path(), &["Add", "VecAdd"]);
-        let mut state = prepare_rtl_state(&vadd_design(), &inputs, None).expect("prepare");
+        let mut state =
+            prepare_rtl_state(&fixtures::vadd_design(), &inputs, None).expect("prepare");
         assert_eq!(state.module_map.len(), 2, "both HLS modules are attached");
 
         emit_prepared_rtl_tree(dir.path(), &mut state, &inputs).expect("emit");
@@ -507,38 +431,17 @@ mod tests {
 
     #[test]
     fn templates_info_emits_typed_ports_for_ignore_tasks() {
-        use tapa_ir::{ArgCategory, Port};
-        let mut design = vadd_design();
+        use tapa_ir::ArgCategory;
+        let mut design = fixtures::vadd_design();
         // Drop a `target(\"ignore\")` task that carries a port so the
         // writer folds it into the emitted schema.
         design.tasks.insert(
             "Stub".to_string(),
             Task {
-                level: TaskLevel::Lower,
                 srcs: Vec::new(),
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: vec![Port {
-                    cat: ArgCategory::Scalar,
-                    name: "n".to_string(),
-                    ctype: "uint64_t".to_string(),
-                    width: 64,
-                    chan_count: None,
-                    chan_size: None,
-                    aie_frame: None,
-                    aie_plio: None,
-                    stream_depth: None,
-                    mmap_addr_width: None,
-                }],
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
+                ports: vec![fixtures::port("n", ArgCategory::Scalar, "uint64_t", 64)],
                 synth: SynthTarget::Ignore,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
+                ..fixtures::task("Stub")
             },
         );
         let dir = tempfile::tempdir().expect("tempdir");

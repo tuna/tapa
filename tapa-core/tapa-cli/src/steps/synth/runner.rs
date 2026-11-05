@@ -374,14 +374,13 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use tapa_ir::{
-        Area, ArgCategory, FloorplanResult, Port, SynthTarget, Target, TaskGraph, TaskLevel,
-    };
+    use tapa_ir::{Area, ArgCategory, FloorplanResult, SynthTarget, Target, TaskGraph, TaskLevel};
     use tapa_xilinx::tools::aie::report::{AieKernelReport, AieReport, AieTile};
     use tapa_xilinx::{MockToolRunner, ToolInvocation, ToolOutput};
 
     use crate::globals::GlobalArgs;
     use crate::state::work::WorkState;
+    use crate::steps::synth::fixtures;
 
     fn parse_synth(extra: &[&str]) -> SynthArgs {
         let mut argv = vec!["synth"];
@@ -404,19 +403,9 @@ mod tests {
     fn task(name: &str, level: TaskLevel, synth: SynthTarget) -> Task {
         Task {
             level,
-            srcs: vec![format!("{name}.cpp")],
-            include_dirs: Vec::new(),
-            defines: Vec::new(),
-            ports: Vec::new(),
-            tasks: BTreeMap::new(),
-            fifos: BTreeMap::new(),
             readable_name: name.to_string(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
             synth,
-            self_area: None,
-            total_area: None,
-            clock_period: None,
+            ..fixtures::task(name)
         }
     }
 
@@ -424,26 +413,9 @@ mod tests {
     /// argument. It needs no FIFO fixture to exercise the AIE-only boundary.
     fn aie_work_state() -> WorkState {
         let mut top = task("Top", TaskLevel::Upper, SynthTarget::Hls);
-        top.ports.push(Port {
-            cat: ArgCategory::Scalar,
-            name: "n".to_string(),
-            ctype: "int".to_string(),
-            width: 32,
-            chan_count: None,
-            chan_size: None,
-            aie_frame: None,
-            aie_plio: None,
-            stream_depth: None,
-            mmap_addr_width: None,
-        });
-        top.tasks.insert(
-            "Add".to_string(),
-            vec![tapa_ir::TaskInstance {
-                name: None,
-                args: BTreeMap::new(),
-                step: 0,
-            }],
-        );
+        top.ports
+            .push(fixtures::port("n", ArgCategory::Scalar, "int", 32));
+        top.tasks.insert("Add".to_string(), fixtures::instances(1));
         WorkState::new(TaskGraph {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Top".to_string(),
@@ -802,17 +774,6 @@ mod tests {
     #[test]
     fn hls_metrics_use_estimated_clock_and_clear_stale_total() {
         let mut task = Task {
-            level: TaskLevel::Lower,
-            srcs: vec!["Add.cpp".to_string()],
-            include_dirs: Vec::new(),
-            defines: Vec::new(),
-            ports: Vec::new(),
-            tasks: BTreeMap::new(),
-            fifos: BTreeMap::new(),
-            readable_name: String::new(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
-            synth: SynthTarget::Hls,
             self_area: Some(Area {
                 lut: 999,
                 ..Area::default()
@@ -822,6 +783,7 @@ mod tests {
                 ..Area::default()
             }),
             clock_period: Some(ClockPeriod::from_picoseconds(9990)),
+            ..fixtures::task("Add")
         };
         let report = CsynthReport {
             top: "Add".to_string(),
@@ -855,61 +817,7 @@ mod tests {
     fn synth_writes_full_pipeline_artifacts() {
         let dir = tempfile::tempdir().expect("tempdir");
         let work = dir.path();
-        let mut tasks = BTreeMap::new();
-        tasks.insert(
-            "Add".to_string(),
-            Task {
-                level: TaskLevel::Lower,
-                srcs: vec!["Add.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: BTreeMap::new(),
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: None,
-            },
-        );
-        let mut child_tasks = BTreeMap::new();
-        child_tasks.insert(
-            "Add".to_string(),
-            vec![tapa_ir::TaskInstance {
-                name: None,
-                args: BTreeMap::new(),
-                step: 0,
-            }],
-        );
-        tasks.insert(
-            "VecAdd".to_string(),
-            Task {
-                level: TaskLevel::Upper,
-                srcs: vec!["VecAdd.cpp".to_string()],
-                include_dirs: Vec::new(),
-                defines: Vec::new(),
-                ports: Vec::new(),
-                tasks: child_tasks,
-                fifos: BTreeMap::new(),
-                readable_name: String::new(),
-                aie_location: Vec::new(),
-                aie_stack_bytes: None,
-                synth: SynthTarget::Hls,
-                self_area: None,
-                total_area: None,
-                clock_period: Some(ClockPeriod::from_picoseconds(3330)),
-            },
-        );
-        let mut state = WorkState::new(TaskGraph {
-            schema_version: tapa_ir::graph::SCHEMA_VERSION,
-            top: "VecAdd".to_string(),
-            target: Target::XilinxHls,
-            tasks,
-            cflags: Vec::new(),
-        });
+        let mut state = WorkState::new(fixtures::vadd_design());
         state.flow.synthed = true;
         state.floorplan = Some(FloorplanResult {
             device: "u280".to_string(),
@@ -927,11 +835,7 @@ mod tests {
         fs_err::write(rewritten.join("Add.cpp"), "void Add() {}\n").expect("write Add.cpp");
         fs_err::write(rewritten.join("VecAdd.cpp"), "void VecAdd() {}\n")
             .expect("write VecAdd.cpp");
-        fs_err::write(
-            rewritten.join(".tapa-tree-manifest"),
-            "tapa-tree-ownership-v1\nAdd.cpp\nVecAdd.cpp\n",
-        )
-        .expect("write rewritten-tree ownership manifest");
+        fixtures::write_manifest(work, &["Add.cpp", "VecAdd.cpp"]);
 
         // Two HLS invocations: the leaf `Add` and the upper-task shell
         // `VecAdd`. Iteration order is `BTreeMap` alphabetical order,

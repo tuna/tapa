@@ -415,31 +415,15 @@ mod tests {
 
     use std::collections::BTreeMap;
 
-    use tapa_ir::{Design, SynthTarget, Task, TaskLevel};
     use tapa_xilinx::{MockToolRunner, ToolOutput};
 
-    /// Stage `design`'s manifest against `work`, mirroring what
-    /// `run_native` does before the HLS plan pass.
-    fn staged(work: &Path, design: &Design) -> TaskSources {
-        crate::steps::synth::hls_sources::stage_hls_sources(work, design).expect("stage sources")
-    }
-
-    fn write_manifest(work: &Path, entries: &[&str]) {
-        let tree = work.join(crate::tapacc::REWRITTEN_DIR);
-        fs::create_dir_all(&tree).unwrap();
-        let mut contents = "tapa-tree-ownership-v1\n".to_string();
-        for entry in entries {
-            contents.push_str(entry);
-            contents.push('\n');
-        }
-        fs::write(tree.join(".tapa-tree-manifest"), contents).unwrap();
-    }
+    use crate::steps::synth::fixtures;
 
     fn seed_rewritten(work: &Path) {
         let tree = work.join(crate::tapacc::REWRITTEN_DIR);
         fs::create_dir_all(&tree).unwrap();
         fs::write(tree.join("Add.cpp"), b"int main(){}\n").unwrap();
-        write_manifest(work, &["Add.cpp"]);
+        fixtures::write_manifest(work, &["Add.cpp"]);
     }
 
     fn seed_cached_settings(work: &Path) {
@@ -479,28 +463,9 @@ mod tests {
         }
     }
 
-    fn leaf_task(name: &str) -> Task {
-        Task {
-            level: TaskLevel::Lower,
-            srcs: vec![format!("{name}.cpp")],
-            include_dirs: Vec::new(),
-            defines: Vec::new(),
-            ports: Vec::new(),
-            tasks: BTreeMap::new(),
-            fifos: BTreeMap::new(),
-            readable_name: String::new(),
-            aie_location: Vec::new(),
-            aie_stack_bytes: None,
-            synth: SynthTarget::Hls,
-            self_area: None,
-            total_area: None,
-            clock_period: None,
-        }
-    }
-
     fn leaf_design() -> Design {
         let mut tasks = BTreeMap::new();
-        tasks.insert("Add".to_string(), leaf_task("Add"));
+        tasks.insert("Add".to_string(), fixtures::task("Add"));
         Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
             top: "Add".to_string(),
@@ -524,7 +489,7 @@ mod tests {
                 "common".to_string(),
             ],
             defines: vec!["TAPA_TASK_DEF_Add".to_string()],
-            ..leaf_task("Add")
+            ..fixtures::task("Add")
         };
         let flags = task_cflags(
             &["-std=c++14".to_string(), "-I/app".to_string()],
@@ -589,7 +554,7 @@ mod tests {
         let task = Task {
             srcs: vec!["src/Add.cpp".to_string()],
             include_dirs: vec![String::new(), "include".to_string()],
-            ..leaf_task("Add")
+            ..fixtures::task("Add")
         };
         let flags = task_cflags(
             &[format!("-I{}", original_include.display())],
@@ -609,25 +574,6 @@ mod tests {
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         );
-    }
-
-    #[test]
-    fn worker_count_treats_zero_as_default_and_caps_at_live_work() {
-        let plan = (0..3)
-            .map(|idx| {
-                (
-                    format!("task_{idx}"),
-                    TaskHlsLayout::new(Path::new("work"), &format!("task_{idx}")),
-                    (),
-                )
-            })
-            .collect::<Vec<_>>();
-        assert_eq!(
-            resolve_worker_count(Some(0), plan.len()),
-            resolve_worker_count(None, plan.len())
-        );
-        assert_eq!(resolve_worker_count(Some(1), plan.len()), 1);
-        assert_eq!(resolve_worker_count(Some(8), plan.len()), 3);
     }
 
     /// A cache hit requires an existing HDL directory containing at
@@ -651,7 +597,13 @@ mod tests {
         // Ignore the run result (no csynth.xml staged, so harvest
         // fails) — what we care about is that the runner was called
         // at all, which proves the stale-skip bug is gone.
-        let _ = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts);
+        let _ = run_hls_for_tasks(
+            &runner,
+            work,
+            &design,
+            &fixtures::staged(work, &design),
+            &opts,
+        );
         let calls = runner.calls();
         assert_eq!(
             calls.len(),
@@ -676,8 +628,14 @@ mod tests {
             reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
-        let error = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
-            .expect_err("a required cache miss must fail");
+        let error = run_hls_for_tasks(
+            &runner,
+            work,
+            &design,
+            &fixtures::staged(work, &design),
+            &opts,
+        )
+        .expect_err("a required cache miss must fail");
         assert!(error.to_string().contains("missing or stale"), "{error}");
         assert!(runner.calls().is_empty(), "a strict miss must not run HLS");
     }
@@ -704,8 +662,14 @@ mod tests {
             reuse: HlsReuse::Required,
             ..skip_hls_options()
         };
-        let error = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
-            .expect_err("a required report must be present");
+        let error = run_hls_for_tasks(
+            &runner,
+            work,
+            &design,
+            &fixtures::staged(work, &design),
+            &opts,
+        )
+        .expect_err("a required report must be present");
         assert!(
             error.to_string().contains("cached csynth report"),
             "{error}"
@@ -722,7 +686,7 @@ mod tests {
         let work = tmp.path();
         seed_rewritten(work);
         let design = leaf_design();
-        let sources = staged(work, &design);
+        let sources = fixtures::staged(work, &design);
         let runner = MockToolRunner::new();
         runner.push_ok("vitis_hls", ToolOutput::default());
         let syn = crate::util::utf8(work.join("hls/Add/project/project/Add/syn"));
@@ -815,8 +779,14 @@ mod tests {
         let runner = MockToolRunner::new();
 
         let opts = skip_hls_options();
-        let out = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
-            .expect("cache hit path must succeed");
+        let out = run_hls_for_tasks(
+            &runner,
+            work,
+            &design,
+            &fixtures::staged(work, &design),
+            &opts,
+        )
+        .expect("cache hit path must succeed");
         assert_eq!(out.len(), 1);
         let (_, _, hls_out) = &out[0];
         assert!(
@@ -837,7 +807,7 @@ mod tests {
         seed_rewritten(work);
         let tree = work.join(crate::tapacc::REWRITTEN_DIR);
         fs::write(tree.join("Add.h"), "#define VALUE 1\n").unwrap();
-        write_manifest(work, &["Add.cpp", "Add.h"]);
+        fixtures::write_manifest(work, &["Add.cpp", "Add.h"]);
 
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
@@ -854,7 +824,7 @@ mod tests {
             &runner,
             work,
             &design,
-            &staged(work, &design),
+            &fixtures::staged(work, &design),
             &skip_hls_options(),
         );
         assert_eq!(
@@ -887,7 +857,7 @@ mod tests {
             &runner,
             work,
             &design,
-            &staged(work, &design),
+            &fixtures::staged(work, &design),
             &skip_hls_options(),
         )
         .expect("unowned files must not affect freshness");
@@ -901,7 +871,7 @@ mod tests {
         seed_rewritten(work);
         let tree = work.join(crate::tapacc::REWRITTEN_DIR);
         fs::write(tree.join("removed.h"), "#define OLD 1\n").unwrap();
-        write_manifest(work, &["Add.cpp", "removed.h"]);
+        fixtures::write_manifest(work, &["Add.cpp", "removed.h"]);
 
         let hdl = work.join("hls").join("Add").join("verilog");
         fs::create_dir_all(&hdl).unwrap();
@@ -910,7 +880,7 @@ mod tests {
         fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
         std::thread::sleep(std::time::Duration::from_millis(10));
         fs::remove_file(tree.join("removed.h")).unwrap();
-        write_manifest(work, &["Add.cpp"]);
+        fixtures::write_manifest(work, &["Add.cpp"]);
 
         let design = leaf_design();
         let runner = MockToolRunner::new();
@@ -919,7 +889,7 @@ mod tests {
             &runner,
             work,
             &design,
-            &staged(work, &design),
+            &fixtures::staged(work, &design),
             &skip_hls_options(),
         );
         assert_eq!(
@@ -953,8 +923,14 @@ mod tests {
         let opts = skip_hls_options();
         let runner = MockToolRunner::new();
         let design = leaf_design();
-        let out = run_hls_for_tasks(&runner, work, &design, &staged(work, &design), &opts)
-            .expect("fresh emitted file must produce a cache hit");
+        let out = run_hls_for_tasks(
+            &runner,
+            work,
+            &design,
+            &fixtures::staged(work, &design),
+            &opts,
+        )
+        .expect("fresh emitted file must produce a cache hit");
         assert_eq!(out.len(), 1);
         assert!(
             runner.calls().is_empty(),
