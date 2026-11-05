@@ -63,11 +63,6 @@ pub struct AieKernelReport {
     pub data_bytes: Option<u64>,
 }
 
-/// Read the mapping report from `graph_dir`, which must contain `Work/`.
-pub fn read_report(graph_dir: &Utf8Path) -> Result<AieReport> {
-    read_report_with_control(graph_dir, false)
-}
-
 /// Read a graph report, excluding the reserved PL-control PLIO when present.
 pub fn read_report_with_control(graph_dir: &Utf8Path, pl_control: bool) -> Result<AieReport> {
     let reports = graph_dir.join("Work").join("reports");
@@ -391,7 +386,7 @@ mod tests {
             COMPILER,
             &[("25_1", &linker_map(11668)), ("23_0", &linker_map(0))],
         );
-        let report = read_report(graph_dir(&temp)).expect("parse report");
+        let report = read_report_with_control(graph_dir(&temp), false).expect("parse report");
         assert_eq!(report.tiles_used, 2, "two distinct core tiles");
         assert_eq!(
             report
@@ -463,14 +458,14 @@ mod tests {
         let report = read_report_with_control(graph_dir(&temp), true).expect("control report");
         assert!(!report.plio_map.contains_key("tapa_ctrl"));
         assert_eq!(report.plio_map.len(), 2);
-        let native = read_report(graph_dir(&temp)).expect("native report");
+        let native = read_report_with_control(graph_dir(&temp), false).expect("native report");
         assert!(native.plio_map.contains_key("tapa_ctrl"));
     }
 
     #[test]
     fn missing_and_malformed_reports_have_typed_path_aware_errors() {
         let temp = tempfile::tempdir().expect("temporary graph directory");
-        let error = read_report(graph_dir(&temp)).expect_err("missing compiler report");
+        let error = read_report_with_control(graph_dir(&temp), false).expect_err("missing compiler report");
         match error {
             XilinxError::AieReportIo { path, .. } => {
                 assert!(
@@ -488,7 +483,7 @@ mod tests {
                 ("23_0", &linker_map(0)),
             ],
         );
-        let error = read_report(graph_dir(&temp)).expect_err("wrong program-memory units");
+        let error = read_report_with_control(graph_dir(&temp), false).expect_err("wrong program-memory units");
         match error {
             XilinxError::AieReportParse { path, detail } => {
                 assert!(path.ends_with("Work/aie/25_1/Release/25_1.map"), "{path}");
@@ -498,7 +493,7 @@ mod tests {
         }
 
         let temp = write_reports("{not JSON", &[]);
-        let error = read_report(graph_dir(&temp)).expect_err("malformed JSON");
+        let error = read_report_with_control(graph_dir(&temp), false).expect_err("malformed JSON");
         assert!(matches!(
             error,
             XilinxError::AieReportJson { path, .. }
