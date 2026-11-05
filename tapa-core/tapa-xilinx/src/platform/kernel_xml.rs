@@ -272,11 +272,6 @@ pub fn render_slash_registers(args: &KernelXmlArgs) -> Result<String> {
 /// Emit slashkit's argument metadata from the same ABI as kernel.xml.
 pub fn emit_slash_hls_data(args: &KernelXmlArgs) -> Result<String> {
     let abi = slash_abi(args)?;
-    let interface_ports: std::collections::BTreeMap<&str, &XmlPort> = abi
-        .ports
-        .iter()
-        .map(|port| (port.name.as_str(), port))
-        .collect();
     let mut metadata = serde_json::Map::new();
     for (arg, source) in abi.args.iter().zip(&args.ports) {
         let mut refs = Vec::new();
@@ -289,7 +284,7 @@ pub fn emit_slash_hls_data(args: &KernelXmlArgs) -> Result<String> {
             }));
         }
         if arg.addr_qualifier == 1 {
-            if !interface_ports.contains_key(arg.port.as_str()) {
+            if !abi.ports.iter().any(|p| p.name == arg.port) {
                 return Err(XilinxError::KernelXml(format!(
                     "SLASH argument `{}` refers to missing interface `{}`",
                     arg.name, arg.port
