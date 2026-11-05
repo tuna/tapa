@@ -139,7 +139,6 @@ void UpdateHandler(Pid num_partitions,
                    tapa::mmap<Update> updates) {
   // Base vid of all vertices; used to determine dst partition id.
   Vid base_vid = 0;
-  // Used to determine dst partition id.
   Vid partition_size = 1;
   // Memory offsets of each update partition.
   Eid update_offsets[kMaxNumPartitions] = {};
