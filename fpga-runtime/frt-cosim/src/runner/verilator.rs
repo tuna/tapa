@@ -165,40 +165,25 @@ impl SimRunner for VerilatorRunner {
                 args.push(path.to_string_lossy().to_string());
             }
         }
-        // Strip VERILATOR_BIN from the children: Verilator's own Perl
-        // frontend consumes that variable to pick its backend binary, so
-        // leaving it pointed at a wrapper makes the wrapper re-exec
-        // itself forever (a fork bomb). Compiled binaries ignore it, and
-        // a wrapper self-selects its backend correctly without it.
-        let status = Command::new(&verilator_bin)
-            .args(&args)
-            .env_remove("VERILATOR_BIN")
-            .envs(
-                verilator_root_env(&verilator_bin)
-                    .into_iter()
-                    .map(|root| ("VERILATOR_ROOT", root)),
-            )
-            .current_dir(tb_dir)
-            .status()?;
-        if !status.success() {
-            return Err(CosimError::SimFailed(status));
-        }
-        let status = Command::new("make")
-            .args([
-                "-j",
-                &num_cpus_str(),
-                "-C",
-                "obj_dir",
-                "-f",
-                &format!("V{top}.mk"),
-                &format!("V{top}"),
-            ])
-            .env_remove("VERILATOR_BIN")
-            .current_dir(tb_dir)
-            .status()?;
-        if !status.success() {
-            return Err(CosimError::SimFailed(status));
-        }
+        let mut verilate = Command::new(&verilator_bin);
+        verilate.args(&args).envs(
+            verilator_root_env(&verilator_bin)
+                .into_iter()
+                .map(|root| ("VERILATOR_ROOT", root)),
+        );
+        run_status(&mut verilate, tb_dir)?;
+
+        let mut make = Command::new("make");
+        make.args([
+            "-j",
+            &num_cpus_str(),
+            "-C",
+            "obj_dir",
+            "-f",
+            &format!("V{top}.mk"),
+            &format!("V{top}"),
+        ]);
+        run_status(&mut make, tb_dir)?;
 
         let top = tb_dir.join("obj_dir").join(format!("V{top}"));
         if !top.is_file() {
@@ -213,6 +198,24 @@ impl SimRunner for VerilatorRunner {
         let child = cmd.spawn()?;
         Ok(child)
     }
+}
+
+/// Run a Verilator build step in `tb_dir` and require exit success.
+///
+/// `VERILATOR_BIN` is stripped from the child: Verilator's own Perl
+/// frontend consumes that variable to pick its backend binary, so
+/// leaving it pointed at a wrapper makes the wrapper re-exec itself
+/// forever (a fork bomb). Compiled binaries ignore it, and a wrapper
+/// self-selects its backend correctly without it.
+fn run_status(cmd: &mut Command, tb_dir: &Path) -> Result<()> {
+    let status = cmd
+        .env_remove("VERILATOR_BIN")
+        .current_dir(tb_dir)
+        .status()?;
+    if !status.success() {
+        return Err(CosimError::SimFailed(status));
+    }
+    Ok(())
 }
 
 struct VerilatorBuildGate {
