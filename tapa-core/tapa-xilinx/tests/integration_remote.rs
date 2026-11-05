@@ -195,18 +195,9 @@ fn control_master_retry_branch_mid_transfer() {
     let mut inv = ToolInvocation::new("cat").arg(ToolValue::path(
         payload.join("chunk-0.bin").display().to_string(),
     ));
-    inv.cwd = Some(
-        Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-    );
-    inv.uploads.push(
-        Utf8PathBuf::from_path_buf(payload.clone())
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-    );
-    inv.downloads.push(
-        Utf8PathBuf::from_path_buf(payload)
-            .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-    );
+    inv.cwd = Some(common::utf8(stage.path()));
+    inv.uploads.push(common::utf8(&payload));
+    inv.downloads.push(common::utf8(payload));
     let out = runner
         .run(&inv)
         .expect("mid-transfer mux teardown must be recovered by the in-runner retry");
@@ -239,17 +230,13 @@ fn control_master_restart_during_transfer() {
     let runner = RemoteToolRunner::new(Arc::clone(&session));
 
     let stage = tempfile::tempdir().expect("stage dir");
-    let src_dir = Utf8PathBuf::from_path_buf(stage.path().join("payload"))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let src_dir = common::utf8(stage.path().join("payload"));
     std::fs::create_dir_all(&src_dir).expect("mkdir src");
     std::fs::write(src_dir.join("hello.txt"), b"tapa-remote-transfer-ok\n").expect("write src");
 
     let run = || -> tapa_xilinx::ToolOutput {
         let mut inv = ToolInvocation::new("cat").arg(ToolValue::path(src_dir.join("hello.txt")));
-        inv.cwd = Some(
-            Utf8PathBuf::from_path_buf(stage.path().to_path_buf())
-                .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned())),
-        );
+        inv.cwd = Some(common::utf8(stage.path()));
         inv.uploads.push(src_dir.clone());
         inv.downloads.push(src_dir.clone());
         // The typed absolute source path is relocated to the remote mirror,

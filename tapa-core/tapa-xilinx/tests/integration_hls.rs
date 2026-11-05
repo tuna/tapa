@@ -20,8 +20,7 @@ use tapa_xilinx::{
 fn write_standalone_kernel(dir: &std::path::Path) -> camino::Utf8PathBuf {
     // Tiny C++ kernel HLS synthesises cleanly without any TAPA or
     // vendor headers. Pinned top name is `vadd`.
-    let src = camino::Utf8PathBuf::from_path_buf(dir.join("vadd.cpp"))
-        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let src = common::utf8(dir.join("vadd.cpp"));
     std::fs::write(
         &src,
         b"void vadd(const int* a, const int* b, int* c, int n) {\n\
@@ -43,10 +42,8 @@ fn write_standalone_kernel(dir: &std::path::Path) -> camino::Utf8PathBuf {
 fn run_vadd_hls<R: ToolRunner>(runner: &R) {
     let tmp = tempfile::tempdir().expect("tempdir");
     let src = write_standalone_kernel(tmp.path());
-    let reports = camino::Utf8PathBuf::from_path_buf(tmp.path().join("reports"))
-        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-    let hdl = camino::Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
-        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let reports = common::utf8(tmp.path().join("reports"));
+    let hdl = common::utf8(tmp.path().join("hdl"));
     let job = HlsJob::builder()
         .task_name("vadd".into())
         .srcs(vec![src])
@@ -105,14 +102,12 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
 
 fn repo_root() -> camino::Utf8PathBuf {
     // tapa-core/tapa-xilinx/tests/ → …/tapa (repo root)
-    camino::Utf8PathBuf::from_path_buf(
+    common::utf8(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(std::path::Path::parent)
-            .expect("manifest parent")
-            .to_path_buf(),
+            .expect("manifest parent"),
     )
-    .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()))
 }
 
 #[test]
@@ -162,10 +157,8 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         vadd_cpp.as_str()
     );
     let tmp = tempfile::tempdir().expect("tempdir");
-    let reports = camino::Utf8PathBuf::from_path_buf(tmp.path().join("reports"))
-        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
-    let hdl = camino::Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
-        .unwrap_or_else(|p| camino::Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let reports = common::utf8(tmp.path().join("reports"));
+    let hdl = common::utf8(tmp.path().join("hdl"));
     let job = HlsJob::builder()
         .task_name("vadd".into())
         .srcs(vec![vadd_cpp])

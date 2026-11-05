@@ -24,14 +24,12 @@ use tapa_xilinx::{
 };
 
 fn repo_root() -> Utf8PathBuf {
-    Utf8PathBuf::from_path_buf(
+    common::utf8(
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .and_then(std::path::Path::parent)
-            .expect("manifest parent")
-            .to_path_buf(),
+            .expect("manifest parent"),
     )
-    .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()))
 }
 
 /// Per-entry metadata captured for the `.xo` redaction check:
@@ -139,12 +137,10 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
     }
 
     let tmp = tempfile::tempdir().expect("tempdir");
-    let hdl_dir = Utf8PathBuf::from_path_buf(tmp.path().join("hdl"))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let hdl_dir = common::utf8(tmp.path().join("hdl"));
     std::fs::create_dir_all(&hdl_dir).expect("mkdir hdl");
     std::fs::copy(real_hdl.join("vadd.v"), hdl_dir.join("vadd.v")).expect("stage HDL fixture");
-    let xo_out = Utf8PathBuf::from_path_buf(tmp.path().join("vadd.xo"))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let xo_out = common::utf8(tmp.path().join("vadd.xo"));
     let inputs = PackageXoInputs::builder()
         .top_name("vadd".into())
         .hdl_dir(hdl_dir)
@@ -171,8 +167,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         produced.as_str()
     );
 
-    let rust_xo = Utf8PathBuf::from_path_buf(tmp.path().join("rust.xo"))
-        .unwrap_or_else(|p| Utf8PathBuf::from(p.to_string_lossy().into_owned()));
+    let rust_xo = common::utf8(tmp.path().join("rust.xo"));
     std::fs::copy(&produced, &rust_xo).expect("copy to rust side");
 
     redact_xo(&rust_xo).expect("rust redact_xo must succeed");

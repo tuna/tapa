@@ -7,6 +7,17 @@
 
 use tapa_xilinx::RemoteConfig;
 
+/// Lossy conversion to `camino::Utf8PathBuf` (TAPA paths are UTF-8 in
+/// practice; a non-UTF-8 path degrades to its lossy form rather than
+/// failing the test).
+#[allow(
+    dead_code,
+    reason = "used by integration_{hls,remote,pack_xo} but not integration_vivado"
+)]
+pub fn utf8(p: impl AsRef<std::path::Path>) -> camino::Utf8PathBuf {
+    camino::Utf8PathBuf::from(p.as_ref().to_string_lossy().into_owned())
+}
+
 #[allow(
     dead_code,
     reason = "used by integration_{hls,vivado} but not integration_remote"
