@@ -18,6 +18,31 @@ fn with_handle<R>(handle: *const c_void, f: impl FnOnce(&QueueHandle) -> R) -> O
     Some(f(h))
 }
 
+fn lock_queue(h: &QueueHandle) -> Option<std::sync::MutexGuard<'_, SharedMemoryQueue>> {
+    let Ok(q) = h.queue.lock() else {
+        set_last_error("shm queue lock poisoned");
+        return None;
+    };
+    Some(q)
+}
+
+/// Lock the queue and check `len` against its width, labeling the direction.
+fn lock_checked<'h>(
+    h: &'h QueueHandle,
+    len: usize,
+    direction: &str,
+) -> Option<std::sync::MutexGuard<'h, SharedMemoryQueue>> {
+    let q = lock_queue(h)?;
+    if q.width() != len {
+        set_last_error(format!(
+            "{direction} size mismatch: queue width is {} bytes, got {len}",
+            q.width()
+        ));
+        return None;
+    }
+    Some(q)
+}
+
 fn write_c_string(buf: *mut c_char, buf_len: usize, text: &str) -> bool {
     if buf.is_null() || buf_len == 0 {
         return false;
@@ -90,8 +115,7 @@ pub extern "C" fn frt_shmq_destroy(handle: *mut c_void) {
 pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
     clear_last_error();
     with_handle(handle, |h| {
-        let Ok(q) = h.queue.lock() else {
-            set_last_error("shm queue lock poisoned");
+        let Some(q) = lock_queue(h) else {
             return -1;
         };
         i32::from(q.is_empty())
@@ -103,8 +127,7 @@ pub extern "C" fn frt_shmq_empty(handle: *const c_void) -> c_int {
 pub extern "C" fn frt_shmq_full(handle: *const c_void) -> c_int {
     clear_last_error();
     with_handle(handle, |h| {
-        let Ok(q) = h.queue.lock() else {
-            set_last_error("shm queue lock poisoned");
+        let Some(q) = lock_queue(h) else {
             return -1;
         };
         i32::from(q.is_full())
@@ -120,17 +143,9 @@ pub extern "C" fn frt_shmq_push(handle: *mut c_void, data: *const u8, len: usize
         return -1;
     }
     with_handle(handle.cast_const(), |h| {
-        let Ok(mut q) = h.queue.lock() else {
-            set_last_error("shm queue lock poisoned");
+        let Some(mut q) = lock_checked(h, len, "input") else {
             return -1;
         };
-        if q.width() != len {
-            set_last_error(format!(
-                "input size mismatch: queue width is {} bytes, got {len}",
-                q.width()
-            ));
-            return -1;
-        }
         // SAFETY: data is non-null (checked above) and len == q.width(),
         // so the caller guarantees [data..data+len) is a valid readable region.
         let slice = unsafe { std::slice::from_raw_parts(data, len) };
@@ -153,17 +168,9 @@ pub extern "C" fn frt_shmq_front(handle: *const c_void, out: *mut u8, len: usize
         return -1;
     }
     with_handle(handle, |h| {
-        let Ok(q) = h.queue.lock() else {
-            set_last_error("shm queue lock poisoned");
+        let Some(q) = lock_checked(h, len, "output") else {
             return -1;
         };
-        if q.width() != len {
-            set_last_error(format!(
-                "output size mismatch: queue width is {} bytes, got {len}",
-                q.width()
-            ));
-            return -1;
-        }
         // SAFETY: out is non-null (checked above) and len == q.width(),
         // so the caller guarantees [out..out+len) is a valid writable region.
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
@@ -185,17 +192,9 @@ pub extern "C" fn frt_shmq_pop(handle: *mut c_void, out: *mut u8, len: usize) ->
         return -1;
     }
     with_handle(handle.cast_const(), |h| {
-        let Ok(mut q) = h.queue.lock() else {
-            set_last_error("shm queue lock poisoned");
+        let Some(mut q) = lock_checked(h, len, "output") else {
             return -1;
         };
-        if q.width() != len {
-            set_last_error(format!(
-                "output size mismatch: queue width is {} bytes, got {len}",
-                q.width()
-            ));
-            return -1;
-        }
         // SAFETY: out is non-null (checked above) and len == q.width(),
         // so the caller guarantees [out..out+len) is a valid writable region.
         let buf = unsafe { std::slice::from_raw_parts_mut(out, len) };
