@@ -33,7 +33,6 @@ struct TaskReq {
   enum Phase { kScatter = 0, kGather = 1 };
   Phase phase;
   bool IsScatter() const { return phase == kScatter; }
-  bool IsGather() const { return phase == kGather; }
   Pid pid;
   Vid base_vid;
   Vid num_vertices;
