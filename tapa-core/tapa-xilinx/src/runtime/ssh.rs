@@ -196,10 +196,7 @@ impl SshSession {
 
     /// Build an `ssh` probe command (`ssh … true`) for establishing the mux.
     pub fn probe_cmd(&self) -> Command {
-        let mut cmd = self.base_cmd();
-        cmd.arg(self.ssh_target());
-        cmd.arg("true");
-        cmd
+        self.exec_cmd("true")
     }
 
     pub fn ssh_target(&self) -> String {
