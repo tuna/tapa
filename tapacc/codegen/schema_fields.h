@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAPA_CODEGEN_SCHEMA_FIELDS_H_
+#define TAPA_CODEGEN_SCHEMA_FIELDS_H_
+
 // Schema field-name constants for the tapa-ir task-graph JSON.
 //
 // These names are the wire contract between tapacc (this producer) and
@@ -67,3 +69,5 @@ inline constexpr const char* kFieldProducedBy = "produced_by";
 inline constexpr const char* kFieldConsumedBy = "consumed_by";
 
 }  // namespace tapa::cc
+
+#endif  // TAPA_CODEGEN_SCHEMA_FIELDS_H_
