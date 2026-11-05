@@ -73,21 +73,6 @@ impl LpSolution {
             )));
         }
 
-        for var in self.values.keys() {
-            let Ok(index) = usize::try_from(var.0) else {
-                return Err(SolverError::InvalidSolution(format!(
-                    "the incumbent contains unknown variable x{}",
-                    var.0,
-                )));
-            };
-            if index >= model.vars.len() {
-                return Err(SolverError::InvalidSolution(format!(
-                    "the incumbent contains unknown variable x{}",
-                    var.0,
-                )));
-            }
-        }
-
         for (index, definition) in model.vars.iter().enumerate() {
             let var = LpVar(u32::try_from(index).expect("variable count fits u32"));
             let value = self.values.get(&var).copied().ok_or_else(|| {
