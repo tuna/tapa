@@ -1,4 +1,4 @@
-//! Small shared path helpers.
+//! Small shared helpers.
 
 use camino::Utf8PathBuf;
 
@@ -42,4 +42,19 @@ pub fn copy_tree(src: &camino::Utf8Path, dest: &camino::Utf8Path) -> std::io::Re
         fs_err::copy(src_path, dest_path)?;
     }
     Ok(())
+}
+
+/// Write a `.xo`-shaped zip archive of `entries` at `path` (test helper
+/// shared by the `package_xo` and `redact` unit tests).
+#[cfg(test)]
+pub fn write_xo(path: &camino::Utf8Path, entries: &[(&str, &str)]) {
+    use std::io::Write as _;
+    let f = std::fs::File::create(path).unwrap();
+    let mut zw = zip::ZipWriter::new(f);
+    let opts = zip::write::SimpleFileOptions::default();
+    for (name, body) in entries {
+        zw.start_file((*name).to_string(), opts).unwrap();
+        zw.write_all(body.as_bytes()).unwrap();
+    }
+    zw.finish().unwrap();
 }

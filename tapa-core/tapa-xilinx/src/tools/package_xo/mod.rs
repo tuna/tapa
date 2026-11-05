@@ -404,7 +404,7 @@ pub fn pack_xo_without_redaction(
 mod tests {
     use super::*;
     use crate::runtime::process::{MockToolRunner, ToolInvocation, ToolOutput};
-    use std::io::{Read, Write};
+    use std::io::Read;
 
     fn minimal_inputs(hdl_dir: Utf8PathBuf, kernel_out_path: Utf8PathBuf) -> PackageXoInputs {
         PackageXoInputs::builder()
@@ -471,7 +471,7 @@ mod tests {
         std::env::set_current_dir(tmp.path()).unwrap();
         // Stage a minimal .xo the mock runner will "produce".
         let staged = Utf8PathBuf::from_path_buf(tmp.path().join("__staged.xo")).unwrap();
-        write_xo(&staged, &[("stub.txt", "ok")]);
+        crate::util::write_xo(&staged, &[("stub.txt", "ok")]);
         let staged_bytes = std::fs::read(&staged).unwrap();
 
         let runner = MockToolRunner::new();
@@ -523,7 +523,7 @@ mod tests {
 
         // Stage the synthetic .xo we expect Vivado to produce (pre-redaction).
         let staged = Utf8PathBuf::from_path_buf(tmp.path().join("staged.xo")).unwrap();
-        write_xo(
+        crate::util::write_xo(
             &staged,
             &[(
                 "ip/meta.xml",
@@ -590,17 +590,6 @@ mod tests {
         );
         assert!(s.contains("-busif m_axi_gmem0"));
         assert!(s.contains("m_axi_gmem0") && s.contains("OFFSET") && s.contains("SLAVE"));
-    }
-
-    fn write_xo(path: &camino::Utf8Path, entries: &[(&str, &str)]) {
-        let f = std::fs::File::create(path).unwrap();
-        let mut zw = zip::ZipWriter::new(f);
-        let opts = SimpleFileOptions::default();
-        for (name, body) in entries {
-            zw.start_file((*name).to_string(), opts).unwrap();
-            zw.write_all(body.as_bytes()).unwrap();
-        }
-        zw.finish().unwrap();
     }
 
     #[test]

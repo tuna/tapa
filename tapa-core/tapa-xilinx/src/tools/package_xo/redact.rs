@@ -236,17 +236,6 @@ mod tests {
     use super::*;
     use camino::Utf8PathBuf;
 
-    fn write_xo(path: &camino::Utf8Path, entries: &[(&str, &str)]) {
-        let f = std::fs::File::create(path).unwrap();
-        let mut zw = zip::ZipWriter::new(f);
-        let opts = SimpleFileOptions::default();
-        for (name, body) in entries {
-            zw.start_file((*name).to_string(), opts).unwrap();
-            zw.write_all(body.as_bytes()).unwrap();
-        }
-        zw.finish().unwrap();
-    }
-
     #[test]
     fn redacts_sandbox_cpp_paths_from_reports() {
         let left =
@@ -269,7 +258,7 @@ mod tests {
     fn redact_xo_is_idempotent() {
         let tmp = tempfile::tempdir().unwrap();
         let path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
-        write_xo(&path, &[("hello.txt", "hi")]);
+        crate::util::write_xo(&path, &[("hello.txt", "hi")]);
         redact_xo(&path).unwrap();
         let first = std::fs::read(&path).unwrap();
         redact_xo(&path).unwrap();
@@ -339,7 +328,7 @@ Date:           Fri Mar 14 10:20:30 2025\n\
     fn redact_xo_applies_payload_redaction() {
         let tmp = tempfile::tempdir().unwrap();
         let path = Utf8PathBuf::from_path_buf(tmp.path().join("k.xo")).unwrap();
-        write_xo(
+        crate::util::write_xo(
             &path,
             &[(
                 "ip/meta.xml",
