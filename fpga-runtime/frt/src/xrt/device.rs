@@ -12,6 +12,7 @@ use frt_cosim::metadata::kernel_xml::{KernelXml, XclbinTarget};
 use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::metadata::ArgKind;
 use frt_cosim::runner::environ::xilinx_environ;
+use frt_shm::env_non_empty;
 use std::collections::HashMap;
 use std::ffi::{c_int, c_void, CStr, CString};
 use std::path::{Path, PathBuf};
@@ -339,7 +340,7 @@ fn va_scalar(id: u32, host_type: &str, bytes: &[u8]) -> Result<VaScalar> {
         word[..n.min(bytes.len())].copy_from_slice(&bytes[..n.min(bytes.len())]);
         u64::from_le_bytes(word)
     };
-    let low32 = || u32::try_from(le(4) & 0xffff_ffff).expect("masked to 32 bits");
+    let low32 = || u32::try_from(le(4)).expect("le(4) reads at most four bytes");
     Ok(match host_type {
         "int" | "uint" => VaScalar::U32(low32()),
         "float" => VaScalar::Double(f64::from(f32::from_bits(low32()))),
@@ -734,8 +735,6 @@ impl Device for XrtDevice {
         self.store_ns
     }
 }
-
-use frt_shm::env_non_empty;
 
 fn current_username() -> Option<String> {
     #[cfg(unix)]

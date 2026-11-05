@@ -11,6 +11,9 @@ use std::path::{Path, PathBuf};
 use std::process::Child;
 use std::time::{Duration, Instant};
 
+use crate::env_bool;
+use frt_shm::env_non_empty;
+
 enum TbDir {
     Temp(tempfile::TempDir),
     Fixed(PathBuf),
@@ -232,7 +235,7 @@ impl CosimDevice {
                     return Ok(true);
                 }
                 if let Some(timeout_secs) = self.timeout_seconds.filter(|timeout_secs| {
-                    run.started_at.elapsed() >= std::time::Duration::from_secs(*timeout_secs)
+                    run.started_at.elapsed() >= Duration::from_secs(*timeout_secs)
                 }) {
                     terminate_running_simulation(run)?;
                     self.complete_simulation(Some(FrtError::CosimTimeout { timeout_secs }));
@@ -255,7 +258,7 @@ impl CosimDevice {
             && matches!(self.simulation_state, SimulationState::Running(_))
         {
             while !self.poll_simulation()? {
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(10));
             }
             return Ok(());
         }
@@ -381,9 +384,6 @@ fn signal_child_group(child: &Child, signal: libc::c_int) -> Result<()> {
 fn signal_child_group(_child: &Child, _signal: libc::c_int) -> Result<()> {
     Ok(())
 }
-
-use crate::env_bool;
-use frt_shm::env_non_empty;
 
 fn parse_timeout_seconds(value: Option<&str>) -> Result<Option<u64>> {
     let Some(value) = value else { return Ok(None) };
