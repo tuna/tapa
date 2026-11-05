@@ -367,41 +367,46 @@ set -ex
 
     return [DefaultInfo(files = depset([output_file]))]
 
+# Attrs every tapa-CLI-driving rule shares: the CLI itself, the remote
+# key, the vendored HLS wrapper, and the parallel-jobs knob.
+_TAPA_EXEC_ATTRS = {
+    "jobs": attr.int(
+        default = 1,
+        doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
+              "CPU and memory to match; do not add a cpu:N tag, which " +
+              "would override that.",
+    ),
+    "tapa_cli": attr.label(
+        cfg = "exec",
+        default = Label("//tapa-core:tapa"),
+        executable = True,
+    ),
+    "ssh_key": attr.label(
+        allow_single_file = True,
+        default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
+    ),
+    "vitis_hls_env": attr.label(
+        cfg = "exec",
+        default = Label("//bazel:vitis_hls_env"),
+        executable = True,
+    ),
+}
+
 _tapa_reuse_work_dir_xo = rule(
     implementation = _tapa_reuse_work_dir_xo_impl,
-    attrs = {
+    attrs = dict(_TAPA_EXEC_ATTRS, **{
         "srcs": attr.label_list(allow_files = [".cpp"], mandatory = True),
         "hdrs": attr.label_list(allow_files = True),
         "include": attr.label_list(allow_files = True),
         "top_name": attr.string(mandatory = True),
         "part_num": attr.string(default = XILINX_PART_NUM),
         "clock_period": attr.string(default = "3.33"),
-        "jobs": attr.int(
-            default = 1,
-            doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
-                  "CPU and memory to match; do not add a cpu:N tag, which " +
-                  "would override that.",
-        ),
-        "tapa_cli": attr.label(
-            cfg = "exec",
-            default = Label("//tapa-core:tapa"),
-            executable = True,
-        ),
-        "ssh_key": attr.label(
-            allow_single_file = True,
-            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
-        ),
-        "vitis_hls_env": attr.label(
-            cfg = "exec",
-            default = Label("//bazel:vitis_hls_env"),
-            executable = True,
-        ),
-    },
+    }),
 )
 
 _tapa_xo = rule(
     implementation = _tapa_xo_impl,
-    attrs = {
+    attrs = dict(_TAPA_EXEC_ATTRS, **{
         "srcs": attr.label_list(allow_files = [".cpp"], mandatory = True),
         "hdrs": attr.label_list(allow_files = True),
         "include": attr.label_list(allow_files = True),
@@ -409,11 +414,6 @@ _tapa_xo = rule(
         "custom_rtl_files": attr.label_list(allow_files = True),
         "platform_name": attr.string(),
         "output_file": attr.output(),
-        "tapa_cli": attr.label(
-            cfg = "exec",
-            default = Label("//tapa-core:tapa"),
-            executable = True,
-        ),
         "cflags": attr.string(),
         "target": attr.string(
             default = "xilinx-vitis",
@@ -421,12 +421,6 @@ _tapa_xo = rule(
         ),
         "clock_period": attr.string(),
         "part_num": attr.string(),
-        "jobs": attr.int(
-            default = 1,
-            doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
-                  "CPU and memory to match; do not add a cpu:N tag, which " +
-                  "would override that.",
-        ),
         "other_hls_configs": attr.string(
             doc = "Extra Tcl appended verbatim to every generated HLS script.",
         ),
@@ -443,16 +437,7 @@ _tapa_xo = rule(
                   "whole analyze-synth-pack chain then runs without Xilinx " +
                   "tools; 'xilinx-vitis' still needs Vivado for packaging.",
         ),
-        "ssh_key": attr.label(
-            allow_single_file = True,
-            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
-        ),
-        "vitis_hls_env": attr.label(
-            cfg = "exec",
-            default = Label("//bazel:vitis_hls_env"),
-            executable = True,
-        ),
-    },
+    }),
 )
 
 def _tapa_slash_link_impl(ctx):
@@ -509,27 +494,12 @@ def _tapa_slash_link_impl(ctx):
 
 _tapa_slash_link = rule(
     implementation = _tapa_slash_link_impl,
-    attrs = {
+    attrs = dict(_TAPA_EXEC_ATTRS, **{
         "package": attr.label(allow_single_file = True, mandatory = True),
         "connectivity": attr.label(allow_single_file = True, mandatory = True),
         "output_name": attr.string(mandatory = True),
         "sim": attr.bool(),
-        "jobs": attr.int(default = 1),
-        "tapa_cli": attr.label(
-            cfg = "exec",
-            default = Label("//tapa-core:tapa"),
-            executable = True,
-        ),
-        "ssh_key": attr.label(
-            allow_single_file = True,
-            default = Label("@ssh_key//:key") if REMOTE_KEY_FILE else None,
-        ),
-        "vitis_hls_env": attr.label(
-            cfg = "exec",
-            default = Label("//bazel:vitis_hls_env"),
-            executable = True,
-        ),
-    },
+    }),
 )
 
 def tapa_slash_link(name, **kwargs):
