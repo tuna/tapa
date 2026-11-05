@@ -238,7 +238,7 @@ def tapa_functional_test(
         sim_args: Extra args of the `<name>` sh_test on all platforms.
         macos_sim_args: Extra args of the `<name>` sh_test on macOS only.
         sim_size: Size of the `<name>` sh_test.
-        xosim_size: Size of the `<name>-xosim` sh_test; omitted when None.
+        xosim_size: Size of the `<name>-xosim` sh_test.
         xosim_timeout: Timeout of the `<name>-xosim` sh_test; omitted when
             None.
         xosim_tags: Tags of the `<name>-xosim` sh_test; omitted when None.
@@ -307,7 +307,7 @@ def tapa_functional_test(
         **kernel_kwargs
     )
 
-def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = [], hw_test_timeout = None):
+def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = []):
     """Declares a host binary plus a manual fast-cosim test for a regression design.
 
     `<name>-host` builds the design's TAPA host program; `<name>-xosim` runs it
@@ -322,8 +322,6 @@ def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], 
         host_defines: Preprocessor definitions for the host sources.
         hw_test_args: Extra trailing args passed to the host after `--bitstream`.
         extra_test_data: Extra data files needed at run time (e.g. input graphs).
-        hw_test_timeout: Timeout of the cosim sh_test; defaults to the
-            `enormous` size's ceiling.
     """
     host_label = ":%s-host" % name
 
@@ -339,7 +337,6 @@ def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], 
     sh_test(
         name = "%s-xosim" % name,
         size = "enormous",
-        timeout = hw_test_timeout,
         srcs = ["//bazel:v++_env.sh"],
         args = [
             "$(rootpath %s)" % host_label,
