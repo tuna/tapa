@@ -20,9 +20,6 @@ pub fn get_or_init() -> &'static DpiContext {
                 ctx.buffers.len(),
                 ctx.streams.len()
             );
-            for name in ctx.streams.keys() {
-                eprintln!("frt-dpi:   stream '{name}'");
-            }
         }
         ctx
     })
