@@ -12,6 +12,9 @@
 use camino::Utf8PathBuf;
 use std::path::Path;
 use tapa_ir::{ClockPeriod, Design, WorkState};
+// The one M-AXI suffix vocabulary lives in tapa-protocol; a private
+// copy here once drifted from it (`_AWREGION`/`_ARREGION`).
+use tapa_protocol::m_axi_suffixes;
 use tapa_xilinx::{
     emit_kernel_xml, emit_slash_hls_data, normalize_hls_report_text, pack_ip,
     pack_xo as xilinx_pack_xo, DeviceInfo, KernelXmlArgs, PackageXoInputs, ToolRunner,
@@ -229,15 +232,8 @@ fn write_slash_zip(
         "report.yaml",
         &fs_err::read(work_dir.join("report.yaml"))?,
     )?;
-    super::add_zip_entry(
-        &mut zip,
-        options,
-        crate::state::work::FILE_NAME,
-        &crate::state::work::to_bytes(&super::stamp_cosim_port_metadata(state))?,
-    )?;
-    zip.finish()
-        .map_err(|error| CliError::Archive(format!("cannot finalize the archive: {error}")))?;
-    Ok(())
+    super::add_cosim_state_entry(&mut zip, options, state)?;
+    super::finish_zip(zip)
 }
 
 fn resolve_top_task(design: &Design) -> Result<&tapa_ir::Task> {
@@ -275,10 +271,6 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, hdl_dir: &Path) -> Res
     warn_unimplemented_templates(&ctx.work_dir, hdl_dir, &templates);
     Ok(())
 }
-
-// The one M-AXI suffix vocabulary lives in tapa-protocol; a private
-// copy here once drifted from it (`_AWREGION`/`_ARREGION`).
-use tapa_protocol::m_axi_suffixes;
 
 fn top_rtl_m_axi_bases(
     hdl_dir: &Path,
@@ -700,8 +692,9 @@ mod tests {
         let xo = dir.path().join("k.xo");
         write_stale_sidecars(&xo);
         let state = pl_only_state();
-        assert!(!write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
-            .expect("PL-only package"));
+        assert!(
+            !write_aie_sidecars(dir.path(), &state.graph, false, "", &xo).expect("PL-only package")
+        );
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
         assert_no_aie_control(&xo);
@@ -715,8 +708,9 @@ mod tests {
         fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
         let xo = dir.path().join("k.xo");
         let state = aie_state(false);
-        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
-            .expect("package graph"));
+        assert!(
+            write_aie_sidecars(dir.path(), &state.graph, false, "", &xo).expect("package graph")
+        );
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert_eq!(
             fs_err::read_to_string(libadf).expect("read graph"),

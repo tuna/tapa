@@ -158,6 +158,25 @@ fn add_zip_entry<W: std::io::Write + std::io::Seek>(
     Ok(())
 }
 
+/// Add the state file, plus the cosim port metadata `frt-cosim`
+/// consumes: `frt-cosim` parses this entry back with the very
+/// `tapa_ir::WorkState` types written here, so the archive's compile
+/// metadata cannot drift from the work dir's — the stamp is a pure
+/// function of the persisted state, re-derived on every pack. The
+/// work-dir `tapa.json` itself is left untouched.
+fn add_cosim_state_entry<W: std::io::Write + std::io::Seek>(
+    z: &mut zip::ZipWriter<W>,
+    opts: zip::write::FileOptions<'_, '_, ()>,
+    state: &WorkState,
+) -> Result<()> {
+    add_zip_entry(
+        z,
+        opts,
+        work_io::FILE_NAME,
+        &work_io::to_bytes(&stamp_cosim_port_metadata(state))?,
+    )
+}
+
 /// Create a deflated zip writer at `path`, creating the parent directory.
 fn create_zip(path: &Path) -> Result<zip::ZipWriter<std::io::BufWriter<fs_err::File>>> {
     if let Some(parent) = path.parent() {
@@ -167,6 +186,13 @@ fn create_zip(path: &Path) -> Result<zip::ZipWriter<std::io::BufWriter<fs_err::F
     }
     let file = fs_err::File::create(path)?;
     Ok(zip::ZipWriter::new(std::io::BufWriter::new(file)))
+}
+
+/// Finalize the archive, mapping a writer failure to an archive error.
+fn finish_zip<W: std::io::Write + std::io::Seek>(z: zip::ZipWriter<W>) -> Result<()> {
+    z.finish()
+        .map_err(|e| CliError::Archive(format!("cannot finalize the archive: {e}")))?;
+    Ok(())
 }
 
 /// The options every archive entry in a pack zip uses.
@@ -246,18 +272,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         add_zip_entry(&mut z, opts, "report.yaml", &fs_err::read(&report_yaml)?)?;
     }
 
-    // The state file, plus the cosim port metadata `frt-cosim` consumes:
-    // `frt-cosim` parses this entry back with the very
-    // `tapa_ir::WorkState` types written here, so the archive's compile
-    // metadata cannot drift from the work dir's — the stamp is a pure
-    // function of the persisted state, re-derived on every pack. The
-    // work-dir `tapa.json` itself is left untouched.
-    add_zip_entry(
-        &mut z,
-        opts,
-        work_io::FILE_NAME,
-        &work_io::to_bytes(&stamp_cosim_port_metadata(state))?,
-    )?;
+    add_cosim_state_entry(&mut z, opts, state)?;
 
     // Store the curated per-task HLS `_csynth.rpt` files under
     // `report/<task>/<file>` and replace the per-run `Date:` line with the fixed
@@ -272,9 +287,7 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
         add_zip_entry(&mut z, opts, name, &redact_rpt(&fs_err::read(rpt)?))?;
     }
 
-    z.finish()
-        .map_err(|e| CliError::Archive(format!("cannot finalize the archive: {e}")))?;
-    Ok(())
+    finish_zip(z)
 }
 
 /// Replace the per-HLS-run `Date:` line with a fixed 1980 stamp so
