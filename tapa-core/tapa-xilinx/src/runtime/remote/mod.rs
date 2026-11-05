@@ -18,7 +18,7 @@ mod transport;
 
 use std::io::Write;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
@@ -53,12 +53,6 @@ impl RemoteToolRunner {
 
     pub fn session(&self) -> &SshSession {
         &self.session
-    }
-
-    /// Build the base `ssh <target>` command populated with the
-    /// session's multiplexing args.
-    fn ssh_cmd(&self, remote_cmd: &str) -> Command {
-        self.session.exec_cmd(remote_cmd)
     }
 
     fn classify_remote_failure(&self, stderr: &str) -> XilinxError {
@@ -246,7 +240,7 @@ impl RemoteToolRunner {
         plan: &UploadPlan,
         wrapped: &str,
     ) -> Result<ToolOutput> {
-        let mut ssh = self.ssh_cmd(wrapped);
+        let mut ssh = self.session.exec_cmd(wrapped);
         ssh.stdout(Stdio::piped());
         ssh.stderr(Stdio::piped());
         if inv.stdin.is_some() {
