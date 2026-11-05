@@ -9,12 +9,11 @@
 use camino::Utf8PathBuf;
 use quick_xml::events::Event;
 use quick_xml::Reader;
-use serde::{Deserialize, Serialize};
 use std::io::Read;
 
 use crate::error::{Result, XilinxError};
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceInfo {
     pub part_num: String,
     pub clock_period: String,

@@ -4,12 +4,11 @@
 //! `package_xo`, so the emitted text follows the `kernel.xml.j2`
 //! template byte-for-byte (modulo XML-escaping invariants).
 
-use serde::{Deserialize, Serialize};
 use tapa_protocol::{axis_data_width, M_AXI_PREFIX, S_AXI_NAME};
 
 use crate::error::{Result, XilinxError};
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortCategory {
     Scalar,
     /// Memory-mapped AXI master (MMAP).
@@ -20,7 +19,7 @@ pub enum PortCategory {
     OStream,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KernelXmlPort {
     pub name: String,
     pub category: PortCategory,
@@ -30,13 +29,12 @@ pub struct KernelXmlPort {
     pub width: u32,
     /// Optional user-specified port name override. Empty string means
     /// "use `name`".
-    #[serde(default)]
     pub port: String,
     /// C type string (escaped on emission).
     pub ctype: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KernelXmlArgs {
     pub top_name: String,
     pub ports: Vec<KernelXmlPort>,

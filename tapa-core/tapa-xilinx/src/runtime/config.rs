@@ -8,7 +8,7 @@
 //! - `from_env` seeds from the `REMOTE_*` names used in `VARS.local.bzl`.
 
 use camino::Utf8PathBuf;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::error::{Result, XilinxError};
 
@@ -41,7 +41,7 @@ fn expand_tilde(p: &Utf8PathBuf) -> Utf8PathBuf {
     Utf8PathBuf::from(expanded.as_ref())
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 pub struct RemoteConfig {
     pub host: String,
 
@@ -212,16 +212,6 @@ xilinx_settings: /opt/xilinx/Vitis/2023.2/settings64.sh
         // Unknown keys are ignored so newer config files remain readable.
         let cfg = cfg_from_yaml("host: h\nfuture_field: yes\n").unwrap();
         assert_eq!(cfg.host, "h");
-    }
-
-    #[test]
-    fn round_trips_through_yaml() {
-        let _lock = ENV_LOCK.lock().unwrap();
-        std::env::set_var("HOME", "/home/alice");
-        let cfg = cfg_from_yaml(VALID).unwrap();
-        let emitted = serde_yaml::to_string(&cfg).unwrap();
-        let again: RemoteConfig = serde_yaml::from_str(&emitted).unwrap();
-        assert_eq!(cfg, again);
     }
 
     #[test]
