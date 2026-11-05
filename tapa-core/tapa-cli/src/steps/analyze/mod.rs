@@ -10,7 +10,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, ValueEnum};
 use serde_json::{json, Value};
-use tapa_ir::Graph;
+use tapa_ir::{Graph, TaskLevel};
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -26,11 +26,17 @@ use crate::tapacc::discover::find_clang_binary;
 /// file that can drift from the first.
 const TAPACC_ARTIFACT: &str = "tapacc.json";
 
-mod build_design;
 mod run_tapacc;
 
-use build_design::is_top_leaf;
 use run_tapacc::run_tapacc;
+
+/// True when the top task in `graph` is a leaf-level task.
+fn is_top_leaf(graph: &Graph, top: &str) -> bool {
+    graph
+        .tasks
+        .get(top)
+        .is_some_and(|task| task.level == TaskLevel::Lower)
+}
 
 /// Target flows accepted by `tapa analyze`. Kebab-case spellings match
 /// the wire strings persisted into `tapa.json` and read by `synth` /
@@ -286,6 +292,16 @@ mod tests {
 
     use crate::context::CliContext;
     use crate::globals::GlobalArgs;
+
+    #[test]
+    fn is_top_leaf_detects_lower_level() {
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        assert!(is_top_leaf(&g, "T"));
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        assert!(!is_top_leaf(&g, "T"));
+        // Missing top is treated as upper for safety.
+        assert!(!is_top_leaf(&g, "DoesNotExist"));
+    }
 
     #[test]
     fn target_takes_one_flow_and_task_mappings() {
