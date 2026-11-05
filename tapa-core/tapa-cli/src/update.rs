@@ -116,11 +116,7 @@ struct ReleaseVersion(Vec<u64>);
 impl ReleaseVersion {
     fn parse(s: &str) -> Option<Self> {
         let components: Option<Vec<u64>> = s.split('.').map(|c| c.parse().ok()).collect();
-        let components = components?;
-        if components.is_empty() {
-            return None;
-        }
-        Some(Self(components))
+        Some(Self(components?))
     }
 }
 
