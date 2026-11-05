@@ -233,12 +233,7 @@ fn run_with(
         // Only `aiesimulator` times beats, and only a fully matching run may
         // touch the reports a previous `tapa synth` wrote; with no root
         // report (analyze-only work dir) this stays a successful no-op.
-        if let Some(timing) = timing_to_fold(
-            args.cycle_accurate,
-            &mismatches,
-            state.flow.synthed,
-            measured,
-        ) {
+        if let Some(timing) = timing_to_fold(args.cycle_accurate, state.flow.synthed, measured) {
             let updated = fold_aiesim_timing(&ctx.work_dir, &timing)?;
             if !updated.is_empty() {
                 println!("aiesim timing folded into {}", updated.join(", "));
@@ -254,18 +249,17 @@ fn run_with(
 }
 
 /// The timing this run may fold into the root reports, if any: only a
-/// `--cycle-accurate` run measures PLIO timing, and any output mismatch
-/// must leave prior reports untouched. `report_is_current` is the persisted
-/// synth flag: a later analyze invalidates it but may leave old report files
-/// in the reused work directory, and those stale files must not be updated.
+/// `--cycle-accurate` run measures PLIO timing, and the caller reaches here
+/// only when every output matched — a mismatch must leave prior reports
+/// untouched. `report_is_current` is the persisted synth flag: a later
+/// analyze invalidates it but may leave old report files in the reused work
+/// directory, and those stale files must not be updated.
 fn timing_to_fold(
     cycle_accurate: bool,
-    mismatches: &[String],
     report_is_current: bool,
     streams: BTreeMap<String, AiesimStreamTiming>,
 ) -> Option<AiesimSection> {
-    (cycle_accurate && mismatches.is_empty() && report_is_current)
-        .then_some(AiesimSection { streams })
+    (cycle_accurate && report_is_current).then_some(AiesimSection { streams })
 }
 
 #[cfg(test)]
@@ -301,18 +295,14 @@ mod tests {
             "c_q".to_string(),
             AiesimStreamTiming::from_beat_times(&[240.0, 256.0]).expect("two beats"),
         )]);
-        let folded = timing_to_fold(true, &[], true, measured.clone()).expect("fold");
+        let folded = timing_to_fold(true, true, measured.clone()).expect("fold");
         assert_eq!(folded.streams, measured);
         assert!(
-            timing_to_fold(false, &[], true, measured.clone()).is_none(),
+            timing_to_fold(false, true, measured.clone()).is_none(),
             "an x86sim run has no PLIO timing to fold"
         );
         assert!(
-            timing_to_fold(true, &["c_q".to_string()], true, measured.clone()).is_none(),
-            "a mismatch must leave prior reports untouched"
-        );
-        assert!(
-            timing_to_fold(true, &[], false, measured).is_none(),
+            timing_to_fold(true, false, measured).is_none(),
             "reports from before a later analyze are stale"
         );
     }
