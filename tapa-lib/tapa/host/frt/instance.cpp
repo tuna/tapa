@@ -39,19 +39,16 @@ void CheckFfi(int rc, const char* action) {
 }  // namespace
 
 struct Instance::Impl {
-  void* handle = nullptr;
+  void* handle;
 
   explicit Impl(const std::string& bitstream) {
-    if (bitstream.empty()) return;
     ForwardFlagsToEnv();
     handle = frt_instance_open(bitstream.c_str(), SimulatorFlag());
     LOG_IF(FATAL, handle == nullptr)
         << "failed to open '" << bitstream << "': " << LastErr();
   }
 
-  ~Impl() {
-    if (handle) frt_instance_close(handle);
-  }
+  ~Impl() { frt_instance_close(handle); }
 };
 
 Instance::Instance(const std::string& bitstream)
@@ -62,7 +59,6 @@ Instance& Instance::operator=(Instance&&) noexcept = default;
 Instance::~Instance() = default;
 
 void Instance::SetScalarArg(int index, const void* data, size_t size) {
-  if (!impl_->handle) return;
   CheckFfi(
       frt_instance_set_scalar_bytes(
           impl_->handle, index, reinterpret_cast<const uint8_t*>(data), size),
@@ -71,7 +67,6 @@ void Instance::SetScalarArg(int index, const void* data, size_t size) {
 
 std::vector<HostStream> Instance::HostStreams() const {
   std::vector<HostStream> streams;
-  if (!impl_->handle) return streams;
   const int count = frt_instance_host_stream_count(impl_->handle);
   LOG_IF(FATAL, count < 0) << "host_stream_count failed: " << LastErr();
   for (int i = 0; i < count; ++i) {
@@ -87,7 +82,6 @@ std::vector<HostStream> Instance::HostStreams() const {
 
 void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,
                             BufferAccess access) {
-  if (!impl_->handle) return;
   // The FRT C ABI takes a mutable pointer. Read-only mmaps expose a const
   // element pointer, so const-cast here as the former BufferArg did; the
   // direction is conveyed by `access`, not pointer constness.
@@ -99,43 +93,35 @@ void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,
 }
 
 void Instance::SetStreamArg(int index, const std::string& path) {
-  if (!impl_->handle) return;
   CheckFfi(frt_instance_set_stream_arg(impl_->handle, index, path.c_str()),
            "set_stream");
 }
 
 void Instance::WriteToDevice() {
-  if (impl_->handle)
-    CheckFfi(frt_instance_write_to_device(impl_->handle), "write_to_device");
+  CheckFfi(frt_instance_write_to_device(impl_->handle), "write_to_device");
 }
 
 void Instance::ReadFromDevice() {
-  if (impl_->handle)
-    CheckFfi(frt_instance_read_from_device(impl_->handle), "read_from_device");
+  CheckFfi(frt_instance_read_from_device(impl_->handle), "read_from_device");
 }
 
-void Instance::Exec() {
-  if (impl_->handle) CheckFfi(frt_instance_exec(impl_->handle), "exec");
-}
+void Instance::Exec() { CheckFfi(frt_instance_exec(impl_->handle), "exec"); }
 
 void Instance::Finish() {
-  if (impl_->handle) CheckFfi(frt_instance_finish(impl_->handle), "finish");
+  CheckFfi(frt_instance_finish(impl_->handle), "finish");
   if (CosimSetupOnly()) std::exit(0);
 }
 
-void Instance::Kill() {
-  if (impl_->handle) CheckFfi(frt_instance_kill(impl_->handle), "kill");
-}
+void Instance::Kill() { CheckFfi(frt_instance_kill(impl_->handle), "kill"); }
 
 bool Instance::IsFinished() const {
-  if (!impl_->handle) return true;
   int ret = frt_instance_is_finished(impl_->handle);
   CHECK_GE(ret, 0) << "is_finished failed: " << LastErr();
   return ret != 0;
 }
 
 int64_t Instance::ComputeTimeNanoSeconds() const {
-  return impl_->handle ? frt_instance_compute_ns(impl_->handle) : 0;
+  return frt_instance_compute_ns(impl_->handle);
 }
 
 }  // namespace frt
