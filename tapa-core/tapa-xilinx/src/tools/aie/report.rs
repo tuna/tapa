@@ -465,7 +465,8 @@ mod tests {
     #[test]
     fn missing_and_malformed_reports_have_typed_path_aware_errors() {
         let temp = tempfile::tempdir().expect("temporary graph directory");
-        let error = read_report_with_control(graph_dir(&temp), false).expect_err("missing compiler report");
+        let error =
+            read_report_with_control(graph_dir(&temp), false).expect_err("missing compiler report");
         match error {
             XilinxError::AieReportIo { path, .. } => {
                 assert!(
@@ -483,7 +484,8 @@ mod tests {
                 ("23_0", &linker_map(0)),
             ],
         );
-        let error = read_report_with_control(graph_dir(&temp), false).expect_err("wrong program-memory units");
+        let error = read_report_with_control(graph_dir(&temp), false)
+            .expect_err("wrong program-memory units");
         match error {
             XilinxError::AieReportParse { path, detail } => {
                 assert!(path.ends_with("Work/aie/25_1/Release/25_1.map"), "{path}");
