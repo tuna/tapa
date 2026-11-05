@@ -54,10 +54,6 @@ _optional_local_repository = repository_rule(
     },
 )
 
-def _sh_quote(value):
-    """Quote a string for POSIX shell single-quoted contexts."""
-    return sh_quote(value)
-
 def _remote_ssh_control_dir(rctx):
     """Return SSH control socket directory for repository fetch."""
     if rctx.attr.remote_ssh_control_dir:
@@ -106,14 +102,14 @@ def _fetch_vendor_headers_via_ssh(rctx, remote_path):
     rctx.execute(["mkdir", "-p", control_dir])
     rctx.execute(["chmod", "700", control_dir])
 
-    remote_tar_cmd = "tar czf - -C " + _sh_quote(remote_path) + " include"
+    remote_tar_cmd = "tar czf - -C " + sh_quote(remote_path) + " include"
 
     # Download include/ directory via tar-over-SSH.
     result = rctx.execute(
         [
             "sh",
             "-c",
-            "ssh " + " ".join(ssh_opts) + " " + ssh_target + " " + _sh_quote(remote_tar_cmd) + " | tar xzf -",
+            "ssh " + " ".join(ssh_opts) + " " + ssh_target + " " + sh_quote(remote_tar_cmd) + " | tar xzf -",
         ],
         timeout = 60,
     )

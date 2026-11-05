@@ -6,9 +6,6 @@
 
 load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
 
-def _sh_quote(value):
-    return sh_quote(value)
-
 def _test_tool_test_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
     argv = [ctx.attr.command] + ctx.attr.tool_args + [file.short_path for file in ctx.files.data_args]
@@ -19,8 +16,8 @@ set -euo pipefail
 exec "$(resolve_runfile {test_tool})" {argv}
 """.format(
         resolver = runfiles_resolver(),
-        test_tool = _sh_quote(ctx.executable.test_tool.short_path),
-        argv = " ".join([_sh_quote(arg) for arg in argv]),
+        test_tool = sh_quote(ctx.executable.test_tool.short_path),
+        argv = " ".join([sh_quote(arg) for arg in argv]),
     )
     ctx.actions.write(script, body, is_executable = True)
     runfiles = ctx.runfiles(files = ctx.files.data + ctx.files.data_args)

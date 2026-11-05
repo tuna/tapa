@@ -7,12 +7,6 @@
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
 load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
 
-def _sh_quote(value):
-    return sh_quote(value)
-
-def _runfiles_resolver():
-    return runfiles_resolver()
-
 def _exec_requirements(ctx):
     requirements = {}
     if "requires-network" in ctx.attr.tags:
@@ -31,9 +25,9 @@ def _script_prelude(cargo, rustc, manifest, first_output, build_args, target = "
     target_setup = ""
     if target:
         target_setup = "export CARGO_BUILD_TARGET={}\nexport CARGO_TARGET_{}_LINKER={}\n".format(
-            _sh_quote(target),
+            sh_quote(target),
             target.replace("-", "_").upper(),
-            _sh_quote(linker),
+            sh_quote(linker),
         )
     return """#!/bin/bash
 set -euo pipefail
@@ -68,19 +62,19 @@ empty() {{
   : > "$1"
 }}
 """.format(
-        cargo = _sh_quote(cargo.path),
-        rustc = _sh_quote(rustc.path),
-        manifest = _sh_quote(manifest.path),
-        first_output = _sh_quote(first_output.path),
+        cargo = sh_quote(cargo.path),
+        rustc = sh_quote(rustc.path),
+        manifest = sh_quote(manifest.path),
+        first_output = sh_quote(first_output.path),
         work_name = first_output.owner.name,
-        build_args = " ".join([_sh_quote(arg) for arg in build_args]),
+        build_args = " ".join([sh_quote(arg) for arg in build_args]),
         target_setup = target_setup,
     )
 
 def _cargo_test_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + "_cargo_test.sh")
     env_exports = "\n".join([
-        "export {}={}".format(name, _sh_quote(value))
+        "export {}={}".format(name, sh_quote(value))
         for name, value in sorted(ctx.attr.cargo_env.items())
         if value
     ])
@@ -91,7 +85,7 @@ def _cargo_test_impl(ctx):
         file = _single_file(target, "cargo_env_files")
         env_files.append(file)
         env_file_exports.append(
-            "export {}=\"$(resolve_runfile {})\"".format(name, _sh_quote(file.short_path)),
+            "export {}=\"$(resolve_runfile {})\"".format(name, sh_quote(file.short_path)),
         )
         env_file_runfiles.extend([
             target[DefaultInfo].default_runfiles,
@@ -117,7 +111,7 @@ def _cargo_test_impl(ctx):
 # use its clang++ and the bundled libc++ instead.
 FRT_XSIM_LLVM_DIST="$(cd "$(dirname "$(dirname "$(resolve_runfile {clangxx})")")" && pwd)"
 export FRT_XSIM_LLVM_DIST
-""".format(clangxx = _sh_quote(clangxx[0].short_path))
+""".format(clangxx = sh_quote(clangxx[0].short_path))
     maybe_skip = ""
     if ctx.attr.skip_without_xilinx_env:
         maybe_skip = """
@@ -156,17 +150,17 @@ export CARGO_TARGET_DIR="${{TEST_TMPDIR}}/cargo-target"
 {cxx20_block}
 exec "$CARGO" test --manifest-path "$MANIFEST" --locked {cargo_args} {test_args}
 """.format(
-        resolver = _runfiles_resolver(),
-        cargo = _sh_quote(ctx.file._cargo.short_path),
-        rustc = _sh_quote(ctx.file._rustc.short_path),
-        rustdoc = _sh_quote(ctx.file._rustdoc.short_path),
-        manifest = _sh_quote(ctx.file.manifest.short_path),
+        resolver = runfiles_resolver(),
+        cargo = sh_quote(ctx.file._cargo.short_path),
+        rustc = sh_quote(ctx.file._rustc.short_path),
+        rustdoc = sh_quote(ctx.file._rustdoc.short_path),
+        manifest = sh_quote(ctx.file.manifest.short_path),
         env_exports = env_exports,
         env_file_exports = "\n".join(env_file_exports),
         maybe_skip = maybe_skip,
         cxx20_block = cxx20_block,
-        cargo_args = " ".join([_sh_quote(arg) for arg in ctx.attr.cargo_args]),
-        test_args = " ".join([_sh_quote(arg) for arg in ctx.attr.test_args]),
+        cargo_args = " ".join([sh_quote(arg) for arg in ctx.attr.cargo_args]),
+        test_args = " ".join([sh_quote(arg) for arg in ctx.attr.test_args]),
     )
     ctx.actions.write(script, body, is_executable = True)
     runfiles = ctx.runfiles(files = ctx.files.srcs + ctx.files.data + [
@@ -257,7 +251,7 @@ for arg in "$@"; do
 done
 exec "${{EXECROOT}}/{host_rustc}" "$@"
 """.format(
-                target = _sh_quote(ctx.attr.target),
+                target = sh_quote(ctx.attr.target),
                 wrapper_path = rustc.path,
                 target_rustc = ctx.file._rustc_target.path,
                 host_rustc = ctx.file._rustc.path,
@@ -281,7 +275,7 @@ exec "${{EXECROOT}}/{host_rustc}" "$@"
         body += "copy_required \"$CARGO_TARGET_DIR/{artifact_dir}/{artifact}\" {output}\n".format(
             artifact_dir = artifact_dir,
             artifact = artifact,
-            output = _sh_quote(output.path),
+            output = sh_quote(output.path),
         )
     for output_path in ctx.attr.executable_outputs:
         package_prefix = ctx.label.package + "/" if ctx.label.package else ""
@@ -293,7 +287,7 @@ exec "${{EXECROOT}}/{host_rustc}" "$@"
         output = outputs_by_short_path.get(output_path)
         if output == None:
             fail("executable_outputs references undeclared output {}".format(output_path))
-        body += "chmod +x {}\n".format(_sh_quote(output.path))
+        body += "chmod +x {}\n".format(sh_quote(output.path))
 
     ctx.actions.write(script, body, is_executable = True)
     ctx.actions.run(
@@ -337,19 +331,19 @@ def _cargo_platform_artifacts_impl(ctx):
     for artifact, output in darwin:
         body += "    copy_required \"$CARGO_TARGET_DIR/release/{artifact}\" {output}\n".format(
             artifact = artifact,
-            output = _sh_quote(output.path),
+            output = sh_quote(output.path),
         )
     for _, output in linux:
-        body += "    empty {}\n".format(_sh_quote(output.path))
+        body += "    empty {}\n".format(sh_quote(output.path))
     body += "    ;;\n"
     body += "  Linux)\n"
     for artifact, output in linux:
         body += "    copy_required \"$CARGO_TARGET_DIR/release/{artifact}\" {output}\n".format(
             artifact = artifact,
-            output = _sh_quote(output.path),
+            output = sh_quote(output.path),
         )
     for _, output in darwin:
-        body += "    empty {}\n".format(_sh_quote(output.path))
+        body += "    empty {}\n".format(sh_quote(output.path))
     body += "    ;;\n"
     body += "  *)\n"
     body += "    echo \"unsupported Rust artifact platform: $(uname -s)\" >&2\n"
