@@ -144,15 +144,7 @@ bool IsStreamPortArg(const TaskModel& task, const std::string& arg) {
   const std::string base = arg.substr(0, arg.find('['));
   for (const Port& port : task.ports) {
     if (port.name != base) continue;
-    switch (port.kind) {
-      case TapaKind::kIStream:
-      case TapaKind::kOStream:
-      case TapaKind::kIStreams:
-      case TapaKind::kOStreams:
-        return true;
-      default:
-        return false;
-    }
+    return IsStreamInterface(port.kind);
   }
   return false;
 }
