@@ -645,6 +645,7 @@ pub(crate) fn bounded_border_capacity(lhs: u64, rhs: u64) -> Option<u64> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
 
     #[test]
     fn usable_wire_capacity_rounds_half_up() {
@@ -688,7 +689,6 @@ mod tests {
             "two unconstrained sides mean no bound at all",
         );
     }
-    use super::*;
 
     /// A 2×2 device with centroids on the `(100, 150)` grid, used for the
     /// geometry tests.
