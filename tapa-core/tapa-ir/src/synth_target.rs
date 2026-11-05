@@ -26,19 +26,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hls_round_trips() {
-        let json = serde_json::to_string(&SynthTarget::Hls).expect("serialize");
-        assert_eq!(json, r#""hls""#);
-        let back: SynthTarget = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, SynthTarget::Hls);
-    }
-
-    #[test]
-    fn ignore_round_trips() {
-        let json = serde_json::to_string(&SynthTarget::Ignore).expect("serialize");
-        assert_eq!(json, r#""ignore""#);
-        let back: SynthTarget = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, SynthTarget::Ignore);
+    fn wire_forms_round_trip() {
+        for (policy, wire) in [
+            (SynthTarget::Hls, "hls"),
+            (SynthTarget::Ignore, "ignore"),
+            (SynthTarget::Aie, "aie"),
+        ] {
+            let json = serde_json::to_string(&policy).expect("serialize");
+            assert_eq!(json, format!("\"{wire}\""));
+            assert_eq!(
+                serde_json::from_str::<SynthTarget>(&json).expect("deserialize"),
+                policy,
+            );
+        }
     }
 
     #[test]

@@ -52,50 +52,21 @@ mod tests {
     use super::*;
 
     #[test]
-    fn xilinx_vitis_round_trips() {
-        let json = serde_json::to_string(&Target::XilinxVitis).expect("serialize");
-        assert_eq!(json, r#""xilinx-vitis""#);
-        let back: Target = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, Target::XilinxVitis);
-    }
-
-    #[test]
-    fn xilinx_slash_round_trips() {
-        let json = serde_json::to_string(&Target::XilinxSlash).expect("serialize");
-        assert_eq!(json, r#""xilinx-slash""#);
-        let back: Target = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, Target::XilinxSlash);
-    }
-
-    #[test]
-    fn xilinx_hls_round_trips() {
-        let json = serde_json::to_string(&Target::XilinxHls).expect("serialize");
-        assert_eq!(json, r#""xilinx-hls""#);
-        let back: Target = serde_json::from_str(&json).expect("deserialize");
-        assert_eq!(back, Target::XilinxHls);
-    }
-
-    #[test]
-    fn as_str_matches_wire_form() {
-        assert_eq!(Target::XilinxVitis.as_str(), "xilinx-vitis");
-        assert_eq!(Target::XilinxSlash.as_str(), "xilinx-slash");
-        assert_eq!(Target::XilinxHls.as_str(), "xilinx-hls");
-    }
-
-    #[test]
-    fn from_str_parses_wire_form() {
-        assert_eq!(
-            Target::from_str("xilinx-vitis").expect("parse"),
-            Target::XilinxVitis,
-        );
-        assert_eq!(
-            Target::from_str("xilinx-slash").expect("parse"),
-            Target::XilinxSlash,
-        );
-        assert_eq!(
-            Target::from_str("xilinx-hls").expect("parse"),
-            Target::XilinxHls,
-        );
+    fn wire_forms_round_trip() {
+        for (target, wire) in [
+            (Target::XilinxVitis, "xilinx-vitis"),
+            (Target::XilinxSlash, "xilinx-slash"),
+            (Target::XilinxHls, "xilinx-hls"),
+        ] {
+            assert_eq!(target.as_str(), wire);
+            assert_eq!(Target::from_str(wire).expect("parse"), target);
+            let json = serde_json::to_string(&target).expect("serialize");
+            assert_eq!(json, format!("\"{wire}\""));
+            assert_eq!(
+                serde_json::from_str::<Target>(&json).expect("deserialize"),
+                target,
+            );
+        }
     }
 
     #[test]
