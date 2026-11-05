@@ -11,89 +11,21 @@ mod tree_sitter;
 
 pub use inspection::{original_module_text, unconditionally_zero_driven_names};
 
-// ── Error-context helpers ───────────────────────────────────────────
-
-/// Byte offset of the `module` keyword when it is the first non-trivia
-/// token, mirroring the module scan the old pre-parser used for error
-/// classification. Returns `None` when any other token comes first
-/// (the old scan rejected such input with `NoModuleFound`).
-fn module_keyword_start(source: &str) -> Option<usize> {
-    let bytes = source.as_bytes();
-    let mut i = 0;
-    while i < bytes.len() {
-        // Skip whitespace.
-        if bytes[i].is_ascii_whitespace() {
-            i += 1;
-            continue;
-        }
-        // Skip single-line comments.
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        // Skip block comments.
-        if i + 1 < bytes.len() && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i += 2;
-            continue;
-        }
-        // Skip attributes: `(* ... *)`
-        if i + 1 < bytes.len() && bytes[i] == b'(' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b')') {
-                i += 1;
-            }
-            i += 2;
-            continue;
-        }
-        // Skip compiler directives (backtick lines like `timescale).
-        if bytes[i] == b'`' {
-            while i < bytes.len() && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        // Check for `module` keyword.
-        if source[i..].starts_with("module") {
-            let after = i + 6;
-            if after >= bytes.len() || !bytes[after].is_ascii_alphanumeric() {
-                return Some(i);
-            }
-        }
-        return None;
-    }
-    None
-}
-
-/// Module name for error context, extracted without a full parse.
-fn partial_module_name(source: &str) -> String {
-    module_keyword_start(source)
-        .and_then(|start| source[start..].strip_prefix("module"))
-        .and_then(|s| s.split_whitespace().next())
-        .unwrap_or("<unknown>")
-        .trim_end_matches('(')
-        .to_owned()
-}
-
 // ── Top-level parser ────────────────────────────────────────────────
 
 /// Parse a TAPA-generated Verilog module, extracting all interface elements.
 pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
-    let header_failed = || ParseError::ParseFailed {
-        module: partial_module_name(source),
+    let or_unknown = |name: Option<String>| name.unwrap_or_else(|| "<unknown>".to_owned());
+    let header_failed = |name| ParseError::ParseFailed {
+        module: or_unknown(name),
         message: "module header: tree-sitter failed to extract header".to_string(),
     };
 
     let info = match tree_sitter::parse_module_info(source)? {
         tree_sitter::ModuleParse::Ok(info) => *info,
-        tree_sitter::ModuleParse::Issue(issue) => {
+        tree_sitter::ModuleParse::Issue { issue, name } => {
             return Err(ParseError::ParseFailed {
-                module: partial_module_name(source),
+                module: or_unknown(name),
                 message: match issue {
                     tree_sitter::ParseIssue::MalformedPort => {
                         "malformed port declaration".to_string()
@@ -104,14 +36,8 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
                 },
             });
         }
-        tree_sitter::ModuleParse::NoModule => {
-            return Err(if module_keyword_start(source).is_some() {
-                header_failed()
-            } else {
-                ParseError::NoModuleFound
-            });
-        }
-        tree_sitter::ModuleParse::HeaderFailed => return Err(header_failed()),
+        tree_sitter::ModuleParse::NoModule => return Err(ParseError::NoModuleFound),
+        tree_sitter::ModuleParse::HeaderFailed { name } => return Err(header_failed(name)),
     };
 
     // Verify all header-listed ports have declarations.

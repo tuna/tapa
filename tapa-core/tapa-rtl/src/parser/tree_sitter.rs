@@ -470,6 +470,24 @@ fn is_preamble_trivia(node: Node, src: &[u8]) -> bool {
         || (node.kind() == "ERROR" && text.starts_with("(*"))
 }
 
+/// Name from a header too broken for tree-sitter to recover a
+/// `module_declaration`: the first non-trivia node must begin with the
+/// `module` keyword.
+fn broken_header_name(root: Node, src: &[u8]) -> Option<String> {
+    let first = children_of(root).find(|node| !is_preamble_trivia(*node, src))?;
+    let rest = text_of(first, src).trim_start().strip_prefix("module")?;
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    rest.split_whitespace()
+        .next()
+        .map(|name| name.trim_end_matches('(').to_owned())
+}
+
 /// Extract ANSI header ports and non-ANSI body ports.
 fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<String>) {
     let mut ports = Vec::new();
@@ -521,15 +539,27 @@ pub(super) struct ModuleInfo {
     pub signals: Vec<Signal>,
 }
 
+/// Module name recovered from a possibly-broken header, for error context.
+fn recovered_name(mod_node: Node, src: &[u8]) -> Option<String> {
+    module_header(mod_node).and_then(|header| {
+        children_of(header)
+            .find(|n| n.kind() == "simple_identifier")
+            .map(|n| text_of(n, src).to_owned())
+    })
+}
+
 /// Outcome of extracting a module with tree-sitter; the caller maps the
-/// failure variants onto `ParseError` with text-level context.
+/// failure variants onto `ParseError`.
 pub(super) enum ModuleParse {
     /// No `module_declaration` found anywhere in the tree.
     NoModule,
     /// Module found, but the header or module name was not extractable.
-    HeaderFailed,
+    HeaderFailed { name: Option<String> },
     /// An `ERROR` node matches a malformed port/parameter declaration.
-    Issue(ParseIssue),
+    Issue {
+        issue: ParseIssue,
+        name: Option<String>,
+    },
     /// Everything extracted.
     Ok(Box<ModuleInfo>),
 }
@@ -544,10 +574,12 @@ pub(super) fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError>
     };
     let root = tree.root_node();
 
-    // Locate the target module, rejecting non-trivia content that the
-    // old text scan would have rejected with `NoModuleFound`.
+    // Locate the target module, rejecting non-trivia content before it.
     let Some(mod_node) = find_first_module(root) else {
-        return Ok(ModuleParse::NoModule);
+        return Ok(match broken_header_name(root, src) {
+            Some(name) => ModuleParse::HeaderFailed { name: Some(name) },
+            None => ModuleParse::NoModule,
+        });
     };
     let mut cursor = root.walk();
     for child in root.children(&mut cursor) {
@@ -563,18 +595,23 @@ pub(super) fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError>
     // Reject sources that contain tree-sitter ERROR nodes (malformed
     // declarations that error-recovery would otherwise swallow).
     if let Some(issue) = first_issue(root, src) {
-        return Ok(ModuleParse::Issue(issue));
+        return Ok(ModuleParse::Issue {
+            issue,
+            name: recovered_name(mod_node, src),
+        });
     }
 
     let Some(header) = module_header(mod_node) else {
-        return Ok(ModuleParse::HeaderFailed);
+        return Ok(ModuleParse::HeaderFailed {
+            name: recovered_name(mod_node, src),
+        });
     };
 
     let Some(name) = children_of(header)
         .find(|n| n.kind() == "simple_identifier")
         .map(|n| text_of(n, src).to_owned())
     else {
-        return Ok(ModuleParse::HeaderFailed);
+        return Ok(ModuleParse::HeaderFailed { name: None });
     };
 
     // Parameters (header + body)
