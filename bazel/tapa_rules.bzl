@@ -33,9 +33,8 @@ def _remote_host_flag():
     host_part = host_part + ":" + REMOTE_PORT
     return host_part
 
-def _remote_tapa_args(ctx):
+def _remote_tapa_args(ctx, remote_host):
     remote_args = []
-    remote_host = _remote_host_flag()
     if remote_host:
         remote_args.extend(["--remote-host", remote_host])
         if ctx.file.ssh_key:
@@ -218,7 +217,7 @@ def _tapa_xo_impl(ctx):
         aie_output_dir = ctx.actions.declare_directory(ctx.attr.name + ".aie-sidecars")
 
     remote_host = _remote_host_flag()
-    remote_args = _remote_tapa_args(ctx)
+    remote_args = _remote_tapa_args(ctx, remote_host)
 
     analyze_cmd = [tapa_cli.path, "--work-dir", analysis_dir.path] + remote_args + ["analyze"]
     for src in srcs:
@@ -329,7 +328,7 @@ def _tapa_reuse_work_dir_xo_impl(ctx):
 
     tapa_prefix = [tapa_cli.path, "--work-dir", work_dir.path]
     remote_host = _remote_host_flag()
-    tapa_prefix.extend(_remote_tapa_args(ctx))
+    tapa_prefix.extend(_remote_tapa_args(ctx, remote_host))
 
     include_flags = []
     for inc in ctx.files.include:
@@ -460,7 +459,7 @@ def _tapa_slash_link_impl(ctx):
     vbin = ctx.actions.declare_file(ctx.attr.output_name)
     metrics = ctx.actions.declare_file(ctx.attr.name + "/link-metrics.json")
     remote_host = _remote_host_flag()
-    command = [tapa_cli.path, "--work-dir", work_dir.path] + _remote_tapa_args(ctx) + [
+    command = [tapa_cli.path, "--work-dir", work_dir.path] + _remote_tapa_args(ctx, remote_host) + [
         "link",
         "--package",
         package.path,
