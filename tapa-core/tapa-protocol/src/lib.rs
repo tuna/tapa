@@ -60,14 +60,14 @@ pub fn stream_peek_port_name(base: &str, suffix: &str) -> String {
 }
 
 /// Port-name suffix → wire direction (`"input"` or `"output"`).
-pub static STREAM_PORT_DIRECTION: phf::Map<&'static str, &'static str> = phf::phf_map! {
-    "_dout" => "input",
-    "_empty_n" => "input",
-    "_read" => "output",
-    "_din" => "output",
-    "_full_n" => "input",
-    "_write" => "output",
-};
+#[must_use]
+pub fn stream_port_direction(suffix: &str) -> Option<&'static str> {
+    match suffix {
+        "_dout" | "_empty_n" | "_full_n" => Some("input"),
+        "_read" | "_din" | "_write" => Some("output"),
+        _ => None,
+    }
+}
 
 // ── FIFO interface ports ────────────────────────────────────────────
 
@@ -313,9 +313,10 @@ mod tests {
             .chain(OSTREAM_SUFFIXES.iter())
             .copied()
             .collect();
-        let with_direction: BTreeSet<&str> = STREAM_PORT_DIRECTION.keys().copied().collect();
-
-        assert_eq!(declared, with_direction, "direction table");
+        assert!(
+            declared.iter().all(|s| stream_port_direction(s).is_some()),
+            "every declared stream suffix must have a wire direction"
+        );
         assert!(
             STREAM_DATA_SUFFIXES.iter().all(|s| declared.contains(s)),
             "data suffixes must be declared stream suffixes"

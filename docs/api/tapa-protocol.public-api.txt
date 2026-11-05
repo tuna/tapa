@@ -174,7 +174,6 @@ pub const tapa_protocol::OSTREAM_SUFFIXES: &[&str]
 pub const tapa_protocol::STREAM_DATA_SUFFIXES: &[&str]
 pub const tapa_protocol::S_AXI_LITE_CTRL_PORTS: &[&str]
 pub const tapa_protocol::S_AXI_NAME: &str
-pub static tapa_protocol::STREAM_PORT_DIRECTION: phf::map::Map<&'static str, &'static str>
 pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
 pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
 pub const fn tapa_protocol::axis_data_width(u32) -> u32
@@ -186,4 +185,5 @@ pub fn tapa_protocol::m_axi_ports() -> impl core::iter::traits::iterator::Iterat
 pub fn tapa_protocol::m_axi_suffixes() -> impl core::iter::traits::iterator::Iterator<Item = &'static str>
 pub const fn tapa_protocol::stream_data_wire_width(u32) -> u32
 pub fn tapa_protocol::stream_peek_port_name(&str, &str) -> alloc::string::String
+pub fn tapa_protocol::stream_port_direction(&str) -> core::option::Option<&'static str>
 pub fn tapa_protocol::stream_port_name(&str, &str) -> alloc::string::String
