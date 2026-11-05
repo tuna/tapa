@@ -34,20 +34,22 @@ pub fn check_xo_reports(path: &Path) -> Result<()> {
     let report_json: JsonValue = serde_json::from_str(&report_json)
         .map_err(|error| format!("invalid report.json: {error}"))?;
     for module in REPORT_MODULES {
-        require_synth_source_json(&report_json, module, "report.json")?;
+        require_synth_source(&report_json, module, "report.json")?;
     }
 
     let report_yaml = archive_text(&mut archive, "report.yaml")?;
     let report_yaml: serde_yaml::Value = serde_yaml::from_str(&report_yaml)
         .map_err(|error| format!("invalid report.yaml: {error}"))?;
+    let report_yaml = serde_json::to_value(&report_yaml)
+        .map_err(|error| format!("invalid report.yaml: {error}"))?;
     for module in REPORT_MODULES {
-        require_synth_source_yaml(&report_yaml, module, "report.yaml")?;
+        require_synth_source(&report_yaml, module, "report.yaml")?;
     }
 
     Ok(())
 }
 
-fn require_synth_source_json(report: &JsonValue, module: &str, name: &str) -> Result<()> {
+fn require_synth_source(report: &JsonValue, module: &str, name: &str) -> Result<()> {
     let source = report
         .get("area")
         .and_then(|value| value.get("breakdown"))
@@ -55,20 +57,6 @@ fn require_synth_source_json(report: &JsonValue, module: &str, name: &str) -> Re
         .and_then(|value| value.get("area"))
         .and_then(|value| value.get("source"))
         .and_then(JsonValue::as_str);
-    if source != Some("synth") {
-        return Err(format!("{name}: {module} area source is not synth"));
-    }
-    Ok(())
-}
-
-fn require_synth_source_yaml(report: &serde_yaml::Value, module: &str, name: &str) -> Result<()> {
-    let source = report
-        .get("area")
-        .and_then(|value| value.get("breakdown"))
-        .and_then(|value| value.get(module))
-        .and_then(|value| value.get("area"))
-        .and_then(|value| value.get("source"))
-        .and_then(serde_yaml::Value::as_str);
     if source != Some("synth") {
         return Err(format!("{name}: {module} area source is not synth"));
     }
