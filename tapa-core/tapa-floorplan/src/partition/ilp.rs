@@ -1065,9 +1065,7 @@ impl FloorplanModel {
 
         Ok(assignments)
     }
-}
 
-impl FloorplanModel {
     /// Pin the achieved primary objective and re-solve minimizing the stable
     /// candidate ranking (`Σ candidate_index·x`), whose optimum is unique:
     /// each vertex independently selects its lowest-ranked feasible
