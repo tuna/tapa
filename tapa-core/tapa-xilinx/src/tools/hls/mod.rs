@@ -110,21 +110,19 @@ fn kernel_flags(cflags: &[String]) -> (ToolValue, Vec<Utf8PathBuf>) {
     let mut i = 0;
     while i < cflags.len() {
         let trimmed = cflags[i].trim();
-        let (dir_str, consumed) = if let Some(rest) = trimmed.strip_prefix("-isystem") {
-            let rest = rest.trim();
-            if rest.is_empty() && i + 1 < cflags.len() {
-                (cflags[i + 1].trim(), 2)
-            } else {
-                (rest, 1)
+        let mut matched = None;
+        for flag in ["-isystem", "-I"] {
+            if let Some(rest) = trimmed.strip_prefix(flag) {
+                let rest = rest.trim();
+                matched = Some(if rest.is_empty() && i + 1 < cflags.len() {
+                    (cflags[i + 1].trim(), 2)
+                } else {
+                    (rest, 1)
+                });
+                break;
             }
-        } else if let Some(rest) = trimmed.strip_prefix("-I") {
-            let rest = rest.trim();
-            if rest.is_empty() && i + 1 < cflags.len() {
-                (cflags[i + 1].trim(), 2)
-            } else {
-                (rest, 1)
-            }
-        } else {
+        }
+        let Some((dir_str, consumed)) = matched else {
             i += 1;
             continue;
         };
