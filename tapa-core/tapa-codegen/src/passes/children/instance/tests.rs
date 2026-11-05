@@ -1,7 +1,6 @@
 // In-src unit tests for child `ModuleInstance` assembly.
 
 use super::*;
-// stream args and delegate to the real constructor.
 fn build_child_instance_test(
     child_task_name: &str,
     instance_name: &str,
