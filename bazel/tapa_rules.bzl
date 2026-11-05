@@ -509,33 +509,18 @@ _tapa_slash_link = rule(
 )
 
 def tapa_slash_link(name, **kwargs):
-    """Run `tapa link` and expose its VBIN and link-metrics.json outputs.
-
-    Args:
-      name: Target name.
-      **kwargs: Attributes forwarded to the underlying rule.
-    """
+    """Run `tapa link` and expose its VBIN and link-metrics.json outputs."""
     _tapa_slash_link(name = name, **incompatible_unless_available(VIVADO_AVAILABLE, kwargs))
 
 def tapa_reuse_work_dir_xo(name, **kwargs):
-    """Build the work-dir reuse fixture when XO tools are available.
-
-    Args:
-      name: Target name.
-      **kwargs: Attributes forwarded to the underlying rule.
-    """
+    """Build the work-dir reuse fixture when XO tools are available."""
     _tapa_reuse_work_dir_xo(
         name = name,
         **_with_tool_constraints("xilinx-vitis", kwargs)
     )
 
 def tapa_xo(name, **kwargs):
-    """Analyze, synthesize, and package a kernel with staged cache inputs.
-
-    Args:
-      name: Target name.
-      **kwargs: Attributes forwarded to the underlying rule.
-    """
+    """Analyze, synthesize, and package a kernel with staged cache inputs."""
     _tapa_xo(
         name = name,
         **_with_tool_constraints(kwargs.get("target", "xilinx-vitis"), kwargs)

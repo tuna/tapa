@@ -118,12 +118,7 @@ _vpp_xclbin = rule(
 )
 
 def vpp_xclbin(name, **kwargs):
-    """Link an XO when Vivado is available, preserving caller constraints.
-
-    Args:
-      name: Target name.
-      **kwargs: Attributes forwarded to the underlying rule.
-    """
+    """Link an XO when Vivado is available, preserving caller constraints."""
     _vpp_xclbin(name = name, **incompatible_unless_available(VIVADO_AVAILABLE, kwargs))
 
 def _xilinx_wrapper_impl(ctx):
