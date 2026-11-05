@@ -295,11 +295,6 @@ fn resumed_config_stream_names(config: &serde_json::Value) -> HashSet<String> {
         .unwrap_or_default()
 }
 
-/// Strict resume-from-post-sim stream validation: every stream arg the
-/// kernel spec declares must resolve against the resumed reference — the
-/// `"streams"` section of the work directory's `dpi_config.json` that the
-/// earlier setup-only run recorded. All unresolved args are collected into
-/// one named error rather than failing fast on the first.
 /// Sorted `'name' (arg index N)` rendering shared by the resume-mode
 /// strict-binding error messages.
 fn sorted_stream_arg_listing(mut args: Vec<(u32, &str)>) -> String {
@@ -310,6 +305,11 @@ fn sorted_stream_arg_listing(mut args: Vec<(u32, &str)>) -> String {
         .join(", ")
 }
 
+/// Strict resume-from-post-sim stream validation: every stream arg the
+/// kernel spec declares must resolve against the resumed reference — the
+/// `"streams"` section of the work directory's `dpi_config.json` that the
+/// earlier setup-only run recorded. All unresolved args are collected into
+/// one named error rather than failing fast on the first.
 fn validate_resume_stream_bindings(
     declared: &HashMap<u32, String>,
     resumed: &HashSet<String>,
