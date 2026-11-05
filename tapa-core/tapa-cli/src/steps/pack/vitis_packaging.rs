@@ -506,10 +506,10 @@ fn write_aie_pl_control(
     platform: &str,
     target_mhz: u32,
     xo: &Path,
-) -> Result<Option<PathBuf>> {
+) -> Result<()> {
     if !tapa_xilinx::tools::aie::pl_control::required(platform) {
         remove_aie_control(xo)?;
-        return Ok(None);
+        return Ok(());
     }
     let output = crate::aie::pl_control_sidecar(xo);
     let job = tapa_xilinx::tools::aie::pl_control::AiePlControlJob::builder()
@@ -520,7 +520,7 @@ fn write_aie_pl_control(
         .build();
     tapa_xilinx::tools::aie::pl_control::compile(runner, &job)?;
     log::info!("AI Engine PL control: {}", output.display());
-    Ok(Some(output))
+    Ok(())
 }
 
 /// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
