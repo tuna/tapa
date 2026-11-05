@@ -286,7 +286,6 @@ mod tests {
                     repr: "0".to_owned(),
                 }],
             }),
-            pragma: None,
         };
         assert_eq!(p.to_string(), "input wire [31:0] data_in");
     }

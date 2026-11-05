@@ -1,7 +1,6 @@
 //! Constrained Verilog interface parser and code generator for TAPA RTL.
 //!
-//! Parses module declarations to extract ports, parameters, signals,
-//! and pragmas.
+//! Parses module declarations to extract ports, parameters, and signals.
 //!
 //! The `builder` module provides AST types for programmatic Verilog
 //! construction. The `emit` module implements `Display` for all types,
@@ -14,7 +13,6 @@ pub mod module;
 pub mod mutation;
 pub mod param;
 pub mod port;
-pub mod pragma;
 pub mod signal;
 
 mod error;

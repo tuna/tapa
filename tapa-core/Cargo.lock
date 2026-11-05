@@ -774,15 +774,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nom"
-version = "8.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "df9761775871bdef83bee530e60050f7e54b1105350d6884eb0fb4f46c2f9405"
-dependencies = [
- "memchr",
-]
-
-[[package]]
 name = "once_cell"
 version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1422,7 +1413,6 @@ dependencies = [
 name = "tapa-rtl"
 version = "0.1.0"
 dependencies = [
- "nom",
  "regex",
  "serde",
  "streaming-iterator",

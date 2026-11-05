@@ -3,7 +3,6 @@
 use serde::{Deserialize, Serialize};
 
 use crate::expression::Expression;
-use crate::pragma::Pragma;
 
 /// Direction of a port.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,9 +42,6 @@ pub struct Port {
     pub direction: Direction,
     /// Optional width `[msb:lsb]`; `None` means 1-bit.
     pub width: Option<Width>,
-    /// Optional pragma attached to this port.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pragma: Option<Pragma>,
 }
 
 impl Port {

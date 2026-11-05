@@ -1,84 +1,15 @@
 //! Verilog module parser for TAPA-generated module headers.
 //!
 //! All structure comes from a single `tree-sitter-systemverilog` parse
-//! (headers, ports, parameters, signal declarations, attributes). `nom`
-//! survives only as the attribute leaf parser: `(* key = "value" *)`
-//! attribute text is matched with nom combinators because it is a
-//! loosely structured pragma format, not Verilog grammar.
-
-use nom::bytes::complete::{tag, take_until, take_while1};
-use nom::character::complete::{char, multispace0};
-use nom::combinator::opt;
-use nom::sequence::{delimited, pair, preceded};
-use nom::IResult;
-use nom::Parser;
+//! (headers, ports, parameters, signal declarations).
 
 use crate::error::ParseError;
 use crate::module::VerilogModule;
-use crate::pragma::Pragma;
 
 mod inspection;
 mod tree_sitter;
 
 pub(crate) use inspection::{original_module_text, unconditionally_zero_driven_names};
-
-// ── Utility parsers ─────────────────────────────────────────────────
-
-fn ws(input: &str) -> IResult<&str, &str> {
-    multispace0(input)
-}
-
-fn identifier(input: &str) -> IResult<&str, &str> {
-    take_while1(|c: char| c.is_ascii_alphanumeric() || c == '_' || c == '$')(input)
-}
-
-// ── Pragma / attribute parsers ──────────────────────────────────────
-
-/// The span of `start` consumed down to `rest`.
-fn consumed_span<'a>(start: &'a str, rest: &str) -> &'a str {
-    &start[..start.len() - rest.len()]
-}
-
-/// Parse a single attribute: `(* key = "value" *)` or `(* key *)`.
-fn attribute(input: &str) -> IResult<&str, Pragma> {
-    let start = input;
-    let (input, _) = tag("(*").parse(input)?;
-    let (input, _) = ws(input)?;
-    let (input, key) = identifier(input)?;
-    let (input, _) = ws(input)?;
-    let (input, value) = opt(preceded(
-        pair(char('='), multispace0),
-        delimited(char('"'), take_until("\""), char('"')),
-    ))
-    .parse(input)?;
-    let (input, _) = ws(input)?;
-    let (input, _) = tag("*)").parse(input)?;
-
-    Ok((
-        input,
-        Pragma {
-            key: key.to_owned(),
-            value: value.map(str::to_owned),
-            raw_line: consumed_span(start, input).to_owned(),
-        },
-    ))
-}
-
-/// Fallback: capture raw `(* ... *)` when structured parsing fails.
-fn raw_attribute(input: &str) -> IResult<&str, Pragma> {
-    let start = input;
-    let (input, _) = tag("(*").parse(input)?;
-    let (input, _content) = take_until("*)").parse(input)?;
-    let (input, _) = tag("*)").parse(input)?;
-    Ok((
-        input,
-        Pragma {
-            key: String::new(),
-            value: None,
-            raw_line: consumed_span(start, input).to_owned(),
-        },
-    ))
-}
 
 // ── Error-context helpers ───────────────────────────────────────────
 
@@ -200,7 +131,6 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
         ports: info.ports,
         parameters: info.params,
         signals: info.signals,
-        pragmas: info.pragmas,
         source: source.to_owned(),
     })
 }
@@ -339,35 +269,6 @@ endmodule
     }
 
     #[test]
-    fn parse_pragmas_leading_and_body_in_order() {
-        let src = r#"
-(* CORE_GENERATION_INFO="Test,hls_ip" *)
-module AttrMod (
-  ap_clk
-);
-
-(* RS_CLK *)
-input ap_clk;
-
-(* DONT_TOUCH = "yes" *)
-(* KEEP *)
-wire net;
-
-endmodule
-"#;
-        let m = parse_module(src).expect("parse");
-        let keys: Vec<&str> = m.pragmas.iter().map(|p| p.key.as_str()).collect();
-        assert_eq!(
-            keys,
-            ["CORE_GENERATION_INFO", "RS_CLK", "DONT_TOUCH", "KEEP"]
-        );
-        // The pragma above the declaration is recorded verbatim as a
-        // module pragma; the parsed signal itself carries no attribute.
-        assert_eq!(signal_names(&m), ["net"]);
-        assert!(m.signals[0].attribute.is_none(), "no attribute on signal");
-    }
-
-    #[test]
     fn empty_and_non_verilog_rejected() {
         parse_module("").unwrap_err();
         parse_module("   ").unwrap_err();
@@ -389,13 +290,10 @@ endmodule
         assert_eq!(m.name, "AnsiMod");
         assert_eq!(m.ports.len(), 3, "ports");
         assert_eq!(port(&m, "a").direction, Direction::Input);
-        assert!(port(&m, "a").pragma.is_some(), "header pragma on port");
         assert_eq!(port(&m, "b").direction, Direction::Output);
         // Width is inherited across comma-separated ANSI ports.
         let c = port(&m, "c");
         assert_eq!(c.direction, Direction::Output);
         assert!(c.width.is_some(), "width inherited by c");
-        // The header attribute attaches to the port only, not the module.
-        assert!(m.pragmas.is_empty(), "no module pragmas");
     }
 }

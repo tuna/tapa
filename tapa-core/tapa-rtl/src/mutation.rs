@@ -1,6 +1,6 @@
 //! Hybrid mutation API for `VerilogModule`.
 //!
-//! Preserves the parsed interface (ports, signals, params, pragmas) as
+//! Preserves the parsed interface (ports, signals, params) as
 //! structured AST while keeping the module body as raw text. Supports
 //! adding/removing ports, signals, instances, and logic by manipulating
 //! both the structured interface and the raw body text.
@@ -358,7 +358,6 @@ pub fn simple_port(name: impl Into<String>, direction: Direction) -> Port {
         name: name.into(),
         direction,
         width: None,
-        pragma: None,
     }
 }
 
@@ -377,7 +376,6 @@ pub fn wide_port(name: impl Into<String>, direction: Direction, msb: &str, lsb: 
         name: name.into(),
         direction,
         width: Some(wide_width(msb, lsb)),
-        pragma: None,
     }
 }
 

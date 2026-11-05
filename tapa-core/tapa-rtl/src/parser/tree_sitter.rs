@@ -12,7 +12,6 @@ use crate::error::ParseError;
 use crate::expression::tokenize_expression;
 use crate::param::Parameter;
 use crate::port::{Direction, Port, Width};
-use crate::pragma::Pragma;
 use crate::signal::{Signal, SignalKind};
 
 pub(super) fn sv_language() -> Language {
@@ -95,45 +94,37 @@ fn parse_constant_range(node: Node, src: &[u8]) -> Option<Width> {
 
 /// Extract ports from a `port_declaration` node (body port, non-ANSI).
 fn extract_ports_from_node(node: Node, src: &[u8]) -> Vec<Port> {
-    let mut pragmas = Vec::new();
     let mut direction = Direction::Input;
     let mut width: Option<Width> = None;
     let mut names: Vec<String> = Vec::new();
 
     for child in children_of(node) {
-        match child.kind() {
-            "attribute_instance" => {
-                if let Some(p) = parse_attribute_text(text_of(child, src)) {
-                    pragmas.push(p);
+        if matches!(
+            child.kind(),
+            "input_declaration" | "output_declaration" | "inout_declaration"
+        ) {
+            direction = match child.kind() {
+                "input_declaration" => Direction::Input,
+                "output_declaration" => Direction::Output,
+                _ => Direction::Inout,
+            };
+            for c in children_of(child) {
+                if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
+                    width = extract_width(c, src);
+                }
+                if c.kind() == "list_of_port_identifiers" {
+                    names.extend(extract_identifiers(c, src));
                 }
             }
-            "input_declaration" | "output_declaration" | "inout_declaration" => {
-                direction = match child.kind() {
-                    "input_declaration" => Direction::Input,
-                    "output_declaration" => Direction::Output,
-                    _ => Direction::Inout,
-                };
-                for c in children_of(child) {
-                    if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
-                        width = extract_width(c, src);
-                    }
-                    if c.kind() == "list_of_port_identifiers" {
-                        names.extend(extract_identifiers(c, src));
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
-    let pragma = pragmas.into_iter().last();
     names
         .into_iter()
         .map(|name| Port {
             name,
             direction,
             width: width.clone(),
-            pragma: pragma.clone(),
         })
         .collect()
 }
@@ -186,7 +177,6 @@ fn extract_ansi_port(
         name,
         direction,
         width: final_width,
-        pragma: None, // pragma handled by caller
     })
 }
 
@@ -261,18 +251,6 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
         }
     }
     params
-}
-
-// ── Attribute parsing ───────────────────────────────────────────────
-
-fn parse_attribute_text(text: &str) -> Option<Pragma> {
-    if let Ok((_, pragma)) = super::attribute(text) {
-        Some(pragma)
-    } else if let Ok((_, pragma)) = super::raw_attribute(text) {
-        Some(pragma)
-    } else {
-        None
-    }
 }
 
 // ── Error detection ────────────────────────────────────────────────
@@ -404,45 +382,33 @@ fn extract_signals(node: Node, src: &[u8], module: &str) -> Result<Vec<Signal>, 
 
 // ── Module body walk ────────────────────────────────────────────────
 
-/// Everything the body walk collects from one module, in source order.
-struct BodyExtraction {
-    signals: Vec<Signal>,
-    pragmas: Vec<Pragma>,
-}
-
 /// Walk the direct children of the target `module_declaration`,
-/// collecting body pragmas and top-level signal declarations.
+/// collecting top-level signal declarations.
 ///
 /// Scope discipline: nested modules, generate regions, procedural
 /// blocks, functions, and tasks are never descended into, so their
-/// local declarations neither leak into `signals` nor into `pragmas`.
+/// local declarations never leak into `signals`.
 fn walk_module_body(
     mod_node: Node,
     header_node: Node,
     src: &[u8],
     module: &str,
-) -> Result<BodyExtraction, ParseError> {
+) -> Result<Vec<Signal>, ParseError> {
     fn visit(
         node: Node,
         src: &[u8],
         module: &str,
-        out: &mut BodyExtraction,
+        out: &mut Vec<Signal>,
     ) -> Result<(), ParseError> {
         match node.kind() {
-            "attribute_instance" => {
-                if let Some(p) = parse_attribute_text(text_of(node, src)) {
-                    out.pragmas.push(p);
-                }
-            }
-            // Unwrap one grouping level; port declarations carry their
-            // leading attributes as direct children.
-            "module_item" | "port_declaration" => {
+            // Unwrap one grouping level.
+            "module_item" => {
                 for child in children_of(node) {
                     visit(child, src, module, out)?;
                 }
             }
             "net_declaration" | "data_declaration" => {
-                out.signals.append(&mut extract_signals(node, src, module)?);
+                out.append(&mut extract_signals(node, src, module)?);
             }
             // Malformed signals that broke the decl node entirely.
             "ERROR" => {
@@ -460,20 +426,17 @@ fn walk_module_body(
         Ok(())
     }
 
-    let mut out = BodyExtraction {
-        signals: Vec::new(),
-        pragmas: Vec::new(),
-    };
+    let mut signals = Vec::new();
     for child in children_of(mod_node) {
         if child.id() == header_node.id() {
             continue;
         }
-        visit(child, src, module, &mut out)?;
+        visit(child, src, module, &mut signals)?;
     }
-    Ok(out)
+    Ok(signals)
 }
 
-// ── Module location & pragma preamble ───────────────────────────────
+// ── Module location & preamble trivia ───────────────────────────────
 
 /// First `module_declaration` in document order, anywhere in the tree.
 pub(super) fn find_first_module(root: Node) -> Option<Node> {
@@ -507,39 +470,6 @@ fn is_preamble_trivia(node: Node, src: &[u8]) -> bool {
         || (node.kind() == "ERROR" && text.starts_with("(*"))
 }
 
-/// Pragmas attached to the module itself: attribute instances that
-/// precede the `module` keyword, whether they are attached at the top
-/// level or folded into the module header by the grammar.
-fn leading_pragmas(root: Node, mod_node: Node, header: Node, src: &[u8]) -> Vec<Pragma> {
-    let mut pragmas = Vec::new();
-    for child in children_of(root) {
-        if child.end_byte() > mod_node.start_byte() {
-            break;
-        }
-        if child.kind() == "attribute_instance" {
-            if let Some(p) = parse_attribute_text(text_of(child, src)) {
-                pragmas.push(p);
-            }
-        } else if child.kind() == "ERROR" {
-            // Raw `(* ... *)` the grammar could not structure at all.
-            if let Some(p) = parse_attribute_text(text_of(child, src).trim_start()) {
-                pragmas.push(p);
-            }
-        }
-    }
-    for child in children_of(header) {
-        if child.kind() == "module_keyword" {
-            break;
-        }
-        if child.kind() == "attribute_instance" {
-            if let Some(p) = parse_attribute_text(text_of(child, src)) {
-                pragmas.push(p);
-            }
-        }
-    }
-    pragmas
-}
-
 /// Extract ANSI header ports and non-ANSI body ports.
 fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<String>) {
     let mut ports = Vec::new();
@@ -548,28 +478,13 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
     // ANSI header ports
     for child in children_of(header) {
         if child.kind() == "list_of_port_declarations" {
-            let mut pending_pragma: Option<Pragma> = None;
             let mut last_dir = Direction::Input;
             let mut last_width: Option<Width> = None;
             for c in children_of(child) {
-                match c.kind() {
-                    "attribute_instance" => {
-                        if let Some(p) = parse_attribute_text(text_of(c, src)) {
-                            pending_pragma = Some(p);
-                        }
+                if c.kind() == "ansi_port_declaration" {
+                    if let Some(port) = extract_ansi_port(c, src, &mut last_dir, &mut last_width) {
+                        ports.push(port);
                     }
-                    "ansi_port_declaration" => {
-                        if let Some(mut port) =
-                            extract_ansi_port(c, src, &mut last_dir, &mut last_width)
-                        {
-                            if let Some(ref p) = pending_pragma {
-                                port.pragma = Some(p.clone());
-                            }
-                            ports.push(port);
-                        }
-                        pending_pragma = None;
-                    }
-                    _ => {}
                 }
             }
         }
@@ -604,7 +519,6 @@ pub struct ModuleInfo {
     pub ports: Vec<Port>,
     pub port_names: Vec<String>,
     pub signals: Vec<Signal>,
-    pub pragmas: Vec<Pragma>,
 }
 
 /// Outcome of extracting a module with tree-sitter; the caller maps the
@@ -621,7 +535,7 @@ pub enum ModuleParse {
 }
 
 /// Parse a Verilog module with tree-sitter and extract the name, ports,
-/// parameters, signals, and pragmas.
+/// parameters, and signals.
 pub fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
     let src = source.as_bytes();
     let mut parser = sv_parser();
@@ -674,18 +588,14 @@ pub fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
 
     let (ports, port_names) = extract_ports(header, mod_node, src);
 
-    // Body signals and pragmas (module scope only).
-    let body = walk_module_body(mod_node, header, src, &name)?;
-
-    let mut pragmas = leading_pragmas(root, mod_node, header, src);
-    pragmas.extend(body.pragmas);
+    // Body signals (module scope only).
+    let signals = walk_module_body(mod_node, header, src, &name)?;
 
     Ok(ModuleParse::Ok(Box::new(ModuleInfo {
         name,
         params,
         ports,
         port_names,
-        signals: body.signals,
-        pragmas,
+        signals,
     })))
 }

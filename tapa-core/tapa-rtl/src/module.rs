@@ -6,14 +6,12 @@ use crate::error::ParseError;
 use crate::param::Parameter;
 use crate::parser;
 use crate::port::Port;
-use crate::pragma::Pragma;
 use crate::signal::Signal;
 
 /// A parsed Verilog module interface.
 ///
 /// Contains all interface elements extracted from a TAPA-generated
-/// Verilog module: ports, parameters, signals, pragmas, and the
-/// raw source text.
+/// Verilog module: ports, parameters, signals, and the raw source text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VerilogModule {
     /// Module name.
@@ -24,8 +22,6 @@ pub struct VerilogModule {
     pub parameters: Vec<Parameter>,
     /// Signal declarations (wire/reg).
     pub signals: Vec<Signal>,
-    /// Pragmas extracted from attributes.
-    pub pragmas: Vec<Pragma>,
     /// Raw Verilog source text, preserved verbatim.
     pub source: String,
 }
@@ -127,7 +123,6 @@ mod tests {
                 _ => Direction::Input,
             },
             width: None,
-            pragma: None,
         }
     }
 
@@ -137,7 +132,6 @@ mod tests {
             ports,
             parameters: Vec::new(),
             signals: Vec::new(),
-            pragmas: Vec::new(),
             source: String::new(),
         }
     }

@@ -86,34 +86,6 @@ fn find_port_by_affixes() {
     assert_eq!(found.unwrap().name, "istream_s_dout");
 }
 
-// ── Pragma extraction ───────────────────────────────────────────────
-
-#[test]
-fn attribute_attached_to_following_port() {
-    let src = "module M (a);\n(* RS_CLK *)\ninput a;\nendmodule\n";
-    let m = VerilogModule::parse(src).expect("parse");
-    let port = m.find_port("a").expect("port a");
-    assert!(port.pragma.is_some(), "pragma attached to port");
-    assert_eq!(port.pragma.as_ref().unwrap().key, "RS_CLK");
-}
-
-#[test]
-fn pragmas_extracted() {
-    let m = VerilogModule::parse(&fixture("LowerLevelTask.v")).expect("parse");
-    assert!(!m.pragmas.is_empty(), "has pragmas");
-    // Should have CORE_GENERATION_INFO and fsm_encoding pragmas
-    let core_info = m.pragmas.iter().find(|p| p.key == "CORE_GENERATION_INFO");
-    assert!(core_info.is_some(), "has CORE_GENERATION_INFO pragma");
-}
-
-#[test]
-fn pragma_fsm_encoding() {
-    let m = VerilogModule::parse(&fixture("UpperLevelTask.v")).expect("parse");
-    let fsm = m.pragmas.iter().find(|p| p.key == "fsm_encoding");
-    assert!(fsm.is_some(), "has fsm_encoding pragma");
-    assert_eq!(fsm.unwrap().value.as_deref(), Some("none"));
-}
-
 // ── Width expressions ───────────────────────────────────────────────
 
 #[test]
@@ -191,24 +163,4 @@ fn body_parse_error_includes_module_name() {
     let err = VerilogModule::parse(src).unwrap_err();
     let msg = err.to_string();
     assert!(msg.contains("BadBody"), "error includes module name: {msg}");
-}
-
-#[test]
-fn malformed_leading_pragma_preserved_as_raw() {
-    let src = "(* BROKEN = raw_value *)\nmodule M (a);\ninput a;\nendmodule\n";
-    let m = VerilogModule::parse(src).expect("parse with malformed pragma");
-    assert!(!m.pragmas.is_empty(), "malformed pragma preserved");
-    let raw = &m.pragmas[0];
-    assert!(
-        raw.raw_line.contains("BROKEN"),
-        "raw_line has original text"
-    );
-}
-
-#[test]
-fn malformed_body_pragma_preserved_as_raw() {
-    let src = "module M (a);\n(* BAD = unquoted *)\ninput a;\nendmodule\n";
-    let m = VerilogModule::parse(src).expect("parse with body malformed pragma");
-    let bad = m.pragmas.iter().find(|p| p.raw_line.contains("BAD"));
-    assert!(bad.is_some(), "malformed body pragma preserved");
 }
