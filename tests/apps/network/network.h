@@ -19,7 +19,6 @@ constexpr int kN = 8;           // kN x kN network
 constexpr int kStageCount = 3;  // log2(kN)
 
 using pkt_t = uint64_t;
-using pkt_vec_t = tapa::vec_t<pkt_t, kN>;
 
 void Network(mmap<vec_t<pkt_t, kN>> mmap_in, mmap<vec_t<pkt_t, kN>> mmap_out,
              uint64_t n);
