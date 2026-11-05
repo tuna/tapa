@@ -161,6 +161,52 @@ fn add_zip_entry<W: std::io::Write + std::io::Seek>(
     Ok(())
 }
 
+/// Create a deflated zip writer at `path`, creating the parent directory.
+fn create_zip(path: &Path) -> Result<zip::ZipWriter<std::io::BufWriter<fs_err::File>>> {
+    if let Some(parent) = path.parent() {
+        if !parent.as_os_str().is_empty() {
+            fs_err::create_dir_all(parent)?;
+        }
+    }
+    let file = fs_err::File::create(path)?;
+    Ok(zip::ZipWriter::new(std::io::BufWriter::new(file)))
+}
+
+/// The options every archive entry in a pack zip uses.
+fn zip_entry_options() -> zip::write::FileOptions<'static, 'static, ()> {
+    zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated)
+}
+
+/// Every file under `dir`, sorted by path, added under the archive's
+/// `<prefix>/` tree.
+fn add_dir_to_zip(
+    z: &mut zip::ZipWriter<std::io::BufWriter<fs_err::File>>,
+    opts: zip::write::FileOptions<'_, '_, ()>,
+    dir: &Path,
+    prefix: &str,
+) -> Result<()> {
+    let mut files: Vec<PathBuf> = Vec::new();
+    for entry in walkdir::WalkDir::new(dir) {
+        let entry = entry.map_err(std::io::Error::other)?;
+        if entry.file_type().is_file() {
+            files.push(entry.path().to_path_buf());
+        }
+    }
+    files.sort();
+    for file in &files {
+        let rel = file.strip_prefix(dir).map_err(|_| {
+            CliError::Archive(format!(
+                "file `{}` is not under the directory `{}`",
+                file.display(),
+                dir.display(),
+            ))
+        })?;
+        let name = format!("{prefix}/{}", rel.to_slash_lossy());
+        add_zip_entry(z, opts, &name, &fs_err::read(file)?)?;
+    }
+    Ok(())
+}
+
 /// Package the `xilinx-hls` target. Bundles the synthesized RTL tree
 /// under `rtl/`, every HLS
 /// `_csynth.rpt` under `report/` (with timestamp redaction so the
@@ -190,35 +236,10 @@ fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<
     }
     warn_unimplemented_templates(&ctx.work_dir, &rtl_dir, &templates);
     let output_path = enforce_zip_suffix(args.output.as_ref());
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs_err::create_dir_all(parent)?;
-        }
-    }
-    let file = fs_err::File::create(&output_path)?;
-    let mut z = zip::ZipWriter::new(std::io::BufWriter::new(file));
-    let opts: zip::write::FileOptions<'_, '_, ()> =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+    let mut z = create_zip(&output_path)?;
+    let opts = zip_entry_options();
 
-    let mut rtl_files: Vec<std::path::PathBuf> = Vec::new();
-    for entry in walkdir::WalkDir::new(&rtl_dir) {
-        let entry = entry.map_err(std::io::Error::other)?;
-        if entry.file_type().is_file() {
-            rtl_files.push(entry.path().to_path_buf());
-        }
-    }
-    rtl_files.sort();
-    for rtl_file in &rtl_files {
-        let rel = rtl_file.strip_prefix(&rtl_dir).map_err(|_| {
-            CliError::Archive(format!(
-                "RTL file `{}` is not under the RTL directory `{}`",
-                rtl_file.display(),
-                rtl_dir.display(),
-            ))
-        })?;
-        let name = format!("rtl/{}", rel.to_slash_lossy());
-        add_zip_entry(&mut z, opts, &name, &fs_err::read(rtl_file)?)?;
-    }
+    add_dir_to_zip(&mut z, opts, &rtl_dir, "rtl")?;
 
     // Include the TAPA report at archive root when synth emitted it.
     // Its absence does not make an otherwise complete RTL archive

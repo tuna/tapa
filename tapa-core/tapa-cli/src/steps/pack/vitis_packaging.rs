@@ -220,36 +220,9 @@ fn write_slash_zip(
     work_dir: &Path,
     state: &WorkState,
 ) -> Result<()> {
-    use path_slash::PathExt as _;
-
-    if let Some(parent) = output_path.parent() {
-        if !parent.as_os_str().is_empty() {
-            fs_err::create_dir_all(parent)?;
-        }
-    }
-    let file = fs_err::File::create(output_path)?;
-    let mut zip = zip::ZipWriter::new(std::io::BufWriter::new(file));
-    let options: zip::write::FileOptions<'_, '_, ()> =
-        zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-    let mut ip_files = Vec::new();
-    for entry in walkdir::WalkDir::new(ip_dir) {
-        let entry = entry.map_err(std::io::Error::other)?;
-        if entry.file_type().is_file() {
-            ip_files.push(entry.into_path());
-        }
-    }
-    ip_files.sort();
-    for path in ip_files {
-        let relative = path.strip_prefix(ip_dir).map_err(|_| {
-            CliError::Archive(format!(
-                "IP file `{}` is not under `{}`",
-                path.display(),
-                ip_dir.display()
-            ))
-        })?;
-        let name = format!("impl/ip/{}", relative.to_slash_lossy());
-        super::add_zip_entry(&mut zip, options, &name, &fs_err::read(path)?)?;
-    }
+    let mut zip = super::create_zip(output_path)?;
+    let options = super::zip_entry_options();
+    super::add_dir_to_zip(&mut zip, options, ip_dir, "impl/ip")?;
     super::add_zip_entry(&mut zip, options, "hls_data.json", hls_data.as_bytes())?;
     super::add_zip_entry(&mut zip, options, "kernel.xml", kernel_xml.as_bytes())?;
     super::add_zip_entry(
