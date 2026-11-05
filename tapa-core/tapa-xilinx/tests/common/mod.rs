@@ -1,9 +1,8 @@
-//! Gating helpers shared by the `#[ignore]` integration tests.
-//!
-//! Each integration test file calls `skip_unless_any(...)` at the top
-//! of its body; when neither a local Xilinx install nor a
-//! `VARS.local.bzl`-derived remote host is available, the test returns
-//! cleanly instead of reporting a spurious failure.
+//! Helpers shared by the `#[ignore]` integration tests: path utilities, and
+//! the gates a test checks first (`should_skip_without_env`,
+//! `has_remote_config`) so that it returns cleanly instead of failing when
+//! neither a local Xilinx install nor a `VARS.local.bzl`-derived remote host
+//! is available.
 
 use tapa_xilinx::RemoteConfig;
 
