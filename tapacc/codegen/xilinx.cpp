@@ -143,7 +143,7 @@ void RewriteStreamDefinitions(const clang::FunctionDecl* func,
 
 void XilinxBackend::EmitStreamPort(const PortContext& p, CodeSink& out) const {
   const Lvl lvl = LvlOf(p.level, p.is_top, is_vitis_);
-  if (lvl == Lvl::kTop && is_vitis_) {
+  if (lvl == Lvl::kTop) {
     out.Pragma({"HLS interface axis port =", p.param->getNameAsString()});
     EmitDummyStreamRW(p.param, p.kind, out, /*qdma=*/true);
     return;
@@ -219,7 +219,7 @@ void XilinxBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
       break;  // no interface pragma for lower-level scalars
     case Lvl::kMiddle:
     case Lvl::kTop:
-      if (lvl == Lvl::kTop && is_vitis_) {
+      if (lvl == Lvl::kTop) {
         out.Pragma(
             {"HLS interface s_axilite port =", name, "bundle = control"});
       } else {
@@ -318,9 +318,10 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     return;
   }
 
-  // Middle level (and top level in non-Vitis mode): replace the body with a
-  // shell carrying just the interface pragmas.
-  if (lvl == Lvl::kMiddle || (lvl == Lvl::kTop && !is_vitis_)) {
+  // Middle level (and top level in non-Vitis mode, which LvlOf maps to
+  // kMiddle): replace the body with a shell carrying just the interface
+  // pragmas.
+  if (lvl == Lvl::kMiddle) {
     edits.ReplaceText(func->getBody()->getSourceRange(), "{\n" + lines + "}\n");
     RemoveInline(func, edits);
     return;
