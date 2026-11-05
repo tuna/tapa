@@ -8,7 +8,6 @@ use crate::ToolValue;
 
 const SOURCE: &str = include_str!("pl_control.cpp");
 pub const KERNEL_NAME: &str = "tapa_aie_pl_control";
-const MAX_PROGRAM_WORDS: usize = 1024;
 
 #[must_use]
 pub fn required(platform: &str) -> bool {
@@ -55,20 +54,6 @@ pub fn compile(runner: &dyn ToolRunner, job: &AiePlControlJob) -> Result<()> {
     Ok(())
 }
 
-pub fn encode(writes: &[(u32, u32)]) -> Option<Vec<u8>> {
-    let words = writes.len().checked_mul(2)?;
-    if words > MAX_PROGRAM_WORDS {
-        return None;
-    }
-    let mut out = Vec::with_capacity((words + 1) * 4);
-    out.extend_from_slice(&(words as u32).to_le_bytes());
-    for (address, value) in writes {
-        out.extend_from_slice(&address.to_le_bytes());
-        out.extend_from_slice(&value.to_le_bytes());
-    }
-    Some(out)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,14 +93,5 @@ mod tests {
             assert!(args.iter().any(|arg| arg == expected), "missing {expected}");
         }
         assert_eq!(fs_err::read(job.output).expect("output"), b"controller");
-    }
-
-    #[test]
-    fn programs_carry_a_word_count_and_register_pairs() {
-        assert_eq!(
-            encode(&[(0x2004, 1), (0x1fe0, 64)]).expect("encode"),
-            [4, 0, 0, 0, 4, 0x20, 0, 0, 1, 0, 0, 0, 0xe0, 0x1f, 0, 0, 64, 0, 0, 0,]
-        );
-        assert!(encode(&vec![(0, 0); MAX_PROGRAM_WORDS / 2 + 1]).is_none());
     }
 }
