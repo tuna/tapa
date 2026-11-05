@@ -14,10 +14,9 @@ cc_binary(
     copts = TAPACC_COPTS,
     visibility = ["//visibility:public"],
     deps = [
-        "//tapacc/codegen:macro_splice",
+        "//tapacc/codegen:builder_action",
         "//tapacc/codegen:tree_writer",
         "//tapacc/frontend:program_builder",
-        "//tapacc/frontend:vendor_scan",
         "@nlohmann_json//:json",
         CLANG_TOOLING,
     ],

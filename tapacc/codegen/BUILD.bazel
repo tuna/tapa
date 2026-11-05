@@ -216,6 +216,21 @@ cc_library(
 )
 
 cc_library(
+    name = "builder_action",
+    hdrs = ["builder_action.h"],
+    copts = TAPACC_COPTS,
+    includes = [".."],
+    deps = [
+        ":macro_splice",
+        ":tree_writer",
+        "//tapacc/frontend:program_builder",
+        "//tapacc/frontend:vendor_scan",
+        CLANG_TOOLING,
+        "@tapa-llvm-project//clang:tooling_syntax",
+    ],
+)
+
+cc_library(
     name = "test_fs",
     testonly = True,
     hdrs = ["test_fs.h"],
@@ -236,14 +251,13 @@ cc_library(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":builder_action",
         ":diag_capture",
-        ":macro_splice",
         ":test_fs",
         ":tree_writer",
         "//tapacc/frontend:program_builder",
         "//tapacc/frontend:tapa_stub_decls",
         CLANG_TOOLING,
-        "@tapa-llvm-project//clang:tooling_syntax",
         "@tapa-llvm-project//llvm:Support",
     ],
 )

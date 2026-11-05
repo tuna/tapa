@@ -54,20 +54,15 @@
 #include <utility>
 #include <vector>
 
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/CommonOptionsParser.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "codegen/macro_splice.h"
+#include "codegen/builder_action.h"
 #include "codegen/tree_writer.h"
 #include "frontend/program_builder.h"
-#include "frontend/vendor_scan.h"
 
 namespace {
 
@@ -108,73 +103,14 @@ llvm::cl::list<std::string> g_task_targets(
                    "aie, hls, ignore; overrides [[tapa::target]]"),
     llvm::cl::value_desc("task:target"), llvm::cl::cat(g_category));
 
-// One frontend action over one TU, feeding the shared builder. The index
-// pass also carries the vendor scan (attached once per TU, preprocessor
-// phase included, so its warnings are not duplicated by the rewrite pass).
-class BuilderAction : public clang::ASTFrontendAction {
- public:
-  BuilderAction(ProgramBuilder& builder, bool index_pass)
-      : builder_(builder), index_pass_(index_pass) {}
-
-  bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
-    if (index_pass_ && !g_no_vendor_scan)
-      AttachVendorScan(ci.getPreprocessor());
-    ci.getPreprocessor().addPPCallbacks(std::make_unique<IncludeRecorder>(
-        ci.getSourceManager(), &include_log_));
-    // Selective macro expansion needs the expanded token stream; only the
-    // rewrite pass edits, so only it records.
-    if (!index_pass_) {
-      recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
-    }
-    return true;
-  }
-
-  std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-      clang::CompilerInstance&, llvm::StringRef) override {
-    class Consumer : public clang::ASTConsumer {
-     public:
-      explicit Consumer(BuilderAction& owner)
-          : builder_(owner.builder_),
-            index_pass_(owner.index_pass_),
-            include_log_(&owner.include_log_),
-            owner_(owner) {}
-      void HandleTranslationUnit(clang::ASTContext& ctx) override {
-        // Consume before any rewriting: the collector is complete only once
-        // the whole top-level loop has run.
-        const clang::syntax::TokenBuffer* tokens =
-            owner_.recorder_ == nullptr ? nullptr
-                                        : &owner_.recorder_->Consume();
-        if (index_pass_) {
-          if (!g_no_vendor_scan) ScanVendorAsts(ctx);
-          builder_.IndexTu(ctx, *include_log_);
-        } else {
-          builder_.RewriteTreeTu(ctx, std::move(*include_log_), tokens);
-        }
-      }
-
-     private:
-      ProgramBuilder& builder_;
-      bool index_pass_;
-      std::vector<IncludeDirective>* include_log_;
-      BuilderAction& owner_;
-    };
-    return std::make_unique<Consumer>(*this);
-  }
-
- private:
-  ProgramBuilder& builder_;
-  bool index_pass_;
-  std::vector<IncludeDirective> include_log_;
-  std::unique_ptr<TokenRecorder> recorder_;
-};
-
 class BuilderActionFactory : public clang::tooling::FrontendActionFactory {
  public:
   BuilderActionFactory(ProgramBuilder& builder, bool index_pass)
       : builder_(builder), index_pass_(index_pass) {}
 
   std::unique_ptr<clang::FrontendAction> create() override {
-    return std::make_unique<BuilderAction>(builder_, index_pass_);
+    return std::make_unique<BuilderAction>(builder_, index_pass_,
+                                           /*vendor_scan=*/!g_no_vendor_scan);
   }
 
  private:

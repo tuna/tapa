@@ -2,74 +2,16 @@
 
 #include <memory>
 
-#include "clang/AST/ASTConsumer.h"
-#include "clang/AST/ASTContext.h"
-#include "clang/Frontend/CompilerInstance.h"
-#include "clang/Frontend/FrontendActions.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/Support/FileSystem.h"
 
+#include "builder_action.h"
 #include "diag_capture.h"
 #include "frontend/tapa_stub_decls.h"
-#include "macro_splice.h"
 #include "test_fs.h"
 #include "tree_writer.h"
 
 namespace tapa::cc::test_support {
-namespace {
-
-// One frontend action over one TU, the exact shape of tapacc's
-// BuilderAction: the include log is always recorded, and only the rewrite
-// pass records the expanded-token stream (only it edits).
-class PipelineAction : public clang::ASTFrontendAction {
- public:
-  PipelineAction(ProgramBuilder& builder, bool index_pass,
-                 CollectingDiagConsumer* diags)
-      : builder_(builder), index_pass_(index_pass), diags_(diags) {}
-
-  bool BeginSourceFileAction(clang::CompilerInstance& ci) override {
-    ci.getDiagnostics().setClient(diags_, /*OwnsClient=*/false);
-    ci.getPreprocessor().addPPCallbacks(
-        std::make_unique<IncludeRecorder>(ci.getSourceManager(), &log_));
-    if (!index_pass_) {
-      recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
-    }
-    return true;
-  }
-
-  std::unique_ptr<clang::ASTConsumer> CreateASTConsumer(
-      clang::CompilerInstance&, llvm::StringRef) override {
-    class Consumer : public clang::ASTConsumer {
-     public:
-      explicit Consumer(PipelineAction& owner) : owner_(owner) {}
-      void HandleTranslationUnit(clang::ASTContext& ctx) override {
-        // Consume before any rewriting: the collector is complete only
-        // once the whole top-level loop has run.
-        const clang::syntax::TokenBuffer* tokens =
-            owner_.recorder_ == nullptr ? nullptr
-                                        : &owner_.recorder_->Consume();
-        if (owner_.index_pass_) {
-          owner_.builder_.IndexTu(ctx, owner_.log_);
-        } else {
-          owner_.builder_.RewriteTreeTu(ctx, std::move(owner_.log_), tokens);
-        }
-      }
-
-     private:
-      PipelineAction& owner_;
-    };
-    return std::make_unique<Consumer>(*this);
-  }
-
- private:
-  ProgramBuilder& builder_;
-  bool index_pass_;
-  CollectingDiagConsumer* diags_;
-  std::vector<IncludeDirective> log_;
-  std::unique_ptr<TokenRecorder> recorder_;
-};
-
-}  // namespace
 
 TreePipelineRun RunTreePipeline(
     const std::vector<VirtualTu>& tus, const std::string& top,
@@ -89,7 +31,8 @@ TreePipelineRun RunTreePipeline(
   const auto run_pass = [&](bool index_pass) {
     for (const VirtualTu& tu : tus) {
       clang::tooling::runToolOnCodeWithArgs(
-          std::make_unique<PipelineAction>(builder, index_pass, &diags),
+          std::make_unique<BuilderAction>(builder, index_pass,
+                                          /*vendor_scan=*/false, &diags),
           std::string(kTapaStubDecls) + "\n" + tu.code,
           tu.own_args.empty() ? args : tu.own_args, tu.path, "tree_pipeline",
           std::make_shared<clang::PCHContainerOperations>(), virtual_files);
