@@ -18,5 +18,3 @@ mod util;
 
 #[cfg(test)]
 mod testutil;
-
-pub use error::{CliError, Result};
