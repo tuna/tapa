@@ -16,7 +16,6 @@ cargo_artifacts(
     artifacts = ["tapa-test-tools:bin/tapa-test-tools"],
     build_args = [],
     executable = True,
-    executable_outputs = ["bin/tapa-test-tools"],
     manifest = "test-tools/Cargo.toml",
     tags = ["requires-network"],
 )

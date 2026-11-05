@@ -220,9 +220,8 @@ def _outputs_by_short_path(ctx):
             outputs_by_short_path[output.short_path.removeprefix(package_prefix)] = output
     return outputs_by_short_path
 
-def _parse_artifacts(ctx, attr_name):
+def _parse_artifacts(ctx, attr_name, outputs_by_short_path):
     artifacts = []
-    outputs_by_short_path = _outputs_by_short_path(ctx)
     for spec in getattr(ctx.attr, attr_name):
         parts = spec.split(":", 1)
         if len(parts) != 2:
@@ -233,7 +232,7 @@ def _parse_artifacts(ctx, attr_name):
         artifacts.append((artifact, outputs_by_short_path[output_path]))
     return artifacts
 
-def _cargo_artifacts_impl(ctx):
+def _cargo_artifacts_build(ctx, executable_paths):
     outputs = ctx.outputs.outs
     if not outputs:
         fail("outs must not be empty")
@@ -276,14 +275,14 @@ exec "${{EXECROOT}}/{host_rustc}" "$@"
         ctx.attr.linker,
     )
     artifact_dir = ctx.attr.target + "/release" if ctx.attr.target else "release"
-    for artifact, output in _parse_artifacts(ctx, "artifacts"):
+    outputs_by_short_path = _outputs_by_short_path(ctx)
+    for artifact, output in _parse_artifacts(ctx, "artifacts", outputs_by_short_path):
         body += "copy_required \"$CARGO_TARGET_DIR/{artifact_dir}/{artifact}\" {output}\n".format(
             artifact_dir = artifact_dir,
             artifact = artifact,
             output = sh_quote(output.path),
         )
-    outputs_by_short_path = _outputs_by_short_path(ctx)
-    for output_path in ctx.attr.executable_outputs:
+    for output_path in executable_paths:
         output = outputs_by_short_path.get(output_path)
         if output == None:
             fail("executable_outputs references undeclared output {}".format(output_path))
@@ -300,12 +299,15 @@ exec "${{EXECROOT}}/{host_rustc}" "$@"
     )
     return DefaultInfo(files = depset(outputs))
 
+def _cargo_artifacts_impl(ctx):
+    return _cargo_artifacts_build(ctx, ctx.attr.executable_outputs)
+
 def _cargo_executable_artifacts_impl(ctx):
     outputs = ctx.outputs.outs
     if len(outputs) != 1:
         fail("executable Cargo artifact rules must have exactly one output")
 
-    default = _cargo_artifacts_impl(ctx)
+    default = _cargo_artifacts_build(ctx, [outputs[0].short_path])
     return DefaultInfo(
         files = default.files,
         executable = outputs[0],
@@ -326,8 +328,9 @@ def _cargo_platform_artifacts_impl(ctx):
     )
     body += "case \"$(uname -s)\" in\n"
     body += "  Darwin)\n"
-    darwin = _parse_artifacts(ctx, "darwin_artifacts")
-    linux = _parse_artifacts(ctx, "linux_artifacts")
+    outputs_by_short_path = _outputs_by_short_path(ctx)
+    darwin = _parse_artifacts(ctx, "darwin_artifacts", outputs_by_short_path)
+    linux = _parse_artifacts(ctx, "linux_artifacts", outputs_by_short_path)
     for artifact, output in darwin:
         body += "    copy_required \"$CARGO_TARGET_DIR/release/{artifact}\" {output}\n".format(
             artifact = artifact,
@@ -399,7 +402,6 @@ _cargo_executable_artifacts = rule(
     implementation = _cargo_executable_artifacts_impl,
     attrs = dict(_COMMON_ATTRS, **{
         "artifacts": attr.string_list(mandatory = True),
-        "executable_outputs": attr.string_list(),
     }),
     executable = True,
 )
