@@ -117,11 +117,16 @@ pub struct AieRtp {
     pub pong_address: u32,
 }
 
-fn aie_u32(value: &serde_json::Value, field: &str) -> Result<u32> {
+/// A string-or-number JSON value as u64 (xclbinutil quotes; aiecompiler does not).
+fn aie_u64(value: &serde_json::Value) -> Option<u64> {
     value
         .as_str()
         .and_then(|text| text.parse::<u64>().ok())
         .or_else(|| value.as_u64())
+}
+
+fn aie_u32(value: &serde_json::Value, field: &str) -> Result<u32> {
+    aie_u64(value)
         .and_then(|number| u32::try_from(number).ok())
         .ok_or_else(|| FrtError::MetadataParse(format!("invalid AIE {field}")))
 }
@@ -173,11 +178,7 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
         // xclbinutil stores every value as a string; aiecompiler's own file
         // has numbers.
         let size = &rtp["number_of_bytes"];
-        let bytes = size
-            .as_str()
-            .and_then(|text| text.parse::<u64>().ok())
-            .or_else(|| size.as_u64())
-            .and_then(|n| usize::try_from(n).ok());
+        let bytes = aie_u64(size).and_then(|n| usize::try_from(n).ok());
         let (Some(arg), Some(bytes)) = (arg, bytes) else {
             return Err(FrtError::MetadataParse(format!(
                 "AI Engine runtime parameter `{alias}` names no kernel argument or size"
