@@ -1,5 +1,6 @@
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aiesim_test")
 
 cc_binary(
     name = "aie-elements-host",
@@ -21,28 +22,11 @@ sh_test(
     data = [":aie-elements-host"],
 )
 
-# Whole-word generic and non-native vector element I/O. Developer-run (needs
-# Vitis with aiecompiler): not part of `bazel test //...`.
-sh_test(
+# Whole-word generic and non-native vector element I/O.
+aiesim_test(
     name = "aie-elements-x86sim",
-    size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :aie-elements-host)",
-        "$(rootpath element.cpp)",
-        "Elements",
-        "--",
-        "--arg=n=5",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
-    ],
-    data = [
-        "element.cpp",
-        "element.h",
-        ":aie-elements-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    host = ":aie-elements-host",
+    kernel = "element",
+    n = 5,
+    top_name = "Elements",
 )

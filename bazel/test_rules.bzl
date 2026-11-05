@@ -279,6 +279,59 @@ def tapa_functional_test(
         top_name = top_name,
     )
 
+def aiesim_test(
+        name,
+        host,
+        kernel,
+        top_name,
+        n,
+        size = "medium",
+        analyze_flags = [],
+        aiesim_flags = []):
+    """Declares a manual run_aiesim.sh sh_test for an AIE functional test.
+
+    The test replays the boundary streams of a software-simulation run into
+    the AI Engine graph and checks what it writes back. Developer-run (needs
+    Vitis with aiecompiler): `manual`, so not part of `bazel test //...`.
+
+    Args:
+        name: Test target name.
+        host: Label of the host cc_binary producing the stream log.
+        kernel: Basename of the kernel translation unit; `<kernel>.cpp` and
+            `<kernel>.h` must exist in the package.
+        top_name: Kernel top function name.
+        n: Stream length, passed to aiesim as `--arg=n=<n>`.
+        size: sh_test size.
+        analyze_flags: Extra `tapa analyze` flags, inserted before the `--`
+            separator.
+        aiesim_flags: Extra `tapa aiesim` flags, appended after the part
+            number.
+    """
+    sh_test(
+        name = name,
+        size = size,
+        srcs = ["//bazel:v++_env.sh"],
+        args = [
+            "$(rootpath //bazel:run_aiesim.sh)",
+            "$(rootpath //tapa-core:tapa)",
+            "$(rootpath %s)" % host,
+            "$(rootpath %s.cpp)" % kernel,
+            top_name,
+        ] + analyze_flags + [
+            "--",
+            "--arg=n=%d" % n,
+            "--part-num=xcvc1902-vsva2197-2MP-e-S",
+        ] + aiesim_flags,
+        data = [
+            "%s.cpp" % kernel,
+            "%s.h" % kernel,
+            host,
+            "//bazel:run_aiesim.sh",
+            "//tapa-core:tapa",
+        ],
+        tags = ["manual"],
+    )
+
 def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = []):
     """Declares a host binary plus a manual fast-cosim test for a regression design.
 

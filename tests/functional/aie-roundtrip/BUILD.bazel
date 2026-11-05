@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aiesim_test")
 
 cc_binary(
     name = "aie-roundtrip-host",
@@ -24,29 +25,12 @@ sh_test(
 )
 
 # The AI Engine graph on x86sim, replaying the software-simulation streams.
-# Developer-run (needs Vitis with aiecompiler): not part of `bazel test //...`.
-sh_test(
+aiesim_test(
     name = "aie-roundtrip-x86sim",
-    size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :aie-roundtrip-host)",
-        "$(rootpath roundtrip.cpp)",
-        "RoundTrip",
-        "--",
-        "--arg=n=64",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
-    ],
-    data = [
-        "roundtrip.cpp",
-        "roundtrip.h",
-        ":aie-roundtrip-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    host = ":aie-roundtrip-host",
+    kernel = "roundtrip",
+    n = 64,
+    top_name = "RoundTrip",
 )
 
 # Hybrid cosimulation: the PL tasks in xsim, both AIE stages in software.
@@ -74,29 +58,14 @@ sh_test(
 )
 
 # Cycle-accurate AI Engine simulation of the same two-kernel graph.
-sh_test(
+aiesim_test(
     name = "aie-roundtrip-aiesim",
     size = "enormous",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :aie-roundtrip-host)",
-        "$(rootpath roundtrip.cpp)",
-        "RoundTrip",
-        "--",
-        "--arg=n=64",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
-        "--cycle-accurate",
-    ],
-    data = [
-        "roundtrip.cpp",
-        "roundtrip.h",
-        ":aie-roundtrip-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    aiesim_flags = ["--cycle-accurate"],
+    host = ":aie-roundtrip-host",
+    kernel = "roundtrip",
+    n = 64,
+    top_name = "RoundTrip",
 )
 
 # Physical VCK5000 with PL graph control and two complete invocations.

@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aiesim_test")
 
 exports_files(
     [
@@ -50,57 +51,24 @@ sh_test(
 )
 
 # The AI Engine graph on x86sim, replaying the software-simulation streams.
-# Developer-run (needs Vitis with aiecompiler): not part of `bazel test //...`.
-sh_test(
+aiesim_test(
     name = "aie-vadd-x86sim",
-    size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :aie-vadd-host)",
-        "$(rootpath vadd.cpp)",
-        "VecAdd",
-        "--",
-        "--arg=n=1024",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
-    ],
-    data = [
-        "vadd.cpp",
-        "vadd.h",
-        ":aie-vadd-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    host = ":aie-vadd-host",
+    kernel = "vadd",
+    n = 1024,
+    top_name = "VecAdd",
 )
 
 # Partial-frame padding: 1024 elements do not fill the last 3-element frame.
 # The same host and analysis shape as above, with frame ports on every AIE
-# boundary. Developer-run (needs Vitis with aiecompiler).
-sh_test(
+# boundary.
+aiesim_test(
     name = "aie-frame-x86sim",
-    size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :aie-vadd-host)",
-        "$(rootpath vadd.cpp)",
-        "VecAdd",
-        "--cflags=-DTAPA_AIE_TEST_FRAME_SIZE=3",
-        "--",
-        "--arg=n=1024",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
-    ],
-    data = [
-        "vadd.cpp",
-        "vadd.h",
-        ":aie-vadd-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    analyze_flags = ["--cflags=-DTAPA_AIE_TEST_FRAME_SIZE=3"],
+    host = ":aie-vadd-host",
+    kernel = "vadd",
+    n = 1024,
+    top_name = "VecAdd",
 )
 
 # Hybrid cosimulation: the PL kernel in xsim, `Add` in software, the same
