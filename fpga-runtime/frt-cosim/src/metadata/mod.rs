@@ -124,38 +124,26 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     let mut kernel_xml = None;
     let mut part_num = None;
     let mut scalar_register_map = HashMap::new();
-    let mut files = ExtractedFiles::default();
 
-    let extract_dir = make_extract_dir("xo")?;
-    for i in 0..zip.len() {
-        let mut file = zip
-            .by_index(i)
-            .map_err(|e| CosimError::Metadata(e.to_string()))?;
-        let name = file
-            .name()
-            .map_err(|e| CosimError::Metadata(e.to_string()))?
-            .into_owned();
-        if name.ends_with('/') {
-            continue;
-        }
-        let path = extract_file(&mut file, &name, extract_dir.path())?;
+    let (extract_dir, files) = extract_archive(zip, "xo", |name, path, files| {
         if name.ends_with("kernel.xml") {
-            kernel_xml = Some(std::fs::read_to_string(&path)?);
-            continue;
+            kernel_xml = Some(std::fs::read_to_string(path)?);
+            return Ok(());
         }
         if name.ends_with(tapa_ir::work_state::FILE_NAME) {
-            let state = tapa_ir::WorkState::from_json(&std::fs::read_to_string(&path)?)
+            let state = tapa_ir::WorkState::from_json(&std::fs::read_to_string(path)?)
                 .map_err(|error| CosimError::Metadata(error.to_string()))?;
             part_num = state.flow.part_num;
-            continue;
+            return Ok(());
         }
         // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
         // may use the legacy `s_axi_control.v` name.
         if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
-            scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(&path)?);
+            scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(path)?);
         }
-        files.classify(&name, path);
-    }
+        files.classify(name, path.to_path_buf());
+        Ok(())
+    })?;
 
     let xml = kernel_xml.ok_or_else(|| {
         CosimError::Metadata(format!("no kernel.xml found in `{}`", src.display()))
@@ -180,27 +168,15 @@ fn load_zip_spec<R: Read + std::io::Seek>(
     src: &Path,
 ) -> Result<(KernelSpec, tempfile::TempDir)> {
     let mut state_json = None;
-    let extract_dir = make_extract_dir("zip")?;
-    let mut files = ExtractedFiles::default();
 
-    for i in 0..zip.len() {
-        let mut file = zip
-            .by_index(i)
-            .map_err(|e| CosimError::Metadata(e.to_string()))?;
-        let name = file
-            .name()
-            .map_err(|e| CosimError::Metadata(e.to_string()))?
-            .into_owned();
-        if name.ends_with('/') {
-            continue;
-        }
-        let path = extract_file(&mut file, &name, extract_dir.path())?;
+    let (extract_dir, files) = extract_archive(zip, "zip", |name, path, files| {
         if name.ends_with(tapa_ir::work_state::FILE_NAME) {
-            state_json = Some(std::fs::read_to_string(&path)?);
-            continue;
+            state_json = Some(std::fs::read_to_string(path)?);
+            return Ok(());
         }
-        files.classify(&name, path);
-    }
+        files.classify(name, path.to_path_buf());
+        Ok(())
+    })?;
 
     let json = state_json.ok_or_else(|| {
         CosimError::Metadata(format!(
@@ -217,6 +193,33 @@ fn load_zip_spec<R: Read + std::io::Seek>(
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;
     Ok((spec, extract_dir))
+}
+
+/// Extract every real file entry into a fresh `frt-cosim-<tag>-` dir,
+/// feeding each (name, extracted path) to the format's own handler; entries
+/// the handler does not claim land in the classified file lists.
+fn extract_archive<R: Read + std::io::Seek>(
+    zip: &mut zip::ZipArchive<R>,
+    tag: &str,
+    mut on_entry: impl FnMut(&str, &Path, &mut ExtractedFiles) -> Result<()>,
+) -> Result<(tempfile::TempDir, ExtractedFiles)> {
+    let mut files = ExtractedFiles::default();
+    let extract_dir = make_extract_dir(tag)?;
+    for i in 0..zip.len() {
+        let mut file = zip
+            .by_index(i)
+            .map_err(|e| CosimError::Metadata(e.to_string()))?;
+        let name = file
+            .name()
+            .map_err(|e| CosimError::Metadata(e.to_string()))?
+            .into_owned();
+        if name.ends_with('/') {
+            continue;
+        }
+        let path = extract_file(&mut file, &name, extract_dir.path())?;
+        on_entry(&name, &path, &mut files)?;
+    }
+    Ok((extract_dir, files))
 }
 
 fn make_extract_dir(tag: &str) -> Result<tempfile::TempDir> {
