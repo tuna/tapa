@@ -303,12 +303,10 @@ fn parse_chain_tail(tail: &[String]) -> Result<Step> {
     argv.push("tapa");
     argv.extend(tail.iter().map(String::as_str));
     let parsed = ChainParser::try_parse_from(&argv).map_err(|e| {
-        if matches!(
-            e.kind(),
-            clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
-        ) {
-            // `--help` / `--version` in the chain tail are graceful
-            // exits handled the same way as the top-level parser.
+        if matches!(e.kind(), clap::error::ErrorKind::DisplayHelp) {
+            // `--help` in the chain tail is a graceful exit handled the
+            // same way as the top-level parser. ChainParser declares no
+            // version metadata, so clap never reports DisplayVersion here.
             let _ = e.print();
             std::process::exit(0);
         }
