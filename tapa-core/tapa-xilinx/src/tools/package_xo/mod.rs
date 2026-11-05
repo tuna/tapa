@@ -13,7 +13,7 @@ use zip::write::SimpleFileOptions;
 use crate::error::{Result, XilinxError};
 use crate::platform::device::DeviceInfo;
 use crate::platform::kernel_xml::{
-    emit_kernel_xml, render_slash_registers, KernelXmlArgs, KernelXmlPort, PortCategory,
+    emit_kernel_xml, render_slash_registers, KernelXmlArgs, PortCategory,
 };
 use crate::runtime::process::ToolRunner;
 use crate::tools::vivado::{run_vivado, VivadoJob};
@@ -59,7 +59,7 @@ impl PackageXoInputs {
 fn m_axi_port_names(args: &KernelXmlArgs) -> Vec<String> {
     args.ports
         .iter()
-        .filter(|p: &&KernelXmlPort| p.category == PortCategory::MAxi)
+        .filter(|p| p.category == PortCategory::MAxi)
         .map(|p| p.name.clone())
         .collect()
 }
@@ -403,6 +403,7 @@ pub fn pack_xo_without_redaction(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::kernel_xml::KernelXmlPort;
     use crate::runtime::process::{MockToolRunner, ToolInvocation, ToolOutput};
     use std::io::Read;
 
