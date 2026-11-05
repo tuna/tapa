@@ -298,9 +298,9 @@ impl ToolRunner for LocalToolRunner {
     }
 }
 
-/// Mock tool runner for unit tests. Responses are matched strictly on
-/// `(program, args)` (FIFO within a matching group). Attached download
-/// payloads are written to the file-system before `run` returns.
+/// Mock tool runner for unit tests. Responses are matched on `program`
+/// (FIFO). Attached download payloads are written to the file-system
+/// before `run` returns.
 pub struct MockToolRunner {
     responses: Mutex<Vec<Response>>,
     calls: Mutex<Vec<ToolInvocation>>,
@@ -308,7 +308,6 @@ pub struct MockToolRunner {
 
 struct Response {
     program: String,
-    args: Option<Vec<String>>,
     result: Result<ToolOutput>,
     downloads: HashMap<Utf8PathBuf, Vec<u8>>,
 }
@@ -325,17 +324,6 @@ impl MockToolRunner {
     pub fn push_ok(&self, program: impl Into<String>, output: ToolOutput) {
         self.responses.lock().unwrap().push(Response {
             program: program.into(),
-            args: None,
-            result: Ok(output),
-            downloads: HashMap::new(),
-        });
-    }
-
-    /// Queue a canned response that only matches exact `(program, args)`.
-    pub fn push_ok_for(&self, program: impl Into<String>, args: Vec<String>, output: ToolOutput) {
-        self.responses.lock().unwrap().push(Response {
-            program: program.into(),
-            args: Some(args),
             result: Ok(output),
             downloads: HashMap::new(),
         });
@@ -346,7 +334,6 @@ impl MockToolRunner {
         let stderr = stderr.into();
         self.responses.lock().unwrap().push(Response {
             program: program.clone(),
-            args: None,
             result: Err(XilinxError::ToolFailure {
                 program,
                 code,
@@ -379,9 +366,7 @@ impl ToolRunner for MockToolRunner {
     fn run(&self, inv: &ToolInvocation) -> Result<ToolOutput> {
         self.calls.lock().unwrap().push(inv.clone());
         let mut responses = self.responses.lock().unwrap();
-        let idx = responses.iter().position(|r| {
-            r.program == inv.program && r.args.as_ref().is_none_or(|args| *args == inv.local_args())
-        });
+        let idx = responses.iter().position(|r| r.program == inv.program);
         let Some(idx) = idx else {
             return Err(XilinxError::ToolFailure {
                 program: inv.program.clone(),
@@ -430,43 +415,6 @@ mod tests {
         runner.push_failure("vitis_hls", 1, "transient: TCP connection closed");
         let err = runner.run(&ToolInvocation::new("vitis_hls")).unwrap_err();
         assert!(matches!(err, XilinxError::ToolFailure { code: 1, .. }));
-    }
-
-    #[test]
-    fn mock_dispatches_by_exact_args_when_given() {
-        let runner = MockToolRunner::new();
-        runner.push_ok_for(
-            "vivado",
-            vec!["-mode".into(), "batch".into()],
-            ToolOutput {
-                exit_code: 0,
-                stdout: "batch".into(),
-                stderr: String::new(),
-            },
-        );
-        runner.push_ok_for(
-            "vivado",
-            vec!["-version".into()],
-            ToolOutput {
-                exit_code: 0,
-                stdout: "v".into(),
-                stderr: String::new(),
-            },
-        );
-        assert_eq!(
-            runner
-                .run(&ToolInvocation::new("vivado").arg("-version"))
-                .unwrap()
-                .stdout,
-            "v"
-        );
-        assert_eq!(
-            runner
-                .run(&ToolInvocation::new("vivado").arg("-mode").arg("batch"))
-                .unwrap()
-                .stdout,
-            "batch"
-        );
     }
 
     #[test]
