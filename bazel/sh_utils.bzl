@@ -39,7 +39,3 @@ RESOLVER = """resolve_runfile() {
   return 1
 }
 """
-
-def runfiles_resolver():
-    """The resolve_runfile bash function body."""
-    return RESOLVER

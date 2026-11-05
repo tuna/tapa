@@ -5,7 +5,7 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
-load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
+load("//bazel:sh_utils.bzl", "RESOLVER", "sh_quote")
 
 def _exec_requirements(ctx):
     requirements = {}
@@ -150,7 +150,7 @@ export CARGO_TARGET_DIR="${{TEST_TMPDIR}}/cargo-target"
 {cxx20_block}
 exec "$CARGO" test --manifest-path "$MANIFEST" --locked {cargo_args} {test_args}
 """.format(
-        resolver = runfiles_resolver(),
+        resolver = RESOLVER,
         cargo = sh_quote(ctx.file._cargo.short_path),
         rustc = sh_quote(ctx.file._rustc.short_path),
         rustdoc = sh_quote(ctx.file._rustdoc.short_path),

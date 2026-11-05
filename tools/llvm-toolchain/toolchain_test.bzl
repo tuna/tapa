@@ -1,7 +1,7 @@
 """Test the executable files declared by the selected C++ toolchain."""
 
 load("@rules_cc//cc:find_cc_toolchain.bzl", "find_cc_toolchain", "use_cc_toolchain")
-load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
+load("//bazel:sh_utils.bzl", "RESOLVER", "sh_quote")
 
 def _tool_runfile(path, files):
     for file in files:
@@ -44,7 +44,7 @@ set -euo pipefail
 {resolver}
 exec "$(resolve_runfile {checker})" {argv}
 """.format(
-            resolver = runfiles_resolver(),
+            resolver = RESOLVER,
             checker = sh_quote(ctx.executable._checker.short_path),
             argv = " ".join(argv),
         ),

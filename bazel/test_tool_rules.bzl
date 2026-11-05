@@ -4,7 +4,7 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-load("//bazel:sh_utils.bzl", "runfiles_resolver", "sh_quote")
+load("//bazel:sh_utils.bzl", "RESOLVER", "sh_quote")
 
 def _test_tool_test_impl(ctx):
     script = ctx.actions.declare_file(ctx.label.name + ".sh")
@@ -15,7 +15,7 @@ set -euo pipefail
 {resolver}
 exec "$(resolve_runfile {test_tool})" {argv}
 """.format(
-        resolver = runfiles_resolver(),
+        resolver = RESOLVER,
         test_tool = sh_quote(ctx.executable.test_tool.short_path),
         argv = " ".join([sh_quote(arg) for arg in argv]),
     )
