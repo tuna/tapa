@@ -151,6 +151,10 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
             path: Utf8PathBuf::new(),
             detail: format!("cannot read the .hpfm entry: {e}"),
         })?;
+    #[allow(
+        clippy::cast_possible_truncation,
+        reason = "ZIP entry sizes always fit in usize on target platforms"
+    )]
     let mut xml = Vec::with_capacity(entry.size() as usize);
     entry.read_to_end(&mut xml)?;
     parse_hpfm_xml(&xml)

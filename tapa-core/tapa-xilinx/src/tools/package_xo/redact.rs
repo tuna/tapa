@@ -200,6 +200,10 @@ pub fn redact_xo(path: &camino::Utf8Path) -> Result<()> {
                 })?;
                 continue;
             }
+            #[allow(
+                clippy::cast_possible_truncation,
+                reason = "ZIP entry sizes always fit in usize on target platforms"
+            )]
             let mut buf = Vec::with_capacity(entry.size() as usize);
             entry.read_to_end(&mut buf)?;
             let redacted: Vec<u8> = if name.ends_with(".rpt") {

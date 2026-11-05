@@ -1,10 +1,6 @@
 // Workspace lints enforce pedantic+nursery+restriction; the allows below
 // cover idiomatic-in-this-crate patterns that don't add reader value.
 #![allow(
-    clippy::too_many_arguments,
-    reason = "kernel XML argument records carry many schema fields"
-)]
-#![allow(
     clippy::doc_markdown,
     reason = "doc comments include tool names and file-like identifiers"
 )]
@@ -15,10 +11,6 @@
 #![allow(
     clippy::case_sensitive_file_extension_comparisons,
     reason = "Xilinx archive extensions are always lowercase on disk"
-)]
-#![allow(
-    clippy::cast_possible_truncation,
-    reason = "ZIP entry sizes always fit in usize on target platforms"
 )]
 #![allow(
     clippy::redundant_closure_for_method_calls,
