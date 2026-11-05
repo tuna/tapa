@@ -146,7 +146,7 @@ class ProgramBuilder {
     // pattern.
     std::string primary_key;
     std::string name;        // graph key: plain name, mangled for specs
-    std::string plain_name;  // unqualified name, the old lookup key
+    std::string plain_name;  // unqualified name
     std::string readable_name;
     std::string fqn;
     std::string signature;  // canonical parameter types, joined with ","

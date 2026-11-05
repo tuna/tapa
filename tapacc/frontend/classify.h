@@ -8,9 +8,8 @@
 namespace tapa::cc {
 
 // Structural classification of a task-parameter (or argument) type against the
-// fixed set of TAPA types. Replaces the old regex matching on stringified
-// qualified names (`IsTapaType(x, "((async_)?mmaps|hmap)")`): a type like
-// `tapa::mmap_wrapper` can never be misread, and there is no regex surface.
+// fixed set of TAPA types: a type like `tapa::mmap_wrapper` can never be
+// misread by name matching.
 enum class TapaKind {
   kNotTapa,  // any non-TAPA type: treated as a scalar port
 

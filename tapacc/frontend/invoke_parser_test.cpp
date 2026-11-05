@@ -412,8 +412,9 @@ TEST(InvokeParser, RuntimeScalarsMustReferToParentParameters) {
 }
 
 TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
-  // A stream declared inside a scope block was previously invisible to
-  // CollectStreamDecls and silently dropped from the task graph.
+  // A stream declared inside a scope block is invisible to
+  // CollectStreamDecls' direct-children walk; without the diagnostic it
+  // would silently drop from the task graph.
   constexpr char kCode[] = R"cpp(
     void Producer(tapa::ostream<float>& out) {}
     void Consumer(tapa::istream<float>& in) {}
@@ -430,8 +431,8 @@ TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
 
 TEST(InvokeParser, MultiDeclaratorStreamDeclCollectsEveryDeclarator) {
   // `tapa::stream<float> a("a"), b("b");` is user-exercised (see
-  // tests/functional/multi-file); every declarator must be collected, where the
-  // old single-decl restriction silently dropped the whole statement.
+  // tests/functional/multi-file); every declarator must be collected — a
+  // first-declarator-only walk would silently drop the rest of the statement.
   constexpr char kCode[] = R"cpp(
     void Producer(tapa::ostream<float>& out) {}
     void Consumer(tapa::istream<float>& in) {}

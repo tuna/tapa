@@ -103,7 +103,7 @@ std::string GeneratePreamble(const Backend& backend, const TaskModel& task,
 // Add `#pragma HLS stream` depth pragmas after each stream declaration.
 // Walks the whole body: multi-declarator statements contribute one pragma
 // per declarator, and streams declared in nested scopes get their depth
-// too (both previously skipped silently, leaving HLS's default depth).
+// too; a shallower walk would silently leave both at HLS's default depth.
 void RewriteStreamDefinitions(const clang::Stmt* stmt, EditSink& edits) {
   if (stmt == nullptr) return;
   if (const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {

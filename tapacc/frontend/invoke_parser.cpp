@@ -224,9 +224,9 @@ struct UpperTaskContext {
 
 // Recursively reject stream declarations below the top level of the task
 // body. `CollectStreamDecls` only sees direct children, so a stream
-// declared inside an `if`/loop/lambda used to be silently invisible to
-// codegen — the connected invokes then failed in confusing downstream
-// ways or, worse, not at all.
+// declared inside an `if`/loop/lambda would otherwise be invisible to
+// codegen — its invokes then failing in confusing downstream ways or not
+// at all.
 void DiagnoseNestedStreamDecls(UpperTaskContext& uc, const clang::Stmt* stmt) {
   if (stmt == nullptr) return;
   if (const auto* decl_stmt = llvm::dyn_cast<clang::DeclStmt>(stmt)) {

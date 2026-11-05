@@ -20,12 +20,12 @@ namespace tapa::cc {
 clang::QualType PeelType(clang::QualType type);
 
 // The `idx`-th template argument of a (reference/substitution-peeled) type, or
-// nullptr if there is none. Never asserts on absence (the old code did).
+// nullptr if there is none; never asserts on absence.
 const clang::TemplateArgument* GetTemplateArg(clang::QualType type,
                                               unsigned idx);
 
-// Print a template argument as its C++ spelling (e.g. "const float"), matching
-// the element-type strings the old rewriter emitted for port metadata.
+// Print a template argument as its C++ spelling (e.g. "const float"); the
+// spelling is the element-type string port metadata carries.
 std::string TemplateArgName(const clang::TemplateArgument& arg);
 
 // A template argument as a compile-time integer, or nullopt if it is not

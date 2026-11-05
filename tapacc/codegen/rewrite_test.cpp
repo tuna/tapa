@@ -303,10 +303,9 @@ TEST(Rewrite, DeclAttrsAndInlineRuleLowerToPragmas) {
 }
 
 TEST(Rewrite, OutOfRangePositionalIntIsRejected) {
-  // -1 is the "omitted" sentinel for the positional factor/dim pair. Any
-  // other negative used to be zero-extended into the uint32 and emitted
-  // verbatim (`factor = -7`), because factor was parsed as a plain uint32
-  // while dim went through the sentinel-aware parser.
+  // -1 is the "omitted" sentinel for the positional factor/dim pair; any
+  // other negative must be rejected, not zero-extended into the uint32 and
+  // emitted verbatim (`factor = -7`).
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/oor.cpp", R"cpp(
                    void Task(tapa::ostream<float>& out) {
@@ -451,7 +450,7 @@ TEST(Rewrite, AttrSpellingInCommentIsNotALeak) {
 }
 
 // A forward declaration shares the definition's body through the
-// redeclaration chain, so rewriting it too used to insert every stream
+// redeclaration chain, so rewriting it too would insert every stream
 // pragma a second time at the same point.
 TEST(Rewrite, ForwardDeclaredHelperGetsOneStreamPragma) {
   constexpr char kFwdHelper[] = R"cpp(

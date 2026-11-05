@@ -717,10 +717,10 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
   }
 
-  // The old single-TU redefinition guard, stated over the merged index:
-  // two definitions with one plain name make the name-keyed task map
-  // ambiguous. Implicit specializations never counted (they are sighted
-  // only through invokes) and neither did internal helpers.
+  // The redefinition guard over the merged index: two definitions with one
+  // plain name make the name-keyed task map ambiguous. Implicit
+  // specializations never count (they are sighted only through invokes) and
+  // neither do internal helpers.
   std::map<std::string, std::vector<const DefSighting*>> by_plain_name;
   for (const auto& [key, sightings] : defs_) {
     const DefSighting& sighting = sightings.front();

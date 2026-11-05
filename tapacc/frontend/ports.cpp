@@ -72,9 +72,9 @@ void CheckParamShape(const clang::ASTContext& ctx,
       break;
     // `tapa::stream`/`tapa::streams` declare a channel; they carry no
     // direction and are only meaningful as a local variable of an upper task.
-    // As a parameter they used to fall through to the scalar catch-all, which
-    // bound the channel object to the s_axilite control bundle and left Vitis
-    // HLS to fail on it much later ("Cannot apply disaggregate pragma ...").
+    // As a parameter a channel would bind to the s_axilite control bundle as
+    // a scalar, and Vitis HLS would fail on it only much later ("Cannot apply
+    // disaggregate pragma ...").
     case TapaKind::kStream:
     case TapaKind::kStreams: {
       const bool array = kind == TapaKind::kStreams;
