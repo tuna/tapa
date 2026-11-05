@@ -886,11 +886,7 @@ bool ProgramBuilder::CheckAieEot() {
           const std::string child_port = port.substr(0, port.find('['));
           if (child_closed.count(child_port) == 0 || arg.arg.empty()) continue;
           const std::string upper_port = arg.arg.substr(0, arg.arg.find('['));
-          bool is_upper_port = false;
-          for (const Port& candidate : task.ports) {
-            if (candidate.name == upper_port) is_upper_port = true;
-          }
-          if (is_upper_port) closed.insert(upper_port);
+          if (FindPort(task, upper_port) != nullptr) closed.insert(upper_port);
         }
       }
     }

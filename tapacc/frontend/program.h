@@ -6,6 +6,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "clang/AST/Decl.h"
@@ -125,6 +126,19 @@ struct TaskModel {
   std::map<std::string, std::vector<Instance>> instances;
   std::map<std::string, StreamDecl> streams;
 };
+
+// The port of `task` named `name`, or null when it has none. Port names are
+// unique per task — they derive from the parameter names, which are distinct.
+inline const Port* FindPort(const TaskModel& task, std::string_view name) {
+  for (const Port& port : task.ports) {
+    if (port.name == name) return &port;
+  }
+  return nullptr;
+}
+
+inline Port* FindPort(TaskModel& task, std::string_view name) {
+  return const_cast<Port*>(FindPort(static_cast<const TaskModel&>(task), name));
+}
 
 // The whole program: the top-level task name, the ordered list of global
 // functions defined in the main file (drives codegen's per-task file assembly),

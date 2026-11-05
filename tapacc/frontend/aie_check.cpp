@@ -187,13 +187,6 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
   uint64_t bytes_ = 0;
 };
 
-const Port* FindPort(const TaskModel& task, const std::string& name) {
-  for (const Port& port : task.ports) {
-    if (port.name == name) return &port;
-  }
-  return nullptr;
-}
-
 }  // namespace
 
 void ReadAieAttrs(const clang::ASTContext& ctx, TaskModel& task) {
@@ -207,10 +200,7 @@ void ReadAieAttrs(const clang::ASTContext& ctx, TaskModel& task) {
       const TapaKind kind = ClassifyTapaType(param);
       const bool single_stream =
           kind == TapaKind::kIStream || kind == TapaKind::kOStream;
-      Port* port = nullptr;
-      for (Port& candidate : task.ports) {
-        if (candidate.name == param->getNameAsString()) port = &candidate;
-      }
+      Port* port = FindPort(task, param->getNameAsString());
       for (const clang::Attr* attr : param->attrs()) {
         if (const auto* frame = llvm::dyn_cast<clang::TapaAieFrameAttr>(attr)) {
           if (!aie_leaf || !single_stream || frame->getSize() <= 0) {
