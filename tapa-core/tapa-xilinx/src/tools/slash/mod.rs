@@ -141,10 +141,11 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let metadata = package::extract_package(&package, &ip, &hls_data)?;
 
     let input_config_text = fs_err::read_to_string(input_config)?;
-    let bindings = crate::connectivity::parse_slash_config(
+    let (bindings, mut config_text) = crate::connectivity::prepare_slash_config(
         &input_config_text,
         &metadata.top_name,
         &metadata.ports,
+        requested_hz(job.target_mhz),
     )
     .map_err(XilinxError::SlashLink)?;
     let hbm_indices = bindings
@@ -152,13 +153,6 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
         .filter(|binding| binding.bank.kind == tapa_ir::MemoryKind::Hbm)
         .map(|binding| binding.bank.index)
         .collect::<Vec<_>>();
-    let mut config_text = crate::connectivity::prepare_slash_config(
-        &input_config_text,
-        &metadata.top_name,
-        &metadata.ports,
-        requested_hz(job.target_mhz),
-    )
-    .map_err(XilinxError::SlashLink)?;
     if !config_text.ends_with('\n') {
         config_text.push('\n');
     }

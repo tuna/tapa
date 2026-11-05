@@ -40,33 +40,72 @@ pub enum ConnectivityParseError {
     },
 }
 
+/// One non-blank line of a Vitis `.ini` after comment stripping, with its
+/// 1-based line number. [`scan_ini`] is the single strip-comment /
+/// `[section]` / `key=value` pass shared by the Vitis connectivity parser
+/// and the SLASH wrappers; each consumer applies its own section
+/// acceptance and error rules to the items.
+#[derive(Clone, Copy)]
+enum IniLine<'a> {
+    /// Starts with `[` — a section-header candidate.
+    Section(&'a str),
+    /// Contains `=` — the raw halves around the first `=`.
+    Entry {
+        text: &'a str,
+        key: &'a str,
+        value: &'a str,
+    },
+    /// Anything else.
+    Malformed(&'a str),
+}
+
+impl<'a> IniLine<'a> {
+    fn text(self) -> &'a str {
+        match self {
+            Self::Section(text) | Self::Malformed(text) | Self::Entry { text, .. } => text,
+        }
+    }
+}
+
+fn scan_ini(input: &str) -> impl Iterator<Item = (usize, IniLine<'_>)> {
+    input.lines().enumerate().filter_map(|(index, raw)| {
+        let text = strip_comment(raw).trim();
+        if text.is_empty() {
+            return None;
+        }
+        let item = if text.starts_with('[') {
+            IniLine::Section(text)
+        } else if let Some((key, value)) = text.split_once('=') {
+            IniLine::Entry { text, key, value }
+        } else {
+            IniLine::Malformed(text)
+        };
+        Some((index + 1, item))
+    })
+}
+
 /// Parse memory assignments from a Vitis configuration string.
 pub fn parse_vitis_config(input: &str) -> Result<MemoryBindings, ConnectivityParseError> {
     let mut in_connectivity = false;
     let mut bindings = Vec::<MemoryBinding>::new();
     let mut endpoint_indices = BTreeMap::<MemoryEndpoint, (usize, usize)>::new();
 
-    for (line_index, original_line) in input.lines().enumerate() {
-        let line_number = line_index + 1;
-        let line = strip_comment(original_line).trim();
-        if line.is_empty() {
+    for (line_number, item) in scan_ini(input) {
+        let text = item.text();
+        // A line ending in `]` outside `[connectivity]` (e.g.
+        // `connectivity]`) is a malformed section header, not an entry;
+        // `sp=k.p:HBM[0]` values only end in `]` inside the section.
+        if matches!(item, IniLine::Section(_)) || (!in_connectivity && text.ends_with(']')) {
+            in_connectivity = parse_section(text, line_number)? == "connectivity";
             continue;
         }
-
-        if line.starts_with('[') || (!in_connectivity && line.ends_with(']')) {
-            let section = parse_section(line, line_number)?;
-            in_connectivity = section == "connectivity";
-            continue;
-        }
-
         if !in_connectivity {
             continue;
         }
-
-        let Some((key, value)) = line.split_once('=') else {
+        let IniLine::Entry { key, value, .. } = item else {
             return Err(ConnectivityParseError::MalformedEntry {
                 line: line_number,
-                text: line.to_string(),
+                text: text.to_string(),
             });
         };
         if key.trim() != "sp" {
@@ -103,73 +142,100 @@ pub fn parse_slash_config(
     top: &str,
     ports: &[KernelXmlPort],
 ) -> Result<MemoryBindings, String> {
-    parse_slash(input, top, ports).map(|parsed| parsed.bindings)
+    slash_bindings(&parse_slash(input, top)?, top, ports)
 }
 
 /// Validate a SLASH configuration and add the one kernel clock when absent.
 /// Existing clock sections must all name the sole `nk` instance at exactly the
-/// requested frequency.
+/// requested frequency. Returns the resolved bindings alongside the prepared
+/// text so callers need not parse the same config twice.
 pub fn prepare_slash_config(
     input: &str,
     top: &str,
     ports: &[KernelXmlPort],
     requested_hz: u64,
-) -> Result<String, String> {
-    let parsed = parse_slash(input, top, ports)?;
-    enforce_slash_clock(input, &parsed.instance, requested_hz)
+) -> Result<(MemoryBindings, String), String> {
+    let parsed = parse_slash(input, top)?;
+    let bindings = slash_bindings(&parsed, top, ports)?;
+    let config = enforce_slash_clock(input, &parsed, requested_hz)?;
+    Ok((bindings, config))
 }
 
-struct ParsedSlashConfig {
-    instance: String,
-    bindings: MemoryBindings,
+/// The SLASH-relevant slices of one config text, collected in a single
+/// scan: the `nk` instance, the trimmed `sp` values of `[connectivity]`,
+/// and the stripped lines of every `[clock]` section.
+struct SlashConfig<'a> {
+    instance: &'a str,
+    entries: Vec<&'a str>,
+    clocks: Vec<Vec<&'a str>>,
 }
 
-fn parse_slash(
-    input: &str,
-    top: &str,
-    ports: &[KernelXmlPort],
-) -> Result<ParsedSlashConfig, String> {
+fn parse_slash<'a>(input: &'a str, top: &str) -> Result<SlashConfig<'a>, String> {
     let mut in_connectivity = false;
+    let mut in_clock = false;
+    let mut clock_lines: Vec<&'a str> = Vec::new();
+    let mut clocks = Vec::new();
     let mut instance = None;
     let mut entries = Vec::new();
-    for original in input.lines() {
-        let line = strip_comment(original).trim();
-        if line.starts_with('[') {
-            in_connectivity = line == "[connectivity]";
-            continue;
-        }
-        if !in_connectivity || line.is_empty() {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            return Err(format!("invalid SLASH entry `{line}`"));
-        };
-        match key.trim() {
-            "nk" => {
-                let fields: Vec<_> = value.trim().split(':').collect();
-                if instance.is_some()
-                    || fields.len() != 3
-                    || fields[0] != top
-                    || fields[1] != "1"
-                    || !is_identifier(fields[2])
-                {
-                    return Err(format!("expected one SLASH `nk={top}:1:<instance>`"));
+    for (_, item) in scan_ini(input) {
+        let text = item.text();
+        match item {
+            IniLine::Section(_) => {
+                if in_clock {
+                    clocks.push(std::mem::take(&mut clock_lines));
                 }
-                instance = Some(fields[2]);
+                in_connectivity = text == "[connectivity]";
+                in_clock = text.eq_ignore_ascii_case("[clock]");
             }
-            "sp" => entries.push(value.trim()),
+            IniLine::Malformed(_) | IniLine::Entry { .. } if in_clock => clock_lines.push(text),
+            IniLine::Malformed(_) if in_connectivity => {
+                return Err(format!("invalid SLASH entry `{text}`"));
+            }
+            IniLine::Entry { key, value, .. } if in_connectivity => match key.trim() {
+                "nk" => {
+                    let fields: Vec<_> = value.trim().split(':').collect();
+                    if instance.is_some()
+                        || fields.len() != 3
+                        || fields[0] != top
+                        || fields[1] != "1"
+                        || !is_identifier(fields[2])
+                    {
+                        return Err(format!("expected one SLASH `nk={top}:1:<instance>`"));
+                    }
+                    instance = Some(fields[2]);
+                }
+                "sp" => entries.push(value.trim()),
+                _ => {}
+            },
             _ => {}
         }
     }
+    if in_clock {
+        clocks.push(clock_lines);
+    }
     let instance = instance.ok_or_else(|| format!("missing SLASH `nk={top}:1:<instance>`"))?;
+    Ok(SlashConfig {
+        instance,
+        entries,
+        clocks,
+    })
+}
+
+/// Resolve the parsed `sp` entries against the typed compiled ports into
+/// memory bindings on the logical top ports.
+fn slash_bindings(
+    parsed: &SlashConfig<'_>,
+    top: &str,
+    ports: &[KernelXmlPort],
+) -> Result<MemoryBindings, String> {
     let mut normalized = String::from("[connectivity]\n");
-    for entry in entries {
+    for entry in &parsed.entries {
         let (endpoint, target) = entry
             .split_once(':')
             .ok_or_else(|| format!("invalid SLASH sp `{entry}`"))?;
         let physical = endpoint
             .trim()
-            .strip_prefix(&format!("{instance}."))
+            .strip_prefix(&format!("{}.", parsed.instance))
             .ok_or_else(|| format!("unknown kernel instance in `{entry}`"))?;
         let logical = ports
             .iter()
@@ -184,81 +250,59 @@ fn parse_slash(
             .ok_or_else(|| format!("unsupported SLASH memory `{target}`"))?;
         writeln!(normalized, "sp={top}.{logical}:{kind}[{index}]").expect("write String");
     }
-    let bindings = parse_vitis_config(&normalized).map_err(|error| error.to_string())?;
-    Ok(ParsedSlashConfig {
-        instance: instance.to_string(),
-        bindings,
-    })
+    parse_vitis_config(&normalized).map_err(|error| error.to_string())
 }
 
-fn enforce_slash_clock(input: &str, instance: &str, requested_hz: u64) -> Result<String, String> {
+/// Validate every `[clock]` section against the one kernel instance and
+/// append the requested clock when the config has no `[clock]` section.
+fn enforce_slash_clock(
+    input: &str,
+    parsed: &SlashConfig<'_>,
+    requested_hz: u64,
+) -> Result<String, String> {
     if requested_hz == 0 {
         return Err("SLASH clock must be positive".to_string());
     }
-    let mut in_clock = false;
-    let mut saw_clock = false;
-    let mut clock_kernel: Option<String> = None;
-    let mut clock_frequency: Option<String> = None;
-
-    for original in input.lines() {
-        let line = strip_comment(original).trim();
-        if line.starts_with('[') {
-            validate_clock_section(
-                in_clock,
-                clock_kernel.as_deref(),
-                clock_frequency.as_deref(),
-                instance,
-                requested_hz,
-            )?;
-            in_clock = line.eq_ignore_ascii_case("[clock]");
-            saw_clock |= in_clock;
-            clock_kernel = None;
-            clock_frequency = None;
-            continue;
+    for clock_lines in &parsed.clocks {
+        let mut kernel = None;
+        let mut frequency = None;
+        for line in clock_lines {
+            let Some((key, value)) = line.split_once('=') else {
+                return Err(format!("invalid SLASH [clock] entry `{line}`"));
+            };
+            match key.trim().to_ascii_lowercase().as_str() {
+                "krnl" => kernel = Some(value.trim()),
+                "freqhz" => frequency = Some(value.trim()),
+                _ => {}
+            }
         }
-        if !in_clock || line.is_empty() {
-            continue;
-        }
-        let Some((key, value)) = line.split_once('=') else {
-            return Err(format!("invalid SLASH [clock] entry `{line}`"));
-        };
-        match key.trim().to_ascii_lowercase().as_str() {
-            "krnl" => clock_kernel = Some(value.trim().to_string()),
-            "freqhz" => clock_frequency = Some(value.trim().to_string()),
-            _ => {}
-        }
+        validate_clock_section(kernel, frequency, parsed.instance, requested_hz)?;
     }
-    validate_clock_section(
-        in_clock,
-        clock_kernel.as_deref(),
-        clock_frequency.as_deref(),
-        instance,
-        requested_hz,
-    )?;
 
     let mut output = input.to_string();
-    if !saw_clock {
+    if parsed.clocks.is_empty() {
         if !output.is_empty() && !output.ends_with('\n') {
             output.push('\n');
         }
         if !output.is_empty() {
             output.push('\n');
         }
-        writeln!(output, "[clock]\nkrnl={instance}\nfreqhz={requested_hz}").expect("write String");
+        writeln!(
+            output,
+            "[clock]\nkrnl={}\nfreqhz={requested_hz}",
+            parsed.instance
+        )
+        .expect("write String");
     }
     Ok(output)
 }
 
 fn validate_clock_section(
-    saw_section: bool,
     kernel: Option<&str>,
     frequency: Option<&str>,
     instance: &str,
     requested_hz: u64,
 ) -> Result<(), String> {
-    if !saw_section {
-        return Ok(());
-    }
     let actual_kernel =
         kernel.ok_or_else(|| "incomplete SLASH [clock]: missing `krnl`".to_string())?;
     let actual_frequency = frequency
@@ -401,7 +445,7 @@ mod tests {
     #[test]
     fn slash_config_uses_typed_compiled_ports_and_appends_clock() {
         let input = "[connectivity]\nnk=VecAdd:1:VecAdd_0\nsp=VecAdd_0.m_axi_a:HBM0\n";
-        let prepared = prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
+        let (_, prepared) = prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
             .expect("valid SLASH config");
         assert!(prepared.ends_with("[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n"));
         let bindings = parse_slash_config(&prepared, "VecAdd", &[slash_port("a")])
@@ -421,7 +465,8 @@ mod tests {
             "[connectivity]\nnk=VecAdd:1:VecAdd_0\n\n[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n";
         assert_eq!(
             prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
-                .expect("matching clock"),
+                .expect("matching clock")
+                .1,
             input,
         );
         prepare_slash_config(input, "VecAdd", &[slash_port("a")], 200_000_000)
