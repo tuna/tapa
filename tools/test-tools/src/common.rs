@@ -27,11 +27,13 @@ pub fn workspace_path(rel: &str) -> PathBuf {
     let workspace = env::var("TEST_WORKSPACE").unwrap_or_else(|_| "_main".to_string());
     for env_var in ["TEST_SRCDIR", "RUNFILES_DIR"] {
         if let Ok(base) = env::var(env_var) {
-            for candidate in [
-                Path::new(&base).join(&workspace).join(rel),
-                Path::new(&base).join("_main").join(rel),
-                Path::new(&base).join(rel),
-            ] {
+            let base = Path::new(&base);
+            let mut candidates = vec![base.join(&workspace).join(rel)];
+            if workspace != "_main" {
+                candidates.push(base.join("_main").join(rel));
+            }
+            candidates.push(base.join(rel));
+            for candidate in candidates {
                 if candidate.exists() {
                     return candidate;
                 }
