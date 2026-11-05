@@ -313,6 +313,29 @@ class basic_streams {
            std::to_string(ptr->pos + length) + ")";
   }
 
+  // Hands out the channel at `pos` and advances it; `accessed` describes the
+  // access for the out-of-range error, e.g. "istream slice 'q[0:2)' accessed"
+  // or "channels 'q' accessed as istream".
+  basic_stream<T> access_next(uint64_t& pos, const std::string& accessed) {
+    CHECK_LT(pos, ptr->refs.size())
+        << accessed << " for " << pos + 1 << " times but it only contains "
+        << ptr->refs.size() << " channels";
+    return ptr->refs[pos++];
+  }
+
+  // Builds the metadata of a slice of the next `length` channels, named at
+  // `slice_pos`, handing the channels out from `pos` as in `access_next`.
+  std::shared_ptr<metadata_t> access_slice(uint64_t& pos, int slice_pos,
+                                           uint64_t length,
+                                           const std::string& accessed) {
+    auto slice = std::make_shared<metadata_t>(ptr->name, slice_pos);
+    slice->refs.reserve(length);
+    for (uint64_t i = 0; i < length; ++i) {
+      slice->refs.emplace_back(access_next(pos, accessed));
+    }
+    return slice;
+  }
+
   std::shared_ptr<metadata_t> ptr;
 };
 
@@ -666,24 +689,18 @@ class istreams : virtual public internal::basic_streams<T> {
   uint64_t access_pos_ = 0;
 
   istream<T> access() {
-    CHECK_LT(access_pos_, this->ptr->refs.size())
-        << "istream slice '" << this->get_slice_name(length)
-        << "' accessed for " << access_pos_ + 1
-        << " times but it only contains " << this->ptr->refs.size()
-        << " channels";
-    return this->ptr->refs[access_pos_++];
+    return this->access_next(
+        access_pos_,
+        "istream slice '" + this->get_slice_name(length) + "' accessed");
   }
   template <uint64_t length>
   istreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     istreams<T, length> result;
-    result.ptr =
-        std::make_shared<typename internal::basic_streams<T>::metadata_t>(
-            this->ptr->name, this->ptr->pos);
-    result.ptr->refs.reserve(length);
-    for (uint64_t i = 0; i < length; ++i) {
-      result.ptr->refs.emplace_back(access());
-    }
+    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length,
+                                    "istream slice '" +
+                                        this->get_slice_name(istreams::length) +
+                                        "' accessed");
     return result;
   }
 };
@@ -715,24 +732,18 @@ class ostreams : virtual public internal::basic_streams<T> {
   uint64_t access_pos_ = 0;
 
   ostream<T> access() {
-    CHECK_LT(access_pos_, this->ptr->refs.size())
-        << "ostream slice '" << this->get_slice_name(length)
-        << "' accessed for " << access_pos_ + 1
-        << " times but it only contains " << this->ptr->refs.size()
-        << " channels";
-    return this->ptr->refs[access_pos_++];
+    return this->access_next(
+        access_pos_,
+        "ostream slice '" + this->get_slice_name(length) + "' accessed");
   }
   template <uint64_t length>
   ostreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     ostreams<T, length> result;
-    result.ptr =
-        std::make_shared<typename internal::basic_streams<T>::metadata_t>(
-            this->ptr->name, this->ptr->pos);
-    result.ptr->refs.reserve(length);
-    for (uint64_t i = 0; i < length; ++i) {
-      result.ptr->refs.emplace_back(access());
-    }
+    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length,
+                                    "ostream slice '" +
+                                        this->get_slice_name(ostreams::length) +
+                                        "' accessed");
     return result;
   }
 };
@@ -778,43 +789,31 @@ class streams : public internal::unbound_streams<T, S> {
   uint64_t ostream_access_pos_ = 0;
 
   istream<T> access_as_istream() {
-    CHECK_LT(istream_access_pos_, this->ptr->refs.size())
-        << "channels '" << this->ptr->name << "' accessed as istream for "
-        << istream_access_pos_ + 1 << " times but it only contains "
-        << this->ptr->refs.size() << " channels";
-    return this->ptr->refs[istream_access_pos_++];
+    return this->access_next(
+        istream_access_pos_,
+        "channels '" + this->ptr->name + "' accessed as istream");
   }
   ostream<T> access_as_ostream() {
-    CHECK_LT(ostream_access_pos_, this->ptr->refs.size())
-        << "channels '" << this->ptr->name << "' accessed as ostream for "
-        << ostream_access_pos_ + 1 << " times but it only contains "
-        << this->ptr->refs.size() << " channels";
-    return this->ptr->refs[ostream_access_pos_++];
+    return this->access_next(
+        ostream_access_pos_,
+        "channels '" + this->ptr->name + "' accessed as ostream");
   }
   template <uint64_t length>
   istreams<T, length> access_as_istreams() {
     CHECK_NOTNULL(this->ptr.get());
     istreams<T, length> result;
-    result.ptr =
-        std::make_shared<typename internal::basic_streams<T>::metadata_t>(
-            this->ptr->name, istream_access_pos_);
-    result.ptr->refs.reserve(length);
-    for (uint64_t i = 0; i < length; ++i) {
-      result.ptr->refs.emplace_back(access_as_istream());
-    }
+    result.ptr = this->access_slice(
+        istream_access_pos_, istream_access_pos_, length,
+        "channels '" + this->ptr->name + "' accessed as istream");
     return result;
   }
   template <uint64_t length>
   ostreams<T, length> access_as_ostreams() {
     CHECK_NOTNULL(this->ptr.get());
     ostreams<T, length> result;
-    result.ptr =
-        std::make_shared<typename internal::basic_streams<T>::metadata_t>(
-            this->ptr->name, ostream_access_pos_);
-    result.ptr->refs.reserve(length);
-    for (uint64_t i = 0; i < length; ++i) {
-      result.ptr->refs.emplace_back(access_as_ostream());
-    }
+    result.ptr = this->access_slice(
+        ostream_access_pos_, ostream_access_pos_, length,
+        "channels '" + this->ptr->name + "' accessed as ostream");
     return result;
   }
 };
