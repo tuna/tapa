@@ -199,34 +199,12 @@ impl SimRunner for VerilatorRunner {
             return Err(CosimError::SimFailed(status));
         }
 
-        let obj_dir = tb_dir.join("obj_dir");
-        let mut found = None;
-        for entry in std::fs::read_dir(&obj_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            let looks_like_verilator_bin = entry
-                .file_name()
-                .to_str()
-                .is_some_and(|n| n.starts_with('V'));
-            let is_executable = path.is_file()
-                && std::fs::metadata(&path).is_ok_and(|m| {
-                    #[cfg(unix)]
-                    {
-                        use std::os::unix::fs::PermissionsExt;
-                        m.permissions().mode() & 0o111 != 0
-                    }
-                    #[cfg(not(unix))]
-                    {
-                        true
-                    }
-                });
-            if looks_like_verilator_bin && is_executable {
-                found = Some(path);
-                break;
-            }
+        let top = tb_dir.join("obj_dir").join(format!("V{top}"));
+        if !top.is_file() {
+            return Err(CosimError::ToolNotFound(
+                "Verilator binary in obj_dir".into(),
+            ));
         }
-        let top =
-            found.ok_or_else(|| CosimError::ToolNotFound("Verilator binary in obj_dir".into()))?;
         let mut cmd = Command::new(top);
         cmd.envs(xilinx_environ())
             .env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json());
