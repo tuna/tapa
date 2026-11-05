@@ -15,6 +15,7 @@ use crate::graph::floor_graph::{
     MemoryInterface, PlacementEdge, Stream, Vertex, CONTROL_S_AXI_INSTANCE,
 };
 
+use super::child_instances;
 use super::validate::{
     expected_memory_interfaces, occupied_rtl_names, reserve_generated_name, validate_control_names,
     validate_memory_interface_shape,
@@ -70,7 +71,7 @@ impl FloorGraphBuilder {
         flat: &TaskGraph,
         top: &tapa_ir::Task,
     ) -> Result<(), GraphError> {
-        for (def_name, instances) in &top.tasks {
+        for (def_name, name, inst_idx, _) in child_instances(top) {
             let def = flat
                 .tasks
                 .get(def_name)
@@ -81,26 +82,22 @@ impl FloorGraphBuilder {
             // planning them as weightless. A value that is present but not a
             // count is rejected when the graph is parsed, not here.
             let area = def.self_area.unwrap_or_default();
-            for (idx, inst) in instances.iter().enumerate() {
-                let name = inst.canonical_name(def_name, idx).into_owned();
-                let vertex_index = self.vertices.len();
-                // Duplicate canonical names silently collapse onto one key in
-                // the published `regions` map; always reject them, with or
-                // without distributed control.
-                if self.index.contains_key(&name) {
-                    return Err(GraphError::DuplicateCanonicalName(name));
-                }
-                self.index.insert(name.clone(), vertex_index);
-                let inst_idx = u32::try_from(idx).expect("instance count fits u32");
-                self.task_endpoints
-                    .insert((def_name.clone(), inst_idx), vertex_index);
-                self.vertices.push(Vertex {
-                    name,
-                    area,
-                    required_tag: None,
-                    materialize: true,
-                });
+            let vertex_index = self.vertices.len();
+            // Duplicate canonical names silently collapse onto one key in
+            // the published `regions` map; always reject them, with or
+            // without distributed control.
+            if self.index.contains_key(&name) {
+                return Err(GraphError::DuplicateCanonicalName(name));
             }
+            self.index.insert(name.clone(), vertex_index);
+            self.task_endpoints
+                .insert((def_name.clone(), inst_idx), vertex_index);
+            self.vertices.push(Vertex {
+                name,
+                area,
+                required_tag: None,
+                materialize: true,
+            });
         }
         Ok(())
     }
@@ -379,50 +376,43 @@ impl FloorGraphBuilder {
         }
 
         let mut nets = Vec::new();
-        for (definition, instances) in &top.tasks {
+        for (definition, canonical, endpoint_index, instance) in child_instances(top) {
             let task = flat
                 .tasks
                 .get(definition)
                 .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
-            for (instance_index, instance) in instances.iter().enumerate() {
-                let canonical = instance
-                    .canonical_name(definition, instance_index)
-                    .into_owned();
-                let endpoint_index =
-                    u32::try_from(instance_index).expect("instance count fits u32");
-                let child = self.task_endpoints[&(definition.clone(), endpoint_index)];
-                self.co_located.push(CoLocatedInstance {
-                    name: local_controller_instance_name(&canonical),
-                    host: child,
-                });
+            let child = self.task_endpoints[&(definition.clone(), endpoint_index)];
+            self.co_located.push(CoLocatedInstance {
+                name: local_controller_instance_name(&canonical),
+                host: child,
+            });
 
-                let launch_width = control_launch_width(task, instance, &canonical)?;
+            let launch_width = control_launch_width(task, instance, &canonical)?;
+            self.add_control_net(
+                &mut nets,
+                &canonical,
+                ControlChannel::Launch,
+                global,
+                child,
+                launch_width,
+            )?;
+            self.add_control_net(
+                &mut nets,
+                &canonical,
+                ControlChannel::Reset,
+                global,
+                child,
+                1,
+            )?;
+            if instance.step >= 0 {
                 self.add_control_net(
                     &mut nets,
                     &canonical,
-                    ControlChannel::Launch,
-                    global,
+                    ControlChannel::Completion,
                     child,
-                    launch_width,
-                )?;
-                self.add_control_net(
-                    &mut nets,
-                    &canonical,
-                    ControlChannel::Reset,
                     global,
-                    child,
                     1,
                 )?;
-                if instance.step >= 0 {
-                    self.add_control_net(
-                        &mut nets,
-                        &canonical,
-                        ControlChannel::Completion,
-                        child,
-                        global,
-                        1,
-                    )?;
-                }
             }
         }
         Ok(nets)
@@ -580,7 +570,6 @@ fn bank_kind_name(bank: MemoryBank) -> &'static str {
     }
 }
 
-/// Resolve the FIFO storage width (payload + eot) from either endpoint.
 /// One FIFO's endpoint port widths gathered from the bound instance args.
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct FifoArgWidths {

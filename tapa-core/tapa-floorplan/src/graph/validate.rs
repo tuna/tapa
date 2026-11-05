@@ -12,6 +12,7 @@ use tapa_ir::{
     scope_controller_instance_name, AxiEndpoint, ControlChannel, TaskGraph,
 };
 
+use super::child_instances;
 use crate::graph::floor_graph::{
     CoLocatedInstance, ControlInterface, ExpectedMemoryEndpoint, GraphError, MemoryInterface,
     Vertex, CONTROL_S_AXI_INSTANCE,
@@ -21,20 +22,15 @@ use crate::graph::floor_graph::{
 /// constrained independently. Runs for every build mode.
 pub(super) fn validate_sanitized_instance_names(top: &tapa_ir::Task) -> Result<(), GraphError> {
     let mut sanitized_instances = BTreeMap::<String, String>::new();
-    for (definition, instances) in &top.tasks {
-        for (instance_index, instance) in instances.iter().enumerate() {
-            let canonical = instance
-                .canonical_name(definition, instance_index)
-                .into_owned();
-            let sanitized = sanitize_identifier_name(&canonical);
-            if let Some(first) = sanitized_instances.insert(sanitized.clone(), canonical.clone()) {
-                if first != canonical {
-                    return Err(GraphError::SanitizedNameCollision {
-                        first,
-                        second: canonical,
-                        sanitized,
-                    });
-                }
+    for (_, canonical, _, _) in child_instances(top) {
+        let sanitized = sanitize_identifier_name(&canonical);
+        if let Some(first) = sanitized_instances.insert(sanitized.clone(), canonical.clone()) {
+            if first != canonical {
+                return Err(GraphError::SanitizedNameCollision {
+                    first,
+                    second: canonical,
+                    sanitized,
+                });
             }
         }
     }
@@ -75,26 +71,21 @@ pub(super) fn validate_control_names(
             "S-AXI control block",
         )?;
     }
-    for (definition, instances) in &top.tasks {
-        for (instance_index, instance) in instances.iter().enumerate() {
-            let canonical = instance
-                .canonical_name(definition, instance_index)
-                .into_owned();
+    for (_, canonical, _, instance) in child_instances(top) {
+        reserve_generated_name(
+            &mut occupied,
+            local_controller_instance_name(&canonical),
+            &format!("local controller for `{canonical}`"),
+        )?;
+        let channels = [ControlChannel::Launch, ControlChannel::Reset]
+            .into_iter()
+            .chain((instance.step >= 0).then_some(ControlChannel::Completion));
+        for channel in channels {
             reserve_generated_name(
                 &mut occupied,
-                local_controller_instance_name(&canonical),
-                &format!("local controller for `{canonical}`"),
+                control_pipeline_instance_name(&canonical, channel),
+                &format!("{channel:?} pipeline for `{canonical}`"),
             )?;
-            let channels = [ControlChannel::Launch, ControlChannel::Reset]
-                .into_iter()
-                .chain((instance.step >= 0).then_some(ControlChannel::Completion));
-            for channel in channels {
-                reserve_generated_name(
-                    &mut occupied,
-                    control_pipeline_instance_name(&canonical, channel),
-                    &format!("{channel:?} pipeline for `{canonical}`"),
-                )?;
-            }
         }
     }
     if let Some(projection) = projection {
@@ -300,84 +291,78 @@ pub(super) fn expected_memory_interfaces(
     let mut expected = BTreeMap::new();
     let mut top_port_users = BTreeMap::<String, Vec<String>>::new();
 
-    for (definition, instances) in &top.tasks {
+    for (definition, instance_name, endpoint_index, instance) in child_instances(top) {
         let task = flat
             .tasks
             .get(definition)
             .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
-        for (instance_index, instance) in instances.iter().enumerate() {
-            let instance_name = instance
-                .canonical_name(definition, instance_index)
-                .into_owned();
-            let endpoint_index = u32::try_from(instance_index).expect("instance count fits u32");
-            let task_vertex = task_endpoints[&(definition.clone(), endpoint_index)];
-            for (child_port, argument) in &instance.args {
-                if !argument.cat.is_direct_mmap() {
-                    continue;
-                }
-                let parent_port =
-                    argument
-                        .name()
-                        .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
-                            port: child_port.clone(),
-                            detail: format!(
-                                "child endpoint `{instance_name}.{child_port}` binds a constant, \
+        let task_vertex = task_endpoints[&(definition.clone(), endpoint_index)];
+        for (child_port, argument) in &instance.args {
+            if !argument.cat.is_direct_mmap() {
+                continue;
+            }
+            let parent_port =
+                argument
+                    .name()
+                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
+                        port: child_port.clone(),
+                        detail: format!(
+                            "child endpoint `{instance_name}.{child_port}` binds a constant, \
                              not a top-level mmap"
-                            ),
-                        })?;
+                        ),
+                    })?;
 
-                let child = task.port(child_port).ok_or_else(|| {
-                    GraphError::UnsupportedMemoryInterface {
+            let child =
+                task.port(child_port)
+                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
                         port: parent_port.to_owned(),
                         detail: format!(
                             "child endpoint `{instance_name}.{child_port}` has no port metadata"
                         ),
-                    }
-                })?;
-                let parent = top.port(parent_port).ok_or_else(|| {
-                    GraphError::UnsupportedMemoryInterface {
+                    })?;
+            let parent =
+                top.port(parent_port)
+                    .ok_or_else(|| GraphError::UnsupportedMemoryInterface {
                         port: parent_port.to_owned(),
                         detail: "top-level mmap port metadata is missing".to_string(),
-                    }
-                })?;
-                if child.cat != argument.cat || parent.cat != tapa_ir::ArgCategory::Mmap {
-                    return Err(GraphError::UnsupportedMemoryInterface {
-                        port: parent_port.to_owned(),
-                        detail: format!(
-                            "child binding category `{}` must match child metadata `{}` and connect to a plain top mmap",
-                            argument.cat.as_str(),
-                            child.cat.as_str(),
-                        ),
-                    });
-                }
-                if child.chan_count.is_some()
-                    || child.chan_size.is_some()
-                    || parent.chan_count.is_some()
-                    || parent.chan_size.is_some()
-                {
-                    return Err(GraphError::UnsupportedMemoryInterface {
-                        port: parent_port.to_owned(),
-                        detail: "hierarchical mmap channels are not modeled".to_string(),
-                    });
-                }
-
-                let endpoint = AxiEndpoint {
-                    instance: instance_name.clone(),
-                    port: child_port.clone(),
-                    top_port: parent_port.to_owned(),
-                };
-                top_port_users
-                    .entry(parent_port.to_owned())
-                    .or_default()
-                    .push(format!("{instance_name}.{child_port}"));
-                expected.insert(
-                    endpoint,
-                    ExpectedMemoryEndpoint {
-                        task_vertex,
-                        child_category: child.cat,
-                    },
-                );
+                    })?;
+            if child.cat != argument.cat || parent.cat != tapa_ir::ArgCategory::Mmap {
+                return Err(GraphError::UnsupportedMemoryInterface {
+                    port: parent_port.to_owned(),
+                    detail: format!(
+                        "child binding category `{}` must match child metadata `{}` and connect to a plain top mmap",
+                        argument.cat.as_str(),
+                        child.cat.as_str(),
+                    ),
+                });
             }
+            if child.chan_count.is_some()
+                || child.chan_size.is_some()
+                || parent.chan_count.is_some()
+                || parent.chan_size.is_some()
+            {
+                return Err(GraphError::UnsupportedMemoryInterface {
+                    port: parent_port.to_owned(),
+                    detail: "hierarchical mmap channels are not modeled".to_string(),
+                });
+            }
+
+            let endpoint = AxiEndpoint {
+                instance: instance_name.clone(),
+                port: child_port.clone(),
+                top_port: parent_port.to_owned(),
+            };
+            top_port_users
+                .entry(parent_port.to_owned())
+                .or_default()
+                .push(format!("{instance_name}.{child_port}"));
+            expected.insert(
+                endpoint,
+                ExpectedMemoryEndpoint {
+                    task_vertex,
+                    child_category: child.cat,
+                },
+            );
         }
     }
 
