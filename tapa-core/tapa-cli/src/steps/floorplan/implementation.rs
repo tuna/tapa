@@ -777,11 +777,7 @@ impl CandidatePaths {
     }
 
     fn recreate(&self) -> Result<()> {
-        match fs_err::remove_dir_all(&self.root) {
-            Ok(()) => {}
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-            Err(error) => return Err(error.into()),
-        }
+        recreate_dir(&self.root)?;
         for directory in [
             &self.rtl,
             &self.package,
@@ -803,15 +799,19 @@ fn candidate_root(work_dir: &Path, index: usize) -> PathBuf {
         .join(format!("candidate_{index:03}"))
 }
 
-fn recreate_candidate_root(work_dir: &Path) -> Result<()> {
-    let root = work_dir.join(CANDIDATE_ROOT);
-    match fs_err::remove_dir_all(&root) {
+/// Remove `dir` when it exists, then recreate it empty.
+fn recreate_dir(dir: &Path) -> Result<()> {
+    match fs_err::remove_dir_all(dir) {
         Ok(()) => {}
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(error.into()),
     }
-    fs_err::create_dir_all(root)?;
+    fs_err::create_dir_all(dir)?;
     Ok(())
+}
+
+fn recreate_candidate_root(work_dir: &Path) -> Result<()> {
+    recreate_dir(&work_dir.join(CANDIDATE_ROOT))
 }
 
 fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
