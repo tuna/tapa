@@ -1,5 +1,5 @@
 //! The public error enums for plan orchestration: which subsystem failure a
-//! [`plan`](crate::plan()) run (or XDC render) surfaced, mapped into one type
+//! [`plan_with_inputs`](crate::plan_with_inputs) run (or XDC render) surfaced, mapped into one type
 //! the CLI can match on.
 
 use tapa_ir::MemoryBank;
@@ -10,7 +10,7 @@ use crate::partition::ilp::IlpError;
 use crate::pipeline::plan::PipelineError;
 use crate::plan::PlanOptionsError;
 
-/// Why [`plan`](crate::plan()) could not produce a floorplan.
+/// Why [`plan_with_inputs`](crate::plan_with_inputs) could not produce a floorplan.
 #[derive(Debug, thiserror::Error)]
 pub enum PlanError {
     /// Planner options are invalid.

@@ -75,15 +75,6 @@ pub struct PlanInputs {
     pub projection: Option<FlatProjection>,
 }
 
-/// Plan a floorplan for a synthesized design.
-///
-/// Selects the device from the work state's part number, flattens the graph,
-/// places every instance with the floorplan ILP, routes and pipelines every
-/// cross-slot channel, and returns the complete [`FloorplanResult`] contract.
-pub fn plan(state: &WorkState, options: &PlanOptions) -> Result<FloorplanResult, PlanError> {
-    plan_with_inputs(state, options, &PlanInputs::default())
-}
-
 /// Plan with transient RTL/connectivity-derived external-interface inputs.
 pub fn plan_with_inputs(
     state: &WorkState,
@@ -462,7 +453,7 @@ mod tests {
         let mut state = WorkState::new(graph);
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
 
-        match plan(&state, &PlanOptions::default()) {
+        match plan_with_inputs(&state, &PlanOptions::default(), &PlanInputs::default()) {
             Ok(result) => {
                 assert_eq!(result.device, "u280");
                 assert_eq!(result.grid, (2, 3));
@@ -514,7 +505,7 @@ mod tests {
         let mut state = WorkState::new(graph);
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
 
-        match plan(&state, &PlanOptions::default()) {
+        match plan_with_inputs(&state, &PlanOptions::default(), &PlanInputs::default()) {
             Ok(result) => {
                 assert!(
                     result
@@ -794,7 +785,7 @@ mod tests {
         .expect("parse");
         let state = WorkState::new(graph);
         assert!(matches!(
-            plan(&state, &PlanOptions::default()),
+            plan_with_inputs(&state, &PlanOptions::default(), &PlanInputs::default()),
             Err(PlanError::NoPartNum)
         ));
     }
@@ -940,7 +931,10 @@ mod tests {
                 ..PlanOptions::default()
             },
         ] {
-            assert!(matches!(plan(&state, &options), Err(PlanError::Options(_))));
+            assert!(matches!(
+                plan_with_inputs(&state, &options, &PlanInputs::default()),
+                Err(PlanError::Options(_))
+            ));
         }
     }
 }

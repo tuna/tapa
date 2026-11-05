@@ -5,7 +5,7 @@ use tapa_ir::PipelineScheme;
 use crate::device::model::DEFAULT_USAGE_LIMIT;
 use crate::partition::PartitionStrategy;
 
-/// Options controlling a [`plan`](crate::plan()) run. Defaults match the CLI's defaults.
+/// Options controlling a [`plan_with_inputs`](crate::plan_with_inputs) run. Defaults match the CLI's defaults.
 #[derive(Debug, Clone, Copy)]
 pub struct PlanOptions {
     /// Base per-slot utilization target; raised on infeasibility.
