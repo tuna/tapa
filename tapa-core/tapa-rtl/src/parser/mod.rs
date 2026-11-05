@@ -34,6 +34,11 @@ fn identifier(input: &str) -> IResult<&str, &str> {
 
 // ── Pragma / attribute parsers ──────────────────────────────────────
 
+/// The span of `start` consumed down to `rest`.
+fn consumed_span<'a>(start: &'a str, rest: &str) -> &'a str {
+    &start[..start.len() - rest.len()]
+}
+
 /// Parse a single attribute: `(* key = "value" *)` or `(* key *)`.
 fn attribute(input: &str) -> IResult<&str, Pragma> {
     let start = input;
@@ -49,13 +54,12 @@ fn attribute(input: &str) -> IResult<&str, Pragma> {
     let (input, _) = ws(input)?;
     let (input, _) = tag("*)").parse(input)?;
 
-    let consumed = &start[..start.len() - input.len()];
     Ok((
         input,
         Pragma {
             key: key.to_owned(),
             value: value.map(str::to_owned),
-            raw_line: consumed.to_owned(),
+            raw_line: consumed_span(start, input).to_owned(),
         },
     ))
 }
@@ -66,13 +70,12 @@ fn raw_attribute(input: &str) -> IResult<&str, Pragma> {
     let (input, _) = tag("(*").parse(input)?;
     let (input, _content) = take_until("*)").parse(input)?;
     let (input, _) = tag("*)").parse(input)?;
-    let consumed = &start[..start.len() - input.len()];
     Ok((
         input,
         Pragma {
             key: String::new(),
             value: None,
-            raw_line: consumed.to_owned(),
+            raw_line: consumed_span(start, input).to_owned(),
         },
     ))
 }
