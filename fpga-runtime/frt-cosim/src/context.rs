@@ -143,7 +143,6 @@ impl CosimContext {
                         BufferEntry {
                             base_addr: self.base_addresses.get(name).copied().unwrap_or(0),
                             path: seg.path().to_string_lossy().into_owned(),
-                            size_bytes: Some(seg.len()),
                         },
                     )
                 })
@@ -224,10 +223,6 @@ mod tests {
             config.buffers["a"].path,
             ctx.buffers["a"].path().to_string_lossy()
         );
-        assert_eq!(
-            config.buffers["a"].size_bytes,
-            Some(PLACEHOLDER_BUFFER_BYTES)
-        );
         assert_eq!(config.streams["s"].dpi_width_bytes, 5);
         let value: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(json, value.to_string(), "preserve deterministic wire bytes");
@@ -242,17 +237,10 @@ mod tests {
     }
 
     #[test]
-    fn resize_buffer_updates_config_size() {
+    fn resize_buffer_grows_the_segment() {
         let mut ctx = CosimContext::new(&make_spec()).expect("new");
         ctx.resize_buffer("a", 5 * 1024 * 1024).expect("resize");
         assert_eq!(ctx.buffers["a"].len(), 5 * 1024 * 1024);
-
-        let json = ctx.dpi_config_json();
-        let v: serde_json::Value = serde_json::from_str(&json).expect("json");
-        assert_eq!(
-            v["buffers"]["a"]["size_bytes"].as_u64(),
-            Some(5 * 1024 * 1024)
-        );
     }
 
     #[test]

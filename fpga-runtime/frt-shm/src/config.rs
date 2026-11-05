@@ -9,8 +9,6 @@ pub struct BufferEntry {
     #[serde(default)]
     pub base_addr: u64,
     pub path: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub size_bytes: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
