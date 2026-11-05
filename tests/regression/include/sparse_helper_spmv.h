@@ -87,11 +87,6 @@ void sort_by_fn(int nnz_s, vector<int>& cooRowIndex, vector<int>& cooColIndex,
 
 void mm_init_read(FILE* f, char* filename, MM_typecode& matcode, int& m, int& n,
                   int& nnz) {
-  // if ((f = fopen(filename, "r")) == NULL) {
-  //         cout << "Could not open " << filename << endl;
-  //         return 1;
-  // }
-
   if (mm_read_banner(f, &matcode) != 0) {
     cout << "Could not process Matrix Market banner for " << filename << endl;
     exit(1);
@@ -267,11 +262,7 @@ void generate_edge_list_for_one_PE(const vector<edge>& tmp_edge_list,
                                    const int NUM_Row, const int NUM_PE,
                                    const int DEP_DIST_LOAD_STORE = 10) {
   edge e_empty = {-1, -1, 0.0};
-  // vector<edge> scheduled_edges(NUM_Row);
-  // std::fill(scheduled_edges.begin(), scheduled_edges.end(), e_empty);
   vector<edge> scheduled_edges;
-
-  // const int DEP_DIST_LOAD_STORE = 7;
 
   vector<int> cycles_rows(NUM_Row, -DEP_DIST_LOAD_STORE);
   int e_dst, e_src;
@@ -409,45 +400,8 @@ void edge_list_64bit(
 
           x = x_col | x_row | x_float_val_64;
         }
-        if (NUM_CH_SPARSE != 16 && NUM_CH_SPARSE != 24) {
-          cout << "UPDATE me\n";
-          exit(1);
-        } else if (NUM_CH_SPARSE == 16) {
+        if (NUM_CH_SPARSE == 16) {
           int pe_idx = j + cc * 8;
-          // ch= 0: pe  0(  0,   1) pe 16( 32,  33) pe 32( 64,  65) pe 48( 96,
-          // 97) pe 64(128, 129) pe 80(160, 161) pe 96(192, 193) pe112(224, 225)
-          // ch= 1: pe  8( 16,  17) pe 24( 48,  49) pe 40( 80,  81) pe 56(112,
-          // 113) pe 72(144, 145) pe 88(176, 177) pe104(208, 209) pe120(240,
-          // 241) ch= 2: pe  1(  2,   3) pe 17( 34,  35) pe 33( 66,  67) pe 49(
-          // 98,  99) pe 65(130, 131) pe 81(162, 163) pe 97(194, 195) pe113(226,
-          // 227) ch= 3: pe  9( 18,  19) pe 25( 50,  51) pe 41( 82,  83) pe
-          // 57(114, 115) pe 73(146, 147) pe 89(178, 179) pe105(210, 211)
-          // pe121(242, 243) ch= 4: pe  2(  4,   5) pe 18( 36,  37) pe 34( 68,
-          // 69) pe 50(100, 101) pe 66(132, 133) pe 82(164, 165) pe 98(196, 197)
-          // pe114(228, 229) ch= 5: pe 10( 20,  21) pe 26( 52,  53) pe 42( 84,
-          // 85) pe 58(116, 117) pe 74(148, 149) pe 90(180, 181) pe106(212, 213)
-          // pe122(244, 245) ch= 6: pe  3(  6,   7) pe 19( 38,  39) pe 35( 70,
-          // 71) pe 51(102, 103) pe 67(134, 135) pe 83(166, 167) pe 99(198, 199)
-          // pe115(230, 231) ch= 7: pe 11( 22,  23) pe 27( 54,  55) pe 43( 86,
-          // 87) pe 59(118, 119) pe 75(150, 151) pe 91(182, 183) pe107(214, 215)
-          // pe123(246, 247) ch= 8: pe  4(  8,   9) pe 20( 40,  41) pe 36( 72,
-          // 73) pe 52(104, 105) pe 68(136, 137) pe 84(168, 169) pe100(200, 201)
-          // pe116(232, 233) ch= 9: pe 12( 24,  25) pe 28( 56,  57) pe 44( 88,
-          // 89) pe 60(120, 121) pe 76(152, 153) pe 92(184, 185) pe108(216, 217)
-          // pe124(248, 249) ch=10: pe  5( 10,  11) pe 21( 42,  43) pe 37( 74,
-          // 75) pe 53(106, 107) pe 69(138, 139) pe 85(170, 171) pe101(202, 203)
-          // pe117(234, 235) ch=11: pe 13( 26,  27) pe 29( 58,  59) pe 45( 90,
-          // 91) pe 61(122, 123) pe 77(154, 155) pe 93(186, 187) pe109(218, 219)
-          // pe125(250, 251) ch=12: pe  6( 12,  13) pe 22( 44,  45) pe 38( 76,
-          // 77) pe 54(108, 109) pe 70(140, 141) pe 86(172, 173) pe102(204, 205)
-          // pe118(236, 237) ch=13: pe 14( 28,  29) pe 30( 60,  61) pe 46( 92,
-          // 93) pe 62(124, 125) pe 78(156, 157) pe 94(188, 189) pe110(220, 221)
-          // pe126(252, 253) ch=14: pe  7( 14,  15) pe 23( 46,  47) pe 39( 78,
-          // 79) pe 55(110, 111) pe 71(142, 143) pe 87(174, 175) pe103(206, 207)
-          // pe119(238, 239) ch=15: pe 15( 30,  31) pe 31( 62,  63) pe 47( 94,
-          // 95) pe 63(126, 127) pe 79(158, 159) pe 95(190, 191) pe111(222, 223)
-          // pe127(254, 255)
-
           int pix_m16 = pe_idx % 16;
           sparse_A_fpga_vec[(pix_m16 % 8) * 2 + pix_m16 / 8]
                            [(pe_idx % 128) / 16 + i * 8] = x;

@@ -87,11 +87,6 @@ void sort_by_fn(int nnz_s, vector<int>& cooRowIndex, vector<int>& cooColIndex,
 
 void mm_init_read(FILE* f, char* filename, MM_typecode& matcode, int& m, int& n,
                   int& nnz) {
-  // if ((f = fopen(filename, "r")) == NULL) {
-  //         cout << "Could not open " << filename << endl;
-  //         return 1;
-  // }
-
   if (mm_read_banner(f, &matcode) != 0) {
     cout << "Could not process Matrix Market banner for " << filename << endl;
     exit(1);
@@ -272,11 +267,7 @@ void generate_edge_list_for_one_PE(const vector<edge>& tmp_edge_list,
                                    const int NUM_Row, const int NUM_PE,
                                    const int DEP_DIST_LOAD_STORE = 10) {
   edge e_empty = {-1, -1, 0.0};
-  // vector<edge> scheduled_edges(NUM_Row);
-  // std::fill(scheduled_edges.begin(), scheduled_edges.end(), e_empty);
   vector<edge> scheduled_edges;
-
-  // const int DEP_DIST_LOAD_STORE = 7;
 
   vector<int> cycles_rows(NUM_Row, -DEP_DIST_LOAD_STORE);
   int e_dst, e_src;
