@@ -47,8 +47,7 @@ void Task(tapa::mmap<int> mem) { ... }
 ## Raw pointer used as a task memory port
 
 **Symptom:** `tapacc` reports that a raw pointer task parameter is not a TAPA
-memory port. Older versions could instead fail much later while packaging the
-XO, with an unrelated `ipx::add_bus_parameter` or missing bus-interface error.
+memory port.
 
 **Cause:** Vitis HLS uses raw pointer parameters plus `m_axi` pragmas for
 off-chip memory. TAPA task ports encode that interface in the C++ type itself,
@@ -142,26 +141,6 @@ void Top(tapa::mmaps<int, 4> mem) {
   tapa::task().invoke<tapa::join, 4>(Task, data_q, mem);
 }
 ```
-
----
-
-## `tapac` not found
-
-**Symptom:** Shell reports `command not found: tapac`.
-
-**Cause:** `tapac` was the old command name. It has been replaced by `tapa compile`.
-
-**Fix:** Replace `tapac` with `tapa compile`. Most flags carry over directly.
-
-```bash
-# Old
-tapac --top VecAdd -f vadd.cpp -o vadd.xo ...
-
-# New
-tapa compile --top VecAdd -f vadd.cpp -o vadd.xo ...
-```
-
-Run `tapa compile --help` for the full option list.
 
 ---
 
