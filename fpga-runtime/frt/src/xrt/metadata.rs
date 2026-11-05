@@ -7,6 +7,7 @@
 
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::kernel_xml::{self, KernelXml};
+use std::collections::HashMap;
 
 /// Parse the metadata XML embedded in an xclbin.
 ///
@@ -115,6 +116,22 @@ pub struct AieRtp {
     pub bytes: usize,
     pub ping_address: u32,
     pub pong_address: u32,
+}
+
+impl AieRtp {
+    /// The bytes this parameter programs: the scalar bound to its kernel
+    /// argument, zero-padded to `bytes`. A missing binding means the
+    /// parameter names an argument that is not a scalar.
+    pub fn scalar_value(&self, values: &HashMap<u32, Vec<u8>>) -> Result<Vec<u8>> {
+        let mut value = values.get(&self.arg).cloned().ok_or_else(|| {
+            FrtError::Xrt(format!(
+                "runtime parameter `{}` carries argument {}, which is not a scalar",
+                self.alias, self.arg
+            ))
+        })?;
+        value.resize(self.bytes, 0);
+        Ok(value)
+    }
 }
 
 /// A string-or-number JSON value as u64 (xclbinutil quotes; aiecompiler does not).

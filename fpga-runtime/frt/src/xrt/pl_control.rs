@@ -149,13 +149,7 @@ pub(super) fn start(
         writes.push((CORE_CONTROL, CORE_DISABLE));
     }
     for rtp in &graph.rtps {
-        let mut value = values.get(&rtp.arg).cloned().ok_or_else(|| {
-            FrtError::Xrt(format!(
-                "runtime parameter `{}` carries argument {}, which is not a scalar",
-                rtp.alias, rtp.arg
-            ))
-        })?;
-        value.resize(rtp.bytes, 0);
+        let value = rtp.scalar_value(values)?;
         for (index, chunk) in value.chunks(4).enumerate() {
             let mut word = [0u8; 4];
             word[..chunk.len()].copy_from_slice(chunk);
