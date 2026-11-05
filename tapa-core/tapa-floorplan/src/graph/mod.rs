@@ -5,9 +5,8 @@ pub mod floor_graph;
 mod query;
 mod validate;
 
-// floor_graph remains the home of the public graph types so their canonical
-// path (`tapa_floorplan::graph::floor_graph::*`) — and thus the recorded
-// public API — is unchanged by the build/validate/query split.
+// The public graph types keep their `graph::floor_graph` home; the
+// build/validate/query split is internal.
 pub use floor_graph::{
     AxiNet, ControlInterface, ControlNet, FloorGraph, GraphError, MemoryInterface, PlacementEdge,
     Stream, Vertex,

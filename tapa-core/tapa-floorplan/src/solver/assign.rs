@@ -5,8 +5,7 @@
 //! net's candidate paths) one binary per candidate and force exactly one
 //! selection. [`add_one_of_k_row`] builds that shape in one place and
 //! [`read_one_of_k`] validates the solved selection; the callers keep their
-//! own variable labels and row names, so the constructed model stays
-//! byte-identical to what each formulation built inline.
+//! own variable labels and row names.
 
 use crate::solver::solve::SOLUTION_TOLERANCE;
 use crate::solver::{Comparison, LinExpr, LpModel, LpSolution, LpVar};
@@ -70,9 +69,8 @@ pub enum OneOfKError {
 /// a solution selected.
 ///
 /// Every variable must be present, finite, and binary within the solver's
-/// [`SOLUTION_TOLERANCE`], and exactly one may be selected. The missing,
-/// non-binary, and exactly-one checks run in per-variable order, matching
-/// the readbacks the placement and routing formulations hand-wrote inline.
+/// [`SOLUTION_TOLERANCE`], and exactly one may be selected. The checks run
+/// in per-variable order.
 pub fn read_one_of_k(solution: &LpSolution, vars: &[LpVar]) -> Result<usize, OneOfKError> {
     let mut values = Vec::with_capacity(vars.len());
     let mut selected = Vec::new();

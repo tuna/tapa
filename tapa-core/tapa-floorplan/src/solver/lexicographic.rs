@@ -16,8 +16,7 @@ use crate::solver::{
     Comparison, LinExpr, LpModel, LpSolution, LpVar, SolveOpts, Solver, SolverError,
 };
 
-/// Row name pinning the achieved primary objective; both formulations
-/// used this exact name.
+/// Row name pinning the achieved primary objective.
 const PIN_ROW: &str = "lexicographic_pin";
 
 /// The achieved objective, widened so the primary incumbent itself always
@@ -37,8 +36,7 @@ fn pin_bound(achieved: f64) -> f64 {
 /// candidate ranking over `rank_rows` (each row's candidate position is
 /// its rank, so the lowest-ranked feasible candidate wins and the optimum
 /// is unique). `pinned` is set as `pinned <= achieved` and the rank
-/// objective replaces the model's objective, in that order — the same
-/// mutation order the formulations used inline.
+/// objective replaces the model's objective, in that order.
 ///
 /// Returns the refined incumbent when the refinement solve finds one;
 /// `None` means the caller falls back to the primary incumbent.

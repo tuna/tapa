@@ -5,8 +5,7 @@
 //! `(coefficient, variable)` term lists — skipping zero coefficients at
 //! the source, keeping insertion order — and sum them into a [`LinExpr`]
 //! exactly once. [`SparseRow`] gives that idiom one name and one
-//! conversion point, so the collector idiom no longer repeats as raw
-//! `Vec` plumbing.
+//! conversion point.
 
 use crate::solver::{LinExpr, LpVar};
 

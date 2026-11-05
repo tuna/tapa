@@ -111,7 +111,7 @@ fn plan_with_retry_ceiling(
 /// [`plan_with_retry_ceiling`] with explicit solvers for the two solve
 /// phases, so fingerprint instrumentation can record the placement-phase
 /// and finish-phase models separately. Production callers pass one CBC
-/// instance twice — identical to the previous single-solver flow.
+/// instance twice.
 #[allow(
     clippy::too_many_arguments,
     reason = "mirrors plan_with_retry_ceiling plus the two phase solvers"

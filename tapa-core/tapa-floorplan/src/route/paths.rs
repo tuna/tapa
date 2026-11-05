@@ -2,10 +2,11 @@
 //!
 //! Every *simple* path between the endpoints within `Manhattan + max_detour`
 //! hops is enumerated. Candidate grids are small (a few SLR rows by a few
-//! columns), so the four-shape restriction of earlier revisions only ever
-//! caused false infeasibility on congested mid-routes, at no meaningful
-//! solver saving. Paths are returned shortest-first with a lexicographic
-//! tie-break, which the routing refinement's stable rank objective relies on.
+//! columns), so every simple path is enumerated; restricting shapes only
+//! ever caused false infeasibility on congested mid-routes, at no
+//! meaningful solver saving. Paths are returned shortest-first with a
+//! lexicographic tie-break, which the routing refinement's stable rank
+//! objective relies on.
 
 use std::collections::BTreeSet;
 
