@@ -570,7 +570,8 @@ fn invalid_instance_arg_category_rejected() {
 #[test]
 fn unknown_task_synth_policy_rejected() {
     // The closed `SynthTarget` enum rejects the old flow-derived task
-    // targets: only `"hls"` / `"ignore"` are valid per-task values now.
+    // targets: only `"hls"` / `"ignore"` / `"aie"` are valid per-task
+    // values now.
     let json = r#"{
         "schema_version": 3,
         "top": "T", "target": "xilinx-hls",

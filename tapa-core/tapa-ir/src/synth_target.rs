@@ -45,7 +45,7 @@ mod tests {
     fn unknown_value_rejected() {
         // The old flow-derived task target (e.g. `"xilinx_vitis"`) is no
         // longer a valid per-task synth policy: it must be rejected, not
-        // preserved. tapacc emits `"hls"` / `"ignore"` only.
+        // preserved. tapacc emits `"hls"` / `"ignore"` / `"aie"` only.
         assert!(
             serde_json::from_str::<SynthTarget>(r#""xilinx_vitis""#).is_err(),
             "unknown synth policy must be rejected",
