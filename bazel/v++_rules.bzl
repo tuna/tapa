@@ -16,7 +16,7 @@ def _vpp_xclbin_impl(ctx):
     top_name = ctx.attr.top_name
     platform_name = ctx.attr.platform_name
     xclbin = ctx.actions.declare_file(
-        ctx.attr.xclbin or "{}.{}.{}.xclbin".format(
+        "{}.{}.{}.xclbin".format(
             top_name,
             platform_name,
             target,
@@ -113,9 +113,6 @@ _vpp_xclbin = rule(
             doc = "The target to be linked (sw_emu, hw_emu, hw).",
             values = ["sw_emu", "hw_emu", "hw"],
         ),
-        "xclbin": attr.string(
-            doc = "The output xclbin file name for the kernel.",
-        ),
     },
 )
 
@@ -139,9 +136,9 @@ def _xilinx_wrapper_impl(ctx):
     # AMD unified-installer `<root>/<ver>/<Tool>` layout (2025.x); only the
     # generated script can probe which one exists on the executing host.
     candidates = xilinx_tool_dir_candidates(
-        ctx.attr.tool_path,
+        XILINX_TOOL_PATH,
         ctx.attr.tool,
-        ctx.attr.tool_version,
+        XILINX_TOOL_VERSION,
     )
     lines = [
         "#!/bin/bash",
@@ -167,7 +164,7 @@ def _xilinx_wrapper_impl(ctx):
         'source "$_TAPA_TOOL_DIR/settings64.sh"',
     ]
     if ctx.attr.xrt:
-        lines.append("source {}".format(ctx.attr.xrt_setup))
+        lines.append("source {}".format(XILINX_XRT_SETUP))
 
     # Re-prepend after sourcing settings64.sh so our sh/xsc wrappers stay first.
     lines.append('export PATH="$_TAPA_SH_DIR:$PATH"')
@@ -249,7 +246,7 @@ def _xilinx_wrapper_impl(ctx):
     lines.append("  fi")
     lines.append("fi")
     lines.append('export PLATFORM_REPO_PATHS="{}${{PLATFORM_REPO_PATHS:+:$PLATFORM_REPO_PATHS}}"'.format(
-        ctx.attr.platform_repo_paths,
+        XILINX_PLATFORM_REPO_PATHS,
     ))
     if ctx.attr.argv0:
         lines.append('exec {} "$@"'.format(ctx.attr.argv0))
@@ -272,22 +269,6 @@ xilinx_wrapper = rule(
         "xrt": attr.bool(
             default = False,
             doc = "If true, also set up XRT environment.",
-        ),
-        "xrt_setup": attr.string(
-            doc = "Path to XRT setup.sh script.",
-            default = XILINX_XRT_SETUP,
-        ),
-        "tool_path": attr.string(
-            doc = "The tool path for this target.",
-            default = XILINX_TOOL_PATH,
-        ),
-        "tool_version": attr.string(
-            doc = "The tool version for this target.",
-            default = XILINX_TOOL_VERSION,
-        ),
-        "platform_repo_paths": attr.string(
-            doc = "Colon-separated platform repository paths.",
-            default = XILINX_PLATFORM_REPO_PATHS,
         ),
     },
 )
