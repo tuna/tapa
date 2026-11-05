@@ -9,7 +9,6 @@ workspace = true
 [dependencies]
 askama = { workspace = true }
 frt-shm = { workspace = true }
-libc = { workspace = true }
 quick-xml = { workspace = true }
 regex-lite = { workspace = true }
 serde = { workspace = true }

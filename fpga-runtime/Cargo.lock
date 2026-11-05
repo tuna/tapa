@@ -271,7 +271,6 @@ version = "0.1.0"
 dependencies = [
  "askama",
  "frt-shm",
- "libc",
  "quick-xml",
  "regex-lite",
  "serde",
