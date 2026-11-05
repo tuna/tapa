@@ -21,7 +21,7 @@ use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 
 use self::transport::{cleanup_session, local_to_remote_path, unique_session_id, upload_batch};
 pub(crate) use self::transport::{download_path, shell_quote};
@@ -116,21 +116,16 @@ fn build_remote_script(
             parts.push(format!("source {}", shell_quote(xs)));
         }
     }
+    let relocate =
+        |path: &Utf8Path| local_to_remote_path(&crate::util::absolutize(path), &plan.session_dir);
     for (k, v) in &inv.env {
         if !is_forwardable_env(k) {
             continue;
         }
-        let rv = v
-            .render(|path| local_to_remote_path(&crate::util::absolutize(path), &plan.session_dir));
+        let rv = v.render(relocate);
         parts.push(format!("export {}={}", k, shell_quote(&rv)));
     }
-    let rewritten_args: Vec<String> = inv
-        .args
-        .iter()
-        .map(|a| {
-            a.render(|path| local_to_remote_path(&crate::util::absolutize(path), &plan.session_dir))
-        })
-        .collect();
+    let rewritten_args: Vec<String> = inv.args.iter().map(|a| a.render(relocate)).collect();
     let exec = std::iter::once(shell_quote(&inv.program))
         .chain(rewritten_args.iter().map(|a| shell_quote(a)))
         .collect::<Vec<_>>()
@@ -214,8 +209,8 @@ impl RemoteToolRunner {
                 to_upload.push(p.clone());
             }
         }
-        let mut seen2: std::collections::HashSet<Utf8PathBuf> = std::collections::HashSet::new();
-        to_upload.retain(|p| seen2.insert(p.clone()));
+        let mut seen = std::collections::HashSet::new();
+        to_upload.retain(|p| seen.insert(p.clone()));
 
         UploadPlan {
             session_dir,
