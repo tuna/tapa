@@ -17,7 +17,6 @@ use tapa_ir::WorkState;
 
 use super::{plan_with_retry_ceiling_and_solvers, PlanInputs, PlanOptions};
 use crate::error::PlanError;
-use crate::partition::ilp::MAX_USAGE_LIMIT;
 use crate::solver::fingerprint::{RecordingSolver, SolveFingerprint};
 use crate::solver::CbcSolver;
 
@@ -33,12 +32,11 @@ pub fn fingerprint_plan_models_json(
 ) -> Result<String, PlanError> {
     let placement = RecordingSolver::new(CbcSolver::new());
     let finish = RecordingSolver::new(CbcSolver::new());
-    // Mirror the plan_with_inputs retry ceiling.
     plan_with_retry_ceiling_and_solvers(
         state,
         options,
         inputs,
-        options.usage_limit.max(MAX_USAGE_LIMIT),
+        super::table_retry_ceiling(state, options),
         &placement,
         &finish,
     )?;
