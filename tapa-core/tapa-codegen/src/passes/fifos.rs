@@ -42,7 +42,7 @@ fn fifo_port_args(name: &str, rst: Expr) -> Vec<PortArg> {
 }
 
 /// Build a FIFO module instance with WIDTH and DEPTH parameters.
-pub fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> ModuleInstance {
+fn build_fifo_instance(name: &str, rst: Expr, width: Expr, depth: u32) -> ModuleInstance {
     let name = sanitize_array_name(name);
     ModuleInstance::new("fifo", format!("{name}_fifo"))
         .with_params(vec![
@@ -80,7 +80,7 @@ fn build_registered_ready_fifo_instance(
 /// `BODY_LEVEL=0` retains a registered Head ready path
 /// and the Tail FIFO, which makes adjacent Single and Single-H/Double-V
 /// crossings both timing-safe and lossless.
-pub fn build_hs_pipeline_instance(
+fn build_hs_pipeline_instance(
     name: &str,
     rst: Expr,
     width: Expr,
@@ -118,7 +118,7 @@ fn build_internal_fifo_instance(
 /// Build an AXIS-to-stream or stream-to-AXIS adapter instance.
 ///
 /// `is_input`: true for `axis_to_stream_adapter`, false for `stream_to_axis_adapter`.
-pub fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> ModuleInstance {
+fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> ModuleInstance {
     let fifo_name = sanitize_array_name(fifo_name);
     let module_name = if is_input {
         "axis_to_stream_adapter"

@@ -17,11 +17,11 @@ use tapa_rtl::VerilogModule;
 
 use crate::rtl_state::routing_id_bits;
 
-pub const READ_ADDR: &str = "read_addr";
-pub const READ_DATA: &str = "read_data";
-pub const WRITE_ADDR: &str = "write_addr";
-pub const WRITE_DATA: &str = "write_data";
-pub const WRITE_RESP: &str = "write_resp";
+const READ_ADDR: &str = "read_addr";
+const READ_DATA: &str = "read_data";
+const WRITE_ADDR: &str = "write_addr";
+const WRITE_DATA: &str = "write_data";
+const WRITE_RESP: &str = "write_resp";
 
 const TAGS: &[&str] = &[READ_ADDR, READ_DATA, WRITE_ADDR, WRITE_DATA, WRITE_RESP];
 
@@ -54,7 +54,7 @@ fn tag_data_width(tag: &str, suffix: &str, data_width: u32) -> u32 {
     }
 }
 
-pub fn signal_name(base: &str, tag: &str, suffix: &str) -> String {
+fn signal_name(base: &str, tag: &str, suffix: &str) -> String {
     let suffix = suffix.trim_start_matches('_');
     format!("{}_{}__{suffix}", sanitize_array_name(base), tag)
 }
@@ -132,7 +132,7 @@ pub fn has_direct_m_axi_ports(child_rtl: &VerilogModule, child_port: &str) -> bo
         })
 }
 
-pub fn child_connection_expr(base: &str, tag: &str, suffix: &str) -> Expr {
+fn child_connection_expr(base: &str, tag: &str, suffix: &str) -> Expr {
     let signal = Expr::ident(signal_name(base, tag, suffix));
     if matches!((tag, suffix), (READ_DATA | WRITE_RESP, "_dout")) {
         Expr::concat(vec![Expr::lit("1'b0"), signal])

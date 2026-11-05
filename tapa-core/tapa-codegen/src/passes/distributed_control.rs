@@ -35,7 +35,7 @@ pub const FABRIC_RESET_N: &str = "__tapa_control_fabric_reset_n";
 /// floorplanned builds so Vivado replicates the driver and keeps reset
 /// distribution local to each SLR. The fabric reset otherwise fans out to
 /// every FIFO/AXI endpoint across all SLRs.
-pub const FABRIC_RESET_MAX_FANOUT: u32 = 256;
+const FABRIC_RESET_MAX_FANOUT: u32 = 256;
 
 /// The active-high reset signal declaration, with a `max_fanout` attribute
 /// when distributed control is active (the floorplanned fabric reset) and a

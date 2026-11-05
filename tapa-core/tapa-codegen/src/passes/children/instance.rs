@@ -335,7 +335,7 @@ fn direct_mmap_connection_expr(
     )
 }
 
-pub fn mmap_wire_prefix(arg_name: &str, slave_index: Option<usize>) -> String {
+fn mmap_wire_prefix(arg_name: &str, slave_index: Option<usize>) -> String {
     let sanitized_arg = sanitize_array_name(arg_name);
     match slave_index {
         Some(slave_idx) => crate::m_axi::crossbar_slave_prefix(&sanitized_arg, slave_idx),

@@ -33,7 +33,7 @@ struct RoutedEndpoint {
 /// An endpoint is absent when it is co-located with its external memory bank.
 /// A present endpoint contains exactly one route for every enabled typed AXI
 /// channel; read-only and write-only async bridges prune the other group.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DirectAxiPipelinePlan {
     routed: BTreeMap<AxiEndpoint, RoutedEndpoint>,
 }
