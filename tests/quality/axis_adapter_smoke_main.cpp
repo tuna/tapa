@@ -100,7 +100,6 @@ int main(int argc, char** argv) {
   }
 
   top->m_stream_read = 1;
-  top->s_axis_tvalid = 0;
   tick();
   check(top->m_stream_empty_n == 0, "axis_to_stream drained");
 
