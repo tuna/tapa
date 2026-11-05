@@ -19,5 +19,3 @@ tempfile = { workspace = true }
 thiserror = { workspace = true }
 which = { workspace = true }
 zip = { workspace = true }
-
-[dev-dependencies]
