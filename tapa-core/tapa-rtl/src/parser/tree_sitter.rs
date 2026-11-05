@@ -293,9 +293,9 @@ fn first_issue(root: Node, src: &[u8]) -> Option<ParseIssue> {
 // ── Signal extraction ───────────────────────────────────────────────
 
 /// Whether a module-level declaration node is a wire/reg signal
-/// declaration. Mirrors the old text-level `starts_with` gate: only
-/// declarations whose text begins with `wire` or `reg` are signals;
-/// `logic`/`integer`/procedural-local declarations are not.
+/// declaration: only declarations whose text begins with `wire` or
+/// `reg` are signals; `logic`/`integer`/procedural-local declarations
+/// are not.
 pub(super) fn signal_kind_of(node: Node, src: &[u8]) -> Option<SignalKind> {
     if !matches!(node.kind(), "net_declaration" | "data_declaration") {
         return None;
@@ -457,8 +457,8 @@ pub(super) fn module_header(module: Node) -> Option<Node> {
 }
 
 /// Whether a node sitting before the module is trivia the module scan
-/// may skip: comments, attributes, and compiler directives. Mirrors the
-/// old text scan, which refused the parse on any other leading token.
+/// may skip: comments, attributes, and compiler directives. Any other
+/// leading token rejects the parse.
 fn is_preamble_trivia(node: Node, src: &[u8]) -> bool {
     let text = text_of(node, src).trim_start();
     matches!(

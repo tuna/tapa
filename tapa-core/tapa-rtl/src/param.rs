@@ -6,7 +6,6 @@ use crate::port::Width;
 /// A parameter extracted from a Verilog module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
-    /// Parameter name.
     pub name: String,
     /// Default value as a token expression.
     pub default: Expression,

@@ -83,8 +83,6 @@ fn write_statement(f: &mut fmt::Formatter<'_>, stmt: &Statement, indent: usize) 
     }
 }
 
-// ── Expression Display ───────────────────────────────────────────────
-
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -108,8 +106,6 @@ impl fmt::Display for Expr {
     }
 }
 
-// ── Width Display ────────────────────────────────────────────────────
-
 impl fmt::Display for Width {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let msb = expression_source(&self.msb);
@@ -117,8 +113,6 @@ impl fmt::Display for Width {
         write!(f, "[{msb}:{lsb}]")
     }
 }
-
-// ── Direction Display ────────────────────────────────────────────────
 
 impl fmt::Display for Direction {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -130,8 +124,6 @@ impl fmt::Display for Direction {
     }
 }
 
-// ── Port Display ─────────────────────────────────────────────────────
-
 impl fmt::Display for Port {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} wire", self.direction)?;
@@ -141,8 +133,6 @@ impl fmt::Display for Port {
         write!(f, " {}", self.name)
     }
 }
-
-// ── Signal Display ───────────────────────────────────────────────────
 
 impl fmt::Display for SignalKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -166,8 +156,6 @@ impl fmt::Display for Signal {
     }
 }
 
-// ── PortArg / ParamArg Display ───────────────────────────────────────
-
 impl fmt::Display for PortArg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, ".{}({})", self.port_name, self.connection)
@@ -179,8 +167,6 @@ impl fmt::Display for ParamArg {
         write!(f, ".{}({})", self.param_name, self.value)
     }
 }
-
-// ── ModuleInstance Display ───────────────────────────────────────────
 
 impl fmt::Display for ModuleInstance {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -198,15 +184,11 @@ impl fmt::Display for ModuleInstance {
     }
 }
 
-// ── ContinuousAssign Display ─────────────────────────────────────────
-
 impl fmt::Display for ContinuousAssign {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "assign {} = {};", self.lhs, self.rhs)
     }
 }
-
-// ── AlwaysBlock Display ──────────────────────────────────────────────
 
 impl fmt::Display for AlwaysBlock {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

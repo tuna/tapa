@@ -33,9 +33,7 @@ impl Width {
 /// A port extracted from a Verilog module declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Port {
-    /// Port name.
     pub name: String,
-    /// Port direction.
     pub direction: Direction,
     /// Optional width `[msb:lsb]`; `None` means 1-bit.
     pub width: Option<Width>,

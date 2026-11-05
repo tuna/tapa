@@ -12,7 +12,6 @@ use crate::signal::Signal;
 /// Verilog module: ports, parameters, signals, and the raw source text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerilogModule {
-    /// Module name.
     pub name: String,
     /// Ports with direction and width.
     pub ports: Vec<Port>,

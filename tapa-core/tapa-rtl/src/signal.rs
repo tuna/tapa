@@ -12,9 +12,7 @@ pub enum SignalKind {
 /// A signal (wire or reg) extracted from a Verilog module.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Signal {
-    /// Signal name.
     pub name: String,
-    /// Wire or reg.
     pub kind: SignalKind,
     /// Optional width `[msb:lsb]`; `None` means 1-bit.
     pub width: Option<Width>,
