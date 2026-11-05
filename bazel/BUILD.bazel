@@ -65,10 +65,3 @@ xilinx_wrapper(
     name = "vitis_hls_env",
     tool = vitis_layout_subdir(XILINX_TOOL_VERSION).strip("/"),
 )
-
-xilinx_wrapper(
-    name = "xsc_xv",
-    argv0 = "xsc",
-    target_compatible_with = ["@platforms//os:linux"],
-    tool = "Vivado",
-)
