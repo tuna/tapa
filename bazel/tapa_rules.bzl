@@ -112,7 +112,7 @@ def _staged_tapa_command(source, destination, arguments, pre_exec = []):
         "chmod -R u+w {}".format(sh_quote(destination)),
     ]
     lines += pre_exec
-    lines.append("{}".format(" ".join([sh_quote(arg) for arg in arguments])))
+    lines.append(" ".join([sh_quote(arg) for arg in arguments]))
     return "\n".join(lines)
 
 def _stage_hls_fixtures(fixture_files, destination):
