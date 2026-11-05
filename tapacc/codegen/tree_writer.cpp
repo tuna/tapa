@@ -400,14 +400,6 @@ TreeFileBuffer* TreeSession::BufferForLocation(clang::SourceLocation loc) {
   return it == buffers_by_file_.end() ? nullptr : it->second;
 }
 
-bool TreeSession::InsertGuard(clang::SourceRange range, llvm::StringRef opening,
-                              llvm::StringRef closing, std::string construct) {
-  edits_.Describe(std::move(construct));
-  if (!edits_.CanRewrite(range)) return false;
-  TreeFileBuffer* const buffer = BufferForLocation(range.getBegin());
-  return buffer != nullptr && buffer->InsertGuard(range, opening, closing);
-}
-
 // The opening renders immediately before the definition and the closing
 // immediately after it. A macro-owned anchor (a body spelled by a macro:
 // the closing brace, or the whole definition) composes into that

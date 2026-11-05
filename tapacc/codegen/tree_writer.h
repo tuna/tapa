@@ -192,8 +192,6 @@ class TreeSession {
   EditSink& edits() { return edits_; }
   TreeFileBuffer* BufferForPath(llvm::StringRef path);
   TreeFileBuffer* BufferForLocation(clang::SourceLocation loc);
-  bool InsertGuard(clang::SourceRange range, llvm::StringRef opening,
-                   llvm::StringRef closing, std::string construct);
   bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening,
                           std::string construct);
   bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing,
