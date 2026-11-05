@@ -36,12 +36,6 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     // only other say is which platform shell device resolution accepts.
     let mut state = work_io::load(&ctx.work_dir)?;
     let partition = tapa_ir::AiePartition::derive(&state.graph)?;
-    if args.aie_only && partition.is_none() {
-        return Err(CliError::InvalidArg(
-            "`--aie-only` requires an AI Engine partition, but the design has no AI Engine task"
-                .to_string(),
-        ));
-    }
     if partition.is_some() && state.graph.target != tapa_ir::Target::XilinxVitis {
         return Err(CliError::InvalidArg(
             "AI Engine tasks are linked by `v++`; analyze with `--target xilinx-vitis`".to_string(),
@@ -57,12 +51,18 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     let clock_period = ClockPeriod::from_nanoseconds_str(&device.clock_period)
         .map_err(|error| CliError::InvalidArg(format!("invalid synthesis target: {error}")))?;
     if args.aie_only {
+        let Some(partition) = partition.as_ref() else {
+            return Err(CliError::InvalidArg(
+                "`--aie-only` requires an AI Engine partition, but the design has no AI Engine task"
+                    .to_string(),
+            ));
+        };
         return run_aie_only(
             args,
             ctx,
             runner,
             state,
-            partition.as_ref().expect("checked above"),
+            partition,
             &device.part_num,
             clock_period,
         );
