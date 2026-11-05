@@ -41,7 +41,7 @@ if [ "$(id -u)" -eq 0 ]; then
   CREATE_SYMLINKS="yes"
   MODIFY_PROFILE_PATH="no"
 
-elif [ "$(id -u)" -ne 0 ]; then
+else
   # Default to the user's home directory if the user does not have the root privilege.
   TAPA_INSTALL_DIR="${TAPA_INSTALL_DIR:-$HOME/.tapa}"
   CREATE_SYMLINKS="no"
