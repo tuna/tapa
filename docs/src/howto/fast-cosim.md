@@ -14,20 +14,7 @@ up and run.
 - One of these backends:
   - **xsim**: Requires Vivado on Linux.
   - **verilator**: Open-source, works on Linux and macOS, and does not require
-    Vivado. **Must be 5.044 or newer** — see below.
-
-```admonish warning title="Check your Verilator version before choosing it"
-Verilator older than 5.044 cannot elaborate the AXI master Vitis HLS generates
-for an `mmap` port, so every design with one fails — including `vadd`. The
-distribution packages are well behind that floor (Ubuntu 24.04 ships 5.020), so
-`apt install verilator` is usually not enough; check `verilator --version` and
-[build from source](https://verilator.org/guide/latest/install.html) if it is
-older. The failure looks like a Verilog parsing error rather than a version
-problem:
-
-    %Error: rtl/Stream2Mmap_mmap_m_axi.v:2046:27: Expecting expression to be
-            constant, but can't determine constant for FUNCREF 'log2'
-```
+    Vivado. **Must be 5.044 or newer**.
 
 ## Commands
 
@@ -52,6 +39,11 @@ The default backend is `xsim`. To switch to Verilator:
 ```bash
 ./vadd --bitstream vecadd.xo -cosim_simulator verilator 1000
 ```
+
+Verilator must be 5.044 or newer: older releases reject the AXI master that
+Vitis HLS generates for an `mmap` port, and the failure surfaces as a
+misleading Verilog parsing error. See [Cosimulation
+Issues](../troubleshoot/cosim-issues.md) for the full diagnosis.
 
 Verilator generates models for supported HLS floating-point and unsigned
 divider IP from the packaged Tcl configuration, including the declared
@@ -175,44 +167,10 @@ The following flags control fast cosim behavior when passed to the host executab
 
 Fast cosim completes in seconds for simple designs. A successful run prints the application's correctness result (e.g., `PASS!`) after the simulation finishes.
 
-## Debugging frozen simulations
-
-Fast cosim has no timeout by default: a large design may legitimately need
-hours, so the runtime cannot choose a safe universal limit. For unattended
-runs, set an explicit wall-clock limit:
-
-```bash
-./vadd --bitstream vecadd.xo -cosim_timeout_seconds 3600 1000
-```
-
-On expiry, TAPA terminates the simulator process group and reports which limit
-was reached. A timeout does not distinguish a deadlock from a workload that is
-merely too large; use a reduced input first, then inspect the saved work
-directory if the reduced case also stalls.
-
-If the simulation becomes unresponsive:
-
-1. Use `-cosim_work_dir` and `-xsim_save_waveform` before starting so the
-   artifacts survive.
-2. Stop the run with Ctrl-C or `-cosim_timeout_seconds`.
-3. Open the saved `wave.wdb` in Vivado's waveform viewer. For xsim, its
-   default location is
-   `<work-dir>/run/cosim.sim/sim_1/behav/xsim/wave.wdb`.
-
-For a new interactive run, pass `-xsim_start_gui`. Do not source
-`run_cosim.tcl` merely to inspect an old waveform: the script builds and runs
-a new simulation. For xsim post-mortems, the work directory also contains the
-`tb_<TOP>.sv` testbench, the `vivado.log` transcript, and the `run/` Vivado
-project.
-
-```admonish warning
-Cross-channel access for HBM is not currently supported in fast cosimulation. Each AXI interface can only access one HBM channel.
-```
-
 ## If something goes wrong
 
 ```admonish warning
-See [Cosimulation Issues](../troubleshoot/cosim-issues.md) for diagnosis steps covering xsim hangs, Verilator build errors, and waveform debugging.
+See [Cosimulation Issues](../troubleshoot/cosim-issues.md) for diagnosis steps covering frozen or never-ending runs, xsim hangs, Verilator build errors, HBM limitations, and waveform debugging.
 ```
 
 ---
