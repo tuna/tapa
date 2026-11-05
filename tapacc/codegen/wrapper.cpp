@@ -28,7 +28,7 @@ std::string GenerateWrapper(const TaskModel& task, const Backend& backend,
   code += ") {\n";
 
   // Lower-level interface preamble for each concrete port (2-space indented,
-  // no blank separators -- matching the old wrapper layout).
+  // no blank separators).
   CodeSink sink;
   for (const clang::ParmVarDecl* param : params) {
     backend.EmitPortPreamble(

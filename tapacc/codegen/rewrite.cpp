@@ -249,8 +249,7 @@ void LowerAttrs(const clang::Stmt* stmt, clang::ASTContext& ctx,
   }
 }
 // Lower [[tapa::*]] variable attributes on function parameters (array
-// ports): the pragma goes at the top of the body, exactly where the old
-// vendor pragma sat.
+// ports): the pragma goes at the top of the body.
 void LowerParamAttrPragmas(const clang::FunctionDecl* func,
                            const Backend& backend, EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) return;

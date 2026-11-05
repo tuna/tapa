@@ -38,8 +38,7 @@ bool IsMmapArray(TapaKind k) {
   return k == TapaKind::kMmaps || k == TapaKind::kHmap;
 }
 
-// AddCodeForLowerLevelStream: HLS interface pragmas for a stream port's
-// FIFO(s).
+// HLS interface pragmas for a stream port's FIFO(s).
 void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
                      CodeSink& out) {
   const std::string name = param->getNameAsString();
@@ -72,7 +71,7 @@ void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
   }
 }
 
-// AddCodeForLowerLevelAsyncMmap: the five FIFOs of an async_mmap.
+// The five FIFOs of an async_mmap.
 void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, CodeSink& out) {
   const std::string name = param->getNameAsString();
   out.Pragma({"HLS disaggregate variable =", name});
@@ -357,8 +356,7 @@ void XilinxBackend::RewriteHelperFunc(const clang::FunctionDecl* func,
   // opposite pragma at the definition.
   if (!func->isThisDeclarationADefinition()) return;
   // Non-task helpers keep their body; only stream declarations get depth
-  // pragmas (the old RewriteOtherFunc emitted no per-parameter interface code
-  // for Xilinx).
+  // pragmas.
   RewriteStreamDefinitions(func, edits);
   // The C++ inline keyword is the portable inlining control: `inline` means
   // always inline, no keyword means never inline. Emit the vendor pragma AND

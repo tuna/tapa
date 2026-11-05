@@ -10,8 +10,7 @@
 
 namespace tapa::cc {
 
-// Accumulates generated lines and pragmas for a task body preamble, replacing
-// the old `add_line` / `add_pragma` `std::function` pair with a concrete type.
+// Accumulates generated lines and pragmas for a task body preamble.
 class CodeSink {
  public:
   void Line(llvm::StringRef line) { lines_.push_back(line.str()); }
