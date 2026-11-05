@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::LazyLock;
+use which::which;
 
 /// Acquire an exclusive `flock`-based lock on the given path.
 ///
@@ -27,7 +28,6 @@ fn acquire_exclusive_lock(lock_path: &Path) -> Result<std::fs::File> {
     file.lock()?;
     Ok(file)
 }
-use which::which;
 
 pub struct VerilatorRunner {
     pub dpi_lib: PathBuf,

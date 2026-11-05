@@ -168,7 +168,7 @@ pub fn classify_args(
     make_scalar: impl Fn(&crate::metadata::ArgSpec, u32, u32, &[u8]) -> ScalarArg,
     make_stream: impl Fn(&crate::metadata::ArgSpec, usize, usize, Option<String>, bool) -> StreamArg,
 ) -> Result<ClassifiedArgs> {
-    use crate::metadata::{ArgKind, StreamDir, StreamProtocol};
+    use crate::metadata::{StreamDir, StreamProtocol};
     use names::{infer_peek_name, stream_peek_ports_exist, top_module_contents};
 
     let mut mmaps = vec![];
