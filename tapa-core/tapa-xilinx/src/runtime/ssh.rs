@@ -254,8 +254,7 @@ impl SshSession {
     /// Probe whether the control master is currently healthy by
     /// invoking `ssh -O check <target>`. Returns `true` when the
     /// master responds to the control command, `false` otherwise.
-    /// Used in tests and optional health gates; production code
-    /// relies on `ensure_established()`'s spawn-based probe.
+    /// `ensure_established()` uses it as its liveness gate.
     #[must_use]
     pub fn control_master_alive(&self) -> bool {
         if !self.cfg.ssh_multiplex {
@@ -278,11 +277,6 @@ impl SshSession {
     /// surface as `SshMuxLost`; auth / unreachable faults surface as
     /// `SshConnect`.
     pub fn ensure_established(&self) -> Result<()> {
-        // Short-circuit when the in-process flag says the master is up
-        // AND OpenSSH confirms via `ssh -O check`. Missing the second
-        // probe addresses a latent bug: the `cm-%C` template never resolves
-        // to an on-disk path, so `cp.exists()` was always false and
-        // every call reconnected needlessly.
         {
             let s = self.state.lock().unwrap();
             if s.ready && self.cfg.ssh_multiplex && self.control_master_alive() {
