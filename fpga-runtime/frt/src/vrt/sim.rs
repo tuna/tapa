@@ -1,9 +1,9 @@
 //! RTL simulation of one SLASH VBIN through its `vpp_sim` process.
 
-use super::ctrl::{ControlChannel, ExecutionState};
+use super::ctrl::ControlChannel;
 use super::vbin::{Kernel, MemoryTarget, Vbin};
 use super::zmq::{FrameTransport, ZmqTransport};
-use crate::device::{BufferAccess, Device};
+use crate::device::{BufferAccess, Device, ExecutionState};
 use crate::error::{FrtError, Result};
 use serde::de::DeserializeOwned;
 use serde_json::{json, Value};

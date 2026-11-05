@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use super::vbin::{register_words, Arg, ArgKind, Kernel};
+use crate::device::ExecutionState;
 use crate::elapsed_ns;
 use crate::error::{FrtError, Result};
 
@@ -14,14 +15,6 @@ pub(super) const CTRL_DONE: u32 = 1 << 1;
 /// A kernel has this long to raise DONE; neither backend can cancel a run.
 pub(super) const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
 const FINISH_POLL: Duration = Duration::from_millis(1);
-
-/// Kernel lifecycle: idle, running since the enclosed instant, or finished.
-#[derive(Clone, Copy)]
-pub(super) enum ExecutionState {
-    Idle,
-    Running(Instant),
-    Finished,
-}
 
 impl ExecutionState {
     /// Control-channel mutations are rejected while the kernel runs.

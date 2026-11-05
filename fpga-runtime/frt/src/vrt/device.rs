@@ -6,7 +6,7 @@ use super::api::{
     CLOCK_REGION_USER,
 };
 use super::vbin::{Kernel, MemoryTarget, Vbin};
-use crate::device::{BufferAccess, Device};
+use crate::device::{BufferAccess, Device, ExecutionState};
 use crate::error::{FrtError, Result};
 use frt_shm::env_non_empty;
 use std::collections::BTreeMap;
@@ -15,7 +15,7 @@ use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
 
-use super::ctrl::{ControlChannel, ExecutionState, FINISH_TIMEOUT};
+use super::ctrl::{ControlChannel, FINISH_TIMEOUT};
 use crate::elapsed_ns;
 
 const VRTD_SOCKET: &str = "/run/vrtd.sock";

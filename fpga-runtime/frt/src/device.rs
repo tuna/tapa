@@ -46,6 +46,14 @@ pub struct HostStream {
     pub kernel_reads: bool,
 }
 
+/// Kernel lifecycle: idle, running since the enclosed instant, or finished.
+#[derive(Clone, Copy)]
+pub enum ExecutionState {
+    Idle,
+    Running(std::time::Instant),
+    Finished,
+}
+
 pub trait Device: Send {
     /// The stream arguments the host binds, in argument order. A backend
     /// without host streams has none.

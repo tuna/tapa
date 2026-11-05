@@ -4,7 +4,7 @@ use super::api::{
 };
 use super::metadata::{extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, AieGraph};
 use super::pl_control::{self, PlControl};
-use crate::device::{BufferAccess, Device};
+use crate::device::{BufferAccess, Device, ExecutionState};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::kernel_xml::{self, KernelXml, XclbinTarget};
 use frt_cosim::metadata::normalized_scalar_bytes;
@@ -28,12 +28,6 @@ struct BufferBinding {
     access: BufferAccess,
     bo: Handle,
     staged: bool,
-}
-
-enum ExecutionState {
-    Idle,
-    Running(Instant),
-    Finished,
 }
 
 /// The AI Engine graph an xclbin carries, open for control.
