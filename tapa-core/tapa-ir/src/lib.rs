@@ -30,7 +30,7 @@ pub use aie::{
     ScalarBinding,
 };
 pub use bindings::{FifoEndpoint, PortBinding};
-pub use clock::{ClockPeriod, ClockPeriodError};
+pub use clock::ClockPeriod;
 pub use connectivity::{
     DuplicateMemoryEndpoint, MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind,
 };
@@ -45,11 +45,11 @@ pub use floorplan::{
 pub use graph::TaskGraph;
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
-pub use memory::{MemoryGeometry, MemoryGeometryError};
+pub use memory::MemoryGeometry;
 pub use port::{ArgCategory, Port};
 pub use synth_target::SynthTarget;
 pub use target::Target;
-pub use task::{AieLocation, Task, TaskLevel};
+pub use task::{Task, TaskLevel};
 pub use transforms::{flatten, TransformError};
 pub use work_state::{FlowSettings, WorkState};
 

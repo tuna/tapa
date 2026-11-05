@@ -3063,55 +3063,6 @@ pub unsafe fn tapa_ir::floorplan::AxiChannel::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::AxiChannel
 pub fn tapa_ir::floorplan::AxiChannel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiChannel where T: for<'de> serde_core::de::Deserialize<'de>
-pub enum tapa_ir::ClockPeriodError
-pub tapa_ir::ClockPeriodError::NotANumber(alloc::string::String)
-pub tapa_ir::ClockPeriodError::OutOfRange(alloc::string::String)
-impl core::clone::Clone for tapa_ir::clock::ClockPeriodError
-pub fn tapa_ir::clock::ClockPeriodError::clone(&self) -> tapa_ir::clock::ClockPeriodError
-impl core::cmp::Eq for tapa_ir::clock::ClockPeriodError
-impl core::cmp::PartialEq for tapa_ir::clock::ClockPeriodError
-pub fn tapa_ir::clock::ClockPeriodError::eq(&self, &tapa_ir::clock::ClockPeriodError) -> bool
-impl core::error::Error for tapa_ir::clock::ClockPeriodError
-impl core::fmt::Debug for tapa_ir::clock::ClockPeriodError
-pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::clock::ClockPeriodError
-pub fn tapa_ir::clock::ClockPeriodError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_ir::clock::ClockPeriodError
-impl core::marker::Freeze for tapa_ir::clock::ClockPeriodError
-impl core::marker::Send for tapa_ir::clock::ClockPeriodError
-impl core::marker::Sync for tapa_ir::clock::ClockPeriodError
-impl core::marker::Unpin for tapa_ir::clock::ClockPeriodError
-impl core::marker::UnsafeUnpin for tapa_ir::clock::ClockPeriodError
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::clock::ClockPeriodError
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::clock::ClockPeriodError
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::clock::ClockPeriodError where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::From<T>
-pub fn tapa_ir::clock::ClockPeriodError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::Into<T>
-pub type tapa_ir::clock::ClockPeriodError::Error = core::convert::Infallible
-pub fn tapa_ir::clock::ClockPeriodError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::clock::ClockPeriodError where U: core::convert::TryFrom<T>
-pub type tapa_ir::clock::ClockPeriodError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::clock::ClockPeriodError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
-pub type tapa_ir::clock::ClockPeriodError::Owned = T
-pub fn tapa_ir::clock::ClockPeriodError::clone_into(&self, &mut T)
-pub fn tapa_ir::clock::ClockPeriodError::to_owned(&self) -> T
-impl<T> alloc::string::ToString for tapa_ir::clock::ClockPeriodError where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::clock::ClockPeriodError where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::clock::ClockPeriodError where T: ?core::marker::Sized
-pub fn tapa_ir::clock::ClockPeriodError::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::clock::ClockPeriodError where T: core::clone::Clone
-pub unsafe fn tapa_ir::clock::ClockPeriodError::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::clock::ClockPeriodError
-pub fn tapa_ir::clock::ClockPeriodError::from(T) -> T
 pub enum tapa_ir::ControlChannel
 pub tapa_ir::ControlChannel::Completion
 pub tapa_ir::ControlChannel::Launch
@@ -3828,57 +3779,6 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieKernelPort where T: core
 pub unsafe fn tapa_ir::aie::AieKernelPort::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AieKernelPort
 pub fn tapa_ir::aie::AieKernelPort::from(T) -> T
-pub struct tapa_ir::AieLocation
-pub tapa_ir::AieLocation::col: u32
-pub tapa_ir::AieLocation::instance: core::option::Option<u32>
-pub tapa_ir::AieLocation::row: u32
-impl core::clone::Clone for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::clone(&self) -> tapa_ir::task::AieLocation
-impl core::cmp::Eq for tapa_ir::task::AieLocation
-impl core::cmp::PartialEq for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::eq(&self, &tapa_ir::task::AieLocation) -> bool
-impl core::fmt::Debug for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for tapa_ir::task::AieLocation
-impl core::marker::StructuralPartialEq for tapa_ir::task::AieLocation
-impl serde_core::ser::Serialize for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
-impl core::marker::Freeze for tapa_ir::task::AieLocation
-impl core::marker::Send for tapa_ir::task::AieLocation
-impl core::marker::Sync for tapa_ir::task::AieLocation
-impl core::marker::Unpin for tapa_ir::task::AieLocation
-impl core::marker::UnsafeUnpin for tapa_ir::task::AieLocation
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::task::AieLocation
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::task::AieLocation
-impl<Q, K> equivalent::Equivalent<K> for tapa_ir::task::AieLocation where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::task::AieLocation::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::task::AieLocation where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_ir::task::AieLocation::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_ir::task::AieLocation where U: core::convert::From<T>
-pub fn tapa_ir::task::AieLocation::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::task::AieLocation where U: core::convert::Into<T>
-pub type tapa_ir::task::AieLocation::Error = core::convert::Infallible
-pub fn tapa_ir::task::AieLocation::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::task::AieLocation where U: core::convert::TryFrom<T>
-pub type tapa_ir::task::AieLocation::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::task::AieLocation::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_ir::task::AieLocation where T: core::clone::Clone
-pub type tapa_ir::task::AieLocation::Owned = T
-pub fn tapa_ir::task::AieLocation::clone_into(&self, &mut T)
-pub fn tapa_ir::task::AieLocation::to_owned(&self) -> T
-impl<T> core::any::Any for tapa_ir::task::AieLocation where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::task::AieLocation::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::task::AieLocation where T: ?core::marker::Sized
-pub fn tapa_ir::task::AieLocation::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::task::AieLocation where T: ?core::marker::Sized
-pub fn tapa_ir::task::AieLocation::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_ir::task::AieLocation where T: core::clone::Clone
-pub unsafe fn tapa_ir::task::AieLocation::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_ir::task::AieLocation
-pub fn tapa_ir::task::AieLocation::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::AieLocation where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::AiePartition
 pub tapa_ir::AiePartition::kernels: alloc::vec::Vec<tapa_ir::aie::AieKernel>
 pub tapa_ir::AiePartition::run_forever: bool
@@ -5026,37 +4926,6 @@ impl<T> core::clone::CloneToUninit for tapa_ir::memory::MemoryGeometry where T: 
 pub unsafe fn tapa_ir::memory::MemoryGeometry::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometry
 pub fn tapa_ir::memory::MemoryGeometry::from(T) -> T
-pub struct tapa_ir::MemoryGeometryError(_)
-impl core::error::Error for tapa_ir::memory::MemoryGeometryError
-impl core::fmt::Debug for tapa_ir::memory::MemoryGeometryError
-pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::fmt::Display for tapa_ir::memory::MemoryGeometryError
-pub fn tapa_ir::memory::MemoryGeometryError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Freeze for tapa_ir::memory::MemoryGeometryError
-impl core::marker::Send for tapa_ir::memory::MemoryGeometryError
-impl core::marker::Sync for tapa_ir::memory::MemoryGeometryError
-impl core::marker::Unpin for tapa_ir::memory::MemoryGeometryError
-impl core::marker::UnsafeUnpin for tapa_ir::memory::MemoryGeometryError
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::memory::MemoryGeometryError
-impl core::panic::unwind_safe::UnwindSafe for tapa_ir::memory::MemoryGeometryError
-impl<T, U> core::convert::Into<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::From<T>
-pub fn tapa_ir::memory::MemoryGeometryError::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::Into<T>
-pub type tapa_ir::memory::MemoryGeometryError::Error = core::convert::Infallible
-pub fn tapa_ir::memory::MemoryGeometryError::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_ir::memory::MemoryGeometryError where U: core::convert::TryFrom<T>
-pub type tapa_ir::memory::MemoryGeometryError::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_ir::memory::MemoryGeometryError::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::string::ToString for tapa_ir::memory::MemoryGeometryError where T: core::fmt::Display + ?core::marker::Sized
-pub fn tapa_ir::memory::MemoryGeometryError::to_string(&self) -> alloc::string::String
-impl<T> core::any::Any for tapa_ir::memory::MemoryGeometryError where T: 'static + ?core::marker::Sized
-pub fn tapa_ir::memory::MemoryGeometryError::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
-pub fn tapa_ir::memory::MemoryGeometryError::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_ir::memory::MemoryGeometryError where T: ?core::marker::Sized
-pub fn tapa_ir::memory::MemoryGeometryError::borrow_mut(&mut self) -> &mut T
-impl<T> core::convert::From<T> for tapa_ir::memory::MemoryGeometryError
-pub fn tapa_ir::memory::MemoryGeometryError::from(T) -> T
 pub struct tapa_ir::PipelineRoute
 pub tapa_ir::PipelineRoute::channel: tapa_ir::floorplan::RoutedChannel
 pub tapa_ir::PipelineRoute::reg_regions: alloc::vec::Vec<alloc::string::String>
