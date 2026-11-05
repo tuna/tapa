@@ -38,9 +38,6 @@ cast_lossless = "allow"
 # Allow: intentional alignment in shared-memory / queue headers
 cast_ptr_alignment = "allow"
 
-# Allow: _meta prefix is intentional (field used but not directly public)
-used_underscore_binding = "allow"
-
 # Allow: common Rust module naming pattern
 module_name_repetitions = "allow"
 
