@@ -214,7 +214,7 @@ pub(super) fn implement_and_publish(
     jobs: usize,
     publish: impl FnOnce(&ImplementationWinner) -> Result<()>,
 ) -> Result<()> {
-    let worker_count = candidate_worker_count(jobs, candidates.len())?;
+    let worker_count = candidate_worker_count(jobs, candidates.len());
     recreate_candidate_root(work_dir)?;
 
     log::info!(
@@ -250,13 +250,8 @@ pub(super) fn implement_and_publish(
     finish_with_winner(outcomes, infeasible, runner, publish)
 }
 
-fn candidate_worker_count(requested_jobs: usize, candidate_count: usize) -> Result<usize> {
-    if requested_jobs == 0 {
-        return Err(CliError::InvalidArg(
-            "DSE implementation jobs must be greater than zero".to_string(),
-        ));
-    }
-    Ok(requested_jobs.min(candidate_count))
+fn candidate_worker_count(requested_jobs: usize, candidate_count: usize) -> usize {
+    requested_jobs.min(candidate_count)
 }
 
 #[allow(
@@ -1148,10 +1143,9 @@ ap_clk              0.400        0.000
 
     #[test]
     fn candidate_workers_are_bounded_by_feasible_work() {
-        assert_eq!(candidate_worker_count(8, 3).expect("worker count"), 3);
-        assert_eq!(candidate_worker_count(1, 3).expect("worker count"), 1);
-        assert_eq!(candidate_worker_count(8, 0).expect("empty sweep"), 0);
-        candidate_worker_count(0, 3).expect_err("zero requested jobs must fail");
+        assert_eq!(candidate_worker_count(8, 3), 3);
+        assert_eq!(candidate_worker_count(1, 3), 1);
+        assert_eq!(candidate_worker_count(8, 0), 0);
     }
 
     #[test]
