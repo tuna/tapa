@@ -2,13 +2,11 @@ use super::api::{
     api, Api, Handle, RUN_ABORT, RUN_COMPLETED, RUN_ERROR, RUN_NORESPONSE, RUN_SKCRASHED,
     RUN_SKERROR, RUN_TIMEOUT, SYNC_FROM_DEVICE, SYNC_TO_DEVICE,
 };
-use super::metadata::{
-    extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, parse_embedded_xml, AieGraph,
-};
+use super::metadata::{extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, AieGraph};
 use super::pl_control::{self, PlControl};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
-use frt_cosim::metadata::kernel_xml::{KernelXml, XclbinTarget};
+use frt_cosim::metadata::kernel_xml::{self, KernelXml, XclbinTarget};
 use frt_cosim::metadata::normalized_scalar_bytes;
 use frt_cosim::metadata::ArgKind;
 use frt_cosim::runner::environ::xilinx_environ;
@@ -103,7 +101,8 @@ impl XrtDevice {
     pub fn open(xclbin_path: &Path) -> Result<Self> {
         let bytes = std::fs::read(xclbin_path)?;
         let xml = extract_embedded_xml(&bytes)?;
-        let mut meta = parse_embedded_xml(&xml)?;
+        let mut meta =
+            kernel_xml::parse(&xml).map_err(|e| FrtError::MetadataParse(e.to_string()))?;
         // The XML <platform name="..."> attribute may be truncated in some
         // xclbin versions. The binary header has a 64-byte m_platformVBNV
         // field at offset 352 that always contains the full identifier.

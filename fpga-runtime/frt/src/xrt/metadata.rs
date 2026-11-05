@@ -6,15 +6,7 @@
 //! [`frt_cosim::metadata::kernel_xml`], shared with the cosim runtime.
 
 use crate::error::{FrtError, Result};
-use frt_cosim::metadata::kernel_xml::{self, KernelXml};
 use std::collections::HashMap;
-
-/// Parse the metadata XML embedded in an xclbin.
-///
-/// A thin adapter over the shared reader: only the error type differs.
-pub fn parse_embedded_xml(xml: &str) -> Result<KernelXml> {
-    kernel_xml::parse(xml).map_err(|e| FrtError::MetadataParse(e.to_string()))
-}
 
 pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
     const MAGIC: &[u8; 8] = b"xclbin2\0";
