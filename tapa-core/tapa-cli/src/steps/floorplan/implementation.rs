@@ -524,9 +524,7 @@ impl ImplementationWinner {
             timing_closed: self.timing.wns_ns >= 0.0,
             timing_report: IMPLEMENTATION_TIMING_REPORT,
         };
-        let mut bytes = serde_json::to_vec_pretty(&metrics)?;
-        bytes.push(b'\n');
-        json::write_bytes_atomic(work_dir, IMPLEMENTATION_METRICS, &bytes)
+        write_json(work_dir, IMPLEMENTATION_METRICS, &metrics)
     }
 
     pub(super) fn log_selection(&self, work_dir: &Path) {
