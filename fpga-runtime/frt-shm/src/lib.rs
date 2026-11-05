@@ -21,7 +21,8 @@ pub fn env_bool(name: &str) -> bool {
 ///
 /// Returns `true` unless the variable is explicitly set to a falsy value
 /// (`"0"`, `"false"`, `"FALSE"`, `"no"`, `"NO"`).  Unset or any other
-/// value is treated as enabled.  This is the inverse of [`env_bool`].
+/// value is treated as enabled.  This is the opt-out counterpart of
+/// [`env_bool`].
 pub fn env_bool_default_true(name: &str) -> bool {
     match std::env::var(name) {
         Ok(v) => !matches!(v.as_str(), "0" | "false" | "FALSE" | "no" | "NO"),
