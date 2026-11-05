@@ -428,22 +428,17 @@ pub fn connect_fifos(
                 }
                 if let Some(mm) = modules.get_mut(task_name) {
                     mm.add_instance(adapter);
-                    if !is_input {
-                        if mm
+                    if !is_input
+                        && mm
                             .inner
                             .find_port(&format!("{sanitized_fifo_name}_TKEEP"))
                             .is_some()
-                        {
-                            let keep_width =
-                                (tapa_protocol::axis_data_width(stream_width) / 8).max(1);
-                            mm.add_assign(ContinuousAssign::new(
-                                Expr::ident(format!("{sanitized_fifo_name}_TKEEP")),
-                                Expr::lit(format!(
-                                    "{keep_width}'b{}",
-                                    "1".repeat(keep_width as usize)
-                                )),
-                            ));
-                        }
+                    {
+                        let keep_width = (tapa_protocol::axis_data_width(stream_width) / 8).max(1);
+                        mm.add_assign(ContinuousAssign::new(
+                            Expr::ident(format!("{sanitized_fifo_name}_TKEEP")),
+                            Expr::lit(format!("{keep_width}'b{}", "1".repeat(keep_width as usize))),
+                        ));
                     }
                 }
             }
