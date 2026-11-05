@@ -180,19 +180,13 @@ fn run_one(
     module_name: &str,
     part_num: &str,
 ) -> Result<()> {
-    if let Some(parent) = rpt_path.parent() {
-        fs::create_dir_all(parent)?;
-    }
+    // `rpt_path` sits under the work dir, which `CliContext` absolutizes
+    // at construction (tests pass absolute tempdirs), so it is already
+    // absolute and its parent always exists.
+    fs::create_dir_all(rpt_path.parent().expect("report path has a parent"))?;
     let abs_hdl =
         crate::util::utf8(fs::canonicalize(rtl_dir).unwrap_or_else(|_| rtl_dir.to_path_buf()));
-    let abs_rpt = if rpt_path.is_absolute() {
-        crate::util::utf8(rpt_path)
-    } else {
-        match std::env::current_dir() {
-            Ok(cwd) => crate::util::utf8(cwd.join(rpt_path)),
-            Err(_) => crate::util::utf8(rpt_path),
-        }
-    };
+    let abs_rpt = crate::util::utf8(rpt_path);
 
     let tcl = build_report_util_tcl(module_name, part_num);
     let mut job = VivadoJob::new(tcl);
@@ -201,9 +195,10 @@ fn run_one(
         tapa_xilinx::ToolValue::path(&abs_rpt),
     ];
     job.uploads = vec![abs_hdl];
-    if let Some(parent) = abs_rpt.parent() {
-        job.downloads = vec![parent.to_path_buf()];
-    }
+    job.downloads = vec![abs_rpt
+        .parent()
+        .expect("report path has a parent")
+        .to_path_buf()];
     run_vivado(runner, &job)?;
     Ok(())
 }
