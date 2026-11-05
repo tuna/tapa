@@ -220,7 +220,6 @@ impl fmt::Display for AlwaysBlock {
 mod tests {
     use super::*;
     use crate::builder::CaseItem;
-    use crate::expression::Token;
 
     #[test]
     fn expr_ident() {
@@ -258,12 +257,8 @@ mod tests {
     #[test]
     fn width_display() {
         let w = Width {
-            msb: vec![Token {
-                repr: "31".to_owned(),
-            }],
-            lsb: vec![Token {
-                repr: "0".to_owned(),
-            }],
+            msb: vec!["31".to_owned()],
+            lsb: vec!["0".to_owned()],
         };
         assert_eq!(w.to_string(), "[31:0]");
     }
@@ -274,12 +269,8 @@ mod tests {
             name: "data_in".to_owned(),
             direction: Direction::Input,
             width: Some(Width {
-                msb: vec![Token {
-                    repr: "31".to_owned(),
-                }],
-                lsb: vec![Token {
-                    repr: "0".to_owned(),
-                }],
+                msb: vec!["31".to_owned()],
+                lsb: vec!["0".to_owned()],
             }),
         };
         assert_eq!(p.to_string(), "input wire [31:0] data_in");

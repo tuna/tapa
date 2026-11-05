@@ -477,53 +477,10 @@ pub unsafe fn tapa_rtl::builder::PortArg::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::PortArg
 pub fn tapa_rtl::builder::PortArg::from(T) -> T
 pub mod tapa_rtl::expression
-pub struct tapa_rtl::expression::Token
-pub tapa_rtl::expression::Token::repr: alloc::string::String
-impl core::clone::Clone for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::clone(&self) -> tapa_rtl::expression::Token
-impl core::cmp::Eq for tapa_rtl::expression::Token
-impl core::cmp::PartialEq for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::eq(&self, &tapa_rtl::expression::Token) -> bool
-impl core::fmt::Debug for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::StructuralPartialEq for tapa_rtl::expression::Token
-impl core::marker::Freeze for tapa_rtl::expression::Token
-impl core::marker::Send for tapa_rtl::expression::Token
-impl core::marker::Sync for tapa_rtl::expression::Token
-impl core::marker::Unpin for tapa_rtl::expression::Token
-impl core::marker::UnsafeUnpin for tapa_rtl::expression::Token
-impl core::panic::unwind_safe::RefUnwindSafe for tapa_rtl::expression::Token
-impl core::panic::unwind_safe::UnwindSafe for tapa_rtl::expression::Token
-impl<Q, K> equivalent::Equivalent<K> for tapa_rtl::expression::Token where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_rtl::expression::Token::equivalent(&self, &K) -> bool
-impl<Q, K> hashbrown::Equivalent<K> for tapa_rtl::expression::Token where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
-pub fn tapa_rtl::expression::Token::equivalent(&self, &K) -> bool
-impl<T, U> core::convert::Into<U> for tapa_rtl::expression::Token where U: core::convert::From<T>
-pub fn tapa_rtl::expression::Token::into(self) -> U
-impl<T, U> core::convert::TryFrom<U> for tapa_rtl::expression::Token where U: core::convert::Into<T>
-pub type tapa_rtl::expression::Token::Error = core::convert::Infallible
-pub fn tapa_rtl::expression::Token::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
-impl<T, U> core::convert::TryInto<U> for tapa_rtl::expression::Token where U: core::convert::TryFrom<T>
-pub type tapa_rtl::expression::Token::Error = <U as core::convert::TryFrom<T>>::Error
-pub fn tapa_rtl::expression::Token::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
-impl<T> alloc::borrow::ToOwned for tapa_rtl::expression::Token where T: core::clone::Clone
-pub type tapa_rtl::expression::Token::Owned = T
-pub fn tapa_rtl::expression::Token::clone_into(&self, &mut T)
-pub fn tapa_rtl::expression::Token::to_owned(&self) -> T
-impl<T> core::any::Any for tapa_rtl::expression::Token where T: 'static + ?core::marker::Sized
-pub fn tapa_rtl::expression::Token::type_id(&self) -> core::any::TypeId
-impl<T> core::borrow::Borrow<T> for tapa_rtl::expression::Token where T: ?core::marker::Sized
-pub fn tapa_rtl::expression::Token::borrow(&self) -> &T
-impl<T> core::borrow::BorrowMut<T> for tapa_rtl::expression::Token where T: ?core::marker::Sized
-pub fn tapa_rtl::expression::Token::borrow_mut(&mut self) -> &mut T
-impl<T> core::clone::CloneToUninit for tapa_rtl::expression::Token where T: core::clone::Clone
-pub unsafe fn tapa_rtl::expression::Token::clone_to_uninit(&self, *mut u8)
-impl<T> core::convert::From<T> for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::from(T) -> T
 pub fn tapa_rtl::expression::expression_as_u32(&tapa_rtl::expression::Expression) -> core::option::Option<u32>
 pub fn tapa_rtl::expression::expression_source(&tapa_rtl::expression::Expression) -> alloc::string::String
 pub fn tapa_rtl::expression::tokenize_expression(&str) -> tapa_rtl::expression::Expression
-pub type tapa_rtl::expression::Expression = alloc::vec::Vec<tapa_rtl::expression::Token>
+pub type tapa_rtl::expression::Expression = alloc::vec::Vec<alloc::string::String>
 pub mod tapa_rtl::module
 pub use tapa_rtl::module::sanitize_array_name
 pub use tapa_rtl::module::sanitize_identifier_name

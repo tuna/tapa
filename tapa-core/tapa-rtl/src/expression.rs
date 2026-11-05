@@ -1,20 +1,13 @@
 //! Token-level expression types for Verilog parameter/range expressions.
 
-/// A single token in an expression.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Token {
-    /// Text representation.
-    pub repr: String,
-}
-
 /// An expression is a sequence of tokens.
-pub type Expression = Vec<Token>;
+pub type Expression = Vec<String>;
 
 /// Concatenate an expression's token representations back into source
 /// text (no separators; tokenization preserved operator characters).
 #[must_use]
 pub fn expression_source(expr: &Expression) -> String {
-    expr.iter().map(|t| t.repr.as_str()).collect()
+    expr.concat()
 }
 
 /// Evaluate an expression as a plain unsigned integer, when it is one.
@@ -41,21 +34,17 @@ pub fn tokenize_expression(input: &str) -> Expression {
             ':' | '+' | '-' | '*' | '/' | '(' | ')' | '[' | ']' | ' ' | '\t'
         ) {
             if !current.is_empty() {
-                tokens.push(Token {
-                    repr: std::mem::take(&mut current),
-                });
+                tokens.push(std::mem::take(&mut current));
             }
             if !ch.is_ascii_whitespace() {
-                tokens.push(Token {
-                    repr: ch.to_string(),
-                });
+                tokens.push(ch.to_string());
             }
         } else {
             current.push(ch);
         }
     }
     if !current.is_empty() {
-        tokens.push(Token { repr: current });
+        tokens.push(current);
     }
     tokens
 }
@@ -67,21 +56,13 @@ mod tests {
     #[test]
     fn simple_range() {
         let tokens = tokenize_expression("31:0");
-        assert_eq!(tokens.len(), 3);
-        assert_eq!(tokens[0].repr, "31");
-        assert_eq!(tokens[1].repr, ":");
-        assert_eq!(tokens[2].repr, "0");
+        assert_eq!(tokens, ["31", ":", "0"]);
     }
 
     #[test]
     fn identifier_in_range() {
         let tokens = tokenize_expression("WIDTH-1:0");
-        assert_eq!(tokens.len(), 5);
-        assert_eq!(tokens[0].repr, "WIDTH");
-        assert_eq!(tokens[1].repr, "-");
-        assert_eq!(tokens[2].repr, "1");
-        assert_eq!(tokens[3].repr, ":");
-        assert_eq!(tokens[4].repr, "0");
+        assert_eq!(tokens, ["WIDTH", "-", "1", ":", "0"]);
     }
 
     #[test]

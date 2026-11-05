@@ -96,8 +96,8 @@ fn width_as_token_sequence() {
     // Width is [64:0]
     assert!(!w.msb.is_empty(), "msb has tokens");
     assert!(!w.lsb.is_empty(), "lsb has tokens");
-    assert_eq!(w.msb[0].repr, "64");
-    assert_eq!(w.lsb[0].repr, "0");
+    assert_eq!(w.msb[0], "64");
+    assert_eq!(w.lsb[0], "0");
 }
 
 // ── Negative tests ──────────────────────────────────────────────────
