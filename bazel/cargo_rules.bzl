@@ -11,7 +11,7 @@ def _exec_requirements(ctx):
     requirements = {}
     if "requires-network" in ctx.attr.tags:
         requirements["requires-network"] = "1"
-    if ctx.attr.local or "local" in ctx.attr.tags:
+    if ctx.attr.local:
         requirements["local"] = "1"
     return requirements
 

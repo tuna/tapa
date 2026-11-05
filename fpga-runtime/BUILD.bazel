@@ -49,7 +49,6 @@ cargo_platform_artifacts(
     ],
     local = True,
     manifest = "Cargo.toml",
-    tags = ["local"],
 )
 
 # The `frt` crate builds as a staticlib (libfrt.a); its filename is identical on
@@ -70,7 +69,6 @@ cargo_artifacts(
     }),
     local = True,
     manifest = "Cargo.toml",
-    tags = ["local"],
     target = select({
         "//bazel:is_vck190_aarch64": "aarch64-unknown-linux-gnu",
         "//conditions:default": "",
