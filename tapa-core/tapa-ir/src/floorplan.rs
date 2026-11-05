@@ -282,12 +282,6 @@ impl Coor {
             || other.ur_y < self.dl_y)
     }
 
-    /// `self` is a (non-strict) superset of `other`.
-    #[must_use]
-    pub fn covers(&self, other: &Self) -> bool {
-        other.is_inside(self)
-    }
-
     /// Every atomic grid cell `(x, y)` the region covers, row-major.
     #[must_use]
     pub fn all_slot_coors(&self) -> Vec<(u32, u32)> {
@@ -667,7 +661,6 @@ mod tests {
         let region = Coor::span(0, 0, 1, 1);
         let cell = Coor::slot(1, 0);
         assert!(cell.is_inside(&region), "cell inside the 2x2 region");
-        assert!(region.covers(&cell), "region covers the cell");
         assert!(region.has_overlap(&cell), "they overlap");
         // Adjacent-but-disjoint cells still count as overlapping on the shared
         // edge, matching the upstream convention.

@@ -1433,7 +1433,6 @@ pub tapa_ir::floorplan::Coor::ur_x: u32
 pub tapa_ir::floorplan::Coor::ur_y: u32
 impl tapa_ir::floorplan::Coor
 pub fn tapa_ir::floorplan::Coor::all_slot_coors(&self) -> alloc::vec::Vec<(u32, u32)>
-pub fn tapa_ir::floorplan::Coor::covers(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
@@ -4274,7 +4273,6 @@ pub tapa_ir::Coor::ur_x: u32
 pub tapa_ir::Coor::ur_y: u32
 impl tapa_ir::floorplan::Coor
 pub fn tapa_ir::floorplan::Coor::all_slot_coors(&self) -> alloc::vec::Vec<(u32, u32)>
-pub fn tapa_ir::floorplan::Coor::covers(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
