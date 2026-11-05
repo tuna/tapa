@@ -79,8 +79,9 @@ Subcommands (chainable, processed left-to-right):
   synth                         Synthesize the analyzed program into RTL.
   floorplan                     Coarse-grained floorplan the synthesized design.
   pack                          Pack the generated RTL into a Xilinx `.xo`.
+  aiesim                        Simulate the AI Engine tasks against recorded stream data.
   compile                       analyze + synth + pack in one invocation.
-  link                          Link a TAPA XO into a V80 VBIN using SLASH.
+  link                          Link a packaged TAPA kernel for its persisted Vitis or SLASH target.
   g++                           Invoke g++ with TAPA include / link flags.
   update                        Update TAPA to the latest release.
   version                       Print TAPA version.
