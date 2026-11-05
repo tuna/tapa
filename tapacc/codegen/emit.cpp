@@ -109,6 +109,8 @@ void RemoveInline(const clang::FunctionDecl* func, EditSink& edits) {
   }
 }
 
+namespace {
+
 // The token-based twin for an attribute spelled by a macro: character
 // arithmetic (getLocWithOffset) is meaningless inside an expansion, so the
 // attribute's own tokens are dropped, and a neighbouring comma or an
@@ -143,6 +145,8 @@ void RemoveMacroAttrTokens(EditSink& edits, clang::SourceRange attr_range) {
   }
   edits.DropSpliceTokens(splice, lo, hi, {});
 }
+
+}  // namespace
 
 void RemoveLoweredAttr(EditSink& edits, clang::SourceRange attr_range) {
   if (attr_range.getBegin().isMacroID() || attr_range.getEnd().isMacroID()) {

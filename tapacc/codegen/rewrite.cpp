@@ -411,6 +411,8 @@ void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
   }
 }
 
+namespace {
+
 // The primary-template pattern of a template-specialization task's definition
 // (the decl that actually appears in the source), or nullptr.
 const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
@@ -427,8 +429,6 @@ const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
              ? model.def->getCanonicalDecl()
              : nullptr;
 }
-
-namespace {
 
 const Backend& BackendFor(SynthTarget target, const Backends& backends) {
   switch (target) {
