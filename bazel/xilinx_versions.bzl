@@ -43,3 +43,20 @@ def vitis_layout_subdir(version):
     if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
         fail("XILINX_TOOL_VERSION must be a numeric MAJOR.MINOR version, got " + repr(version))
     return "/Vitis/" if (int(parts[0]), int(parts[1])) >= _VITIS_LAYOUT_SWITCH else "/Vitis_HLS/"
+
+def remote_xilinx_settings(remote_settings, tool_path, version):
+    """The remote settings64.sh: the explicit override, else the configured path's.
+
+    Args:
+      remote_settings: The `REMOTE_XILINX_SETTINGS` override, if any.
+      tool_path: The configured `XILINX_TOOL_PATH`.
+      version: Numeric "MAJOR.MINOR" tool version string.
+
+    Returns:
+      The settings64.sh path, or "" when no remote tools are configured.
+    """
+    if remote_settings:
+        return remote_settings
+    if tool_path:
+        return tool_path + vitis_layout_subdir(version) + version + "/settings64.sh"
+    return ""

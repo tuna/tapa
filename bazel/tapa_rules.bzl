@@ -19,7 +19,7 @@ load(
 )
 load("@vitis_hls//:defs.bzl", "VITIS_HLS_RUNNER_AVAILABLE", "VIVADO_AVAILABLE")
 load("//bazel:sh_utils.bzl", "sh_quote")
-load("//bazel:xilinx_versions.bzl", "vitis_layout_subdir")
+load("//bazel:xilinx_versions.bzl", "remote_xilinx_settings")
 
 def _remote_host_flag():
     if not REMOTE_HOST:
@@ -32,14 +32,6 @@ def _remote_host_flag():
     host_part = host_part + ":" + REMOTE_PORT
     return host_part
 
-def _remote_xilinx_settings():
-    if REMOTE_XILINX_SETTINGS:
-        return REMOTE_XILINX_SETTINGS
-    if REMOTE_XILINX_TOOL_PATH:
-        subdir = vitis_layout_subdir(XILINX_TOOL_VERSION)
-        return REMOTE_XILINX_TOOL_PATH + subdir + XILINX_TOOL_VERSION + "/settings64.sh"
-    return ""
-
 def _remote_tapa_args(ctx):
     remote_args = []
     remote_host = _remote_host_flag()
@@ -47,7 +39,11 @@ def _remote_tapa_args(ctx):
         remote_args.extend(["--remote-host", remote_host])
         if ctx.file.ssh_key:
             remote_args.extend(["--remote-key-file", ctx.file.ssh_key.path])
-        xilinx_settings = _remote_xilinx_settings()
+        xilinx_settings = remote_xilinx_settings(
+            REMOTE_XILINX_SETTINGS,
+            REMOTE_XILINX_TOOL_PATH,
+            XILINX_TOOL_VERSION,
+        )
         if xilinx_settings:
             remote_args.extend(["--remote-xilinx-settings", xilinx_settings])
         if REMOTE_SSH_CONTROL_DIR:
