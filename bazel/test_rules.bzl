@@ -19,7 +19,6 @@ _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
 # is what proves the vendor-agnostic migration actually landed.
 _HOST_DEPS = [
     "//tapa-lib:tapa-host",
-    "//tests:host_util",
     "@gflags",
 ]
 

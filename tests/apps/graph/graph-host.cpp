@@ -4,14 +4,12 @@
 
 #include <iostream>
 #include <stdexcept>
-#include <string>
 #include <vector>
 
 #include <gflags/gflags.h>
 #include <tapa.h>
 
 #include "graph.h"
-#include "host_util.h"
 #include "nxgraph.hpp"
 
 using std::clog;
@@ -115,14 +113,29 @@ int main(int argc, char* argv[]) {
   }
 
   uint64_t num_errors = 0;
+  const uint64_t threshold = 10;  // only report up to these errors
   for (Vid i = 0; i < total_num_vertices; ++i) {
     auto expected = vertices_baseline[i];
     auto actual = vertices[i];
     if (actual != expected) {
-      TAPA_TEST_RECORD_MISMATCH(
-          num_errors, LOG(ERROR),
-          "vertex #" + std::to_string(base_vid + i) + ": ", expected, actual);
+      if (num_errors < threshold) {
+        LOG(ERROR) << "vertex #" << base_vid + i << ": "
+                   << "expected: " << expected << ", actual: " << actual
+                   << endl;
+      } else if (num_errors == threshold) {
+        LOG(ERROR) << "...";
+      }
+      ++num_errors;
     }
   }
-  TAPA_TEST_RETURN_VERDICT(num_errors, clog, clog);
+  if (num_errors == 0) {
+    clog << "PASS!" << endl;
+  } else {
+    if (num_errors > threshold) {
+      clog << " (+" << (num_errors - threshold) << " more errors)" << endl;
+    }
+    clog << "FAIL!" << endl;
+  }
+
+  return num_errors > 0 ? 1 : 0;
 }

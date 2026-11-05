@@ -12,7 +12,6 @@
 #include <gflags/gflags.h>
 
 #include "cannon.h"
-#include "host_util.h"
 
 using std::abs;
 using std::clog;
@@ -79,6 +78,7 @@ int main(int argc, char* argv[]) {
   clog << "kernel time: " << kernel_time_ns * 1e-9 << " s" << endl;
 
   uint64_t num_errors = 0;
+  const uint64_t threshold = 10;  // only report up to these errors
   for (uint64_t i = 0; i < n; ++i) {
     for (uint64_t j = 0; j < n; ++j) {
       auto expected = 0.f;
@@ -87,9 +87,22 @@ int main(int argc, char* argv[]) {
       }
       auto actual = c[i][j];
       if (abs(actual - expected) > 1e-4 * abs(expected)) {
-        TAPA_TEST_RECORD_MISMATCH(num_errors, clog, "", expected, actual);
+        if (num_errors < threshold) {
+          clog << "expected: " << expected << ", actual: " << actual << endl;
+        } else if (num_errors == threshold) {
+          clog << "...";
+        }
+        ++num_errors;
       }
     }
   }
-  TAPA_TEST_RETURN_VERDICT(num_errors, clog, clog);
+  if (num_errors == 0) {
+    clog << "PASS!" << endl;
+  } else {
+    if (num_errors > threshold) {
+      clog << " (+" << (num_errors - threshold) << " more errors)" << endl;
+    }
+    clog << "FAIL!" << endl;
+  }
+  return num_errors > 0 ? 1 : 0;
 }

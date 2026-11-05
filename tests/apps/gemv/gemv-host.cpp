@@ -9,7 +9,6 @@
 #include <gflags/gflags.h>
 
 #include "gemv.h"
-#include "host_util.h"
 
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 
@@ -51,14 +50,28 @@ int main(int argc, char* argv[]) {
   LOG(INFO) << "GOPS: " << gops << " (" << gops / 2.0 * sizeof(Data)
             << " GB/s)";
 
-  uint64_t num_errors = 0;
+  int64_t num_errors = 0;
+  const int64_t threshold = 10;  // only report up to these errors
   for (int i = 0; i < kMatrixSize; i++) {
     Data expected = host_y[i];
     Data actual = y[i];
 
     if (expected != actual) {
-      TAPA_TEST_RECORD_MISMATCH(num_errors, LOG(ERROR), "", expected, actual);
+      if (num_errors < threshold) {
+        LOG(ERROR) << "expected: " << expected << ", actual: " << actual;
+      } else if (num_errors == threshold) {
+        LOG(ERROR) << "...";
+      }
+      ++num_errors;
     }
   }
-  TAPA_TEST_RETURN_VERDICT(num_errors, std::clog, LOG(WARNING));
+  if (num_errors == 0) {
+    std::clog << "PASS!" << std::endl;
+  } else {
+    if (num_errors > threshold) {
+      LOG(WARNING) << " (+" << (num_errors - threshold) << " more errors)";
+    }
+    std::clog << "FAIL!" << std::endl;
+  }
+  return num_errors > 0 ? 1 : 0;
 }
