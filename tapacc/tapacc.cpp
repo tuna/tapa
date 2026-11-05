@@ -163,16 +163,18 @@ int main(int argc, const char** argv) {
       TreeConfig{g_emit_dir.getValue(), std::move(main_files)});
   builder.SetTaskTargets(std::move(task_targets));
 
-  clang::tooling::ClangTool index_tool(parser->getCompilations(),
-                                       parser->getSourcePathList());
-  BuilderActionFactory index_factory(builder, /*index_pass=*/true);
-  int rc = index_tool.run(&index_factory);
-  if (rc == 0 && !builder.MergeAndDiscover()) {
+  const auto fail_with_errors = [&builder] {
     for (const std::string& error : builder.errors()) {
       llvm::errs() << "error: " << error << "\n";
     }
     return 1;
-  }
+  };
+
+  clang::tooling::ClangTool index_tool(parser->getCompilations(),
+                                       parser->getSourcePathList());
+  BuilderActionFactory index_factory(builder, /*index_pass=*/true);
+  int rc = index_tool.run(&index_factory);
+  if (rc == 0 && !builder.MergeAndDiscover()) return fail_with_errors();
   if (rc != 0) return rc;
 
   clang::tooling::ClangTool rewrite_tool(parser->getCompilations(),
@@ -180,12 +182,7 @@ int main(int argc, const char** argv) {
   BuilderActionFactory rewrite_factory(builder, /*index_pass=*/false);
   rc = rewrite_tool.run(&rewrite_factory);
   if (rc != 0) return rc;
-  if (!builder.CheckAieEot()) {
-    for (const std::string& error : builder.errors()) {
-      llvm::errs() << "error: " << error << "\n";
-    }
-    return 1;
-  }
+  if (!builder.CheckAieEot()) return fail_with_errors();
 
   std::string error;
   if (!builder.WriteTree(&error)) {
