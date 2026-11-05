@@ -3,13 +3,10 @@
 // RapidStream Contributor License Agreement.
 
 #include <tapa.h>
-#include "assert.h"
 
 #define MEMORY_DWIDTH 512
 #define SIZEOF_WORD 4
 #define NUM_WORDS ((MEMORY_DWIDTH) / (8 * SIZEOF_WORD))
-
-#define DATA_SIZE 4096
 
 void load_input(tapa::mmap<tapa::vec_t<uint32_t, NUM_WORDS>> in,
                 tapa::ostream<tapa::vec_t<uint32_t, NUM_WORDS>>& inStream,

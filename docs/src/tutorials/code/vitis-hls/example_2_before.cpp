@@ -4,13 +4,10 @@
 
 #include <hls_stream.h>
 #include <hls_vector.h>
-#include "assert.h"
 
 #define MEMORY_DWIDTH 512
 #define SIZEOF_WORD 4
 #define NUM_WORDS ((MEMORY_DWIDTH) / (8 * SIZEOF_WORD))
-
-#define DATA_SIZE 4096
 
 void load_input(hls::vector<uint32_t, NUM_WORDS>* in,
                 hls::stream<hls::vector<uint32_t, NUM_WORDS>>& inStream,
