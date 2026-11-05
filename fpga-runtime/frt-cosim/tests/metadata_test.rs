@@ -17,8 +17,7 @@ const KERNEL_XML: &str = r#"<?xml version="1.0"?>
 
 #[test]
 fn parse_vitis_kernel_xml() {
-    let spec =
-        metadata::xo::parse_kernel_xml(KERNEL_XML, std::path::Path::new("/tmp")).expect("parse");
+    let spec = metadata::xo::parse_kernel_xml(KERNEL_XML).expect("parse");
     assert_eq!(spec.top_name, "vadd");
     assert_eq!(spec.mode, Mode::Vitis);
     assert_eq!(spec.args.len(), 3);
@@ -49,7 +48,7 @@ fn unusable_stream_depth_is_a_parse_error() {
   </kernel>
 </root>"#
         );
-        let result = metadata::xo::parse_kernel_xml(&xml, std::path::Path::new("/tmp"));
+        let result = metadata::xo::parse_kernel_xml(&xml);
         assert!(result.is_err(), "depth={depth:?} must be rejected");
     }
 }
