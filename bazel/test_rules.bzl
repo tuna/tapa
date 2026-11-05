@@ -72,10 +72,6 @@ def tapa_app_test(
             "//conditions:default": [],
         })
 
-    xo_kwargs = {}
-    if xo_visibility != None:
-        xo_kwargs["visibility"] = xo_visibility
-
     sh_test(
         name = name,
         size = "medium",
@@ -162,7 +158,7 @@ def tapa_app_test(
         hdrs = kernel_hdrs,
         include = ["."],
         top_name = top_name,
-        **xo_kwargs
+        visibility = xo_visibility,
     )
 
     tapa_xo(
@@ -172,7 +168,7 @@ def tapa_app_test(
         include = ["."],
         target = "xilinx-hls",
         top_name = top_name,
-        **xo_kwargs
+        visibility = xo_visibility,
     )
 
     vpp_xclbin(
@@ -235,17 +231,6 @@ def tapa_functional_test(
             "//conditions:default": [],
         })
 
-    xosim_kwargs = {}
-    xosim_kwargs["size"] = xosim_size
-    if xosim_timeout != None:
-        xosim_kwargs["timeout"] = xosim_timeout
-    if xosim_tags != None:
-        xosim_kwargs["tags"] = xosim_tags
-
-    kernel_kwargs = {}
-    if kernel_hdrs != None:
-        kernel_kwargs["hdrs"] = kernel_hdrs
-
     sh_test(
         name = name,
         size = sim_size,
@@ -272,7 +257,9 @@ def tapa_functional_test(
             ":%s-xo" % name,
             _CARGO_RELEASE_ARTIFACTS,
         ],
-        **xosim_kwargs
+        size = xosim_size,
+        tags = xosim_tags,
+        timeout = xosim_timeout,
     )
 
     cc_binary(
@@ -287,9 +274,9 @@ def tapa_functional_test(
     tapa_xo(
         name = "%s-xo" % name,
         srcs = kernel_srcs,
+        hdrs = kernel_hdrs,
         include = kernel_includes,
         top_name = top_name,
-        **kernel_kwargs
     )
 
 def regression_xosim(name, xo, host_srcs, host_defines = [], hw_test_args = [], extra_test_data = []):
