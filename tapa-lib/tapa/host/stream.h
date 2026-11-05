@@ -313,21 +313,23 @@ class basic_streams {
            std::to_string(ptr->pos + length) + ")";
   }
 
-  // Hands out the channel at `pos` and advances it; `accessed` describes the
-  // access for the out-of-range error, e.g. "istream slice 'q[0:2)' accessed"
-  // or "channels 'q' accessed as istream".
-  basic_stream<T> access_next(uint64_t& pos, const std::string& accessed) {
+  // Hands out the channel at `pos` and advances it. `accessed()` describes
+  // the access for the out-of-range error, e.g. "istream slice 'q[0:2)'
+  // accessed" or "channels 'q' accessed as istream"; it runs only on error.
+  template <typename Describe>
+  basic_stream<T> access_next(uint64_t& pos, const Describe& accessed) {
     CHECK_LT(pos, ptr->refs.size())
-        << accessed << " for " << pos + 1 << " times but it only contains "
+        << accessed() << " for " << pos + 1 << " times but it only contains "
         << ptr->refs.size() << " channels";
     return ptr->refs[pos++];
   }
 
   // Builds the metadata of a slice of the next `length` channels, named at
   // `slice_pos`, handing the channels out from `pos` as in `access_next`.
+  template <typename Describe>
   std::shared_ptr<metadata_t> access_slice(uint64_t& pos, int slice_pos,
                                            uint64_t length,
-                                           const std::string& accessed) {
+                                           const Describe& accessed) {
     auto slice = std::make_shared<metadata_t>(ptr->name, slice_pos);
     slice->refs.reserve(length);
     for (uint64_t i = 0; i < length; ++i) {
@@ -689,18 +691,18 @@ class istreams : virtual public internal::basic_streams<T> {
   uint64_t access_pos_ = 0;
 
   istream<T> access() {
-    return this->access_next(
-        access_pos_,
-        "istream slice '" + this->get_slice_name(length) + "' accessed");
+    return this->access_next(access_pos_, [&] {
+      return "istream slice '" + this->get_slice_name(length) + "' accessed";
+    });
   }
   template <uint64_t length>
   istreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     istreams<T, length> result;
-    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length,
-                                    "istream slice '" +
-                                        this->get_slice_name(istreams::length) +
-                                        "' accessed");
+    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length, [&] {
+      return "istream slice '" + this->get_slice_name(istreams::length) +
+             "' accessed";
+    });
     return result;
   }
 };
@@ -732,18 +734,18 @@ class ostreams : virtual public internal::basic_streams<T> {
   uint64_t access_pos_ = 0;
 
   ostream<T> access() {
-    return this->access_next(
-        access_pos_,
-        "ostream slice '" + this->get_slice_name(length) + "' accessed");
+    return this->access_next(access_pos_, [&] {
+      return "ostream slice '" + this->get_slice_name(length) + "' accessed";
+    });
   }
   template <uint64_t length>
   ostreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     ostreams<T, length> result;
-    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length,
-                                    "ostream slice '" +
-                                        this->get_slice_name(ostreams::length) +
-                                        "' accessed");
+    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length, [&] {
+      return "ostream slice '" + this->get_slice_name(ostreams::length) +
+             "' accessed";
+    });
     return result;
   }
 };
@@ -789,22 +791,23 @@ class streams : public internal::unbound_streams<T, S> {
   uint64_t ostream_access_pos_ = 0;
 
   istream<T> access_as_istream() {
-    return this->access_next(
-        istream_access_pos_,
-        "channels '" + this->ptr->name + "' accessed as istream");
+    return this->access_next(istream_access_pos_, [&] {
+      return "channels '" + this->ptr->name + "' accessed as istream";
+    });
   }
   ostream<T> access_as_ostream() {
-    return this->access_next(
-        ostream_access_pos_,
-        "channels '" + this->ptr->name + "' accessed as ostream");
+    return this->access_next(ostream_access_pos_, [&] {
+      return "channels '" + this->ptr->name + "' accessed as ostream";
+    });
   }
   template <uint64_t length>
   istreams<T, length> access_as_istreams() {
     CHECK_NOTNULL(this->ptr.get());
     istreams<T, length> result;
     result.ptr = this->access_slice(
-        istream_access_pos_, istream_access_pos_, length,
-        "channels '" + this->ptr->name + "' accessed as istream");
+        istream_access_pos_, istream_access_pos_, length, [&] {
+          return "channels '" + this->ptr->name + "' accessed as istream";
+        });
     return result;
   }
   template <uint64_t length>
@@ -812,8 +815,9 @@ class streams : public internal::unbound_streams<T, S> {
     CHECK_NOTNULL(this->ptr.get());
     ostreams<T, length> result;
     result.ptr = this->access_slice(
-        ostream_access_pos_, ostream_access_pos_, length,
-        "channels '" + this->ptr->name + "' accessed as ostream");
+        ostream_access_pos_, ostream_access_pos_, length, [&] {
+          return "channels '" + this->ptr->name + "' accessed as ostream";
+        });
     return result;
   }
 };
