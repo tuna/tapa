@@ -16,20 +16,20 @@ use tempfile::TempDir;
 use crate::error::{FrtError, Result};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Platform {
+pub(crate) enum Platform {
     Hardware,
     Simulation,
     Emulation,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ArgKind {
+pub(crate) enum ArgKind {
     Scalar,
     Buffer,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum MemoryTarget {
+pub(crate) enum MemoryTarget {
     Ddr,
     Hbm(u8),
     /// SLASH's allocator-selected HBM target (`HBM`, `HBM_VNOC`, or `MEM`).
@@ -37,7 +37,7 @@ pub enum MemoryTarget {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Arg {
+pub(crate) struct Arg {
     pub index: u32,
     pub name: String,
     pub kind: ArgKind,
@@ -50,7 +50,7 @@ pub struct Arg {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Kernel {
+pub(crate) struct Kernel {
     pub name: String,
     pub base_address: u64,
     pub args: Vec<Arg>,
@@ -133,7 +133,7 @@ impl Kernel {
 
 /// A fully extracted VBIN and the typed metadata shared by VRT backends.
 #[derive(Debug)]
-pub struct Vbin {
+pub(crate) struct Vbin {
     /// Owns every extracted path for as long as a backend needs them.
     temp_dir: TempDir,
     pub platform: Platform,
@@ -517,7 +517,7 @@ fn parse_bool(text: &str, field: &str) -> Result<bool> {
 /// Lower a scalar or device address to little-endian 32-bit register writes.
 /// Values narrower than their recorded register are zero-padded, including
 /// sub-u32 scalars; wider host values are rejected rather than truncated.
-pub fn register_words(offset: u32, range: u32, value: &[u8]) -> Result<Vec<(u32, u32)>> {
+pub(crate) fn register_words(offset: u32, range: u32, value: &[u8]) -> Result<Vec<(u32, u32)>> {
     if !offset.is_multiple_of(4) {
         return Err(FrtError::Vrt(format!(
             "register offset {offset:#x} is not 32-bit aligned"

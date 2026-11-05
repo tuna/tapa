@@ -58,7 +58,7 @@ enum SimulationState {
     Finished(Option<FrtError>),
 }
 
-pub struct CosimDevice {
+pub(crate) struct CosimDevice {
     spec: KernelSpec,
     arg_names: HashMap<u32, String>,
     stream_arg_names: HashMap<u32, String>,
@@ -85,7 +85,7 @@ pub struct CosimDevice {
 unsafe impl Send for CosimDevice {}
 
 impl CosimDevice {
-    pub fn open(path: &Path, sim: &Simulator) -> Result<Self> {
+    pub(crate) fn open(path: &Path, sim: &Simulator) -> Result<Self> {
         let (spec, extract_dir) = frt_cosim::metadata::load_spec(path)?;
         let arg_names = spec
             .args

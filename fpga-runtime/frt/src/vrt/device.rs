@@ -68,7 +68,7 @@ fn allocation(target: MemoryTarget, access: BufferAccess) -> Allocation {
     }
 }
 
-pub struct VrtDevice {
+pub(crate) struct VrtDevice {
     api: &'static Api,
     fd: c_int,
     device_index: u32,
@@ -130,7 +130,7 @@ fn normalize_bdf(bdf: &str) -> String {
 }
 
 impl VrtDevice {
-    pub fn open(vbin: &Vbin) -> Result<Self> {
+    pub(crate) fn open(vbin: &Vbin) -> Result<Self> {
         if vbin.pdi_paths.is_empty() {
             return Err(FrtError::Vrt(
                 "hardware VBIN contains no PDI to program".into(),
