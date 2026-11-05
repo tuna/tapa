@@ -1437,7 +1437,6 @@ pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::
 pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_slot_name(&str) -> core::option::Option<Self>
-pub fn tapa_ir::floorplan::Coor::has_overlap(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::height(&self) -> u32
 pub fn tapa_ir::floorplan::Coor::is_east_neighbor_of(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::is_inside(&self, &Self) -> bool
@@ -4177,7 +4176,6 @@ pub fn tapa_ir::floorplan::Coor::from_atomic_region_name(&str) -> core::option::
 pub fn tapa_ir::floorplan::Coor::from_region_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_region_or_slot_name(&str) -> core::option::Option<Self>
 pub fn tapa_ir::floorplan::Coor::from_slot_name(&str) -> core::option::Option<Self>
-pub fn tapa_ir::floorplan::Coor::has_overlap(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::height(&self) -> u32
 pub fn tapa_ir::floorplan::Coor::is_east_neighbor_of(&self, &Self) -> bool
 pub fn tapa_ir::floorplan::Coor::is_inside(&self, &Self) -> bool
