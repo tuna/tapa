@@ -2,7 +2,7 @@ use askama::Template;
 use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{KernelSpec, Mode};
+use crate::metadata::KernelSpec;
 use crate::tb::names::cpp_identifier;
 use crate::tb::{classify_args, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg};
 
@@ -47,10 +47,7 @@ impl<'a> VerilatorTbGenerator<'a> {
     }
 
     pub fn render_tb(&self) -> Result<String> {
-        let mode_str = match self.spec.mode {
-            Mode::Hls => "hls",
-            Mode::Vitis => "vitis",
-        };
+        let mode_str = self.spec.mode.as_str();
 
         let verilog_contents = read_verilog_contents(self.spec);
         let base_addresses = self.base_addresses;
@@ -115,7 +112,7 @@ fn bytes_to_cpp_initializer(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metadata::{ArgKind, ArgSpec};
+    use crate::metadata::{ArgKind, ArgSpec, Mode};
 
     #[test]
     fn control_write_address_does_not_truncate_large_offsets() {

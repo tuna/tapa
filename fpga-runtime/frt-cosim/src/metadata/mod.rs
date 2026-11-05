@@ -14,6 +14,16 @@ pub enum Mode {
     Vitis,
 }
 
+impl Mode {
+    /// The mode string the testbench templates speak.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Hls => "hls",
+            Self::Vitis => "vitis",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamDir {
     In,

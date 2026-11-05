@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{KernelSpec, Mode};
+use crate::metadata::KernelSpec;
 use crate::tb::names::{escape_verilog_identifier, verilator_identifier};
 use crate::tb::{
     classify_args, control_addr_width, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg,
@@ -117,10 +117,7 @@ impl<'a> XsimTbGenerator<'a> {
         let verilog_contents = read_verilog_contents(self.spec);
         let (mmap_args, scalar_args, stream_args, stream_out_args) =
             self.collect_args(&verilog_contents)?;
-        let mode = match self.spec.mode {
-            Mode::Hls => "hls",
-            Mode::Vitis => "vitis",
-        };
+        let mode = self.spec.mode.as_str();
         let required_control_width = control_addr_width(&mmap_args, &scalar_args);
         let control_addr_width = match detect_parameter_value(
             &verilog_contents,
@@ -231,7 +228,7 @@ fn detect_axi_port_width(verilog_contents: &[String], port_name: &str) -> usize 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::metadata::{ArgKind, ArgSpec};
+    use crate::metadata::{ArgKind, ArgSpec, Mode};
 
     #[test]
     fn detects_axi_port_widths() {
