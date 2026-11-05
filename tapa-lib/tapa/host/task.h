@@ -178,9 +178,9 @@ struct invoker {
   }
 
   // Sets the kernel arguments; returns how many it set.
-  template <typename Func, size_t... Is, typename... CapturedArgs>
-  static int set_fpga_args(frt::Instance& instance, Func&& func,
-                           std::index_sequence<Is...>, CapturedArgs&&... args) {
+  template <size_t... Is, typename... CapturedArgs>
+  static int set_fpga_args(frt::Instance& instance, std::index_sequence<Is...>,
+                           CapturedArgs&&... args) {
     int idx = 0;
     (accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
          instance, idx, std::forward<CapturedArgs>(args)),
@@ -200,9 +200,9 @@ struct invoker {
     frt_sync_kernel_instance = &instance;
     signal(SIGINT, &kill_frt_sync_kernel);
 
-    const int bound = set_fpga_args(instance, std::forward<F>(f),
-                                    std::index_sequence_for<Args...>{},
-                                    std::forward<Args>(args)...);
+    const int bound =
+        set_fpga_args(instance, std::index_sequence_for<Args...>{},
+                      std::forward<Args>(args)...);
     if (!hybrid_run(instance, bound, [&] { f(std::forward<Args>(args)...); })) {
       instance.WriteToDevice();
       instance.Exec();
@@ -314,7 +314,7 @@ struct task {
     }
 
     auto instance = std::make_shared<internal::frt::Instance>(exe.path_);
-    internal::invoker<Func>::set_fpga_args(*instance, std::forward<Func>(func),
+    internal::invoker<Func>::set_fpga_args(*instance,
                                            std::index_sequence_for<Args...>{},
                                            std::forward<Args>(args)...);
     return invoke_frt(std::move(instance));
