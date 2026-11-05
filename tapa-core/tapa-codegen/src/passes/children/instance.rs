@@ -198,36 +198,34 @@ pub(super) fn build_child_instance_with_reset(
                 let binding = mmap_bindings.get(parent);
                 let m_axi_wire_prefix = binding.wire_prefix(parent);
                 if matches!(arg.cat, ArgCategory::AsyncMmap) {
-                    if child_rtl.is_some_and(|module| {
-                        async_mmap::has_direct_m_axi_ports(module, child_port)
-                    }) {
-                        let child_rtl_filter = if child_rtl.is_some_and(|module| {
-                            module
+                    match child_rtl {
+                        Some(module) if async_mmap::has_direct_m_axi_ports(module, child_port) => {
+                            // Without its own offset port, the child binds
+                            // only the ports it declares.
+                            let has_offset = module
                                 .find_port(&direct_mmap_offset_port(child_rtl, child_port))
-                                .is_some()
-                        }) {
-                            None
-                        } else {
-                            child_rtl
-                        };
-                        add_direct_mmap_portargs(
-                            &mut port_args,
-                            child_port,
-                            &offset_sig,
-                            &m_axi_wire_prefix,
-                            binding.id_widths(),
-                            child_rtl_filter,
-                            child_rtl,
-                        );
-                    } else if let Some(module) = child_rtl {
-                        let bridge_base =
-                            async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
-                        port_args.extend(async_mmap::child_portargs(
-                            module,
-                            child_port,
-                            &bridge_base,
-                            &offset_sig,
-                        ));
+                                .is_some();
+                            add_direct_mmap_portargs(
+                                &mut port_args,
+                                child_port,
+                                &offset_sig,
+                                &m_axi_wire_prefix,
+                                binding.id_widths(),
+                                (!has_offset).then_some(module),
+                                child_rtl,
+                            );
+                        }
+                        Some(module) => {
+                            let bridge_base =
+                                async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
+                            port_args.extend(async_mmap::child_portargs(
+                                module,
+                                child_port,
+                                &bridge_base,
+                                &offset_sig,
+                            ));
+                        }
+                        None => {}
                     }
                 } else {
                     add_direct_mmap_portargs(
