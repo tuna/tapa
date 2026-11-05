@@ -179,16 +179,10 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
         None => None,
     };
 
-    if cli_spec.is_none() && file_remote.is_none() {
-        return Ok(None);
-    }
-
-    let map = match cli_spec.as_ref() {
-        Some(spec) => apply_remote_host_to_yaml(file_remote, spec),
-        None => match file_remote {
-            Some(m) => m,
-            _ => return Ok(None),
-        },
+    let map = match (cli_spec.as_ref(), file_remote) {
+        (Some(spec), base) => apply_remote_host_to_yaml(base, spec),
+        (None, Some(m)) => m,
+        (None, None) => return Ok(None),
     };
 
     if !map.contains_key(serde_yaml::Value::String("host".into())) {
