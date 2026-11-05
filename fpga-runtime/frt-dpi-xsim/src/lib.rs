@@ -37,18 +37,11 @@ mod imp {
         unsafe { (get_sv_get_array_ptr())(h).cast::<u8>() }
     }
 
-    // Marshals an svOpenArrayHandle payload pointer for writes.
-    fn arr_mut_ptr(h: SvOpenArrayHandle) -> *mut u8 {
+    // Marshals an svOpenArrayHandle payload pointer.
+    fn arr_ptr(h: SvOpenArrayHandle) -> *mut u8 {
         // SAFETY: the DPI caller hands us a handle that stays valid for the
         // duration of the exported call.
         unsafe { sv_array_ptr(h) }
-    }
-
-    // Marshals an svOpenArrayHandle payload pointer for reads.
-    fn arr_const_ptr(h: SvOpenArrayHandle) -> *const u8 {
-        // SAFETY: the DPI caller hands us a handle that stays valid for the
-        // duration of the exported call.
-        unsafe { sv_array_ptr(h).cast_const() }
     }
 
     // Decodes an `svBit`-style flag: nonzero is set.
@@ -58,8 +51,8 @@ mod imp {
 
     // xsim marshalling: svOpenArrayHandle arrays, `u8` flags/returns.
     frt_dpi::dpi_export! {
-        mut arr: SvOpenArrayHandle as arr_mut_ptr;
-        const arr: SvOpenArrayHandle as arr_const_ptr;
+        mut arr: SvOpenArrayHandle as arr_ptr;
+        const arr: SvOpenArrayHandle as arr_ptr;
         flag: u8 as flag_is_set;
         ret: u8 as u8::from;
     }
