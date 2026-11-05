@@ -19,7 +19,6 @@ pub(super) const SYNC_FROM_DEVICE: c_int = 1;
 pub(super) const RUN_COMPLETED: c_int = 4;
 pub(super) const RUN_ERROR: c_int = 5;
 pub(super) const RUN_ABORT: c_int = 6;
-pub(super) const RUN_SUBMITTED: c_int = 7;
 pub(super) const RUN_TIMEOUT: c_int = 8;
 pub(super) const RUN_NORESPONSE: c_int = 9;
 pub(super) const RUN_SKERROR: c_int = 10;

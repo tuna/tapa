@@ -1,6 +1,6 @@
 use super::api::{
     api, Api, Handle, RUN_ABORT, RUN_COMPLETED, RUN_ERROR, RUN_NORESPONSE, RUN_SKCRASHED,
-    RUN_SKERROR, RUN_SUBMITTED, RUN_TIMEOUT, SYNC_FROM_DEVICE, SYNC_TO_DEVICE,
+    RUN_SKERROR, RUN_TIMEOUT, SYNC_FROM_DEVICE, SYNC_TO_DEVICE,
 };
 use super::metadata::{
     extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, parse_embedded_xml, AieGraph,
@@ -707,9 +707,6 @@ impl Device for XrtDevice {
             self.stop_graph()?;
             return Ok(true);
         }
-        if state == RUN_SUBMITTED {
-            return Ok(false);
-        }
         if is_run_error(state) {
             self.compute_ns = elapsed_ns(start);
             self.execution_state = ExecutionState::Finished;
@@ -788,7 +785,7 @@ fn current_username() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::{emulation_mode_env_value, is_run_error, va_scalar, VaScalar};
-    use crate::xrt::api::{RUN_COMPLETED, RUN_SUBMITTED};
+    use crate::xrt::api::RUN_COMPLETED;
     use frt_cosim::metadata::kernel_xml::XclbinTarget;
 
     #[test]
@@ -804,17 +801,17 @@ mod tests {
         assert_eq!(emulation_mode_env_value(XclbinTarget::Flat), None);
     }
 
-    /// `xrtRunSetArg` is variadic and reads each scalar by the type the
-    /// xclbin gives it; a value passed as anything else is garbage.
     #[test]
     fn submitted_is_pending_not_an_error() {
-        assert!(!is_run_error(RUN_SUBMITTED));
+        assert!(!is_run_error(7));
         assert!(!is_run_error(RUN_COMPLETED));
         for state in [5, 6, 8, 9, 10, 11] {
             assert!(is_run_error(state), "state {state} must be an error");
         }
     }
 
+    /// `xrtRunSetArg` is variadic and reads each scalar by the type the
+    /// xclbin gives it; a value passed as anything else is garbage.
     #[test]
     fn scalars_take_the_variadic_type_xrt_reads() {
         let float = 1.5f32.to_le_bytes();
