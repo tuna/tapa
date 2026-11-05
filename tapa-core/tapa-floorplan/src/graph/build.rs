@@ -63,10 +63,8 @@ pub(super) struct BuiltGraph {
 impl FloorGraphBuilder {
     /// Insert one placement vertex per task instance.
     ///
-    /// Duplicate canonical names are rejected: they would silently collapse
-    /// onto one key in the published `regions` map. Also records the
-    /// `(definition, instance index)` → vertex endpoint map used by the FIFO
-    /// clustering and control passes.
+    /// Also records the `(definition, instance index)` → vertex endpoint map
+    /// used by the FIFO clustering and control passes.
     pub(super) fn add_task_vertices(
         &mut self,
         flat: &TaskGraph,
