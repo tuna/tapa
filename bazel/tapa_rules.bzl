@@ -218,8 +218,6 @@ def _tapa_xo_impl(ctx):
     for src in srcs:
         analyze_cmd.extend(["--input", src.path])
     analyze_cmd.extend(["--top", top_name])
-    if ctx.file.tapacc:
-        analyze_cmd.extend(["--tapacc", ctx.file.tapacc])
     if ctx.attr.cflags:
         analyze_cmd.extend(["--cflags", ctx.attr.cflags])
     for include in ctx.files.include:
@@ -420,7 +418,6 @@ _tapa_xo = rule(
             default = Label("//tapa-core:tapa"),
             executable = True,
         ),
-        "tapacc": attr.label(allow_single_file = True),
         "cflags": attr.string(),
         "target": attr.string(
             default = "xilinx-vitis",
