@@ -3,7 +3,7 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-use tapa_ir::{MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind};
+use tapa_ir::{MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint};
 
 use crate::platform::kernel_xml::KernelXmlPort;
 
@@ -386,6 +386,7 @@ fn parse_bank(value: &str, line: usize) -> Result<MemoryBank, ConnectivityParseE
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tapa_ir::MemoryKind;
 
     fn slash_port(name: &str) -> KernelXmlPort {
         KernelXmlPort {
