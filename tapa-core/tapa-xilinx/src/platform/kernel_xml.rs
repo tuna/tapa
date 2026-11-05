@@ -220,10 +220,9 @@ struct SlashAbi {
 
 fn slash_abi(args: &KernelXmlArgs) -> Result<SlashAbi> {
     let (ports, xml_args) = project_kernel_xml(args)?;
-    if xml_args.is_empty()
-        || xml_args
-            .iter()
-            .any(|arg| !matches!(arg.addr_qualifier, 0 | 1) || !matches!(arg.size_bytes, 4 | 8))
+    if xml_args
+        .iter()
+        .any(|arg| !matches!(arg.addr_qualifier, 0 | 1) || !matches!(arg.size_bytes, 4 | 8))
     {
         return Err(XilinxError::KernelXml(
             "SLASH packaging requires an ap_ctrl_hs kernel with only 32- or 64-bit \
