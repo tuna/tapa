@@ -141,7 +141,7 @@ InvokeMode GetInvokeMode(const clang::CXXMemberCallExpr* invoke) {
 // True when `arg` (possibly an array element like `q[0]`) names one of the
 // task's own stream ports — an external FIFO at the kernel boundary.
 bool IsStreamPortArg(const TaskModel& task, const std::string& arg) {
-  const std::string base = arg.substr(0, arg.find('['));
+  const std::string base = ArrayBaseName(arg);
   for (const Port& port : task.ports) {
     if (port.name != base) continue;
     return IsStreamInterface(port.kind);

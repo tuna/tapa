@@ -140,6 +140,12 @@ inline Port* FindPort(TaskModel& task, std::string_view name) {
   return const_cast<Port*>(FindPort(static_cast<const TaskModel&>(task), name));
 }
 
+// The base name behind a possibly array-subscripted spelling ("q[2]" -> "q");
+// the name itself when it carries no subscript.
+inline std::string ArrayBaseName(std::string_view name) {
+  return std::string(name.substr(0, name.find('[')));
+}
+
 // The whole program: the top-level task name, the ordered list of global
 // functions defined in the main file (drives codegen's per-task file assembly),
 // and every TAPA task reachable from the top, keyed by name.

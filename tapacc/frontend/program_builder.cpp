@@ -883,9 +883,9 @@ bool ProgramBuilder::CheckAieEot() {
       for (const auto& instance : instances) {
         const auto child_closed = closed_ports(*child->second);
         for (const auto& [port, arg] : instance.args) {
-          const std::string child_port = port.substr(0, port.find('['));
+          const std::string child_port = ArrayBaseName(port);
           if (child_closed.count(child_port) == 0 || arg.arg.empty()) continue;
-          const std::string upper_port = arg.arg.substr(0, arg.arg.find('['));
+          const std::string upper_port = ArrayBaseName(arg.arg);
           if (FindPort(task, upper_port) != nullptr) closed.insert(upper_port);
         }
       }
@@ -910,7 +910,7 @@ bool ProgramBuilder::CheckAieEot() {
       for (const auto& [port, arg] :
            instances->second[stream.produced_by->index].args) {
         if (arg.arg != fifo) continue;
-        const std::string base = port.substr(0, port.find('['));
+        const std::string base = ArrayBaseName(port);
         if (closed_ports(*producer->second).count(base) == 0) continue;
         Fail("task '" + producer->first + "' closes its stream '" + base +
              "', which feeds the AI Engine task '" + consumer->first +
