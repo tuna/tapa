@@ -34,7 +34,7 @@ pub enum ParseError {
 
 /// Deserialize one complete JSON document with field-path error
 /// diagnostics, rejecting content trailing the document.
-pub(crate) fn parse_json<T: DeserializeOwned>(json: &str) -> Result<T, ParseError> {
+pub fn parse_json<T: DeserializeOwned>(json: &str) -> Result<T, ParseError> {
     let mut de = serde_json::Deserializer::from_str(json);
     let value = serde_path_to_error::deserialize(&mut de).map_err(|e| ParseError::Schema {
         path: e.path().to_string(),
