@@ -8,9 +8,7 @@ use std::collections::HashMap;
 ///
 /// The real size arrives with `set_buffer_arg`, which replaces the segment, so
 /// this is a stand-in and nothing reads it: an argument the host never binds
-/// reads as zero and its writes go nowhere, whatever the size. It used to be
-/// 4 MiB, which bought only a 4 MiB copy into the replacement -- 4.5 ms per
-/// mmap argument per invocation, against 16 us for the replacement alone.
+/// reads as zero and its writes go nowhere, whatever the size.
 const PLACEHOLDER_BUFFER_BYTES: usize = 1;
 
 pub struct CosimContext {
@@ -231,7 +229,6 @@ mod tests {
             Some(PLACEHOLDER_BUFFER_BYTES)
         );
         assert_eq!(config.streams["s"].dpi_width_bytes, 5);
-        // The former Value-based writer sorted object keys, including fields.
         let value: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(json, value.to_string(), "preserve deterministic wire bytes");
     }

@@ -98,9 +98,7 @@ pub(crate) fn direct_offset_port_name(verilog_contents: &[String], name: &str) -
 /// The packed width of a port's declaration in the packaged Verilog
 /// (`[N:0]` → N+1, absent → 1), or `None` when undeclared.
 ///
-/// This is the one declaration probe for the testbenches; matching used to
-/// be re-implemented per call site with subtly different rules (single-line
-/// only vs spanning, keyword-anchored or not).
+/// This is the one declaration probe for the testbenches.
 pub(crate) fn port_declaration(verilog_contents: &[String], port: &str) -> Option<usize> {
     let width_re = regex_lite::Regex::new(r"\[\s*(\d+)\s*:\s*0\s*\]").unwrap();
     let is_word = |c: char| c.is_alphanumeric() || c == '_';
