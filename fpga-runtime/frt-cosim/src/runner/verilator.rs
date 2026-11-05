@@ -592,28 +592,23 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
     };
     let latency = model.latency;
     let dpi_func = model.dpi_func;
-    let third_port = if model.operands == 3 {
-        format!(
-            "    input  wire        s_axis_c_tvalid,\n    input  wire [{data_hi}:0] s_axis_c_tdata,\n",
-            data_hi = bit_width - 1,
+    let (third_port, dpi_args, dpi_call, valid_expr) = if model.operands == 3 {
+        (
+            format!(
+                "    input  wire        s_axis_c_tvalid,\n    input  wire [{data_hi}:0] s_axis_c_tdata,\n",
+                data_hi = bit_width - 1,
+            ),
+            format!("input {ret_type} a, input {ret_type} b, input {ret_type} c"),
+            format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata, s_axis_c_tdata)"),
+            "s_axis_a_tvalid & s_axis_b_tvalid & s_axis_c_tvalid",
         )
     } else {
-        String::new()
-    };
-    let dpi_args = if model.operands == 3 {
-        format!("input {ret_type} a, input {ret_type} b, input {ret_type} c")
-    } else {
-        format!("input {ret_type} a, input {ret_type} b")
-    };
-    let dpi_call = if model.operands == 3 {
-        format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata, s_axis_c_tdata)")
-    } else {
-        format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata)")
-    };
-    let valid_expr = if model.operands == 3 {
-        "s_axis_a_tvalid & s_axis_b_tvalid & s_axis_c_tvalid"
-    } else {
-        "s_axis_a_tvalid & s_axis_b_tvalid"
+        (
+            String::new(),
+            format!("input {ret_type} a, input {ret_type} b"),
+            format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata)"),
+            "s_axis_a_tvalid & s_axis_b_tvalid",
+        )
     };
 
     // Only the body differs between a combinational model and a
