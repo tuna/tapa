@@ -149,19 +149,9 @@ TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the sim
 
 ## Runtime flags reference
 
-The following flags control fast cosim behavior when passed to the host executable. The canonical reference is [Runtime Flags](../reference/runtime-flags.md).
-
-| Flag | Description |
-|------|-------------|
-| `-xsim_part_num <part>` | Override the FPGA part recorded in the archive. Usually unnecessary. |
-| `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this, a temporary directory is used and deleted after the run. |
-| `-xsim_save_waveform` | Save xsim waveforms to `wave.wdb`. Pair with `-cosim_work_dir` to keep them after exit. |
-| `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
-| `-cosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only) or `verilator` (Linux/macOS). |
-| `-cosim_timeout_seconds <seconds>` | Stop fast cosim after this much wall-clock time; `0` (the default) leaves it unlimited. |
-| `-cosim_setup_only` | Run simulation setup only, then stop before executing the simulation. |
-| `-cosim_resume_from_post_sim` | Skip re-running the simulation; jump directly to post-simulation checks. |
-| `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running concurrent simulations. |
+The flags controlling fast cosim behavior are documented in the canonical
+[Runtime Flags](../reference/runtime-flags.md#host-executable-flags-fast-cosim)
+reference.
 
 ## Expected output
 
