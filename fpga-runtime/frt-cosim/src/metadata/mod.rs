@@ -228,9 +228,9 @@ fn make_extract_dir(tag: &str) -> Result<tempfile::TempDir> {
         .tempdir()?)
 }
 
-/// Returns true if the zip entry path has more than 2 directory components.
-/// Only files at depth 0 or 1 are collected. Deeply nested files (e.g. inside
-/// `ip_repo`/subdirectories) are not included.
+/// Returns true when the entry sits more than two directories deep; only
+/// files up to two directories down are collected (deeper paths, e.g. inside
+/// `ip_repo` subdirectories, are not included).
 fn is_deeply_nested(zip_name: &str) -> bool {
     zip_name.matches('/').count() > 2
 }
