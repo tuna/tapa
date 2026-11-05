@@ -240,7 +240,7 @@ pub fn build_bridge_instance(
         .checked_div(data_width)
         .unwrap_or(0)
         .saturating_sub(1);
-    let mut params = vec![
+    let params = vec![
         ParamArg::new("DataWidth", Expr::int(u64::from(data_width))),
         ParamArg::new("DataWidthBytesLog", Expr::int(u64::from(bytes_log))),
         ParamArg::new("AddrWidth", Expr::int(u64::from(AXI_ADDR_WIDTH))),
@@ -305,7 +305,7 @@ pub fn build_bridge_instance(
     }
 
     ModuleInstance::new("async_mmap", instance_name)
-        .with_params(std::mem::take(&mut params))
+        .with_params(params)
         .with_ports(ports)
 }
 
