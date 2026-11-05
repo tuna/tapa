@@ -824,8 +824,6 @@ pub fn tapa_rtl::port::Port::from(T) -> T
 pub struct tapa_rtl::port::Width
 pub tapa_rtl::port::Width::lsb: tapa_rtl::expression::Expression
 pub tapa_rtl::port::Width::msb: tapa_rtl::expression::Expression
-impl tapa_rtl::port::Width
-pub fn tapa_rtl::port::Width::bit_count(&self) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_rtl::port::Width
 pub fn tapa_rtl::port::Width::clone(&self) -> tapa_rtl::port::Width
 impl core::cmp::Eq for tapa_rtl::port::Width

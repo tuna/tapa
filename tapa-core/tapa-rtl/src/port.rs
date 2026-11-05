@@ -23,7 +23,7 @@ impl Width {
     /// Number of bits spanned, when both endpoints are integer
     /// literals; `None` for symbolic widths.
     #[must_use]
-    pub fn bit_count(&self) -> Option<u32> {
+    fn bit_count(&self) -> Option<u32> {
         let msb = crate::expression::expression_as_u32(&self.msb)?;
         let lsb = crate::expression::expression_as_u32(&self.lsb)?;
         Some(msb.abs_diff(lsb) + 1)
