@@ -387,8 +387,7 @@ void XilinxBackend::LowerPipeline(int ii, const std::string& style,
                                   EditSink& edits) const {
   if (body == nullptr) return;
   std::string pragma = "HLS pipeline";
-  // An explicit 0 disables pipelining, mirroring `flatten(false)`; the
-  // omitted sentinel leaves the vendor its default initiation interval.
+  // An explicit 0 disables pipelining, mirroring `flatten(false)`.
   if (ii == 0) {
     AddPragmaToBody(edits, body, "HLS pipeline off");
     return;
