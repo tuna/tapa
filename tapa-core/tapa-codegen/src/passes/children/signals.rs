@@ -174,7 +174,6 @@ fn wire_child_instance(
     register_fsm_handshake_ports(stage, &inst.sig, inst.is_autorun);
     add_fsm_control_logic(stage, &inst.sig, inst.is_autorun);
     apply_control_plan_or_pipelines(stage, inst)?;
-    push_pipeline_portargs(stage, &inst.inst_name, inst.args);
     let mmap_bindings = build_mmap_bindings(stage, inst, idx);
     let (reset_n, bridge_reset) =
         instance_reset_exprs(stage.control_plan.is_some(), &inst.logical_inst_name);
@@ -303,7 +302,7 @@ fn apply_control_plan_or_pipelines(
         )?;
     } else {
         // Declare per-instance pipeline signals for scalar/mmap args
-        declare_instance_pipeline_signals(stage, inst.child_name, &inst.inst_name, inst.args);
+        pipeline_instance_signals(stage, inst.child_name, &inst.inst_name, inst.args);
     }
     Ok(())
 }
@@ -323,30 +322,46 @@ fn pipeline_wire_names(inst_name: &str, port_name: &str, is_mmap: bool) -> (Stri
     }
 }
 
-/// Declare per-instance pipeline signals for scalar and mmap arguments.
+/// Declare per-instance pipeline signals for scalar and mmap arguments and
+/// queue the matching FSM instantiation portargs.
 ///
 /// Creates FSM-owned pipeline ports and parent-side wires:
 /// - FSM module gets an input port for the parent arg and an output port for the pipeline signal
 /// - Parent module gets a wire for the pipeline output
 /// - The FSM module uses a registered pipeline (always @(posedge clk)) to
 ///   delay the signal by one cycle, via `add_pipeline_stage` below
-fn declare_instance_pipeline_signals(
+fn pipeline_instance_signals(
     stage: &mut ChildStageCtx<'_, '_>,
     child_name: &str,
     inst_name: &str,
     args: &BTreeMap<String, Arg>,
 ) {
     for (port_name, arg) in args {
+        // Streams and Immap/Ommap contribute no pipeline stage or portargs.
+        let is_mmap = arg.cat.is_direct_mmap();
         let width = if arg.cat.is_scalar() {
             resolve_child_scalar_width(stage, child_name, port_name)
-        } else if arg.cat.is_direct_mmap() {
+        } else if is_mmap {
             Some(("63".to_string(), "0".to_string())) // 64-bit
         } else {
             continue;
         };
-        let (pipeline_out, fsm_in) =
-            pipeline_wire_names(inst_name, port_name, arg.cat.is_direct_mmap());
+        let (pipeline_out, fsm_in) = pipeline_wire_names(inst_name, port_name, is_mmap);
         add_pipeline_stage(stage, &pipeline_out, &fsm_in, width.as_ref());
+        let driver = if is_mmap {
+            // An mmap always names a parent wire, never a constant.
+            let Some(parent) = arg.name() else { continue };
+            mmap_offset_source(parent, stage.mmap_conns)
+        } else {
+            scalar_driver(&arg.arg)
+        };
+        stage
+            .fsm_portargs
+            .push(tapa_rtl::builder::PortArg::new(&fsm_in, driver));
+        stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+            &pipeline_out,
+            Expr::ident(&pipeline_out),
+        ));
     }
 }
 
@@ -405,44 +420,6 @@ fn add_pipeline_stage(
             Expr::ident(pipeline_out),
             Expr::ident(&reg_name),
         ));
-    }
-}
-
-/// Queue the scalar/mmap pipeline portargs for the FSM instantiation.
-fn push_pipeline_portargs(
-    stage: &mut ChildStageCtx<'_, '_>,
-    inst_name: &str,
-    args: &BTreeMap<String, Arg>,
-) {
-    if stage.control_plan.is_some() {
-        return;
-    }
-    // Add pipeline portargs to FSM instantiation
-    for (port_name, arg) in args {
-        if arg.cat.is_scalar() {
-            let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, false);
-            let driver = scalar_driver(&arg.arg);
-            stage
-                .fsm_portargs
-                .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, driver));
-            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                &pipeline_out,
-                Expr::ident(&pipeline_out),
-            ));
-        } else if arg.cat.is_direct_mmap() {
-            // An mmap always names a parent wire, never a constant.
-            let Some(parent) = arg.name() else { continue };
-            let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, true);
-            let offset_source = mmap_offset_source(parent, stage.mmap_conns);
-            stage
-                .fsm_portargs
-                .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
-            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-                &pipeline_out,
-                Expr::ident(&pipeline_out),
-            ));
-        }
-        // Streams and Immap/Ommap contribute no FSM portargs.
     }
 }
 
