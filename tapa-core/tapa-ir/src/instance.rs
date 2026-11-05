@@ -66,7 +66,7 @@ impl ArgSource {
 pub struct Arg {
     /// What the child port is bound to.
     pub arg: ArgSource,
-    /// Category: matches one of the 10 valid wire strings.
+    /// Category: matches the port's category wire string.
     pub cat: ArgCategory,
 }
 
