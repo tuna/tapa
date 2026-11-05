@@ -51,13 +51,6 @@ The TAPA codebase is organized into several key directories:
   streams, and memory maps. It implements platform-specific features
   (e.g., software simulation queues, hardware FIFOs).
 
-- `tapa-llvm-project/`: Contains the LLVM project with TAPA-specific patches
-  (fetched as an external Bazel dependency, not checked in to the repository).
-
-  TAPA uses LLVM Clang to generate system interconnect and transformed C++
-  code for each task. The LLVM project is customized with TAPA-specific
-  features, such as C++ annotations.
-
 - `tapa-system-include/`: Creates a custom system include directory for TAPA.
 
   This Bazel build target collects system include files for the `tapacc`
