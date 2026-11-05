@@ -497,16 +497,14 @@ pub(crate) fn add_crossbar_slave_id_padding(
 }
 
 /// Add M-AXI ports, crossbar instances, and emit crossbar aux files.
+///
+/// The connections were validated when the stage inputs were prepared.
 pub(crate) fn add_m_axi_and_crossbars(
     modules: &mut ModuleTable<'_>,
     outputs: &mut OutputSet<'_>,
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
 ) -> Result<(), CodegenError> {
-    for conn in mmap_conns.values() {
-        validate_mmap_connection(conn)?;
-    }
-
     for conn in mmap_conns.values() {
         if let Some(mm) = modules.get_mut(task_name) {
             if conn.geometry.is_hmap() {
