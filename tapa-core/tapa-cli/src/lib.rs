@@ -1,5 +1,7 @@
-//! `tapa` CLI library — exposes argument parsing, dispatch, and step
-//! handlers so integration tests can drive them without forking a binary.
+//! `tapa` CLI library — argument parsing, dispatch, and step handlers,
+//! factored out of the thin `main.rs` binary entry point (the bin/lib
+//! split). The sole integration test drives the compiled binary over
+//! `std::process::Command`, not this crate.
 
 mod aie;
 pub mod chain;
