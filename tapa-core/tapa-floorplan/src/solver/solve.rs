@@ -48,12 +48,6 @@ impl LpSolution {
             .unwrap_or_else(|| panic!("solver result omitted variable x{}", var.0))
     }
 
-    /// Whether a binary variable resolved to 1 (tolerant of solver rounding).
-    #[must_use]
-    pub fn is_set(&self, var: LpVar) -> bool {
-        self.value(var) > 0.5
-    }
-
     /// Whether a usable solution was found.
     #[must_use]
     pub fn is_found(&self) -> bool {
