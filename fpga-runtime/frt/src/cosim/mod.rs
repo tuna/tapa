@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 
 use crate::env_bool;
 use frt_shm::env_non_empty;
+use frt_shm::MmapSegment;
 
 enum TbDir {
     Temp(tempfile::TempDir),
@@ -167,10 +168,17 @@ impl CosimDevice {
         })
     }
 
-    fn copy_back_to_host(&mut self) -> Result<()> {
-        let started = Instant::now();
+    /// Run `transfer` for each pending buffer whose access `flows` in that
+    /// direction, yielding the validated `(index, host pointer, host bytes,
+    /// segment)`: null pointers are rejected and the declared argument name
+    /// is resolved against the context's segments.
+    fn for_each_transfer(
+        &mut self,
+        flows: fn(BufferAccess) -> bool,
+        mut transfer: impl FnMut(u32, *mut u8, usize, &mut MmapSegment),
+    ) -> Result<()> {
         for (index, binding) in &self.pending_buffers {
-            if !binding.access.stores_to_host() {
+            if !flows(binding.access) {
                 continue;
             }
             if binding.ptr.is_null() && binding.bytes != 0 {
@@ -178,18 +186,26 @@ impl CosimDevice {
                     "null pointer for buffer arg {index}"
                 )));
             }
-            let name = self.arg_name(*index)?.to_owned();
-            if let Some(seg) = self.ctx.buffers.get(&name) {
-                let len = binding.bytes.min(seg.len());
-                if len > 0 {
-                    // SAFETY: binding.ptr is non-null (checked above) and
-                    // len <= binding.bytes, so the slice is within the
-                    // caller-provided host buffer.
-                    let dst = unsafe { std::slice::from_raw_parts_mut(binding.ptr, len) };
-                    dst.copy_from_slice(&seg.as_slice()[..len]);
-                }
+            let name = declared_arg_name(&self.arg_names, *index, "argument")?;
+            if let Some(seg) = self.ctx.buffers.get_mut(name) {
+                transfer(*index, binding.ptr, binding.bytes, seg);
             }
         }
+        Ok(())
+    }
+
+    fn copy_back_to_host(&mut self) -> Result<()> {
+        let started = Instant::now();
+        self.for_each_transfer(BufferAccess::stores_to_host, |_index, ptr, bytes, seg| {
+            let len = bytes.min(seg.len());
+            if len > 0 {
+                // SAFETY: ptr is non-null (validated above) and
+                // len <= bytes, so the slice is within the
+                // caller-provided host buffer.
+                let dst = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+                dst.copy_from_slice(&seg.as_slice()[..len]);
+            }
+        })?;
         self.store_ns = crate::elapsed_ns(started);
         // Ensure non-zero to signal "copy-back completed" (callers use
         // store_ns() == 0 to mean "not yet run").
@@ -684,27 +700,16 @@ impl Device for CosimDevice {
 
     fn write_to_device(&mut self) -> Result<()> {
         let started = Instant::now();
-        for (index, binding) in &self.pending_buffers {
-            if !binding.access.loads_from_host() {
-                continue;
+        self.for_each_transfer(BufferAccess::loads_from_host, |_index, ptr, bytes, seg| {
+            let len = bytes.min(seg.len());
+            if len > 0 {
+                // SAFETY: ptr is non-null (validated above) and
+                // len <= bytes, so the slice is within the
+                // caller-provided host buffer.
+                let src = unsafe { std::slice::from_raw_parts(ptr, len) };
+                seg.as_mut_slice()[..len].copy_from_slice(src);
             }
-            if binding.ptr.is_null() && binding.bytes != 0 {
-                return Err(FrtError::MetadataParse(format!(
-                    "null pointer for buffer arg {index}"
-                )));
-            }
-            let name = self.arg_name(*index)?.to_owned();
-            if let Some(seg) = self.ctx.buffers.get_mut(&name) {
-                let len = binding.bytes.min(seg.len());
-                if len > 0 {
-                    // SAFETY: binding.ptr is non-null (checked above) and
-                    // len <= binding.bytes, so the slice is within the
-                    // caller-provided host buffer.
-                    let src = unsafe { std::slice::from_raw_parts(binding.ptr, len) };
-                    seg.as_mut_slice()[..len].copy_from_slice(src);
-                }
-            }
-        }
+        })?;
         self.load_ns = crate::elapsed_ns(started);
         Ok(())
     }
