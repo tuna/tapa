@@ -28,6 +28,17 @@ pub fn get_or_init() -> &'static DpiContext {
     })
 }
 
+/// Decode a DPI port-name pointer; an undecodable name decodes to "".
+///
+/// # Safety
+/// `port` must point to a valid C string that outlives the call.
+pub unsafe fn c_port_str<'a>(port: *const std::ffi::c_char) -> &'a str {
+    // SAFETY: the caller guarantees a valid C string.
+    unsafe { std::ffi::CStr::from_ptr(port) }
+        .to_str()
+        .unwrap_or("")
+}
+
 /// Emit the eight `tapa_*` DPI entry points with backend-specific marshalling.
 ///
 /// The two backend cdylibs (frt-dpi-verilator, frt-dpi-xsim) expose the same
@@ -60,9 +71,7 @@ macro_rules! dpi_export {
         ) {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $crate::axi::axi_read_impl($crate::get_or_init(), port, addr, width, $mut_ptr(out));
         }
 
@@ -75,9 +84,7 @@ macro_rules! dpi_export {
         ) {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $crate::axi::axi_write_impl($crate::get_or_init(), port, addr, width, $const_ptr(data));
         }
 
@@ -88,9 +95,7 @@ macro_rules! dpi_export {
         ) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_try_read_impl(
                 $crate::get_or_init(),
                 port,
@@ -105,9 +110,7 @@ macro_rules! dpi_export {
         ) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_try_write_impl(
                 $crate::get_or_init(),
                 port,
@@ -119,9 +122,7 @@ macro_rules! dpi_export {
         pub unsafe extern "C" fn tapa_stream_can_write(port: *const ::libc::c_char) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_can_write_impl(
                 $crate::get_or_init(),
                 port,
@@ -136,9 +137,7 @@ macro_rules! dpi_export {
         ) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_istream_step_impl(
                 $crate::get_or_init(),
                 port,
@@ -155,9 +154,7 @@ macro_rules! dpi_export {
         ) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_ostream_step_impl(
                 $crate::get_or_init(),
                 port,
@@ -174,9 +171,7 @@ macro_rules! dpi_export {
         ) -> $ret {
             // SAFETY: `port` is a C string provided by the DPI caller; it
             // remains valid for the duration of this call.
-            let port = unsafe { ::std::ffi::CStr::from_ptr(port) }
-                .to_str()
-                .unwrap_or("");
+            let port = unsafe { $crate::c_port_str(port) };
             $ret_of($crate::stream::stream_hls_ostream_step_impl(
                 $crate::get_or_init(),
                 port,
