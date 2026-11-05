@@ -500,10 +500,6 @@ attribute. Mark a helper `inline` to inline it; omit the keyword to prevent
 inlining. Do not hand-write HLS inline pragmas.
 ```
 
-```admonish note
-`[[tapa::target("ignore")]]` was formerly written as `[[tapa::target("non_synthesizable", "xilinx")]]`. The `"ignore"` form is the current spelling.
-```
-
 ### `tapa::hls` sub-namespace
 
 `tapa::hls::stream<T, N>` has hardware FIFO depth `N` (default 2) but
