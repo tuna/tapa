@@ -31,10 +31,6 @@ pub struct Cut {
 /// is omitted rather than given a huge finite budget.
 #[must_use]
 pub fn find_cuts_for_regions(device: &Device, regions: &[Coor]) -> Vec<Cut> {
-    if regions.is_empty() {
-        return Vec::new();
-    }
-
     let max_x = regions.iter().map(|region| region.ur_x).max().unwrap_or(0);
     let max_y = regions.iter().map(|region| region.ur_y).max().unwrap_or(0);
     let mut cuts = Vec::new();
@@ -125,13 +121,11 @@ fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
             .filter_map(|y| device.slot(lhs.ur_x, y).zip(device.slot(rhs.dl_x, y)))
             .map(|(near, far)| (near.wire_cap.east, far.wire_cap.west))
             .collect()
-    } else if lhs.is_east_neighbor_of(rhs) {
+    } else {
         shared_y
             .filter_map(|y| device.slot(lhs.dl_x, y).zip(device.slot(rhs.ur_x, y)))
             .map(|(near, far)| (near.wire_cap.west, far.wire_cap.east))
             .collect()
-    } else {
-        return Some(0);
     };
 
     facing.into_iter().try_fold(0_u64, |total, (near, far)| {
