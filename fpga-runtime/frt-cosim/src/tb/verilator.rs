@@ -2,7 +2,7 @@ use askama::Template;
 use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode};
+use crate::metadata::{KernelSpec, Mode};
 use crate::tb::names::cpp_identifier;
 use crate::tb::{classify_args, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg};
 
@@ -61,11 +61,6 @@ impl<'a> VerilatorTbGenerator<'a> {
             self.scalar_values,
             &verilog_contents,
             |arg, offset| {
-                let data_width = match &arg.kind {
-                    ArgKind::Mmap { data_width, .. } => *data_width,
-                    ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
-                };
-                let offset_port = super::direct_offset_port_name(&verilog_contents, &arg.name);
                 MmapArg {
                     // The context creates a segment for every mmap argument,
                     // so the entry is always here in production. An unknown
@@ -73,12 +68,11 @@ impl<'a> VerilatorTbGenerator<'a> {
                     // return zero and writes are dropped, which is what an
                     // unbound argument did when the model was a hash map.
                     data_size: buffer_sizes.get(&arg.name).copied().unwrap_or(0),
-                    ..MmapArg::new(
+                    ..super::mmap_arg_from_spec(
                         NAMING,
-                        &arg.name,
-                        &offset_port,
-                        (data_width as usize).div_ceil(8),
-                        base_addresses.get(&arg.name).copied().unwrap_or(0),
+                        arg,
+                        &verilog_contents,
+                        base_addresses,
                         offset,
                     )
                 }

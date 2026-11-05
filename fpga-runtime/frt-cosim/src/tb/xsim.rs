@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{ArgKind, KernelSpec, Mode};
+use crate::metadata::{KernelSpec, Mode};
 use crate::tb::names::{escape_verilog_identifier, verilator_identifier};
 use crate::tb::{
     classify_args, control_addr_width, read_verilog_contents, MmapArg, Naming, ScalarArg, StreamArg,
@@ -91,30 +91,16 @@ impl<'a> XsimTbGenerator<'a> {
             self.spec,
             self.scalar_values,
             verilog_contents,
-            |arg, offset| {
-                let data_width = match &arg.kind {
-                    ArgKind::Mmap { data_width, .. } => *data_width,
-                    ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
-                };
-                let offset_port = super::direct_offset_port_name(verilog_contents, &arg.name);
-                MmapArg {
-                    id_width: detect_axi_port_width(
-                        verilog_contents,
-                        &format!("m_axi_{}_ARID", arg.name),
-                    ),
-                    lock_width: detect_axi_port_width(
-                        verilog_contents,
-                        &format!("m_axi_{}_ARLOCK", arg.name),
-                    ),
-                    ..MmapArg::new(
-                        NAMING,
-                        &arg.name,
-                        &offset_port,
-                        (data_width as usize).div_ceil(8),
-                        base_addresses.get(&arg.name).copied().unwrap_or(0),
-                        offset,
-                    )
-                }
+            |arg, offset| MmapArg {
+                id_width: detect_axi_port_width(
+                    verilog_contents,
+                    &format!("m_axi_{}_ARID", arg.name),
+                ),
+                lock_width: detect_axi_port_width(
+                    verilog_contents,
+                    &format!("m_axi_{}_ARLOCK", arg.name),
+                ),
+                ..super::mmap_arg_from_spec(NAMING, arg, verilog_contents, base_addresses, offset)
             },
             |arg, width, offset, bytes| {
                 ScalarArg::new(NAMING, &arg.name, sv_literal(width, bytes), offset, bytes)

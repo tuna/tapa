@@ -5,7 +5,7 @@ pub mod xsim;
 use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{normalized_scalar_bytes, KernelSpec, Mode};
+use crate::metadata::{normalized_scalar_bytes, ArgKind, ArgSpec, KernelSpec, Mode};
 
 #[derive(Clone)]
 pub struct ScalarWord {
@@ -418,6 +418,31 @@ pub struct MmapArg {
     /// ARLOCK/AWLOCK width the packaged RTL declares. AXI4 uses one bit while
     /// older AXI3 modules use two; only xsim needs to mirror it.
     pub lock_width: usize,
+}
+
+/// The shared `MmapArg` fields for one spec arg: naming, the direct-offset
+/// port probe, the byte width, the base address. Each backend overlays its
+/// extras (Verilator's `data_size`, xsim's AXI id/lock widths).
+pub(super) fn mmap_arg_from_spec(
+    naming: Naming,
+    arg: &ArgSpec,
+    verilog_contents: &[String],
+    base_addresses: &HashMap<String, u64>,
+    reg_offset: u32,
+) -> MmapArg {
+    let data_width = match &arg.kind {
+        ArgKind::Mmap { data_width, .. } => *data_width,
+        ArgKind::Scalar { .. } | ArgKind::Stream { .. } => unreachable!(),
+    };
+    let offset_port = direct_offset_port_name(verilog_contents, &arg.name);
+    MmapArg::new(
+        naming,
+        &arg.name,
+        &offset_port,
+        (data_width as usize).div_ceil(8),
+        base_addresses.get(&arg.name).copied().unwrap_or(0),
+        reg_offset,
+    )
 }
 
 impl MmapArg {
