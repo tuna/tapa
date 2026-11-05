@@ -3,8 +3,8 @@
 //! The AIE-only branch returns after its graph build and optional report
 //! refresh. Otherwise this threads device resolution → state persistence →
 //! manifest staging → HLS runs → RTL codegen → final state persistence. Also
-//! owns the unsupported-flag gating, the HLS cflag construction, and
-//! the recursive Verilog-file walker that feeds the codegen step.
+//! owns the unsupported-flag gating and the HLS cflag construction; the
+//! recursive Verilog-file walker feeding codegen lives in `hls_run`.
 
 use tapa_ir::{ClockPeriod, Task, WorkState};
 use tapa_xilinx::{CsynthReport, ToolRunner};
@@ -24,7 +24,8 @@ use super::rtl_codegen::{generate_rtl_tree, write_templates_info, TaskHdlInputs}
 use super::SynthArgs;
 
 /// Validate the flag surface, resolve the device, persist settings,
-/// then drive manifest staging → HLS → codegen for the leaf tasks.
+/// then drive manifest staging → HLS for every HLS-targeted task (upper
+/// shells included) → RTL codegen.
 #[allow(
     clippy::too_many_lines,
     reason = "orchestrator function; refactored extract would bounce values through another builder without adding clarity"
@@ -140,8 +141,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     generate_rtl_tree(&ctx.work_dir, &pl_graph, &hdl_inputs, projection.as_ref())?;
 
     // Per-task OOC Vivado synth → hierarchical utilization → `total_area`.
-    // When disabled (the default), reports and topology consumers derive
-    // effective totals recursively from the HLS-populated `self_area` maps.
+    // When disabled (the default), the report derives effective totals
+    // recursively from the HLS-populated `self_area` maps.
     if args.enable_synth_util {
         emit_post_synth_util(
             &ctx.work_dir,
@@ -301,8 +302,8 @@ fn report_timing_summary(target: ClockPeriod, graph: &tapa_ir::TaskGraph) {
 ///
 /// `clock_period` stores the achieved estimate, not the requested target.
 /// `total_area` is cleared because it is either re-populated by optional
-/// out-of-context synthesis or derived recursively from `self_area` by report
-/// and topology consumers.
+/// out-of-context synthesis or derived recursively from `self_area` by the
+/// report emitter.
 fn apply_hls_metrics(task_name: &str, task: &mut Task, report: &CsynthReport) -> Result<()> {
     task.clock_period = Some(
         ClockPeriod::from_nanoseconds_str(&report.estimated_clock_period_ns).map_err(|error| {

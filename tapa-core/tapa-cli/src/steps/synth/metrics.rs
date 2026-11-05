@@ -1,4 +1,5 @@
-//! Effective synthesis metrics shared by reports and topology consumers.
+//! Effective synthesis metrics — instantiated children and recursive area
+//! totals — backing the synth report emitter (`report.rs`).
 
 use tapa_ir::{Area, Design, Task, TaskLevel};
 

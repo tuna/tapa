@@ -9,8 +9,9 @@
 //!      `<work_dir>/tapa.json`.
 //!   2. Stage the per-task source manifests against
 //!      `<work_dir>/rewritten/` (written by `tapa analyze`).
-//!   3. Run Vitis HLS for each leaf task, harvesting Verilog into
-//!      `<work_dir>/hls/<task>/verilog/`.
+//!   3. Run Vitis HLS for every task that targets HLS — all tasks,
+//!      not just leaves, since codegen needs the upper-task shells —
+//!      harvesting Verilog into `<work_dir>/hls/<task>/verilog/`.
 //!   4. Drive `tapa_codegen::generate_rtl` to instrument upper tasks
 //!      and emit `<work_dir>/rtl/{<task>.v, <task>_fsm.v, ...}`.
 //!   5. Persist `<work_dir>/templates_info.json` and re-store the
