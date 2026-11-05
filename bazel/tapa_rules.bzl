@@ -428,11 +428,6 @@ _tapa_xo = rule(
         ),
         "clock_period": attr.string(),
         "part_num": attr.string(),
-        "connectivity": attr.label(
-            allow_single_file = True,
-            doc = "Optional memory-connectivity .ini retained as an input " +
-                  "for downstream link rules; not forwarded to pack.",
-        ),
         "jobs": attr.int(
             default = 1,
             doc = "Parallel HLS jobs (must be >= 1). The action reserves " +
