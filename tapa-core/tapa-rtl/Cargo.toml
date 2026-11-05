@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 regex = { workspace = true }
-serde = { workspace = true }
 tapa-ir = { workspace = true }
 tapa-protocol = { workspace = true }
 thiserror = { workspace = true }

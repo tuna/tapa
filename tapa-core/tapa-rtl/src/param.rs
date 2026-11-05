@@ -1,12 +1,10 @@
 //! Parameter types for Verilog module declarations.
 
-use serde::{Deserialize, Serialize};
-
 use crate::expression::Expression;
 use crate::port::Width;
 
 /// A parameter extracted from a Verilog module.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Parameter {
     /// Parameter name.
     pub name: String,

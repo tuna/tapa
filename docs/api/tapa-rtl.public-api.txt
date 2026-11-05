@@ -15,10 +15,6 @@ impl core::fmt::Display for tapa_rtl::builder::BinOperator
 pub fn tapa_rtl::builder::BinOperator::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tapa_rtl::builder::BinOperator
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::BinOperator
-impl serde_core::ser::Serialize for tapa_rtl::builder::BinOperator
-pub fn tapa_rtl::builder::BinOperator::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::BinOperator
-pub fn tapa_rtl::builder::BinOperator::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::BinOperator
 impl core::marker::Send for tapa_rtl::builder::BinOperator
 impl core::marker::Sync for tapa_rtl::builder::BinOperator
@@ -54,7 +50,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::BinOperator where T: c
 pub unsafe fn tapa_rtl::builder::BinOperator::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::BinOperator
 pub fn tapa_rtl::builder::BinOperator::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::BinOperator where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::builder::Expr
 pub tapa_rtl::builder::Expr::BinOp
 pub tapa_rtl::builder::Expr::BinOp::lhs: alloc::boxed::Box<Self>
@@ -93,10 +88,6 @@ pub fn tapa_rtl::builder::Expr::fmt(&self, &mut core::fmt::Formatter<'_>) -> cor
 impl core::fmt::Display for tapa_rtl::builder::Expr
 pub fn tapa_rtl::builder::Expr::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::Expr
-impl serde_core::ser::Serialize for tapa_rtl::builder::Expr
-pub fn tapa_rtl::builder::Expr::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Expr
-pub fn tapa_rtl::builder::Expr::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::Expr
 impl core::marker::Send for tapa_rtl::builder::Expr
 impl core::marker::Sync for tapa_rtl::builder::Expr
@@ -132,7 +123,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Expr where T: core::cl
 pub unsafe fn tapa_rtl::builder::Expr::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::Expr
 pub fn tapa_rtl::builder::Expr::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Expr where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::builder::Sensitivity
 pub tapa_rtl::builder::Sensitivity::Posedge(alloc::string::String)
 impl core::clone::Clone for tapa_rtl::builder::Sensitivity
@@ -143,10 +133,6 @@ pub fn tapa_rtl::builder::Sensitivity::eq(&self, &tapa_rtl::builder::Sensitivity
 impl core::fmt::Debug for tapa_rtl::builder::Sensitivity
 pub fn tapa_rtl::builder::Sensitivity::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::Sensitivity
-impl serde_core::ser::Serialize for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Sensitivity
-pub fn tapa_rtl::builder::Sensitivity::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::Sensitivity
 impl core::marker::Send for tapa_rtl::builder::Sensitivity
 impl core::marker::Sync for tapa_rtl::builder::Sensitivity
@@ -180,7 +166,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Sensitivity where T: c
 pub unsafe fn tapa_rtl::builder::Sensitivity::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::Sensitivity
 pub fn tapa_rtl::builder::Sensitivity::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Sensitivity where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::builder::Statement
 pub tapa_rtl::builder::Statement::Case
 pub tapa_rtl::builder::Statement::Case::default: alloc::vec::Vec<Self>
@@ -201,10 +186,6 @@ pub fn tapa_rtl::builder::Statement::eq(&self, &tapa_rtl::builder::Statement) ->
 impl core::fmt::Debug for tapa_rtl::builder::Statement
 pub fn tapa_rtl::builder::Statement::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::Statement
-impl serde_core::ser::Serialize for tapa_rtl::builder::Statement
-pub fn tapa_rtl::builder::Statement::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::Statement
-pub fn tapa_rtl::builder::Statement::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::Statement
 impl core::marker::Send for tapa_rtl::builder::Statement
 impl core::marker::Sync for tapa_rtl::builder::Statement
@@ -238,7 +219,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::Statement where T: cor
 pub unsafe fn tapa_rtl::builder::Statement::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::Statement
 pub fn tapa_rtl::builder::Statement::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::Statement where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::AlwaysBlock
 pub tapa_rtl::builder::AlwaysBlock::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
 pub tapa_rtl::builder::AlwaysBlock::sensitivity: tapa_rtl::builder::Sensitivity
@@ -254,10 +234,6 @@ pub fn tapa_rtl::builder::AlwaysBlock::fmt(&self, &mut core::fmt::Formatter<'_>)
 impl core::fmt::Display for tapa_rtl::builder::AlwaysBlock
 pub fn tapa_rtl::builder::AlwaysBlock::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::AlwaysBlock
-impl serde_core::ser::Serialize for tapa_rtl::builder::AlwaysBlock
-pub fn tapa_rtl::builder::AlwaysBlock::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::AlwaysBlock
-pub fn tapa_rtl::builder::AlwaysBlock::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::AlwaysBlock
 impl core::marker::Send for tapa_rtl::builder::AlwaysBlock
 impl core::marker::Sync for tapa_rtl::builder::AlwaysBlock
@@ -293,7 +269,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::AlwaysBlock where T: c
 pub unsafe fn tapa_rtl::builder::AlwaysBlock::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::AlwaysBlock
 pub fn tapa_rtl::builder::AlwaysBlock::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::AlwaysBlock where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::CaseItem
 pub tapa_rtl::builder::CaseItem::body: alloc::vec::Vec<tapa_rtl::builder::Statement>
 pub tapa_rtl::builder::CaseItem::value: tapa_rtl::builder::Expr
@@ -307,10 +282,6 @@ pub fn tapa_rtl::builder::CaseItem::eq(&self, &tapa_rtl::builder::CaseItem) -> b
 impl core::fmt::Debug for tapa_rtl::builder::CaseItem
 pub fn tapa_rtl::builder::CaseItem::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::CaseItem
-impl serde_core::ser::Serialize for tapa_rtl::builder::CaseItem
-pub fn tapa_rtl::builder::CaseItem::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::CaseItem
-pub fn tapa_rtl::builder::CaseItem::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::CaseItem
 impl core::marker::Send for tapa_rtl::builder::CaseItem
 impl core::marker::Sync for tapa_rtl::builder::CaseItem
@@ -344,7 +315,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::CaseItem where T: core
 pub unsafe fn tapa_rtl::builder::CaseItem::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::CaseItem
 pub fn tapa_rtl::builder::CaseItem::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::CaseItem where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::ContinuousAssign
 pub tapa_rtl::builder::ContinuousAssign::lhs: tapa_rtl::builder::Expr
 pub tapa_rtl::builder::ContinuousAssign::rhs: tapa_rtl::builder::Expr
@@ -360,10 +330,6 @@ pub fn tapa_rtl::builder::ContinuousAssign::fmt(&self, &mut core::fmt::Formatter
 impl core::fmt::Display for tapa_rtl::builder::ContinuousAssign
 pub fn tapa_rtl::builder::ContinuousAssign::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::ContinuousAssign
-impl serde_core::ser::Serialize for tapa_rtl::builder::ContinuousAssign
-pub fn tapa_rtl::builder::ContinuousAssign::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ContinuousAssign
-pub fn tapa_rtl::builder::ContinuousAssign::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::ContinuousAssign
 impl core::marker::Send for tapa_rtl::builder::ContinuousAssign
 impl core::marker::Sync for tapa_rtl::builder::ContinuousAssign
@@ -399,7 +365,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ContinuousAssign where
 pub unsafe fn tapa_rtl::builder::ContinuousAssign::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::ContinuousAssign
 pub fn tapa_rtl::builder::ContinuousAssign::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ContinuousAssign where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::ModuleInstance
 pub tapa_rtl::builder::ModuleInstance::instance_name: alloc::string::String
 pub tapa_rtl::builder::ModuleInstance::module_name: alloc::string::String
@@ -419,10 +384,6 @@ pub fn tapa_rtl::builder::ModuleInstance::fmt(&self, &mut core::fmt::Formatter<'
 impl core::fmt::Display for tapa_rtl::builder::ModuleInstance
 pub fn tapa_rtl::builder::ModuleInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::ModuleInstance
-impl serde_core::ser::Serialize for tapa_rtl::builder::ModuleInstance
-pub fn tapa_rtl::builder::ModuleInstance::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ModuleInstance
-pub fn tapa_rtl::builder::ModuleInstance::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::ModuleInstance
 impl core::marker::Send for tapa_rtl::builder::ModuleInstance
 impl core::marker::Sync for tapa_rtl::builder::ModuleInstance
@@ -458,7 +419,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ModuleInstance where T
 pub unsafe fn tapa_rtl::builder::ModuleInstance::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::ModuleInstance
 pub fn tapa_rtl::builder::ModuleInstance::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ModuleInstance where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::ParamArg
 pub tapa_rtl::builder::ParamArg::param_name: alloc::string::String
 pub tapa_rtl::builder::ParamArg::value: tapa_rtl::builder::Expr
@@ -474,10 +434,6 @@ pub fn tapa_rtl::builder::ParamArg::fmt(&self, &mut core::fmt::Formatter<'_>) ->
 impl core::fmt::Display for tapa_rtl::builder::ParamArg
 pub fn tapa_rtl::builder::ParamArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::ParamArg
-impl serde_core::ser::Serialize for tapa_rtl::builder::ParamArg
-pub fn tapa_rtl::builder::ParamArg::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::ParamArg
-pub fn tapa_rtl::builder::ParamArg::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::ParamArg
 impl core::marker::Send for tapa_rtl::builder::ParamArg
 impl core::marker::Sync for tapa_rtl::builder::ParamArg
@@ -513,7 +469,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::ParamArg where T: core
 pub unsafe fn tapa_rtl::builder::ParamArg::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::ParamArg
 pub fn tapa_rtl::builder::ParamArg::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::ParamArg where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::builder::PortArg
 pub tapa_rtl::builder::PortArg::connection: tapa_rtl::builder::Expr
 pub tapa_rtl::builder::PortArg::port_name: alloc::string::String
@@ -529,10 +484,6 @@ pub fn tapa_rtl::builder::PortArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> 
 impl core::fmt::Display for tapa_rtl::builder::PortArg
 pub fn tapa_rtl::builder::PortArg::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::builder::PortArg
-impl serde_core::ser::Serialize for tapa_rtl::builder::PortArg
-pub fn tapa_rtl::builder::PortArg::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::builder::PortArg
-pub fn tapa_rtl::builder::PortArg::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::builder::PortArg
 impl core::marker::Send for tapa_rtl::builder::PortArg
 impl core::marker::Sync for tapa_rtl::builder::PortArg
@@ -568,7 +519,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::PortArg where T: core:
 pub unsafe fn tapa_rtl::builder::PortArg::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::PortArg
 pub fn tapa_rtl::builder::PortArg::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::builder::PortArg where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_rtl::emit
 pub mod tapa_rtl::expression
 pub enum tapa_rtl::expression::TokenKind
@@ -583,10 +533,6 @@ impl core::fmt::Debug for tapa_rtl::expression::TokenKind
 pub fn tapa_rtl::expression::TokenKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tapa_rtl::expression::TokenKind
 impl core::marker::StructuralPartialEq for tapa_rtl::expression::TokenKind
-impl serde_core::ser::Serialize for tapa_rtl::expression::TokenKind
-pub fn tapa_rtl::expression::TokenKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::expression::TokenKind
-pub fn tapa_rtl::expression::TokenKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::expression::TokenKind
 impl core::marker::Send for tapa_rtl::expression::TokenKind
 impl core::marker::Sync for tapa_rtl::expression::TokenKind
@@ -620,7 +566,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::expression::TokenKind where T: 
 pub unsafe fn tapa_rtl::expression::TokenKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::expression::TokenKind
 pub fn tapa_rtl::expression::TokenKind::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::expression::TokenKind where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::expression::Token
 pub tapa_rtl::expression::Token::kind: tapa_rtl::expression::TokenKind
 pub tapa_rtl::expression::Token::repr: alloc::string::String
@@ -632,10 +577,6 @@ pub fn tapa_rtl::expression::Token::eq(&self, &tapa_rtl::expression::Token) -> b
 impl core::fmt::Debug for tapa_rtl::expression::Token
 pub fn tapa_rtl::expression::Token::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::expression::Token
-impl serde_core::ser::Serialize for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::expression::Token
-pub fn tapa_rtl::expression::Token::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::expression::Token
 impl core::marker::Send for tapa_rtl::expression::Token
 impl core::marker::Sync for tapa_rtl::expression::Token
@@ -669,7 +610,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::expression::Token where T: core
 pub unsafe fn tapa_rtl::expression::Token::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::expression::Token
 pub fn tapa_rtl::expression::Token::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::expression::Token where T: for<'de> serde_core::de::Deserialize<'de>
 pub fn tapa_rtl::expression::expression_as_u32(&tapa_rtl::expression::Expression) -> core::option::Option<u32>
 pub fn tapa_rtl::expression::expression_source(&tapa_rtl::expression::Expression) -> alloc::string::String
 pub fn tapa_rtl::expression::tokenize_expression(&str) -> tapa_rtl::expression::Expression
@@ -697,10 +637,6 @@ pub fn tapa_rtl::module::VerilogModule::eq(&self, &tapa_rtl::module::VerilogModu
 impl core::fmt::Debug for tapa_rtl::module::VerilogModule
 pub fn tapa_rtl::module::VerilogModule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::module::VerilogModule
-impl serde_core::ser::Serialize for tapa_rtl::module::VerilogModule
-pub fn tapa_rtl::module::VerilogModule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::module::VerilogModule
-pub fn tapa_rtl::module::VerilogModule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::module::VerilogModule
 impl core::marker::Send for tapa_rtl::module::VerilogModule
 impl core::marker::Sync for tapa_rtl::module::VerilogModule
@@ -734,7 +670,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::module::VerilogModule where T: 
 pub unsafe fn tapa_rtl::module::VerilogModule::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::module::VerilogModule
 pub fn tapa_rtl::module::VerilogModule::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::module::VerilogModule where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_rtl::mutation
 pub struct tapa_rtl::mutation::MutableModule
 pub tapa_rtl::mutation::MutableModule::body_text: alloc::string::String
@@ -795,10 +730,6 @@ pub fn tapa_rtl::param::Parameter::eq(&self, &tapa_rtl::param::Parameter) -> boo
 impl core::fmt::Debug for tapa_rtl::param::Parameter
 pub fn tapa_rtl::param::Parameter::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::param::Parameter
-impl serde_core::ser::Serialize for tapa_rtl::param::Parameter
-pub fn tapa_rtl::param::Parameter::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::param::Parameter
-pub fn tapa_rtl::param::Parameter::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::param::Parameter
 impl core::marker::Send for tapa_rtl::param::Parameter
 impl core::marker::Sync for tapa_rtl::param::Parameter
@@ -832,7 +763,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::param::Parameter where T: core:
 pub unsafe fn tapa_rtl::param::Parameter::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::param::Parameter
 pub fn tapa_rtl::param::Parameter::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::param::Parameter where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_rtl::parser
 pub fn tapa_rtl::parser::parse_module(&str) -> core::result::Result<tapa_rtl::module::VerilogModule, tapa_rtl::ParseError>
 pub mod tapa_rtl::port
@@ -851,10 +781,6 @@ impl core::fmt::Display for tapa_rtl::port::Direction
 pub fn tapa_rtl::port::Direction::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tapa_rtl::port::Direction
 impl core::marker::StructuralPartialEq for tapa_rtl::port::Direction
-impl serde_core::ser::Serialize for tapa_rtl::port::Direction
-pub fn tapa_rtl::port::Direction::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Direction
-pub fn tapa_rtl::port::Direction::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::port::Direction
 impl core::marker::Send for tapa_rtl::port::Direction
 impl core::marker::Sync for tapa_rtl::port::Direction
@@ -890,7 +816,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::port::Direction where T: core::
 pub unsafe fn tapa_rtl::port::Direction::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::port::Direction
 pub fn tapa_rtl::port::Direction::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Direction where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::port::Port
 pub tapa_rtl::port::Port::direction: tapa_rtl::port::Direction
 pub tapa_rtl::port::Port::name: alloc::string::String
@@ -907,10 +832,6 @@ pub fn tapa_rtl::port::Port::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::
 impl core::fmt::Display for tapa_rtl::port::Port
 pub fn tapa_rtl::port::Port::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::port::Port
-impl serde_core::ser::Serialize for tapa_rtl::port::Port
-pub fn tapa_rtl::port::Port::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Port
-pub fn tapa_rtl::port::Port::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::port::Port
 impl core::marker::Send for tapa_rtl::port::Port
 impl core::marker::Sync for tapa_rtl::port::Port
@@ -946,7 +867,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::port::Port where T: core::clone
 pub unsafe fn tapa_rtl::port::Port::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::port::Port
 pub fn tapa_rtl::port::Port::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Port where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::port::Width
 pub tapa_rtl::port::Width::lsb: tapa_rtl::expression::Expression
 pub tapa_rtl::port::Width::msb: tapa_rtl::expression::Expression
@@ -962,10 +882,6 @@ pub fn tapa_rtl::port::Width::fmt(&self, &mut core::fmt::Formatter<'_>) -> core:
 impl core::fmt::Display for tapa_rtl::port::Width
 pub fn tapa_rtl::port::Width::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::port::Width
-impl serde_core::ser::Serialize for tapa_rtl::port::Width
-pub fn tapa_rtl::port::Width::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::port::Width
-pub fn tapa_rtl::port::Width::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::port::Width
 impl core::marker::Send for tapa_rtl::port::Width
 impl core::marker::Sync for tapa_rtl::port::Width
@@ -1001,7 +917,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::port::Width where T: core::clon
 pub unsafe fn tapa_rtl::port::Width::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::port::Width
 pub fn tapa_rtl::port::Width::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::port::Width where T: for<'de> serde_core::de::Deserialize<'de>
 pub mod tapa_rtl::signal
 pub enum tapa_rtl::signal::SignalKind
 pub tapa_rtl::signal::SignalKind::Reg
@@ -1017,10 +932,6 @@ impl core::fmt::Display for tapa_rtl::signal::SignalKind
 pub fn tapa_rtl::signal::SignalKind::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::Copy for tapa_rtl::signal::SignalKind
 impl core::marker::StructuralPartialEq for tapa_rtl::signal::SignalKind
-impl serde_core::ser::Serialize for tapa_rtl::signal::SignalKind
-pub fn tapa_rtl::signal::SignalKind::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::signal::SignalKind
-pub fn tapa_rtl::signal::SignalKind::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::signal::SignalKind
 impl core::marker::Send for tapa_rtl::signal::SignalKind
 impl core::marker::Sync for tapa_rtl::signal::SignalKind
@@ -1056,7 +967,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::signal::SignalKind where T: cor
 pub unsafe fn tapa_rtl::signal::SignalKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::signal::SignalKind
 pub fn tapa_rtl::signal::SignalKind::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::signal::SignalKind where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_rtl::signal::Signal
 pub tapa_rtl::signal::Signal::attribute: core::option::Option<alloc::string::String>
 pub tapa_rtl::signal::Signal::kind: tapa_rtl::signal::SignalKind
@@ -1072,10 +982,6 @@ pub fn tapa_rtl::signal::Signal::fmt(&self, &mut core::fmt::Formatter<'_>) -> co
 impl core::fmt::Display for tapa_rtl::signal::Signal
 pub fn tapa_rtl::signal::Signal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::signal::Signal
-impl serde_core::ser::Serialize for tapa_rtl::signal::Signal
-pub fn tapa_rtl::signal::Signal::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::signal::Signal
-pub fn tapa_rtl::signal::Signal::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::signal::Signal
 impl core::marker::Send for tapa_rtl::signal::Signal
 impl core::marker::Sync for tapa_rtl::signal::Signal
@@ -1111,7 +1017,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::signal::Signal where T: core::c
 pub unsafe fn tapa_rtl::signal::Signal::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::signal::Signal
 pub fn tapa_rtl::signal::Signal::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::signal::Signal where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_rtl::BuilderError
 pub tapa_rtl::BuilderError::DuplicatePort(alloc::string::String)
 pub tapa_rtl::BuilderError::DuplicateSignal(alloc::string::String)
@@ -1202,10 +1107,6 @@ pub fn tapa_rtl::module::VerilogModule::eq(&self, &tapa_rtl::module::VerilogModu
 impl core::fmt::Debug for tapa_rtl::module::VerilogModule
 pub fn tapa_rtl::module::VerilogModule::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl core::marker::StructuralPartialEq for tapa_rtl::module::VerilogModule
-impl serde_core::ser::Serialize for tapa_rtl::module::VerilogModule
-pub fn tapa_rtl::module::VerilogModule::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
-impl<'de> serde_core::de::Deserialize<'de> for tapa_rtl::module::VerilogModule
-pub fn tapa_rtl::module::VerilogModule::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
 impl core::marker::Freeze for tapa_rtl::module::VerilogModule
 impl core::marker::Send for tapa_rtl::module::VerilogModule
 impl core::marker::Sync for tapa_rtl::module::VerilogModule
@@ -1239,4 +1140,3 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::module::VerilogModule where T: 
 pub unsafe fn tapa_rtl::module::VerilogModule::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::module::VerilogModule
 pub fn tapa_rtl::module::VerilogModule::from(T) -> T
-impl<T> serde_core::de::DeserializeOwned for tapa_rtl::module::VerilogModule where T: for<'de> serde_core::de::Deserialize<'de>

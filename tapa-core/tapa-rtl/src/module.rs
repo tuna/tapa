@@ -1,7 +1,5 @@
 //! Top-level `VerilogModule` type aggregating parsed interface elements.
 
-use serde::{Deserialize, Serialize};
-
 use crate::error::ParseError;
 use crate::param::Parameter;
 use crate::parser;
@@ -12,7 +10,7 @@ use crate::signal::Signal;
 ///
 /// Contains all interface elements extracted from a TAPA-generated
 /// Verilog module: ports, parameters, signals, and the raw source text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerilogModule {
     /// Module name.
     pub name: String,

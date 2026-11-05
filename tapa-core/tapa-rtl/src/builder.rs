@@ -6,12 +6,10 @@
 
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
 // ── Expressions ──────────────────────────────────────────────────────
 
 /// A typed expression for code generation (richer than token-level).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Expr {
     /// Named identifier: `foo`, `ap_clk`.
     Ident(String),
@@ -38,7 +36,7 @@ pub enum Expr {
 }
 
 /// Binary operators.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinOperator {
     Eq,
     Plus,
@@ -122,7 +120,7 @@ impl Expr {
 // ── Port/Instance arguments ──────────────────────────────────────────
 
 /// Named port connection: `.port_name(signal_expr)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PortArg {
     pub port_name: String,
     pub connection: Expr,
@@ -138,7 +136,7 @@ impl PortArg {
 }
 
 /// Named parameter connection: `.param_name(value)`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ParamArg {
     pub param_name: String,
     pub value: Expr,
@@ -156,7 +154,7 @@ impl ParamArg {
 // ── Module instantiation ─────────────────────────────────────────────
 
 /// A module instantiation: `module_name #(...) instance_name (...);`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleInstance {
     pub module_name: String,
     pub instance_name: String,
@@ -190,7 +188,7 @@ impl ModuleInstance {
 // ── Continuous assignment ────────────────────────────────────────────
 
 /// `assign lhs = rhs;`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContinuousAssign {
     pub lhs: Expr,
     pub rhs: Expr,
@@ -205,14 +203,14 @@ impl ContinuousAssign {
 // ── Procedural blocks ────────────────────────────────────────────────
 
 /// Sensitivity list for always blocks.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Sensitivity {
     /// `always @(posedge clk)`
     Posedge(String),
 }
 
 /// A statement inside a procedural block.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Statement {
     /// `lhs <= rhs;`
     NonblockingAssign { lhs: Expr, rhs: Expr },
@@ -231,7 +229,7 @@ pub enum Statement {
 }
 
 /// A single case item: `value: begin ... end`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaseItem {
     pub value: Expr,
     pub body: Vec<Statement>,
@@ -244,7 +242,7 @@ impl CaseItem {
 }
 
 /// `always @(posedge clk) begin ... end`
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AlwaysBlock {
     pub sensitivity: Sensitivity,
     pub body: Vec<Statement>,

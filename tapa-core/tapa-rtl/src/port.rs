@@ -1,12 +1,9 @@
 //! Port types for Verilog module interfaces.
 
-use serde::{Deserialize, Serialize};
-
 use crate::expression::Expression;
 
 /// Direction of a port.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
     Input,
     Output,
@@ -14,7 +11,7 @@ pub enum Direction {
 }
 
 /// Width of a port or signal, represented as `[msb:lsb]`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Width {
     /// Most-significant bit expression.
     pub msb: Expression,
@@ -34,7 +31,7 @@ impl Width {
 }
 
 /// A port extracted from a Verilog module declaration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Port {
     /// Port name.
     pub name: String,

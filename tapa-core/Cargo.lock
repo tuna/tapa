@@ -1414,7 +1414,6 @@ name = "tapa-rtl"
 version = "0.1.0"
 dependencies = [
  "regex",
- "serde",
  "streaming-iterator",
  "tapa-ir",
  "tapa-protocol",
