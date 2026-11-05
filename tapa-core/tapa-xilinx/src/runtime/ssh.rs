@@ -132,7 +132,6 @@ pub struct SshSession {
 
 #[derive(Debug, Default)]
 struct SessionState {
-    control_path: Option<Utf8PathBuf>,
     ready: bool,
 }
 
@@ -238,7 +237,6 @@ impl SshSession {
     pub fn invalidate(&self) {
         let mut s = self.state.lock().unwrap();
         s.ready = false;
-        s.control_path = None;
     }
 
     /// Tear down the control master end-to-end so the next
@@ -338,10 +336,6 @@ impl SshSession {
         }
         let mut s = self.state.lock().unwrap();
         s.ready = true;
-        // We do not record a literal control-path template here any
-        // more — the live-check is done through `ssh -O check`, which
-        // is the only way to know whether the master is actually up.
-        s.control_path = None;
         Ok(())
     }
 }
