@@ -5,7 +5,7 @@ mod common;
 use std::sync::Arc;
 
 use tapa_xilinx::{
-    run_vivado, LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession, ToolRunner, VivadoJob,
+    run_vivado, LocalToolRunner, RemoteToolRunner, SshSession, ToolRunner, VivadoJob,
 };
 
 #[test]
@@ -18,7 +18,7 @@ fn vivado_runs_minimal_tcl() {
     let tcl = "puts \"vivado-integration-ok\"\nexit\n";
     let job = VivadoJob::new(tcl);
     if let Some(cfg) = common::has_remote_config() {
-        let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+        let session = Arc::new(SshSession::new(cfg));
         session.ensure_established().expect("ssh setup");
         let runner: Box<dyn ToolRunner> = Box::new(RemoteToolRunner::new(session));
         let out = run_vivado(runner.as_ref(), &job).expect("vivado run");

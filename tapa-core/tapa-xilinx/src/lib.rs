@@ -68,7 +68,7 @@ pub use runtime::process::{
     LocalToolRunner, MockToolRunner, ToolInvocation, ToolOutput, ToolRunner,
 };
 pub use runtime::remote::RemoteToolRunner;
-pub use runtime::ssh::{SshMuxOptions, SshSession};
+pub use runtime::ssh::SshSession;
 pub use runtime::vendor::sync_remote_vendor_includes;
 pub use tools::hls::report::{
     csynth_report_path, normalize_hls_report_text, parse_csynth_xml, parse_utilization_rpt,

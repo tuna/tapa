@@ -27,10 +27,7 @@ impl CliContext {
     /// runner.
     pub fn with_tool_runner<R>(&self, f: impl FnOnce(&dyn tapa_xilinx::ToolRunner) -> R) -> R {
         if let Some(cfg) = self.remote_config.as_ref() {
-            let session = std::sync::Arc::new(tapa_xilinx::SshSession::new(
-                cfg.clone(),
-                tapa_xilinx::SshMuxOptions::default(),
-            ));
+            let session = std::sync::Arc::new(tapa_xilinx::SshSession::new(cfg.clone()));
             let runner = tapa_xilinx::RemoteToolRunner::new(session);
             f(&runner)
         } else {

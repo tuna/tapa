@@ -13,8 +13,8 @@ mod common;
 use std::sync::Arc;
 
 use tapa_xilinx::{
-    run_hls_with_retry, HlsJob, LocalToolRunner, RemoteToolRunner, SshMuxOptions, SshSession,
-    ToolInvocation, ToolRunner,
+    run_hls_with_retry, HlsJob, LocalToolRunner, RemoteToolRunner, SshSession, ToolInvocation,
+    ToolRunner,
 };
 
 fn write_standalone_kernel(dir: &std::path::Path) -> camino::Utf8PathBuf {
@@ -182,7 +182,7 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .solution_name("solution1".into())
         .build();
     let runner: Box<dyn ToolRunner> = if let Some(cfg) = common::has_remote_config() {
-        let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+        let session = Arc::new(SshSession::new(cfg));
         session.ensure_established().expect("ssh setup");
         Box::new(RemoteToolRunner::new(session))
     } else {
@@ -351,7 +351,7 @@ fn vitis_hls_round_trips_vadd_fixture() {
         return;
     }
     if let Some(cfg) = common::has_remote_config() {
-        let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+        let session = Arc::new(SshSession::new(cfg));
         session.ensure_established().expect("ssh setup");
         let runner = RemoteToolRunner::new(session);
         // Cheap preflight so that if the remote is wedged we produce a

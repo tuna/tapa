@@ -27,7 +27,7 @@
 
 use std::path::{Path, PathBuf};
 
-use tapa_xilinx::{sync_remote_vendor_includes, RemoteConfig, SshMuxOptions, SshSession};
+use tapa_xilinx::{sync_remote_vendor_includes, RemoteConfig, SshSession};
 
 use crate::error::{CliError, Result};
 use crate::globals::GlobalArgs;
@@ -213,7 +213,7 @@ pub fn build_remote_config(globals: &GlobalArgs) -> Result<Option<RemoteConfig>>
 /// process environment. Sync failures are logged and swallowed so test
 /// environments without SSH still run.
 fn sync_and_export_env(cfg: &RemoteConfig) {
-    let session = SshSession::new(cfg.clone(), SshMuxOptions::default());
+    let session = SshSession::new(cfg.clone());
     match sync_remote_vendor_includes(&session) {
         Ok(cache_dir) => {
             let s = cache_dir.as_str().to_string();

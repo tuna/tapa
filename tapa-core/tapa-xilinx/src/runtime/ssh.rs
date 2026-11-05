@@ -104,29 +104,13 @@ pub(crate) fn classify_ssh_error(stderr: &str) -> SshErrorKind {
     }
 }
 
-/// Options that tweak the ControlMaster invocation.
-#[derive(Debug, Clone)]
-pub struct SshMuxOptions {
-    pub control_persist: String,
-    pub server_alive_interval: u32,
-    pub server_alive_count_max: u32,
-}
-
-impl Default for SshMuxOptions {
-    fn default() -> Self {
-        Self {
-            control_persist: "30m".into(),
-            server_alive_interval: 30,
-            server_alive_count_max: 3,
-        }
-    }
-}
+const SERVER_ALIVE_INTERVAL: u32 = 30;
+const SERVER_ALIVE_COUNT_MAX: u32 = 3;
 
 /// Live ControlMaster session with lazy establishment, health checks,
 /// teardown, and reconnection after transient mux failures.
 pub struct SshSession {
     cfg: RemoteConfig,
-    options: SshMuxOptions,
     state: Mutex<SessionState>,
 }
 
@@ -136,10 +120,9 @@ struct SessionState {
 }
 
 impl SshSession {
-    pub fn new(cfg: RemoteConfig, options: SshMuxOptions) -> Self {
+    pub fn new(cfg: RemoteConfig) -> Self {
         Self {
             cfg,
-            options,
             state: Mutex::new(SessionState::default()),
         }
     }
@@ -180,16 +163,8 @@ impl SshSession {
             push_ssh_opt(&mut args, "ControlMaster", "auto");
             push_ssh_opt(&mut args, "ControlPath", &control_path);
             push_ssh_opt(&mut args, "ControlPersist", &self.cfg.ssh_control_persist);
-            push_ssh_opt(
-                &mut args,
-                "ServerAliveInterval",
-                self.options.server_alive_interval,
-            );
-            push_ssh_opt(
-                &mut args,
-                "ServerAliveCountMax",
-                self.options.server_alive_count_max,
-            );
+            push_ssh_opt(&mut args, "ServerAliveInterval", SERVER_ALIVE_INTERVAL);
+            push_ssh_opt(&mut args, "ServerAliveCountMax", SERVER_ALIVE_COUNT_MAX);
         }
         args
     }
@@ -419,7 +394,7 @@ mod tests {
 
     #[test]
     fn ssh_args_include_control_master_and_path_when_enabled() {
-        let sess = SshSession::new(base_cfg(), SshMuxOptions::default());
+        let sess = SshSession::new(base_cfg());
         let args = sess.build_ssh_args();
         assert!(args.iter().any(|a| a == "ControlMaster=auto"));
         assert!(args.iter().any(|a| a == "/tmp/key"));
@@ -434,7 +409,7 @@ mod tests {
     fn ssh_args_use_configured_control_dir() {
         let mut cfg = base_cfg();
         cfg.ssh_control_dir = Some(Utf8PathBuf::from("/var/run/taparc"));
-        let sess = SshSession::new(cfg, SshMuxOptions::default());
+        let sess = SshSession::new(cfg);
         let args = sess.build_ssh_args();
         assert!(args
             .iter()

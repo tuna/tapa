@@ -19,9 +19,7 @@ use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
-use tapa_xilinx::{
-    RemoteToolRunner, SshMuxOptions, SshSession, ToolInvocation, ToolRunner, ToolValue,
-};
+use tapa_xilinx::{RemoteToolRunner, SshSession, ToolInvocation, ToolRunner, ToolValue};
 
 fn existing_control_sockets(dir: &Utf8PathBuf) -> Vec<Utf8PathBuf> {
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -42,7 +40,7 @@ fn control_master_lifecycle() {
         eprintln!("integration_remote: no REMOTE_HOST; skipping");
         return;
     };
-    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let session = Arc::new(SshSession::new(cfg));
 
     // 1. First ensure_established opens (or reuses) the socket.
     session
@@ -172,7 +170,7 @@ fn control_master_retry_branch_mid_transfer() {
         eprintln!("integration_remote: no REMOTE_HOST; skipping mid-transfer retry test");
         return;
     };
-    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let session = Arc::new(SshSession::new(cfg));
     session
         .ensure_established()
         .expect("first ensure_established must succeed");
@@ -234,7 +232,7 @@ fn control_master_restart_during_transfer() {
         eprintln!("integration_remote: no REMOTE_HOST; skipping transfer test");
         return;
     };
-    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let session = Arc::new(SshSession::new(cfg));
     session
         .ensure_established()
         .expect("first ensure_established must succeed");
@@ -323,7 +321,7 @@ fn download_failure_cleans_remote_session() {
     let stage = tempfile::tempdir().expect("stage");
     let suffix = stage.path().file_name().unwrap().to_str().unwrap();
     cfg.work_dir = format!("{}/cleanup-{suffix}", cfg.work_dir);
-    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let session = Arc::new(SshSession::new(cfg));
     let runner = RemoteToolRunner::new(Arc::clone(&session));
     let input = Utf8PathBuf::from_path_buf(stage.path().join("input")).unwrap();
     std::fs::create_dir(&input).unwrap();

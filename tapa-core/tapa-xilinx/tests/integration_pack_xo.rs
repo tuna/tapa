@@ -20,7 +20,7 @@ use std::sync::Arc;
 use camino::Utf8PathBuf;
 use tapa_xilinx::{
     emit_kernel_xml, pack_xo_without_redaction, redact_xo, DeviceInfo, KernelXmlArgs,
-    KernelXmlPort, PackageXoInputs, PortCategory, RemoteToolRunner, SshMuxOptions, SshSession,
+    KernelXmlPort, PackageXoInputs, PortCategory, RemoteToolRunner, SshSession,
 };
 
 fn repo_root() -> Utf8PathBuf {
@@ -156,7 +156,7 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
         .kernel_out_path(xo_out)
         .build();
 
-    let session = Arc::new(SshSession::new(cfg, SshMuxOptions::default()));
+    let session = Arc::new(SshSession::new(cfg));
     session.ensure_established().expect("ssh setup");
     let runner = RemoteToolRunner::new(session);
 
