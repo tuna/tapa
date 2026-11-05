@@ -46,6 +46,15 @@ sh_test(
     tags = ["cpu:8"],
 )
 
+_P_CONFIGS = [
+    (2, "", []),
+    (
+        4,
+        "-4x4",
+        ["manual"],
+    ),
+]
+
 [
     cc_binary(
         name = "cannon-host" + suffix,
@@ -62,14 +71,7 @@ sh_test(
             "@gflags",
         ],
     )
-    for p, suffix, tags in [
-        (2, "", []),
-        (
-            4,
-            "-4x4",
-            ["manual"],
-        ),
-    ]
+    for p, suffix, tags in _P_CONFIGS
 ]
 
 [
@@ -83,14 +85,7 @@ sh_test(
         target = "xilinx-hls",
         top_name = top_name,
     )
-    for p, suffix, tags in [
-        (2, "", []),
-        (
-            4,
-            "-4x4",
-            ["manual"],
-        ),
-    ]
+    for p, suffix, tags in _P_CONFIGS
     for task_name, top_name in [
         ("scatter", "Scatter"),
         ("proc-elem", "ProcElem"),
