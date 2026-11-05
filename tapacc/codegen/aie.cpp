@@ -2,8 +2,10 @@
 
 #include <string>
 
+#include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
+#include "clang/AST/ParentMapContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
 #include "clang/AST/TypeLoc.h"
@@ -103,6 +105,14 @@ void ReportUnsupportedAttr(const clang::Attr& attr, EditSink& edits) {
       << attr.getSpelling();
 }
 
+bool IsLoopBody(const clang::Stmt* body, clang::ASTContext& ctx) {
+  for (const clang::DynTypedNode& parent : ctx.getParents(*body)) {
+    const auto* loop = parent.get<clang::Stmt>();
+    if (loop != nullptr && LoopBody(loop) == body) return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 void AieBackend::LowerFuncPipeline(int, const std::string&,
@@ -116,8 +126,19 @@ void AieBackend::LowerFuncPipeline(int, const std::string&,
   }
 }
 
-void AieBackend::LowerStmtAttr(const clang::Attr& attr, const clang::Stmt*,
+void AieBackend::LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
                                EditSink& edits) const {
+  // HLS only reports a trip-count range; chess optimizes on it, so on the AI
+  // Engine a loop that runs outside it is undefined.
+  if (const auto* tripcount = llvm::dyn_cast<clang::TapaTripcountAttr>(&attr);
+      tripcount != nullptr && body != nullptr &&
+      IsLoopBody(body, edits.getASTContext())) {
+    edits.InsertTextBefore(body->getBeginLoc(),
+                           "chess_loop_range(" +
+                               std::to_string(tripcount->getMin()) + ", " +
+                               std::to_string(tripcount->getMax()) + ") ");
+    return;
+  }
   ReportUnsupportedAttr(attr, edits);
 }
 

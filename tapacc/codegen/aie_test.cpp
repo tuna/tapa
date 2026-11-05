@@ -149,7 +149,7 @@ TEST(AieTest, PlOnlyAttrsAreIgnoredWithoutChangingThePlVariant) {
         [[tapa::target("aie")]]
         void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
           [[tapa::partition("complete")]] float bias[4] = {};
-          [[tapa::pipeline]] [[tapa::dependence("c")]] [[tapa::tripcount(1, 4)]]
+          [[tapa::pipeline]] [[tapa::dependence("c")]]
           for (int i = 0; i < n; ++i)
             c.write(a.read() + bias[i % 4]);
         }
@@ -159,7 +159,7 @@ TEST(AieTest, PlOnlyAttrsAreIgnoredWithoutChangingThePlVariant) {
       "pl_only_attrs_hls", Design(R"cpp(
         void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
           [[tapa::partition("complete")]] float bias[4] = {};
-          [[tapa::pipeline]] [[tapa::dependence("c")]] [[tapa::tripcount(1, 4)]]
+          [[tapa::pipeline]] [[tapa::dependence("c")]]
           for (int i = 0; i < n; ++i)
             c.write(a.read() + bias[i % 4]);
         }
@@ -169,10 +169,29 @@ TEST(AieTest, PlOnlyAttrsAreIgnoredWithoutChangingThePlVariant) {
   const std::string& tu = pl.files.at("pl_only_attrs_hls.cpp");
   EXPECT_NE(tu.find("HLS array_partition"), std::string::npos) << tu;
   EXPECT_NE(tu.find("HLS dependence"), std::string::npos) << tu;
-  EXPECT_NE(tu.find("HLS loop_tripcount"), std::string::npos) << tu;
   EXPECT_EQ(tu.find("[[tapa::partition"), std::string::npos);
   EXPECT_EQ(tu.find("[[tapa::dependence"), std::string::npos);
-  EXPECT_EQ(tu.find("[[tapa::tripcount"), std::string::npos);
+}
+
+TEST(AieTest, TripcountBoundsTheLoopItIsWrittenOn) {
+  const TreePipelineRun run = Analyze(
+      "tripcount", Design(R"cpp(
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          [[tapa::pipeline]] [[tapa::tripcount(1, 4)]]
+          for (int i = 0; i < n; ++i)
+            c.write(a.read());
+          [[tapa::tripcount(2, 8)]] { c.write(a.read()); }
+        }
+      )cpp"));
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  const std::string& tu = run.files.at("tripcount.cpp");
+  EXPECT_NE(tu.find("chess_loop_range(1, 4) chess_prepare_for_pipelining"),
+            std::string::npos)
+      << tu;
+  EXPECT_EQ(CountOccurrences(tu, "chess_loop_range"), 1)
+      << "a region is not a loop: " << tu;
+  EXPECT_EQ(tu.find("[[tapa::tripcount"), std::string::npos) << tu;
 }
 
 TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {

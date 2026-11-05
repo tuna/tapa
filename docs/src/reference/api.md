@@ -436,7 +436,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 |-----------|-----------|-------------|
 | `[[tapa::pipeline(II, style)]]` | `pipeline` | Pipeline the loop (or function) at initiation interval `II`. Both arguments optional; `style` is `"stp"` (stall), `"flp"` (flushable) or `"frp"` (free-running), the vendor default when omitted. `[[tapa::pipeline(false)]]` *disables* pipelining (`pipeline off`), the same way `flatten(false)` disables flattening. |
 | `[[tapa::unroll(factor)]]` | `unroll` | Unroll by `factor`; fully unroll when omitted. |
-| `[[tapa::tripcount(min, max)]]` | `loop_tripcount` | Declare the loop's trip-count range. Estimation only — it does not change generated hardware. |
+| `[[tapa::tripcount(min, max)]]` | `loop_tripcount` | Declare the loop's trip-count range. Estimation only — it does not change generated hardware. On the AI Engine it is a promise instead: see [AI Engine Tasks](../howto/aie.md). |
 | `[[tapa::flatten(enable)]]` | `loop_flatten` | `false` (or `0`) disables flattening of the loop nest; omitted leaves the vendor's automatic flattening on. |
 | `[[tapa::latency(min, max)]]` | `latency` | Constrain the latency of the loop or region. `max = 0` requests a combinational region. |
 | `[[tapa::dependence(var, class, type, direction, dependent, distance)]]` | `dependence` | Describe a loop-carried dependence on `var`, in the vendor's argument order. `class` is `"array"`/`"pointer"`, `type` `"inter"`/`"intra"`, `direction` `"RAW"`/`"WAR"`/`"WAW"` — all validated at parse time; `dependent` non-zero asserts a real dependence at `distance` (a string for macro passthrough or an integer constant), the default asserts independence. All but `var` are optional; use `""` for a skipped position. |

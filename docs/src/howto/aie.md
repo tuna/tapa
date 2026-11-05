@@ -56,7 +56,8 @@ cannot be run through XRT.)
 | `[[tapa::pipeline]]` | Lowered to `chess_prepare_for_pipelining`; every nested loop is flattened automatically, as in HLS nested-loop pipelining. |
 | `[[tapa::unroll]]` | Lowered to `chess_flatten_loop` when full and `chess_unroll_loop(k)` with a factor. |
 | `tapa::wait()`, `tapa::reg()` | Accepted. As in software simulation, `wait` does nothing and `reg` returns its argument: the core has no PL clock cycle to yield. |
-| HLS-only attributes such as `partition`, `dependence`, and `tripcount` | Ignored with a remark; they still affect the PL build. |
+| `[[tapa::tripcount(min, max)]]` on a loop | Lowered to `chess_loop_range(min, max)`. HLS only reports the range, but the AI Engine compiler optimizes on it: a loop that runs fewer than `min` or more than `max` times is undefined behavior on the AI Engine. |
+| HLS-only attributes such as `partition` and `dependence` | Ignored with a remark; they still affect the PL build. |
 
 A PL task must not `close()` a stream that feeds an AI Engine task, because
 the end-of-transmission token would be read as data.
