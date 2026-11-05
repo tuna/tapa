@@ -502,14 +502,9 @@ fn refine_lexicographic(
     solver: &dyn Solver,
     opts: &SolveOpts,
     primary: &crate::solver::LpSolution,
-    max_crossings: Option<LpVar>,
-    candidates: &Candidates,
     path_vars: &[Vec<LpVar>],
 ) -> Result<Option<crate::solver::LpSolution>, RouteError> {
-    let pin = max_crossings.map_or_else(
-        || hop_objective(candidates, path_vars),
-        |max_crossings| LinExpr::sum([(1.0, max_crossings)]),
-    );
+    let pin = lp.objective.clone();
     Ok(crate::solver::lexicographic::refine(
         lp,
         solver,
@@ -620,15 +615,7 @@ pub fn route_nets(
     // Lexicographic tie-break: pin the achieved objective, then minimize the
     // stable candidate-path index so equal-quality routes resolve
     // identically across solver versions.
-    let refined = refine_lexicographic(
-        &mut lp,
-        solver,
-        &route_opts,
-        &solution,
-        max_crossings,
-        &candidates,
-        &path_vars,
-    )?;
+    let refined = refine_lexicographic(&mut lp, solver, &route_opts, &solution, &path_vars)?;
     if refined.is_none() {
         log::warn!(
             "the routing lexicographic refinement found no incumbent; these routes are still \
