@@ -348,25 +348,27 @@ fn declarator_names(node: Node, src: &[u8]) -> Vec<String> {
     names
 }
 
+/// `ParseFailed` for a malformed wire/reg declaration node.
+fn malformed_signal(module: &str, node: Node, src: &[u8]) -> ParseError {
+    let line = text_of(node, src).trim_start().lines().next().unwrap_or("");
+    ParseError::ParseFailed {
+        module: module.to_owned(),
+        message: format!("malformed signal declaration: {line}"),
+    }
+}
+
 /// Extract signals from a wire/reg declaration, rejecting malformed
-/// declarations the same way the old nom parser did.
+/// declarations.
 fn extract_signals(node: Node, src: &[u8], module: &str) -> Result<Vec<Signal>, ParseError> {
     let Some(kind) = signal_kind_of(node, src) else {
         return Ok(Vec::new());
     };
-    let malformed = || {
-        let line = text_of(node, src).lines().next().unwrap_or("");
-        ParseError::ParseFailed {
-            module: module.to_owned(),
-            message: format!("malformed signal declaration: {line}"),
-        }
-    };
     if has_error_node(node) {
-        return Err(malformed());
+        return Err(malformed_signal(module, node, src));
     }
     let names = declarator_names(node, src);
     if names.is_empty() {
-        return Err(malformed());
+        return Err(malformed_signal(module, node, src));
     }
     let width = extract_width(node, src);
     Ok(names
@@ -414,11 +416,7 @@ fn walk_module_body(
             "ERROR" => {
                 let trimmed = text_of(node, src).trim_start();
                 if trimmed.starts_with("wire") || trimmed.starts_with("reg") {
-                    let line = trimmed.lines().next().unwrap_or("");
-                    return Err(ParseError::ParseFailed {
-                        module: module.to_owned(),
-                        message: format!("malformed signal declaration: {line}"),
-                    });
+                    return Err(malformed_signal(module, node, src));
                 }
             }
             _ => {}
