@@ -21,7 +21,7 @@ bool EditSink::CanRewrite(clang::SourceRange range) {
 }
 
 bool EditSink::CanRewrite(clang::CharSourceRange range) {
-  return CanEdit(range.getBegin(), range.getEnd());
+  return CanRewrite(clang::SourceRange(range.getBegin(), range.getEnd()));
 }
 
 // A file location must name a mirrored file; the splice of a macro-owned
