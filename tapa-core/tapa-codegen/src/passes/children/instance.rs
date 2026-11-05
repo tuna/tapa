@@ -170,7 +170,7 @@ pub(super) fn build_child_instance_with_reset(
                     let signal = Expr::ident(stream_signal(parent, suffix));
                     port_args.push(PortArg::new(
                         resolve_child_stream_port(child_port, suffix),
-                        signal.clone(),
+                        signal,
                     ));
                     if matches!(*suffix, "_dout" | "_empty_n") {
                         if let Some(peek_port) = resolve_child_stream_peek_port(child_port, suffix)
