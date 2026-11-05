@@ -290,7 +290,7 @@ mod tests {
     }
 
     #[test]
-    fn only_fully_matching_cycle_accurate_runs_fold_timing() {
+    fn only_fresh_cycle_accurate_runs_fold_timing() {
         let measured = BTreeMap::from([(
             "c_q".to_string(),
             AiesimStreamTiming::from_beat_times(&[240.0, 256.0]).expect("two beats"),
