@@ -45,7 +45,6 @@ pub struct Arg {
     /// Width in bits as recorded in the system map. Zero means 32, matching
     /// VRT's treatment of an omitted register width.
     pub range: u32,
-    pub readable: bool,
     pub writable: bool,
     pub port: Option<String>,
 }
@@ -54,7 +53,6 @@ pub struct Arg {
 pub struct Kernel {
     pub name: String,
     pub base_address: u64,
-    pub range: u64,
     pub args: Vec<Arg>,
     /// AXI port to its typed memory target.
     pub connections: BTreeMap<String, MemoryTarget>,
@@ -321,8 +319,6 @@ struct RawKernel {
     name: String,
     #[serde(rename = "BaseAddress")]
     base_address: String,
-    #[serde(rename = "Range")]
-    range: String,
     #[serde(rename = "functional_args", default)]
     args: RawArgs,
     #[serde(rename = "connection", default)]
@@ -347,8 +343,6 @@ struct RawArg {
     offset: String,
     #[serde(rename = "@range", default)]
     range: String,
-    #[serde(rename = "@r", default)]
-    readable: String,
     #[serde(rename = "@w", default)]
     writable: String,
     #[serde(rename = "@port", default)]
@@ -394,7 +388,6 @@ fn parse_system_map(xml: &str) -> Result<Metadata> {
         ));
     }
     let base_address = parse_u64(&raw_kernel.base_address, "Kernel BaseAddress")?;
-    let range = parse_u64(&raw_kernel.range, "Kernel Range")?;
     if !base_address.is_multiple_of(4) {
         return Err(FrtError::Vrt(format!(
             "kernel `{name}` base address {base_address:#x} is not 32-bit aligned"
@@ -432,7 +425,6 @@ fn parse_system_map(xml: &str) -> Result<Metadata> {
         kernel: Kernel {
             name,
             base_address,
-            range,
             args,
             connections,
         },
@@ -472,7 +464,6 @@ fn parse_arg(raw: RawArg) -> Result<Arg> {
         kind,
         offset,
         range,
-        readable: parse_bool(&raw.readable, "argument r")?,
         writable: parse_bool(&raw.writable, "argument w")?,
         port: (!raw.port.trim().is_empty()).then(|| raw.port.trim().to_owned()),
     })
