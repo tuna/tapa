@@ -44,7 +44,6 @@ pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
     lines.push(
         match model.sense {
             Sense::Minimize => "Minimize",
-            Sense::Maximize => "Maximize",
         }
         .to_string(),
     );
@@ -86,12 +85,6 @@ pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
     if !binaries.is_empty() {
         lines.push("Binaries".to_string());
         lines.extend(binaries);
-    }
-
-    let generals = section_vars(model, VarKind::Integer);
-    if !generals.is_empty() {
-        lines.push("General".to_string());
-        lines.extend(generals);
     }
 
     lines.push("End".to_string());
@@ -240,7 +233,7 @@ mod tests {
     fn golden_lp_text() {
         let mut model = LpModel::new(Sense::Minimize);
         let pick = model.add_binary("pick");
-        let count = model.add_integer("count", 0.0, 5.0);
+        let count = model.add_continuous("count", 0.0, 5.0);
         let flow = model.add_continuous("flow_amt", 0.0, f64::INFINITY);
 
         model.set_objective(
@@ -280,8 +273,6 @@ Bounds
  0 <= x1 <= 5
 Binaries
  x0
-General
- x1
 End
 ";
         assert_eq!(write_cplex_lp(&model).expect("render"), expected);

@@ -12,17 +12,14 @@ pub struct LpVar(pub u32);
 pub enum VarKind {
     /// `{0, 1}`.
     Binary,
-    /// Integer within its bounds.
-    Integer,
     /// Real within its bounds.
     Continuous,
 }
 
-/// Whether the objective is minimized or maximized.
+/// The objective direction; the formulations always minimize.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sense {
     Minimize,
-    Maximize,
 }
 
 /// A constraint's comparison operator.
@@ -133,11 +130,6 @@ impl LpModel {
     /// Add a `{0, 1}` variable.
     pub fn add_binary(&mut self, label: impl Into<String>) -> LpVar {
         self.add_var(label, VarKind::Binary, 0.0, 1.0)
-    }
-
-    /// Add an integer variable bounded by `[lower, upper]`.
-    pub fn add_integer(&mut self, label: impl Into<String>, lower: f64, upper: f64) -> LpVar {
-        self.add_var(label, VarKind::Integer, lower, upper)
     }
 
     /// Add a continuous variable bounded by `[lower, upper]` (use

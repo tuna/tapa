@@ -98,7 +98,6 @@ impl SolveFingerprint {
 fn sense_str(sense: Sense) -> &'static str {
     match sense {
         Sense::Minimize => "minimize",
-        Sense::Maximize => "maximize",
     }
 }
 
@@ -185,7 +184,6 @@ fn var_domains_hash(model: &LpModel) -> String {
     for var in &model.vars {
         let kind = match var.kind {
             VarKind::Binary => "bin",
-            VarKind::Integer => "int",
             VarKind::Continuous => "con",
         };
         state = fnv1a64(state, kind.as_bytes());

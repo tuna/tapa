@@ -91,7 +91,7 @@ impl LpSolution {
                     definition.lower, definition.upper,
                 )));
             }
-            if matches!(definition.kind, VarKind::Binary | VarKind::Integer)
+            if matches!(definition.kind, VarKind::Binary)
                 && (value - value.round()).abs() > SOLUTION_TOLERANCE
             {
                 return Err(SolverError::InvalidSolution(format!(
