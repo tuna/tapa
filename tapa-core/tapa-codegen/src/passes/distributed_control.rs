@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use tapa_ir::floorplan::Coor;
+use tapa_ir::floorplan::{Coor, FloorplanResult};
 use tapa_ir::transforms::{FlatProjection, OccurrenceId};
 use tapa_ir::{
     control_pipeline_instance_name, global_controller_instance_name,
@@ -72,6 +72,10 @@ struct FeedForwardRoute {
     latency: u32,
 }
 
+/// The floorplan's control routes keyed by (child instance, channel); each
+/// child consumes its entries as planning validates them.
+type PlannedRoutes = BTreeMap<(String, ControlChannel), FeedForwardRoute>;
+
 #[derive(Debug)]
 struct PayloadField {
     output: String,
@@ -112,10 +116,6 @@ pub struct DistributedControlPlan {
 }
 
 impl DistributedControlPlan {
-    #[allow(
-        clippy::too_many_lines,
-        reason = "the exact route-set validation is clearest as one transaction"
-    )]
     pub(super) fn from_floorplan(
         state: &TopologyWithRtl,
         task_name: &str,
@@ -163,27 +163,7 @@ impl DistributedControlPlan {
             .regions
             .get(global_controller_instance_name())
             .expect("marker was checked");
-        match (
-            state.top_instantiates_control_s_axi(),
-            floorplan.regions.get("control_s_axi_U"),
-        ) {
-            (true, None) => {
-                return Err(invalid_floorplan(
-                    "top control AXI-Lite is missing placement 'control_s_axi_U'",
-                ));
-            }
-            (true, Some(control_region)) if control_region != global_region => {
-                return Err(invalid_floorplan(format!(
-                    "control_s_axi_U is placed in `{control_region}`, expected global controller region `{global_region}`",
-                )));
-            }
-            (false, Some(_)) => {
-                return Err(invalid_floorplan(
-                    "unexpected control_s_axi_U placement without a generated top control AXI-Lite block",
-                ));
-            }
-            (true, Some(_)) | (false, None) => {}
-        }
+        validate_control_axi_placement(state, floorplan, global_region)?;
         let global_slot = parse_atomic_region(global_region).ok_or_else(|| {
             invalid_floorplan(format!(
                 "global controller has non-atomic placement `{global_region}`",
@@ -209,147 +189,16 @@ impl DistributedControlPlan {
             }
         }
 
-        let mut planned_routes = BTreeMap::<(String, ControlChannel), FeedForwardRoute>::new();
-        let mut max_data_latency = 0_u32;
-        for route in &floorplan.routes {
-            let body_level = u32::try_from(route.reg_regions.len())
-                .map_err(|_| invalid_floorplan("pipeline Body level exceeds u32"))?;
-            let latency = body_level
-                .checked_add(2)
-                .ok_or_else(|| invalid_floorplan("pipeline latency exceeds u32"))?;
-            let RoutedChannel::Control { instance, channel } = &route.channel else {
-                max_data_latency = max_data_latency.max(latency);
-                continue;
-            };
-            if !known_instances.contains(instance) {
-                return Err(invalid_floorplan(format!(
-                    "control route names unknown child instance `{instance}`",
-                )));
-            }
-            let planned = FeedForwardRoute {
-                path: route.route.clone(),
-                scheme: route.scheme,
-                reg_regions: route.reg_regions.clone(),
-                body_level,
-                latency,
-            };
-            if planned_routes
-                .insert((instance.clone(), *channel), planned)
-                .is_some()
-            {
-                return Err(invalid_floorplan(format!(
-                    "child `{instance}` has more than one {channel:?} route",
-                )));
-            }
-        }
-
-        let mut children = BTreeMap::new();
-        let mut flush_cycles = 0;
-        let mut max_reset_latency = 0;
-        for ChildEntry {
-            instance,
-            definition,
-            is_autorun,
-            args,
-        } in child_entries
-        {
-            let child_region = floorplan.regions.get(&instance).ok_or_else(|| {
-                invalid_floorplan(format!("child `{instance}` has no instance placement"))
-            })?;
-            let child_slot = parse_atomic_region(child_region).ok_or_else(|| {
-                invalid_floorplan(format!(
-                    "child `{instance}` has non-atomic placement `{child_region}`",
-                ))
-            })?;
-            let local_name = local_controller_instance_name(&instance);
-            let local_region = floorplan.regions.get(&local_name).ok_or_else(|| {
-                invalid_floorplan(format!(
-                    "child `{instance}` has no local controller placement `{local_name}`",
-                ))
-            })?;
-            if local_region != child_region {
-                return Err(invalid_floorplan(format!(
-                    "local controller `{local_name}` is placed in `{local_region}`, expected `{child_region}`",
-                )));
-            }
-
-            let crossing = child_slot != global_slot;
-            let launch = take_expected_route(
-                &mut planned_routes,
-                &instance,
-                ControlChannel::Launch,
-                crossing,
-                global_slot,
-                child_slot,
-            )?;
-            let reset = take_expected_route(
-                &mut planned_routes,
-                &instance,
-                ControlChannel::Reset,
-                crossing,
-                global_slot,
-                child_slot,
-            )?;
-            if is_autorun
-                && planned_routes.contains_key(&(instance.clone(), ControlChannel::Completion))
-            {
-                return Err(invalid_floorplan(format!(
-                    "autorun child `{instance}` must not have a Completion route",
-                )));
-            }
-            let completion = if is_autorun {
-                None
-            } else {
-                take_expected_route(
-                    &mut planned_routes,
-                    &instance,
-                    ControlChannel::Completion,
-                    crossing,
-                    child_slot,
-                    global_slot,
-                )?
-            };
-            if let (Some(launch), Some(reset)) = (&launch, &reset) {
-                if launch != reset {
-                    return Err(invalid_floorplan(format!(
-                        "child `{instance}` Launch and Reset routes must be identical",
-                    )));
-                }
-            }
-
-            let (payload, launch_width) = build_payload_fields(
-                state,
-                &definition,
-                &instance,
-                is_autorun,
-                &args,
-                mmap_connections,
-            )?;
-            let reset_latency = reset.as_ref().map_or(0, |route| route.latency);
-            let completion_latency = completion.as_ref().map_or(0, |route| route.latency);
-            max_reset_latency = max_reset_latency.max(reset_latency);
-            flush_cycles =
-                flush_cycles.max(reset_latency.checked_add(completion_latency).ok_or_else(
-                    || {
-                        invalid_floorplan(format!(
-                            "child `{instance}` reset flush latency exceeds u32",
-                        ))
-                    },
-                )?);
-            children.insert(
-                instance,
-                ChildControlPlan {
-                    owner: None,
-                    register_payload: false,
-                    is_autorun,
-                    launch_width,
-                    payload,
-                    launch,
-                    reset,
-                    completion,
-                },
-            );
-        }
+        let (mut planned_routes, max_data_latency) =
+            collect_control_routes(floorplan, &known_instances)?;
+        let (children, mut flush_cycles, max_reset_latency) = plan_children(
+            state,
+            floorplan,
+            child_entries,
+            &mut planned_routes,
+            global_slot,
+            mmap_connections,
+        )?;
 
         if let Some(((instance, channel), _)) = planned_routes.into_iter().next() {
             return Err(invalid_floorplan(format!(
@@ -777,6 +626,209 @@ fn done_and_clear(completion_signals: &[String]) -> (Expr, Expr) {
     (done, clear)
 }
 
+/// Validate the top control AXI-Lite placement against the global controller
+/// region: the block must be placed exactly when the top instantiates it, and
+/// in the global controller region.
+fn validate_control_axi_placement(
+    state: &TopologyWithRtl,
+    floorplan: &FloorplanResult,
+    global_region: &str,
+) -> Result<(), CodegenError> {
+    match (
+        state.top_instantiates_control_s_axi(),
+        floorplan.regions.get("control_s_axi_U"),
+    ) {
+        (true, None) => Err(invalid_floorplan(
+            "top control AXI-Lite is missing placement 'control_s_axi_U'",
+        )),
+        (true, Some(control_region)) if control_region != global_region => Err(
+            invalid_floorplan(format!(
+                "control_s_axi_U is placed in `{control_region}`, expected global controller region `{global_region}`",
+            )),
+        ),
+        (false, Some(_)) => Err(invalid_floorplan(
+            "unexpected control_s_axi_U placement without a generated top control AXI-Lite block",
+        )),
+        (true, Some(_)) | (false, None) => Ok(()),
+    }
+}
+
+/// Collect the floorplan's control routes keyed by (child instance, channel),
+/// rejecting routes that name unknown instances or duplicate a channel. The
+/// second return value is the maximum latency over the non-control (data)
+/// routes, which bounds the fabric reset flush.
+fn collect_control_routes(
+    floorplan: &FloorplanResult,
+    known_instances: &BTreeSet<String>,
+) -> Result<(PlannedRoutes, u32), CodegenError> {
+    let mut planned_routes = PlannedRoutes::new();
+    let mut max_data_latency = 0_u32;
+    for route in &floorplan.routes {
+        let body_level = u32::try_from(route.reg_regions.len())
+            .map_err(|_| invalid_floorplan("pipeline Body level exceeds u32"))?;
+        let latency = body_level
+            .checked_add(2)
+            .ok_or_else(|| invalid_floorplan("pipeline latency exceeds u32"))?;
+        let RoutedChannel::Control { instance, channel } = &route.channel else {
+            max_data_latency = max_data_latency.max(latency);
+            continue;
+        };
+        if !known_instances.contains(instance) {
+            return Err(invalid_floorplan(format!(
+                "control route names unknown child instance `{instance}`",
+            )));
+        }
+        let planned = FeedForwardRoute {
+            path: route.route.clone(),
+            scheme: route.scheme,
+            reg_regions: route.reg_regions.clone(),
+            body_level,
+            latency,
+        };
+        if planned_routes
+            .insert((instance.clone(), *channel), planned)
+            .is_some()
+        {
+            return Err(invalid_floorplan(format!(
+                "child `{instance}` has more than one {channel:?} route",
+            )));
+        }
+    }
+    Ok((planned_routes, max_data_latency))
+}
+
+/// Build the per-child control plans, consuming each child's expected routes
+/// from `planned_routes` (the caller reports any leftover routes). The
+/// returned latencies are the flush-cycle bound over per-child reset +
+/// completion latencies and the maximum reset latency; the caller folds in
+/// the data-fabric latency.
+fn plan_children(
+    state: &TopologyWithRtl,
+    floorplan: &FloorplanResult,
+    child_entries: Vec<ChildEntry>,
+    planned_routes: &mut PlannedRoutes,
+    global_slot: (u32, u32),
+    mmap_connections: &BTreeMap<String, MMapConnection>,
+) -> Result<(BTreeMap<String, ChildControlPlan>, u32, u32), CodegenError> {
+    let mut children = BTreeMap::new();
+    let mut flush_cycles = 0;
+    let mut max_reset_latency = 0;
+    for ChildEntry {
+        instance,
+        definition,
+        is_autorun,
+        args,
+    } in child_entries
+    {
+        let child_slot = child_placement_slot(floorplan, &instance)?;
+
+        let crossing = child_slot != global_slot;
+        let launch = take_expected_route(
+            planned_routes,
+            &instance,
+            ControlChannel::Launch,
+            crossing,
+            global_slot,
+            child_slot,
+        )?;
+        let reset = take_expected_route(
+            planned_routes,
+            &instance,
+            ControlChannel::Reset,
+            crossing,
+            global_slot,
+            child_slot,
+        )?;
+        if is_autorun
+            && planned_routes.contains_key(&(instance.clone(), ControlChannel::Completion))
+        {
+            return Err(invalid_floorplan(format!(
+                "autorun child `{instance}` must not have a Completion route",
+            )));
+        }
+        let completion = if is_autorun {
+            None
+        } else {
+            take_expected_route(
+                planned_routes,
+                &instance,
+                ControlChannel::Completion,
+                crossing,
+                child_slot,
+                global_slot,
+            )?
+        };
+        if let (Some(launch), Some(reset)) = (&launch, &reset) {
+            if launch != reset {
+                return Err(invalid_floorplan(format!(
+                    "child `{instance}` Launch and Reset routes must be identical",
+                )));
+            }
+        }
+
+        let (payload, launch_width) = build_payload_fields(
+            state,
+            &definition,
+            &instance,
+            is_autorun,
+            &args,
+            mmap_connections,
+        )?;
+        let reset_latency = reset.as_ref().map_or(0, |route| route.latency);
+        let completion_latency = completion.as_ref().map_or(0, |route| route.latency);
+        max_reset_latency = max_reset_latency.max(reset_latency);
+        flush_cycles = flush_cycles.max(reset_latency.checked_add(completion_latency).ok_or_else(
+            || {
+                invalid_floorplan(format!(
+                    "child `{instance}` reset flush latency exceeds u32",
+                ))
+            },
+        )?);
+        children.insert(
+            instance,
+            ChildControlPlan {
+                owner: None,
+                register_payload: false,
+                is_autorun,
+                launch_width,
+                payload,
+                launch,
+                reset,
+                completion,
+            },
+        );
+    }
+    Ok((children, flush_cycles, max_reset_latency))
+}
+
+/// The child's placement slot, checked to be atomic and co-located with its
+/// local controller.
+fn child_placement_slot(
+    floorplan: &FloorplanResult,
+    instance: &str,
+) -> Result<(u32, u32), CodegenError> {
+    let child_region = floorplan.regions.get(instance).ok_or_else(|| {
+        invalid_floorplan(format!("child `{instance}` has no instance placement"))
+    })?;
+    let child_slot = parse_atomic_region(child_region).ok_or_else(|| {
+        invalid_floorplan(format!(
+            "child `{instance}` has non-atomic placement `{child_region}`",
+        ))
+    })?;
+    let local_name = local_controller_instance_name(instance);
+    let local_region = floorplan.regions.get(&local_name).ok_or_else(|| {
+        invalid_floorplan(format!(
+            "child `{instance}` has no local controller placement `{local_name}`",
+        ))
+    })?;
+    if local_region != child_region {
+        return Err(invalid_floorplan(format!(
+            "local controller `{local_name}` is placed in `{local_region}`, expected `{child_region}`",
+        )));
+    }
+    Ok(child_slot)
+}
+
 fn validate_scope_inventory(
     state: &TopologyWithRtl,
     projection: &FlatProjection,
@@ -810,7 +862,7 @@ fn validate_scope_inventory(
 }
 
 fn take_expected_route(
-    routes: &mut BTreeMap<(String, ControlChannel), FeedForwardRoute>,
+    routes: &mut PlannedRoutes,
     instance: &str,
     channel: ControlChannel,
     expected: bool,
