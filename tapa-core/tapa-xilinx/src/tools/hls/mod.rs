@@ -160,7 +160,6 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
         part: &'a str,
         clock: &'a str,
         other: &'a str,
-        rtl: &'a str,
     }
     if job.srcs.is_empty() {
         return Err(XilinxError::HlsReportParse(format!(
@@ -179,7 +178,6 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
         part: &job.target_part,
         clock: &job.clock_period,
         other: &other,
-        rtl: "config_rtl -reset_level low -module_auto_prefix",
     })
     .map_err(|e| XilinxError::Template(e.to_string()))
 }

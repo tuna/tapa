@@ -13,7 +13,7 @@ config_compile -name_max_length 253
 config_interface -m_axi_addr64
 {% if !other.is_empty() %}{{ other }}{% endif %}
 set_param hls.enable_hidden_option_error false
-{{ rtl }}
+config_rtl -reset_level low -module_auto_prefix
 config_rtl -enableFreeRunPipeline=false
 config_rtl -disableAutoFreeRunPipeline=true
 csynth_design
