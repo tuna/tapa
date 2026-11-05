@@ -671,9 +671,7 @@ mod tests {
 
     /// The probe order is shared with `tapa-codegen`'s child-instance
     /// pinning through the cross-tool naming fixture; both tests read
-    /// the same file, so the two implementations cannot drift apart
-    /// (the 2025.2 `_offset` -> `_r` rename had to be fixed in both
-    /// independently).
+    /// the same file, so the two implementations cannot drift apart.
     #[test]
     fn port_declaration_scopes_widths_to_the_declarator() {
         let verilog = vec![concat!(

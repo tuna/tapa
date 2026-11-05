@@ -606,9 +606,8 @@ fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
 }
 
 /// Every per-argument local in `service_streams` must carry the argument's
-/// identifier. A shared name compiles for one output stream and is a
-/// redefinition for two, so a kernel with two output streams used to emit a
-/// testbench that could not build.
+/// identifier: a shared name compiles for one output stream but is a
+/// redefinition for two.
 #[test]
 fn verilator_names_each_output_stream_buffer_after_its_argument() {
     for mode in [Mode::Hls, Mode::Vitis] {
