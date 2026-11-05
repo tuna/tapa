@@ -12,7 +12,6 @@ pub struct VivadoJob {
     pub uploads: Vec<Utf8PathBuf>,
     pub downloads: Vec<Utf8PathBuf>,
     pub work_dir: Option<Utf8PathBuf>,
-    pub env: Vec<(String, ToolValue)>,
     /// Arguments forwarded to the TCL script after `-tclargs`.
     pub tclargs: Vec<ToolValue>,
 }
@@ -24,7 +23,6 @@ impl VivadoJob {
             uploads: Vec::new(),
             downloads: Vec::new(),
             work_dir: None,
-            env: Vec::new(),
             tclargs: Vec::new(),
         }
     }
@@ -49,9 +47,6 @@ pub(crate) fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> 
         for a in &job.tclargs {
             inv = inv.arg(a.clone());
         }
-    }
-    for (k, v) in &job.env {
-        inv = inv.env(k.clone(), v.clone());
     }
     if let Some(cwd) = job.work_dir.clone() {
         inv.cwd = Some(cwd);
