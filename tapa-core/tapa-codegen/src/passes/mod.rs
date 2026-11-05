@@ -22,6 +22,8 @@ use std::collections::BTreeMap;
 
 use tapa_ir::floorplan::Coor;
 use tapa_ir::SynthTarget;
+use tapa_rtl::builder::Expr;
+use tapa_rtl::module::sanitize_array_name;
 
 use self::axi_pipeline::DirectAxiPipelinePlan;
 use self::distributed_control::DistributedControlPlan;
@@ -349,4 +351,30 @@ fn parse_atomic_region(region: &str) -> Option<(u32, u32)> {
 /// A floorplan-consistency failure, shared by the placement-reading passes.
 fn invalid_floorplan(detail: impl Into<String>) -> CodegenError {
     CodegenError::InvalidFloorplan(detail.into())
+}
+
+/// The driver expression for a scalar argument binding: a scalar is the one
+/// binding that can be a constant rather than a parent wire; this is where
+/// the constant becomes Verilog.
+fn scalar_driver(source: &tapa_ir::ArgSource) -> Expr {
+    match source {
+        tapa_ir::ArgSource::Name(name) => Expr::ident(sanitize_array_name(name)),
+        tapa_ir::ArgSource::Literal(value) => Expr::lit(value.to_string()),
+    }
+}
+
+/// The offset source for a direct-mmap argument bound to `parent`: the
+/// parent's `<arg>_offset` wire, or `64'd0` for hmap connections.
+fn mmap_offset_source(parent: &str, mmap_connections: &BTreeMap<String, MMapConnection>) -> Expr {
+    let parent_name = sanitize_array_name(parent);
+    mmap_connections.get(parent).map_or_else(
+        || Expr::ident(format!("{parent_name}_offset")),
+        |connection| {
+            if connection.geometry.is_hmap() {
+                Expr::lit("64'd0")
+            } else {
+                Expr::ident(format!("{parent_name}_offset"))
+            }
+        },
+    )
 }

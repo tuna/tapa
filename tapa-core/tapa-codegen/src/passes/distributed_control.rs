@@ -19,7 +19,7 @@ use tapa_rtl::builder::{
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wide_wire, wire};
 
-use super::{invalid_floorplan, parse_atomic_region};
+use super::{invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver};
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
 use crate::rtl_state::{MMapConnection, TopologyWithRtl};
@@ -915,32 +915,19 @@ fn build_payload_fields(
     let rtl_instance = sanitize_identifier_name(instance);
     for (port_name, arg) in args {
         let (output, source, width) = if arg.cat.is_scalar() {
-            // A scalar is the one binding that can be a constant rather than
-            // a parent wire; this is where the constant becomes Verilog.
-            let driver = match &arg.arg {
-                tapa_ir::ArgSource::Name(name) => Expr::ident(sanitize_array_name(name)),
-                tapa_ir::ArgSource::Literal(value) => Expr::lit(value.to_string()),
-            };
             (
                 format!("{rtl_instance}__{port_name}"),
-                driver,
+                scalar_driver(&arg.arg),
                 resolve_scalar_width(state, child_name, port_name)?,
             )
         } else if arg.cat.is_direct_mmap() {
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
-            let parent_name = sanitize_array_name(parent);
-            let source = mmap_connections.get(parent).map_or_else(
-                || Expr::ident(format!("{parent_name}_offset")),
-                |connection| {
-                    if connection.geometry.is_hmap() {
-                        Expr::lit("64'd0")
-                    } else {
-                        Expr::ident(format!("{parent_name}_offset"))
-                    }
-                },
-            );
-            (format!("{rtl_instance}__{port_name}_offset"), source, 64)
+            (
+                format!("{rtl_instance}__{port_name}_offset"),
+                mmap_offset_source(parent, mmap_connections),
+                64,
+            )
         } else {
             continue;
         };

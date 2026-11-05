@@ -16,7 +16,7 @@ use super::fsm::{
 use super::instance::{build_child_instance_with_reset, ChildMmapBinding, ChildMmapBindings};
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
-use crate::passes::{distributed_control, TaskPassCtx};
+use crate::passes::{distributed_control, mmap_offset_source, scalar_driver, TaskPassCtx};
 use crate::state::views::{DesignView, FsmTable, ModuleTable};
 use crate::{m_axi, program};
 
@@ -421,14 +421,7 @@ fn push_pipeline_portargs(
     for (port_name, arg) in args {
         if arg.cat.is_scalar() {
             let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, false);
-            // A scalar is the one binding that can be a constant rather than
-            // a parent wire; this is where the constant becomes Verilog.
-            let driver = match &arg.arg {
-                tapa_ir::ArgSource::Name(name) => {
-                    Expr::ident(tapa_rtl::module::sanitize_array_name(name))
-                }
-                tapa_ir::ArgSource::Literal(value) => Expr::lit(value.to_string()),
-            };
+            let driver = scalar_driver(&arg.arg);
             stage
                 .fsm_portargs
                 .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, driver));
@@ -440,17 +433,7 @@ fn push_pipeline_portargs(
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
             let (pipeline_out, fsm_in_port) = pipeline_wire_names(inst_name, port_name, true);
-            let arg_name = tapa_rtl::module::sanitize_array_name(parent);
-            let offset_source = stage.mmap_conns.get(parent).map_or_else(
-                || Expr::ident(format!("{arg_name}_offset")),
-                |conn| {
-                    if conn.geometry.is_hmap() {
-                        Expr::lit("64'd0")
-                    } else {
-                        Expr::ident(format!("{arg_name}_offset"))
-                    }
-                },
-            );
+            let offset_source = mmap_offset_source(parent, stage.mmap_conns);
             stage
                 .fsm_portargs
                 .push(tapa_rtl::builder::PortArg::new(&fsm_in_port, offset_source));
