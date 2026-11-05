@@ -129,7 +129,7 @@ pub enum Step {
         #[command(flatten)]
         chain_tail: ChainTail,
     },
-    /// Pack the generated RTL into a Xilinx object file.
+    /// Pack the generated RTL into an `.xo` or `.zip` package.
     Pack {
         #[command(flatten)]
         args: pack::PackArgs,

@@ -35,7 +35,7 @@ use vitis_packaging::{pack_slash, pack_vitis};
 #[derive(Debug, Clone, Parser)]
 #[command(
     name = "pack",
-    about = "Pack the generated RTL into a Xilinx object file."
+    about = "Pack the generated RTL into an `.xo` or `.zip` package."
 )]
 pub struct PackArgs {
     /// Output `.xo` (Vitis target) or `.zip` (HLS and SLASH targets).

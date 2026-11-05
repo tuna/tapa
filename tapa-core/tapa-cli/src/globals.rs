@@ -78,7 +78,7 @@ Subcommands (chainable, processed left-to-right):
   analyze                       Analyze a TAPA program; persist tapa.json.
   synth                         Synthesize the analyzed program into RTL.
   floorplan                     Coarse-grained floorplan the synthesized design.
-  pack                          Pack the generated RTL into a Xilinx `.xo`.
+  pack                          Pack the generated RTL into an `.xo` or `.zip` package.
   aiesim                        Simulate the AI Engine tasks against recorded stream data.
   compile                       analyze + synth + pack in one invocation.
   link                          Link a packaged TAPA kernel for its persisted Vitis or SLASH target.
