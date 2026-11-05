@@ -5,7 +5,6 @@
 #include <tapa.h>
 #include <cassert>
 #include <cstdint>
-#include <iostream>
 
 void Add(tapa::istream<float>& a, tapa::istream<float>& b,
          tapa::ostream<float>& c, uint64_t n) {
@@ -27,7 +26,6 @@ void Mmap2Stream(tapa::mmap<const float> mmap, uint64_t n,
                  tapa::ostream<float>& stream) {
   for (uint64_t i = 0; i < n; ++i) {
     stream << mmap[i];
-    std::cout << i << std::endl;
   }
   stream.close();
 }
