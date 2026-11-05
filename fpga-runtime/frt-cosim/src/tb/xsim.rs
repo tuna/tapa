@@ -1,6 +1,6 @@
 use askama::Template;
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{CosimError, Result};
 use crate::metadata::KernelSpec;
@@ -149,24 +149,9 @@ impl<'a> XsimTbGenerator<'a> {
         let template = TclTemplate {
             tb_dir: tb_dir.to_string_lossy().to_string(),
             part_num: self.part_num.to_owned(),
-            verilog_files: self
-                .spec
-                .verilog_files
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect(),
-            tcl_files: self
-                .spec
-                .tcl_files
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect(),
-            xci_files: self
-                .spec
-                .xci_files
-                .iter()
-                .map(|p| p.to_string_lossy().to_string())
-                .collect(),
+            verilog_files: path_strings(&self.spec.verilog_files),
+            tcl_files: path_strings(&self.spec.tcl_files),
+            xci_files: path_strings(&self.spec.xci_files),
             tb_sv_file: tb_dir
                 .join(format!("tb_{}.sv", self.spec.top_name))
                 .to_string_lossy()
@@ -192,6 +177,13 @@ impl<'a> XsimTbGenerator<'a> {
             .render()
             .map_err(|e| CosimError::Metadata(format!("template render failed: {e}")))
     }
+}
+
+fn path_strings(paths: &[PathBuf]) -> Vec<String> {
+    paths
+        .iter()
+        .map(|p| p.to_string_lossy().into_owned())
+        .collect()
 }
 
 fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
