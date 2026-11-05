@@ -282,12 +282,6 @@ mod tests {
         );
     }
 
-    /// One unconstrained cell pair means wires can cross freely, so the cut
-    /// cannot bind — regardless of how small the *other* pairs' budgets are.
-    /// Note the old sum-based test dropped this fixture too: the derated
-    /// sentinel-scale arm alone (0.7 * 10^8) crosses half the sentinel, so
-    /// this case cannot tell per-pair boundedness from a summed sentinel —
-    /// the next test is the one that can.
     #[test]
     fn one_unconstrained_cell_pair_drops_the_whole_cut() {
         let mk_slot = |x, y, north, south| Slot {
@@ -330,10 +324,6 @@ mod tests {
         );
     }
 
-    /// Every pair bounded but their derated budgets summing past the
-    /// sentinel scale: the old summed test would drop this cut as
-    /// "unconstrained" (84M >= 100M/2); per-pair boundedness keeps it,
-    /// because no cell pair on the border actually lets wires cross freely.
     #[test]
     fn bounded_pairs_keep_the_cut_even_when_their_sum_is_huge() {
         let mk_slot = |x, y, north, south| Slot {
