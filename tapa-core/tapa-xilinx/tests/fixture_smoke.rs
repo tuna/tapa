@@ -16,6 +16,30 @@ fn testdata(name: &str) -> PathBuf {
         .join(name)
 }
 
+/// The `vadd` kernel interface shared by the `kernel.xml` emitter
+/// tests: one 512-bit `m_axi` pointer `a` and one 32-bit scalar `n`.
+fn vadd_args() -> KernelXmlArgs {
+    KernelXmlArgs {
+        top_name: "vadd".into(),
+        ports: vec![
+            KernelXmlPort {
+                name: "a".into(),
+                category: PortCategory::MAxi,
+                width: 512,
+                port: String::new(),
+                ctype: "int*".into(),
+            },
+            KernelXmlPort {
+                name: "n".into(),
+                category: PortCategory::Scalar,
+                width: 32,
+                port: String::new(),
+                ctype: "int".into(),
+            },
+        ],
+    }
+}
+
 #[test]
 fn fixture_hpfm_parses() {
     let xml = std::fs::read(testdata("sample.hpfm")).unwrap();
@@ -50,26 +74,7 @@ fn xpfm_fixture_parses() {
 
 #[test]
 fn kernel_xml_matches_golden_fixture() {
-    let args = KernelXmlArgs {
-        top_name: "vadd".into(),
-        ports: vec![
-            KernelXmlPort {
-                name: "a".into(),
-                category: PortCategory::MAxi,
-                width: 512,
-                port: String::new(),
-                ctype: "int*".into(),
-            },
-            KernelXmlPort {
-                name: "n".into(),
-                category: PortCategory::Scalar,
-                width: 32,
-                port: String::new(),
-                ctype: "int".into(),
-            },
-        ],
-    };
-    let xml = emit_kernel_xml(&args).unwrap();
+    let xml = emit_kernel_xml(&vadd_args()).unwrap();
     let golden = std::fs::read_to_string(testdata("kernel_xml.golden.xml")).unwrap();
     // Compare kernel names, ports, and args semantically; attribute
     // spacing and indentation are intentionally irrelevant.
@@ -84,26 +89,7 @@ fn kernel_xml_matches_golden_fixture() {
 
 #[test]
 fn kernel_xml_emitter_round_trips_simple_fixture() {
-    let args = KernelXmlArgs {
-        top_name: "vadd".into(),
-        ports: vec![
-            KernelXmlPort {
-                name: "a".into(),
-                category: PortCategory::MAxi,
-                width: 512,
-                port: String::new(),
-                ctype: "int*".into(),
-            },
-            KernelXmlPort {
-                name: "n".into(),
-                category: PortCategory::Scalar,
-                width: 32,
-                port: String::new(),
-                ctype: "int".into(),
-            },
-        ],
-    };
-    let xml = emit_kernel_xml(&args).unwrap();
+    let xml = emit_kernel_xml(&vadd_args()).unwrap();
     assert!(xml.contains("kernel name=\"vadd\""));
     assert!(xml.contains("m_axi_a"));
     assert!(xml.contains("hwControlProtocol=\"ap_ctrl_hs\""));
