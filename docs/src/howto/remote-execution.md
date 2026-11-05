@@ -111,14 +111,8 @@ The master connection stays alive for 4 hours after the last client closes. Subs
 
 ## Remote flags reference
 
-| Flag | Description |
-|------|-------------|
-| `--remote-host user@host[:port]` | Remote Linux host for vendor tools. Overrides the configured host and any user/port explicitly included. Omitted fields come from `~/.taparc`, or default to the current username and port 22 without a config. |
-| `--remote-key-file PATH` | SSH private key for authentication. If omitted, OpenSSH uses its normal agent, config, and default identity files. |
-| `--remote-xilinx-settings PATH` | Path to `settings64.sh` **on the remote host**. TAPA sources this before invoking Vitis HLS. |
-| `--remote-ssh-control-dir DIR` | Local directory for OpenSSH multiplex control sockets. Share across invocations to reuse the master connection. |
-| `--remote-ssh-control-persist DURATION` | How long the master socket stays alive after the last connection closes (e.g., `30m`, `4h`). Default: `30m`. |
-| `--remote-disable-ssh-mux` | Disable SSH connection multiplexing. Each SSH/SCP call opens a fresh connection. Use this when the remote host or a proxy does not support `ControlMaster`. |
+The `--remote-*` flags are global options documented in [CLI
+Commands](../reference/cli.md#global-options).
 
 ## Persistent configuration via `~/.taparc`
 
@@ -139,7 +133,8 @@ remote:
 
 CLI flags override the corresponding `~/.taparc` values. `--remote-host`
 replaces `host` and also replaces `user` and `port` only when they are present
-in the command-line value; omitted fields retain the config values.
+in the command-line value; omitted fields retain the config values, or default
+to the current username and port 22 without a config.
 
 ## Validation
 
@@ -160,8 +155,6 @@ ls -lh vadd.xo
 
 **ControlMaster errors**: If the remote host or an intermediary proxy does not support SSH multiplexing, add `--remote-disable-ssh-mux` to your invocation.
 
-**Unexpected user or port**: `--remote-host` replaces only the fields you
-specify. For example, `--remote-host alice@build.example` retains `port` from
-`~/.taparc`; without a configured port it defaults to 22. Include
-`user@host:port` explicitly when you want to override both user and port.
+**Unexpected user or port**: `--remote-host` and `~/.taparc` merge per field —
+see [Persistent configuration](#persistent-configuration-via-taparc) above.
 ```
