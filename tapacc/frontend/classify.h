@@ -46,10 +46,6 @@ TapaKind ClassifyTapaType(clang::QualType type);
 inline TapaKind ClassifyTapaType(const clang::ParmVarDecl* param) {
   return ClassifyTapaType(param->getType());
 }
-inline TapaKind ClassifyTapaType(const clang::Expr* expr) {
-  return ClassifyTapaType(expr->getType());
-}
-
 // --- category predicates (enum checks, no strings) ---
 
 // istream / ostream / istreams / ostreams (any stream *port*).

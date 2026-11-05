@@ -392,7 +392,7 @@ void ParseInvocations(
             if (callee == nullptr) break;  // not a task reference
             task_name = TaskName(*mangler, callee);
             uc.task.instances[task_name].push_back(
-                Instance{task_name, mode.step, std::nullopt, {}});
+                Instance{mode.step, std::nullopt, {}});
             continue;
           }
           if (callee == nullptr) continue;
