@@ -58,6 +58,14 @@ impl TopologyWithRtl {
             .map_or(&self.design, |projection| &projection.flat)
     }
 
+    /// The top task when it crosses the upper-task boundary used by
+    /// [`crate::generate_rtl`]: upper-level and not `Ignore`.
+    fn codegen_top_task(&self) -> Option<&tapa_ir::task::Task> {
+        let task = self.design.tasks.get(&self.design.top)?;
+        (task.level == TaskLevel::Upper && task.synth != tapa_ir::SynthTarget::Ignore)
+            .then_some(task)
+    }
+
     /// Whether codegen can emit the distributed controller for the top task.
     ///
     /// This deliberately checks the same upper-task boundary used by
@@ -65,11 +73,9 @@ impl TopologyWithRtl {
     /// avoid requesting controller hierarchy that codegen would not create.
     #[must_use]
     pub fn supports_distributed_control(&self) -> bool {
-        self.design.tasks.get(&self.design.top).is_some_and(|task| {
-            task.level == TaskLevel::Upper
-                && task.synth != tapa_ir::SynthTarget::Ignore
-                && !task.tasks.is_empty()
-        }) && self.module_map.contains_key(&self.design.top)
+        self.codegen_top_task()
+            .is_some_and(|task| !task.tasks.is_empty())
+            && self.module_map.contains_key(&self.design.top)
     }
 
     /// Whether the generated top will instantiate the AXI-Lite control block.
@@ -79,15 +85,14 @@ impl TopologyWithRtl {
     /// distributed-control plan builder and `tapa-cli` read it directly.
     #[must_use]
     pub fn top_instantiates_control_s_axi(&self) -> bool {
-        self.design.tasks.get(&self.design.top).is_some_and(|task| {
-            task.level == TaskLevel::Upper && task.synth != tapa_ir::SynthTarget::Ignore
-        }) && self.module_map.get(&self.design.top).is_some_and(|module| {
-            module
-                .inner
-                .ports
-                .iter()
-                .any(|port| port.name == "s_axi_control_AWVALID")
-        })
+        self.codegen_top_task().is_some()
+            && self.module_map.get(&self.design.top).is_some_and(|module| {
+                module
+                    .inner
+                    .ports
+                    .iter()
+                    .any(|port| port.name == "s_axi_control_AWVALID")
+            })
     }
 
     /// Attach a parsed HLS Verilog module to a task.
