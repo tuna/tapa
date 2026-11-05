@@ -8,8 +8,6 @@
 #include <gflags/gflags.h>
 #include <tapa.h>
 
-#include "vadd.h"
-
 using std::clog;
 using std::endl;
 using std::vector;

@@ -2,8 +2,6 @@
 // All rights reserved. The contributor(s) of this file has/have agreed to the
 // RapidStream Contributor License Agreement.
 
-#include <cstdint>
-
 #include <tapa.h>
 
 #include "vadd.h"

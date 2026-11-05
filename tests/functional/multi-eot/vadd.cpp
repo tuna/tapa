@@ -5,7 +5,6 @@
 #include <tapa.h>
 #include <cassert>
 #include <cstdint>
-#include <iostream>
 
 void Add(tapa::istream<float>& a, tapa::istream<float>& b,
          tapa::ostream<float>& c, uint64_t n) {
