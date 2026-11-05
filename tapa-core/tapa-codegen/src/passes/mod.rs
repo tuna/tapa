@@ -227,9 +227,7 @@ pub fn ignore_task_shells(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenErro
     // authoritative port-only shell from topology so parents can resolve
     // the module while the user authors the replacement RTL.
     let design = ctx.design.design();
-    let task_names: Vec<String> = design.tasks.keys().cloned().collect();
-    for task_name in &task_names {
-        let task = &design.tasks[task_name];
+    for (task_name, task) in &design.tasks {
         if task.synth != SynthTarget::Ignore {
             continue;
         }
