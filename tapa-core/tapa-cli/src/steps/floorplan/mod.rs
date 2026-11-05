@@ -41,7 +41,10 @@ pub(crate) struct ConnectivityInput {
     pub bindings: MemoryBindings,
 }
 
-pub(crate) fn read_connectivity(path: Option<&Path>) -> Result<Option<ConnectivityInput>> {
+pub(crate) fn read_connectivity<E: std::fmt::Display>(
+    path: Option<&Path>,
+    parse: impl FnOnce(&str) -> std::result::Result<MemoryBindings, E>,
+) -> Result<Option<ConnectivityInput>> {
     let Some(path) = path else {
         return Ok(None);
     };
@@ -57,7 +60,7 @@ pub(crate) fn read_connectivity(path: Option<&Path>) -> Result<Option<Connectivi
             path.display(),
         ))
     })?;
-    let bindings = parse_vitis_config(text).map_err(|error| {
+    let bindings = parse(text).map_err(|error| {
         CliError::InvalidArg(format!(
             "invalid connectivity file `{}`: {error}",
             path.display(),
@@ -444,33 +447,21 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
         .as_deref()
         .is_some_and(|p| tapa_xilinx::find_slash_platform(p).is_some())
     {
-        args.connectivity
-            .as_ref()
-            .map(|path| {
-                let bytes = fs_err::read(path)?;
-                let text = std::str::from_utf8(&bytes)
-                    .map_err(|error| CliError::InvalidArg(error.to_string()))?;
-                let ports = interfaces
-                    .iter()
-                    .map(|interface| tapa_xilinx::KernelXmlPort {
-                        name: interface.endpoint.top_port.clone(),
-                        category: tapa_xilinx::PortCategory::MAxi,
-                        width: interface.data_width,
-                        port: String::new(),
-                        ctype: String::new(),
-                    })
-                    .collect::<Vec<_>>();
-                let bindings = tapa_xilinx::connectivity::parse_slash_config(
-                    text,
-                    &projection.flat.top,
-                    &ports,
-                )
-                .map_err(CliError::InvalidArg)?;
-                Ok::<_, CliError>(ConnectivityInput { bytes, bindings })
-            })
-            .transpose()?
+        read_connectivity(args.connectivity.as_deref(), |text| {
+            let ports = interfaces
+                .iter()
+                .map(|interface| tapa_xilinx::KernelXmlPort {
+                    name: interface.endpoint.top_port.clone(),
+                    category: tapa_xilinx::PortCategory::MAxi,
+                    width: interface.data_width,
+                    port: String::new(),
+                    ctype: String::new(),
+                })
+                .collect::<Vec<_>>();
+            tapa_xilinx::connectivity::parse_slash_config(text, &projection.flat.top, &ports)
+        })?
     } else {
-        read_connectivity(args.connectivity.as_deref())?
+        read_connectivity(args.connectivity.as_deref(), parse_vitis_config)?
     };
     let mut inputs = memory_plan_inputs(&projection.flat.top, &interfaces, connectivity.as_ref())?;
     inputs.projection = Some(projection.clone());
@@ -834,7 +825,7 @@ mod tests {
         let bytes = b"[connectivity]\r\n# keep this spelling\r\nsp=Top.mem:HBM[3]\r\n";
         fs_err::write(&source_path, bytes).expect("write connectivity");
 
-        let input = read_connectivity(Some(&source_path))
+        let input = read_connectivity(Some(&source_path), parse_vitis_config)
             .expect("read connectivity")
             .expect("present");
         assert_eq!(input.bindings.len(), 1);
@@ -856,7 +847,8 @@ mod tests {
         fs_err::write(&source_path, "[connectivity]\nsp=Top.mem:HBM[x]\n")
             .expect("write connectivity");
 
-        let error = read_connectivity(Some(&source_path)).expect_err("syntax must fail");
+        let error =
+            read_connectivity(Some(&source_path), parse_vitis_config).expect_err("syntax must fail");
         assert!(matches!(error, CliError::InvalidArg(_)));
         assert!(!dir.path().join(FLOORPLAN_CONNECTIVITY).exists());
         assert!(!dir.path().join(FLOORPLAN_XDC).exists());
