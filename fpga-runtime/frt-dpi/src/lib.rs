@@ -2,7 +2,7 @@ pub mod axi;
 pub mod context;
 pub mod stream;
 
-pub use context::{DpiContext, DpiError};
+use context::DpiContext;
 use std::sync::OnceLock;
 
 static CTX: OnceLock<DpiContext> = OnceLock::new();
