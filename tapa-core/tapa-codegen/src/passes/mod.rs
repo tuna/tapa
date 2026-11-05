@@ -192,8 +192,7 @@ impl TaskStageInputs {
 
         // Pre-compute M-AXI slave indices for crossbar-connected mmaps
         // This maps (parent_arg, child_task, inst_idx) -> slave_idx
-        let mut mmap_slave_map: std::collections::BTreeMap<(String, String, usize), usize> =
-            std::collections::BTreeMap::new();
+        let mut mmap_slave_map: BTreeMap<(String, String, usize), usize> = BTreeMap::new();
         for conn in mmap_conns.values() {
             if crate::m_axi::needs_crossbar(conn) {
                 for (slave_idx, slave) in conn.slaves.iter().enumerate() {
