@@ -85,14 +85,10 @@ TEST(Classify, Markers) {
 
 TEST(Classify, Predicates) {
   EXPECT_TRUE(IsStreamInterface(TapaKind::kIStream));
-  EXPECT_TRUE(IsStreamArray(TapaKind::kOStreams));
   EXPECT_TRUE(IsInputStream(TapaKind::kIStreams));
-  EXPECT_TRUE(IsOutputStream(TapaKind::kOStream));
   EXPECT_FALSE(IsStreamInterface(TapaKind::kMmap));
   EXPECT_TRUE(IsMmapInterface(TapaKind::kHmap));
   EXPECT_TRUE(IsAsyncMmap(TapaKind::kAsyncMmap));
-  EXPECT_TRUE(IsArrayInterface(TapaKind::kMmaps));
-  EXPECT_FALSE(IsArrayInterface(TapaKind::kMmap));
 }
 
 TEST(Classify, Cat) {

@@ -53,15 +53,8 @@ constexpr bool IsStreamInterface(TapaKind k) {
   return k == TapaKind::kIStream || k == TapaKind::kOStream ||
          k == TapaKind::kIStreams || k == TapaKind::kOStreams;
 }
-// istreams / ostreams (an array of streams).
-constexpr bool IsStreamArray(TapaKind k) {
-  return k == TapaKind::kIStreams || k == TapaKind::kOStreams;
-}
 constexpr bool IsInputStream(TapaKind k) {
   return k == TapaKind::kIStream || k == TapaKind::kIStreams;
-}
-constexpr bool IsOutputStream(TapaKind k) {
-  return k == TapaKind::kOStream || k == TapaKind::kOStreams;
 }
 // stream / streams (a FIFO *instance*, declared inside an upper task).
 constexpr bool IsStreamInstance(TapaKind k) {
@@ -74,10 +67,6 @@ constexpr bool IsMmapInterface(TapaKind k) {
          k == TapaKind::kOmmap || k == TapaKind::kHmap;
 }
 constexpr bool IsAsyncMmap(TapaKind k) { return k == TapaKind::kAsyncMmap; }
-// An array-shaped interface (expands to N wires): *streams, mmaps, hmap.
-constexpr bool IsArrayInterface(TapaKind k) {
-  return IsStreamArray(k) || k == TapaKind::kMmaps || k == TapaKind::kHmap;
-}
 
 // The canonical serialized category ("cat") for a port/arg, e.g. "istream",
 // "mmap", "scalar". Centralized with the enum; the values are the stable
