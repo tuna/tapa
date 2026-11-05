@@ -38,96 +38,15 @@ pub const CHILD_STATE_RUNNING: &str = "2'b01";
 pub const CHILD_STATE_WAITING: &str = "2'b11";
 pub const CHILD_STATE_DONE: &str = "2'b10";
 
-/// Generate the global 3-state FSM for a top-level program.
-///
-/// States: IDLE(00) -> RUNNING(01) -> DONE(10) -> IDLE(00)
-/// Transition from RUNNING to DONE is gated by all child `is_done` signals.
-///
-/// Returns the always block for the FSM, plus continuous assigns for
-/// handshake output signals.
-pub fn generate_global_fsm(is_done_signal_names: &[String]) -> GlobalFsmOutput {
-    let state = Expr::ident("__tapa_state");
-
-    // Build the RUNNING->DONE transition condition; no children = always done.
-    let all_done_cond = is_done_signal_names
-        .iter()
-        .map(|name| Expr::ident(name.clone()))
-        .reduce(Expr::logical_and)
-        .unwrap_or_else(|| Expr::lit("1'b1"));
-
-    // FSM always block
-    let fsm_block = AlwaysBlock::posedge(
-        HANDSHAKE_CLK,
-        vec![Statement::If {
-            cond: Expr::ident(HANDSHAKE_RST),
-            then_body: vec![Statement::NonblockingAssign {
-                lhs: state.clone(),
-                rhs: Expr::lit(GLOBAL_STATE_IDLE),
-            }],
-            else_body: vec![Statement::Case {
-                expr: state.clone(),
-                items: vec![
-                    // IDLE -> RUNNING on start
-                    CaseItem::new(
-                        Expr::lit(GLOBAL_STATE_IDLE),
-                        vec![Statement::If {
-                            cond: Expr::ident(HANDSHAKE_START),
-                            then_body: vec![Statement::NonblockingAssign {
-                                lhs: state.clone(),
-                                rhs: Expr::lit(GLOBAL_STATE_RUNNING),
-                            }],
-                            else_body: vec![],
-                        }],
-                    ),
-                    // RUNNING -> DONE when all children done
-                    CaseItem::new(
-                        Expr::lit(GLOBAL_STATE_RUNNING),
-                        vec![Statement::If {
-                            cond: all_done_cond,
-                            then_body: vec![Statement::NonblockingAssign {
-                                lhs: state.clone(),
-                                rhs: Expr::lit(GLOBAL_STATE_DONE),
-                            }],
-                            else_body: vec![],
-                        }],
-                    ),
-                    // DONE -> IDLE (unconditional)
-                    CaseItem::new(
-                        Expr::lit(GLOBAL_STATE_DONE),
-                        vec![Statement::NonblockingAssign {
-                            lhs: state,
-                            rhs: Expr::lit(GLOBAL_STATE_IDLE),
-                        }],
-                    ),
-                ],
-                default: vec![],
-            }],
-        }],
-    );
-
-    // Handshake output assigns
-    let idle_assign = ContinuousAssign::new(
-        Expr::ident(HANDSHAKE_IDLE),
-        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_IDLE)),
-    );
-
-    GlobalFsmOutput {
-        fsm_block,
-        idle_assign,
-    }
-}
-
-/// Output of global FSM generation.
-pub struct GlobalFsmOutput {
-    pub fsm_block: AlwaysBlock,
-    pub idle_assign: ContinuousAssign,
-}
-
 /// Wire names for the start and done handshake nets.
 pub const START_Q: &str = "__tapa_start_q";
 pub const DONE_Q: &str = "__tapa_done_q";
 
 /// Apply global FSM signals and logic to an FSM module.
+///
+/// The global FSM is a 3-state controller: IDLE(00) -> RUNNING(01) ->
+/// DONE(10) -> IDLE(00). The RUNNING -> DONE transition is gated by all
+/// child `is_done` signals; with no children it is unconditional.
 ///
 /// Creates the `start_q` and `done_q` wires:
 /// - `start_q = ap_start` (immediate from handshake)
@@ -178,10 +97,69 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
         Expr::ident(HANDSHAKE_START),
     ));
 
-    // Generate and apply FSM
-    let output = generate_global_fsm(is_done_signal_names);
-    fsm_module.add_always(output.fsm_block);
-    fsm_module.add_assign(output.idle_assign);
+    // Build the RUNNING->DONE transition condition; no children = always done.
+    let state = Expr::ident("__tapa_state");
+    let all_done_cond = is_done_signal_names
+        .iter()
+        .map(|name| Expr::ident(name.clone()))
+        .reduce(Expr::logical_and)
+        .unwrap_or_else(|| Expr::lit("1'b1"));
+
+    // FSM always block
+    fsm_module.add_always(AlwaysBlock::posedge(
+        HANDSHAKE_CLK,
+        vec![Statement::If {
+            cond: Expr::ident(HANDSHAKE_RST),
+            then_body: vec![Statement::NonblockingAssign {
+                lhs: state.clone(),
+                rhs: Expr::lit(GLOBAL_STATE_IDLE),
+            }],
+            else_body: vec![Statement::Case {
+                expr: state.clone(),
+                items: vec![
+                    // IDLE -> RUNNING on start
+                    CaseItem::new(
+                        Expr::lit(GLOBAL_STATE_IDLE),
+                        vec![Statement::If {
+                            cond: Expr::ident(HANDSHAKE_START),
+                            then_body: vec![Statement::NonblockingAssign {
+                                lhs: state.clone(),
+                                rhs: Expr::lit(GLOBAL_STATE_RUNNING),
+                            }],
+                            else_body: vec![],
+                        }],
+                    ),
+                    // RUNNING -> DONE when all children done
+                    CaseItem::new(
+                        Expr::lit(GLOBAL_STATE_RUNNING),
+                        vec![Statement::If {
+                            cond: all_done_cond,
+                            then_body: vec![Statement::NonblockingAssign {
+                                lhs: state.clone(),
+                                rhs: Expr::lit(GLOBAL_STATE_DONE),
+                            }],
+                            else_body: vec![],
+                        }],
+                    ),
+                    // DONE -> IDLE (unconditional)
+                    CaseItem::new(
+                        Expr::lit(GLOBAL_STATE_DONE),
+                        vec![Statement::NonblockingAssign {
+                            lhs: state,
+                            rhs: Expr::lit(GLOBAL_STATE_IDLE),
+                        }],
+                    ),
+                ],
+                default: vec![],
+            }],
+        }],
+    ));
+
+    // ap_idle = (state == STATE_IDLE)
+    fsm_module.add_assign(ContinuousAssign::new(
+        Expr::ident(HANDSHAKE_IDLE),
+        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_IDLE)),
+    ));
 
     // done_q = (state == STATE_DONE) — combinational from FSM
     fsm_module.add_assign(ContinuousAssign::new(
@@ -207,67 +185,52 @@ mod tests {
     use tapa_rtl::VerilogModule;
 
     #[test]
-    fn global_fsm_has_three_states() {
-        let output = generate_global_fsm(&["child_0__is_done".into()]);
-        let text = output.fsm_block.to_string();
-        assert!(text.contains(GLOBAL_STATE_IDLE), "got:\n{text}");
-        assert!(text.contains(GLOBAL_STATE_RUNNING), "got:\n{text}");
-        assert!(text.contains(GLOBAL_STATE_DONE), "got:\n{text}");
-    }
-
-    #[test]
-    fn global_fsm_gates_on_is_done() {
-        let output = generate_global_fsm(&["child_a__is_done".into(), "child_b__is_done".into()]);
-        let text = output.fsm_block.to_string();
-        assert!(text.contains("child_a__is_done"), "got:\n{text}");
-        assert!(text.contains("child_b__is_done"), "got:\n{text}");
-    }
-
-    #[test]
-    fn global_fsm_idle_assign() {
-        let output = generate_global_fsm(&[]);
-        let text = output.idle_assign.to_string();
-        assert!(text.contains("ap_idle"), "got: {text}");
-        assert!(text.contains(GLOBAL_STATE_IDLE), "got: {text}");
-    }
-
-    #[test]
     fn apply_global_fsm_to_module() {
         let source = "module top_fsm (\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule";
         let module = VerilogModule::parse(source).unwrap();
         let mut mm = MutableModule::from_parsed(module);
-        apply_global_fsm(&mut mm, &["child__is_done".into()]);
+        apply_global_fsm(
+            &mut mm,
+            &["child_a__is_done".into(), "child_b__is_done".into()],
+        );
         let emitted = mm.emit();
         assert!(emitted.contains("__tapa_state"), "got:\n{emitted}");
+        // All three FSM state encodings appear.
+        assert!(emitted.contains(GLOBAL_STATE_IDLE), "got:\n{emitted}");
+        assert!(emitted.contains(GLOBAL_STATE_RUNNING), "got:\n{emitted}");
+        assert!(emitted.contains(GLOBAL_STATE_DONE), "got:\n{emitted}");
+        // RUNNING -> DONE gates on every child is_done.
+        assert!(emitted.contains("child_a__is_done"), "got:\n{emitted}");
+        assert!(emitted.contains("child_b__is_done"), "got:\n{emitted}");
+        // ap_idle = (state == STATE_IDLE)
         assert!(emitted.contains("ap_idle"), "got:\n{emitted}");
         assert!(
             emitted.contains("always @(posedge ap_clk)"),
             "got:\n{emitted}"
         );
-        // Pipeline signals
+        // Start/done wires
         assert!(
             emitted.contains(START_Q),
-            "should have start_q pipeline, got:\n{emitted}"
+            "should have start_q wire, got:\n{emitted}"
         );
         assert!(
             emitted.contains(DONE_Q),
-            "should have done_q pipeline, got:\n{emitted}"
+            "should have done_q wire, got:\n{emitted}"
         );
         // ap_done driven from done_q, NOT directly from state
         assert!(
             emitted.contains(&format!("assign {HANDSHAKE_DONE} = {DONE_Q}")),
             "ap_done should be driven from done_q, got:\n{emitted}"
         );
-    }
 
-    #[test]
-    fn no_children_always_done() {
-        let output = generate_global_fsm(&[]);
-        let text = output.fsm_block.to_string();
-        // With no children, should transition immediately from RUNNING to DONE
+        // With no children, RUNNING -> DONE is unconditional.
+        let module = VerilogModule::parse(source).unwrap();
+        let mut mm = MutableModule::from_parsed(module);
+        apply_global_fsm(&mut mm, &[]);
+        let emitted = mm.emit();
         assert!(
-            text.contains("1'b1"),
-            "should have unconditional done, got:\n{text}"
+            emitted.contains("1'b1"),
+            "should have unconditional done, got:\n{emitted}"
         );
     }
 }
