@@ -116,9 +116,10 @@ impl From<PlannedRoute> for PipelineRoute {
 /// A cross-slot typed channel awaiting the shared routing solve.
 struct PendingNet {
     channel: RoutedChannel,
-    /// Additional typed channels intentionally carried over this exact solved
-    /// path. Launch and reset share one forward routing degree of freedom.
-    shared_channels: Vec<RoutedChannel>,
+    /// An additional typed channel intentionally carried over this exact
+    /// solved path. Launch and reset share one forward routing degree of
+    /// freedom.
+    shared_channels: Option<RoutedChannel>,
     src: Cell,
     dst: Cell,
     width: u32,
@@ -144,7 +145,7 @@ fn cross_slot_nets(graph: &FloorGraph, regions: &[Cell]) -> Result<Vec<PendingNe
             channel: RoutedChannel::Stream {
                 fifo: edge.link.clone(),
             },
-            shared_channels: Vec::new(),
+            shared_channels: None,
             src,
             dst,
             width: edge.width,
@@ -160,7 +161,7 @@ fn cross_slot_nets(graph: &FloorGraph, regions: &[Cell]) -> Result<Vec<PendingNe
                 bank: edge.bank,
                 channel: edge.channel,
             },
-            shared_channels: Vec::new(),
+            shared_channels: None,
             src,
             dst,
             width: edge.width,
@@ -174,7 +175,7 @@ fn cross_slot_nets(graph: &FloorGraph, regions: &[Cell]) -> Result<Vec<PendingNe
             continue;
         };
 
-        let mut shared_channels = Vec::new();
+        let mut shared_channels = None;
         let width = if edge.channel == tapa_ir::ControlChannel::Launch {
             let reset = graph
                 .control_nets()
@@ -189,7 +190,7 @@ fn cross_slot_nets(graph: &FloorGraph, regions: &[Cell]) -> Result<Vec<PendingNe
                     link: edge.instance.clone(),
                     detail: "Launch control has no matching Reset channel".to_string(),
                 })?;
-            shared_channels.push(RoutedChannel::Control {
+            shared_channels = Some(RoutedChannel::Control {
                 instance: reset.instance.clone(),
                 channel: reset.channel,
             });
@@ -942,10 +943,10 @@ mod tests {
         );
         assert_eq!(
             nets[0].shared_channels,
-            [RoutedChannel::Control {
+            Some(RoutedChannel::Control {
                 instance: "worker#0".to_string(),
                 channel: tapa_ir::ControlChannel::Reset,
-            }]
+            })
         );
         assert_eq!((nets[0].src, nets[0].dst), ((0, 0), (0, 2)));
         assert_eq!((nets[1].src, nets[1].dst), ((0, 2), (0, 0)));
