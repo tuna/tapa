@@ -55,13 +55,17 @@ impl ClockPeriod {
         self.0 as f64 / 1000.0
     }
 
-    /// Convert a nanosecond quantity, rounding to the nearest picosecond.
-    fn from_nanoseconds(nanoseconds: f64) -> Result<Self, ClockPeriodError> {
+    /// Parse decimal nanoseconds, the form every vendor tool writes.
+    pub fn from_nanoseconds_str(text: &str) -> Result<Self, ClockPeriodError> {
+        let nanoseconds = text
+            .trim()
+            .parse::<f64>()
+            .map_err(|_| ClockPeriodError::NotANumber(text.to_owned()))?;
         let picoseconds = nanoseconds * 1000.0;
         // The upper bound (2**64, exactly representable) keeps the `as u64`
         // below from silently saturating; it also rejects non-finite input.
         if !(0.0..18_446_744_073_709_551_616.0).contains(&picoseconds) {
-            return Err(ClockPeriodError::OutOfRange(nanoseconds.to_string()));
+            return Err(ClockPeriodError::OutOfRange(text.to_owned()));
         }
         #[allow(
             clippy::cast_possible_truncation,
@@ -69,16 +73,6 @@ impl ClockPeriod {
             reason = "checked finite and non-negative just above"
         )]
         Ok(Self(picoseconds.round() as u64))
-    }
-
-    /// Parse decimal nanoseconds, the form every vendor tool writes.
-    pub fn from_nanoseconds_str(text: &str) -> Result<Self, ClockPeriodError> {
-        let nanoseconds = text
-            .trim()
-            .parse::<f64>()
-            .map_err(|_| ClockPeriodError::NotANumber(text.to_owned()))?;
-        Self::from_nanoseconds(nanoseconds)
-            .map_err(|_| ClockPeriodError::OutOfRange(text.to_owned()))
     }
 }
 
