@@ -21,9 +21,6 @@ static_assert(sizeof(input_t) == 6, "input_t must be 6 bytes");
 typedef tapa::i<32> output_ap_int_t;
 static_assert(sizeof(output_ap_int_t) == 4, "output_ap_int_t must be 4 bytes");
 
-typedef tapa::vec_t<output_ap_int_t, 2> output_vec_t;
-static_assert(sizeof(output_vec_t) == 8, "output_vec_t must be 8 bytes");
-
 #ifndef OUTPUT_TYPE
 #define OUTPUT_TYPE output_ap_int_t
 #endif
