@@ -20,8 +20,5 @@ tapa_xo(
 test_tool_test(
     name = "report-test",
     command = "check-xo-reports",
-    data = [
-        ":enable-synth-util-xo",
-    ],
     data_args = [":enable-synth-util-xo"],
 )

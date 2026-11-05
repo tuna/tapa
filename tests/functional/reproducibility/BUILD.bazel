@@ -19,10 +19,6 @@ tapa_xo(
 test_tool_test(
     name = "reproducible-xo-test",
     command = "zip-diff",
-    data = [
-        ":vadd-xo",
-        "//tests/apps/vadd:vadd-xo",
-    ],
     data_args = [
         ":vadd-xo",
         "//tests/apps/vadd:vadd-xo",
@@ -41,10 +37,6 @@ tapa_xo(
 test_tool_test(
     name = "reproducible-zip-test",
     command = "zip-diff",
-    data = [
-        ":vadd-zip",
-        "//tests/apps/vadd:vadd-zip",
-    ],
     data_args = [
         ":vadd-zip",
         "//tests/apps/vadd:vadd-zip",
@@ -63,10 +55,6 @@ tapa_reuse_work_dir_xo(
 test_tool_test(
     name = "reuse-work-dir-test",
     command = "zip-diff",
-    data = [
-        ":reuse-work-dir-vadd-xo",
-        "//tests/apps/vadd:vadd-xo",
-    ],
     data_args = [
         ":reuse-work-dir-vadd-xo",
         "//tests/apps/vadd:vadd-xo",

@@ -65,8 +65,5 @@ tapa_xo(
 test_tool_test(
     name = "shared-mmap-pragma-test",
     command = "check-shared-mmap-pragmas",
-    data = [
-        ":shared-mmap-xo",
-    ],
     data_args = [":shared-mmap-xo"],
 )
