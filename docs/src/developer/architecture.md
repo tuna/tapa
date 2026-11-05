@@ -58,9 +58,9 @@ persists typed state from `tapa-ir`. The engines produce floorplans and RTL;
    Planning uses the external CBC solver. Implementation feedback (`--run-impl`
    or `--dse`) additionally invokes Vitis/Vivado.
 4. **Pack.** `tapa pack` creates an XO for `xilinx-vitis` or a ZIP for
-   `xilinx-hls`. Packaging includes generated RTL, metadata, and any accepted
-   custom-RTL overlays. XO packaging can use the remote runner; ZIP assembly
-   is local.
+   `xilinx-slash` and `xilinx-hls`. Packaging includes generated RTL,
+   metadata, and any accepted custom-RTL overlays. XO and SLASH packaging can
+   use the remote runner; `xilinx-hls` ZIP assembly is local.
 
 `tapa compile` composes analyze, synth, and pack. Floorplanning is a separate
 step between synth and pack.
