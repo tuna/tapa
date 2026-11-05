@@ -91,14 +91,14 @@ llvm::cl::opt<std::string> g_emit_dir(
     llvm::cl::desc("Directory to write rewritten sources to"),
     llvm::cl::value_desc("dir"), llvm::cl::cat(g_category));
 
-enum class CliTarget { kHls, kVitis, kSlash };
-llvm::cl::opt<CliTarget> g_target(
+llvm::cl::opt<SynthTarget> g_target(
     "target", llvm::cl::desc("Target flow (default xilinx-hls)"),
-    llvm::cl::init(CliTarget::kHls), llvm::cl::cat(g_category),
+    llvm::cl::init(SynthTarget::kXilinxHls), llvm::cl::cat(g_category),
     llvm::cl::values(
-        clEnumValN(CliTarget::kHls, "xilinx-hls", "Xilinx HLS (default)"),
-        clEnumValN(CliTarget::kVitis, "xilinx-vitis", "Xilinx Vitis"),
-        clEnumValN(CliTarget::kSlash, "xilinx-slash", "Xilinx SLASH")));
+        clEnumValN(SynthTarget::kXilinxHls, "xilinx-hls",
+                   "Xilinx HLS (default)"),
+        clEnumValN(SynthTarget::kXilinxVitis, "xilinx-vitis", "Xilinx Vitis"),
+        clEnumValN(SynthTarget::kXilinxSlash, "xilinx-slash", "Xilinx SLASH")));
 
 // Per-task target mappings from `tapa analyze --target TASK:T`; they win
 // over the source attribute so one source builds both PL-only and PL+AIE.
@@ -204,10 +204,7 @@ int main(int argc, const char** argv) {
   for (const std::string& source : sources) {
     main_files.push_back(CanonicalPath(source));
   }
-  const SynthTarget flow =
-      g_target == CliTarget::kVitis   ? SynthTarget::kXilinxVitis
-      : g_target == CliTarget::kSlash ? SynthTarget::kXilinxSlash
-                                      : SynthTarget::kXilinxHls;
+  const SynthTarget flow = g_target.getValue();
   std::map<std::string, SynthTarget> task_targets;
   for (const std::string& mapping : g_task_targets) {
     const size_t colon = mapping.rfind(':');
