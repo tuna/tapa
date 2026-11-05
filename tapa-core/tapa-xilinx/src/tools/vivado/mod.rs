@@ -34,7 +34,6 @@ impl VivadoJob {
 pub struct VivadoOutput {
     pub stdout: String,
     pub stderr: String,
-    pub produced: Vec<Utf8PathBuf>,
 }
 
 pub(crate) fn build_invocation(job: &VivadoJob, tcl_path: &camino::Utf8Path) -> ToolInvocation {
@@ -99,7 +98,6 @@ pub fn run_vivado(runner: &dyn ToolRunner, job: &VivadoJob) -> Result<VivadoOutp
     Ok(VivadoOutput {
         stdout: out.stdout,
         stderr: out.stderr,
-        produced: job.downloads.clone(),
     })
 }
 
