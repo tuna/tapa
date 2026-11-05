@@ -509,18 +509,16 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
             }
         }
     }
-    let candidates = dpi_library_candidates(variant);
-    for candidate in &candidates {
-        for base in &search_dirs {
-            let p = base.join(candidate);
-            if p.exists() {
-                // Downstream cosim tools run from deep temp/obj subdirectories:
-                // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
-                // (derived from this path's parent) both resolve relative to
-                // their own CWD, not ours. A path resolved relative to the test
-                // CWD is unusable there, so return an absolute path.
-                return Ok(std::fs::canonicalize(&p).unwrap_or(p));
-            }
+    let name = dpi_library_name(variant);
+    for base in &search_dirs {
+        let p = base.join(&name);
+        if p.exists() {
+            // Downstream cosim tools run from deep temp/obj subdirectories:
+            // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
+            // (derived from this path's parent) both resolve relative to
+            // their own CWD, not ours. A path resolved relative to the test
+            // CWD is unusable there, so return an absolute path.
+            return Ok(std::fs::canonicalize(&p).unwrap_or(p));
         }
     }
     // Last resort: ask the dynamic loader. FRT links statically into the host
@@ -529,14 +527,10 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
     // pointing there, because `tapa g++` links with `-Wl,-rpath,<libdir>`.
     // Loading by bare name lets the loader apply that RUNPATH (and ldconfig,
     // and LD_LIBRARY_PATH), after which the resolved path can be read back.
-    for candidate in &candidates {
-        if let Some(p) = dpi_lib_path_from_loader(candidate) {
-            return Ok(p);
-        }
+    if let Some(p) = dpi_lib_path_from_loader(&name) {
+        return Ok(p);
     }
-    Err(FrtError::DpiLibraryNotFound {
-        name: candidates[0].clone(),
-    })
+    Err(FrtError::DpiLibraryNotFound { name })
 }
 
 /// Resolve a shared library by bare name through the dynamic loader and
@@ -610,18 +604,12 @@ fn dpi_lib_path_from_loader(_name: &str) -> Option<PathBuf> {
     None
 }
 
-fn dpi_library_candidates(variant: &str) -> [String; 2] {
-    let native = format!(
+fn dpi_library_name(variant: &str) -> String {
+    format!(
         "{}frt_dpi_{variant}{}",
         std::env::consts::DLL_PREFIX,
         std::env::consts::DLL_SUFFIX,
-    );
-    let fallback_suffix = if std::env::consts::DLL_SUFFIX == ".so" {
-        ".dylib"
-    } else {
-        ".so"
-    };
-    [native, format!("libfrt_dpi_{variant}{fallback_suffix}")]
+    )
 }
 
 impl Device for CosimDevice {
@@ -1067,7 +1055,7 @@ mod tests {
             .join("bazel-bin/tests/apps/bandwidth/bandwidth-host");
         let cargo_dir = tmp.path().join("bazel-bin/fpga-runtime/cargo");
         std::fs::create_dir_all(&cargo_dir).expect("create cargo dir");
-        let library = cargo_dir.join(&dpi_library_candidates("verilator")[0]);
+        let library = cargo_dir.join(dpi_library_name("verilator"));
         std::fs::write(&library, []).expect("write DPI library");
 
         let found = dpi_lib_path_from_exe(&fake_exe, "verilator").expect("find dpi lib");
@@ -1091,7 +1079,7 @@ mod tests {
         let home = tmp.path().join("tapa-home");
         let lib_dir = home.join("usr/lib");
         std::fs::create_dir_all(&lib_dir).expect("create usr/lib");
-        let library = lib_dir.join(&dpi_library_candidates("xsim")[0]);
+        let library = lib_dir.join(dpi_library_name("xsim"));
         std::fs::write(&library, []).expect("write DPI library");
         let fake_exe = tmp.path().join("somewhere/else/vadd-host");
 
