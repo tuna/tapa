@@ -119,6 +119,49 @@ struct elem_io<vec_t<E, N>> {
   }
 };
 
+// One frame-buffer walk, shared by `iframe` and `oframe` below: the buffer
+// is acquired when a frame starts (position 0) and released when it fills
+// (position N). The buffer's `data()` return type fixes the direction:
+// `const int32*` for an input frame, `int32*` for an output frame.
+template <typename Buffer, int N>
+struct frame_cursor {
+  Buffer& buf_;
+  decltype(std::declval<Buffer&>().data()) ptr_ = nullptr;
+  int pos_ = 0;
+
+  TAPA_AIE_INLINE explicit frame_cursor(Buffer& buf) : buf_(buf) {}
+
+  TAPA_AIE_INLINE void acquire_at_start() {
+    if (pos_ == 0) [[unlikely]] {
+      buf_.acquire();
+      ptr_ = buf_.data();
+    }
+  }
+  TAPA_AIE_INLINE void release_at_end() {
+    if (pos_ == N) [[unlikely]] {
+      buf_.release();
+      pos_ = 0;
+    }
+  }
+
+  // Steps past one stream element of `elem_words` words.
+  TAPA_AIE_INLINE void advance_element(int elem_words) {
+    ptr_ += elem_words;
+    ++pos_;
+    release_at_end();
+  }
+  // The most values of `value_words` words that still fit in the frame, for
+  // a stream element of `elem_words` words.
+  TAPA_AIE_INLINE int values_left(int elem_words, int value_words) const {
+    return (N - pos_) * elem_words / value_words;
+  }
+  // Accounts for `m` stepped values at the end of a bulk copy.
+  TAPA_AIE_INLINE void advance_values(int m, int elem_words, int value_words) {
+    pos_ += m * value_words / elem_words;
+    release_at_end();
+  }
+};
+
 // Keeps every later operation behind a stream write in a kernel a stream
 // cycle runs through (the graph defines `TAPA_AIE_ORDERED_STREAMS` for it).
 // A source whose kernels place a `tapa::fence()` between each loop that
@@ -229,18 +272,11 @@ template <typename T, int N>
 class iframe {
  public:
   using buffer = input_frame<int32, N * internal::aie::kWords<T>>;
-  TAPA_AIE_INLINE explicit iframe(buffer& buf) : buf_(buf) {}
+  TAPA_AIE_INLINE explicit iframe(buffer& buf) : cursor_(buf) {}
   TAPA_AIE_INLINE T read() {
-    if (pos_ == 0) [[unlikely]] {
-      buf_.acquire();
-      ptr_ = buf_.data();
-    }
-    const T value = internal::aie::elem_io<T>::load(ptr_);
-    ptr_ += internal::aie::kWords<T>;
-    if (++pos_ == N) [[unlikely]] {
-      buf_.release();
-      pos_ = 0;
-    }
+    cursor_.acquire_at_start();
+    const T value = internal::aie::elem_io<T>::load(cursor_.ptr_);
+    cursor_.advance_element(internal::aie::kWords<T>);
     return value;
   }
   TAPA_AIE_INLINE iframe& operator>>(T& value) {
@@ -260,53 +296,37 @@ class iframe {
       static_assert(N * kElemWords % kValueWords == 0,
                     "a frame must hold a whole number of values");
       while (n > 0) {
-        if (pos_ == 0) {
-          buf_.acquire();
-          ptr_ = buf_.data();
-        }
-        const int room = (N - pos_) * kElemWords / kValueWords;
+        cursor_.acquire_at_start();
+        const int room = cursor_.values_left(kElemWords, kValueWords);
         const int m = n < room ? n : room;
         for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
-            dst[i] = internal::aie::elem_io<U>::load(ptr_);
-            ptr_ += kValueWords;
+            dst[i] = internal::aie::elem_io<U>::load(cursor_.ptr_);
+            cursor_.ptr_ += kValueWords;
           }
         dst += m;
         n -= m;
-        pos_ += m * kValueWords / kElemWords;
-        if (pos_ == N) {
-          buf_.release();
-          pos_ = 0;
-        }
+        cursor_.advance_values(m, kElemWords, kValueWords);
       }
     }
   }
   // A final frame may be padded; unread padding is discarded on release.
   ~iframe() {
-    if (pos_ != 0) buf_.release();
+    if (cursor_.pos_ != 0) cursor_.buf_.release();
   }
 
  private:
-  buffer& buf_;
-  const int32* ptr_ = nullptr;
-  int pos_ = 0;
+  internal::aie::frame_cursor<buffer, N> cursor_;
 };
 
 template <typename T, int N>
 class oframe {
  public:
   using buffer = output_frame<int32, N * internal::aie::kWords<T>>;
-  TAPA_AIE_INLINE explicit oframe(buffer& buf) : buf_(buf) {}
+  TAPA_AIE_INLINE explicit oframe(buffer& buf) : cursor_(buf) {}
   TAPA_AIE_INLINE void write(const T& value) {
-    if (pos_ == 0) [[unlikely]] {
-      buf_.acquire();
-      ptr_ = buf_.data();
-    }
-    internal::aie::elem_io<T>::store(ptr_, value);
-    ptr_ += internal::aie::kWords<T>;
-    if (++pos_ == N) [[unlikely]] {
-      buf_.release();
-      pos_ = 0;
-    }
+    cursor_.acquire_at_start();
+    internal::aie::elem_io<T>::store(cursor_.ptr_, value);
+    cursor_.advance_element(internal::aie::kWords<T>);
   }
   TAPA_AIE_INLINE oframe& operator<<(const T& value) {
     write(value);
@@ -325,39 +345,31 @@ class oframe {
       static_assert(N * kElemWords % kValueWords == 0,
                     "a frame must hold a whole number of values");
       while (n > 0) {
-        if (pos_ == 0) {
-          buf_.acquire();
-          ptr_ = buf_.data();
-        }
-        const int room = (N - pos_) * kElemWords / kValueWords;
+        cursor_.acquire_at_start();
+        const int room = cursor_.values_left(kElemWords, kValueWords);
         const int m = n < room ? n : room;
         for (int i = 0; i < m; ++i) chess_prepare_for_pipelining {
-            internal::aie::elem_io<U>::store(ptr_, src[i]);
-            ptr_ += kValueWords;
+            internal::aie::elem_io<U>::store(cursor_.ptr_, src[i]);
+            cursor_.ptr_ += kValueWords;
           }
         src += m;
         n -= m;
-        pos_ += m * kValueWords / kElemWords;
-        if (pos_ == N) {
-          buf_.release();
-          pos_ = 0;
-        }
+        cursor_.advance_values(m, kElemWords, kValueWords);
       }
     }
   }
   // A final partial frame is zero-padded and released when the task returns.
   ~oframe() {
-    if (pos_ != 0) {
-      std::memset(buf_.data() + pos_ * internal::aie::kWords<T>, 0,
-                  (N - pos_) * internal::aie::kWords<T> * sizeof(int32));
-      buf_.release();
+    if (cursor_.pos_ != 0) {
+      std::memset(
+          cursor_.buf_.data() + cursor_.pos_ * internal::aie::kWords<T>, 0,
+          (N - cursor_.pos_) * internal::aie::kWords<T> * sizeof(int32));
+      cursor_.buf_.release();
     }
   }
 
  private:
-  buffer& buf_;
-  int32* ptr_ = nullptr;
-  int pos_ = 0;
+  internal::aie::frame_cursor<buffer, N> cursor_;
 };
 
 template <typename Port, int N>
