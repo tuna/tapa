@@ -388,12 +388,7 @@ fn add_cell_matches(lines: &mut Vec<String>, matches: &[CellMatch], placement: C
             if placement.hierarchical_cells_only() {
                 add_single_sll_register_match(lines, cell_match);
             } else {
-                lines.push("set sll_regs [filter $cells {IS_SEQUENTIAL == 1}]".to_string());
-                lines.push(format!(
-                    "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential cells in `{}` were not found\" }}",
-                    tcl_double_quote_escape(&cell_match.description),
-                ));
-                lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
+                add_sll_register_mark(lines, "cells", &cell_match.description);
             }
         }
         placement.emit(lines);
@@ -409,10 +404,18 @@ fn add_single_sll_register_match(lines: &mut Vec<String>, cell_match: &CellMatch
         "if {{![llength $sll_cells]}} {{ error \"TAPA floorplan ERROR: expected pipeline cells in `{}` were not found\" }}",
         tcl_double_quote_escape(&cell_match.description),
     ));
-    lines.push("set sll_regs [filter $sll_cells {IS_SEQUENTIAL == 1}]".to_string());
+    add_sll_register_mark(lines, "sll_cells", &cell_match.description);
+}
+
+/// Mark the sequential cells in `source_variable` as SLL crossing registers,
+/// failing the Tcl run when the filter finds none.
+fn add_sll_register_mark(lines: &mut Vec<String>, source_variable: &str, description: &str) {
+    lines.push(format!(
+        "set sll_regs [filter ${source_variable} {{IS_SEQUENTIAL == 1}}]"
+    ));
     lines.push(format!(
         "if {{![llength $sll_regs]}} {{ error \"TAPA floorplan ERROR: expected sequential cells in `{}` were not found\" }}",
-        tcl_double_quote_escape(&cell_match.description),
+        tcl_double_quote_escape(description),
     ));
     lines.push("set_property USER_SLL_REG TRUE $sll_regs".to_string());
 }
@@ -702,27 +705,24 @@ fn braced(payload: &str) -> String {
 fn add_parent_clip(lines: &mut Vec<String>, region: &str, parent: &str) {
     let temporary = format!("TAPA_PARENT_CLIP_{region}");
     lines.push(format!("create_pblock {temporary}"));
-    lines.push(format!(
-        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {region}]]"
-    ));
-    lines.push("if {$derived_ranges ne \"\"} {".to_string());
-    lines.push(format!("  resize_pblock {temporary} -add $derived_ranges"));
-    lines.push('}'.to_string());
-    lines.push(format!(
-        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {parent}]]"
-    ));
-    lines.push("if {$derived_ranges ne \"\"} {".to_string());
-    lines.push(format!(
-        "  resize_pblock {temporary} -remove $derived_ranges"
-    ));
-    lines.push('}'.to_string());
-    lines.push(format!(
-        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {temporary}]]"
-    ));
-    lines.push("if {$derived_ranges ne \"\"} {".to_string());
-    lines.push(format!("  resize_pblock {region} -remove $derived_ranges"));
-    lines.push('}'.to_string());
+    clip_step(lines, region, &temporary, "-add");
+    clip_step(lines, parent, &temporary, "-remove");
+    clip_step(lines, &temporary, region, "-remove");
     lines.push(format!("delete_pblock -quiet {temporary}"));
+}
+
+/// One guarded clip step: copy `source`'s derived ranges onto `target` with
+/// `operation` (`-add` / `-remove`), skipping the resize when `source` has no
+/// derived ranges.
+fn clip_step(lines: &mut Vec<String>, source: &str, target: &str, operation: &str) {
+    lines.push(format!(
+        "set derived_ranges [get_property DERIVED_RANGES [get_pblocks {source}]]"
+    ));
+    lines.push("if {$derived_ranges ne \"\"} {".to_string());
+    lines.push(format!(
+        "  resize_pblock {target} {operation} $derived_ranges"
+    ));
+    lines.push('}'.to_string());
 }
 
 /// Pipeline routes use compact `SLOT_XxYy` tags while placement uses rectangle
