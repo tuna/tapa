@@ -372,12 +372,8 @@ fn build_package_xo_inputs(
             part_num,
             clock_period: clock_period.to_string(),
         })
-        .clock_period(clock_period.to_string())
-        // resolve_device_settings already rejected a missing clock period,
-        // so the validated one is the one the kernel XML records.
         .kernel_xml(KernelXmlArgs {
             top_name: design.top.clone(),
-            clock_period: clock_period.to_string(),
             ports: kernel_ports,
         })
         .kernel_out_path(crate::util::utf8(output_path))

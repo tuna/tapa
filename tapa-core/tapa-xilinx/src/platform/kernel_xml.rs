@@ -39,7 +39,6 @@ pub struct KernelXmlPort {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct KernelXmlArgs {
     pub top_name: String,
-    pub clock_period: String,
     pub ports: Vec<KernelXmlPort>,
 }
 
@@ -327,7 +326,6 @@ mod tests {
     fn empty_ports_rejected() {
         let args = KernelXmlArgs {
             top_name: "k".into(),
-            clock_period: "3.33".into(),
             ports: vec![],
         };
         let err = emit_kernel_xml(&args).unwrap_err();
@@ -338,7 +336,6 @@ mod tests {
     fn mmap_port_produces_m_axi_prefix() {
         let args = KernelXmlArgs {
             top_name: "k".into(),
-            clock_period: "3.33".into(),
             ports: vec![KernelXmlPort {
                 name: "a".into(),
                 category: PortCategory::MAxi,
@@ -358,7 +355,6 @@ mod tests {
     fn streams_emit_axis_port_and_no_s_axi() {
         let args = KernelXmlArgs {
             top_name: "k".into(),
-            clock_period: "3.33".into(),
             ports: vec![
                 KernelXmlPort {
                     name: "i0".into(),
@@ -389,7 +385,6 @@ mod tests {
     fn ctype_is_xml_escaped() {
         let args = KernelXmlArgs {
             top_name: "k".into(),
-            clock_period: "3.33".into(),
             ports: vec![KernelXmlPort {
                 name: "x".into(),
                 category: PortCategory::Scalar,
@@ -406,7 +401,6 @@ mod tests {
     fn scalar_port_generates_s_axi_control_and_offset() {
         let args = KernelXmlArgs {
             top_name: "k".into(),
-            clock_period: "3.33".into(),
             ports: vec![KernelXmlPort {
                 name: "n".into(),
                 category: PortCategory::Scalar,
@@ -428,7 +422,6 @@ mod tests {
     fn mixed_ports_produce_correct_qualifiers() {
         let args = KernelXmlArgs {
             top_name: "mix".into(),
-            clock_period: "5".into(),
             ports: vec![
                 KernelXmlPort {
                     name: "a".into(),
@@ -473,7 +466,6 @@ mod tests {
     fn slash_test_args() -> KernelXmlArgs {
         KernelXmlArgs {
             top_name: "vadd".into(),
-            clock_period: "3.33".into(),
             ports: vec![
                 KernelXmlPort {
                     name: "a".into(),

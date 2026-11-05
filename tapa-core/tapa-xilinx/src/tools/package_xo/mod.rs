@@ -29,7 +29,6 @@ pub struct PackageXoInputs {
     /// Directory of Verilog/SystemVerilog sources glob'd by the TCL.
     pub hdl_dir: Utf8PathBuf,
     pub device_info: DeviceInfo,
-    pub clock_period: String,
     pub kernel_xml: KernelXmlArgs,
     pub kernel_out_path: Utf8PathBuf,
     /// Optional `-kernel_files` C++ sources appended to `package_xo`.
@@ -447,10 +446,8 @@ mod tests {
                 part_num: "xcu250-figd2104-2L-e".into(),
                 clock_period: "3.33".into(),
             })
-            .clock_period("3.33".into())
             .kernel_xml(KernelXmlArgs {
                 top_name: "k".into(),
-                clock_period: "3.33".into(),
                 ports: vec![KernelXmlPort {
                     name: "gmem0".into(),
                     category: PortCategory::MAxi,

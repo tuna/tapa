@@ -52,7 +52,6 @@ fn xpfm_fixture_parses() {
 fn kernel_xml_matches_golden_fixture() {
     let args = KernelXmlArgs {
         top_name: "vadd".into(),
-        clock_period: "3.33".into(),
         ports: vec![
             KernelXmlPort {
                 name: "a".into(),
@@ -87,7 +86,6 @@ fn kernel_xml_matches_golden_fixture() {
 fn kernel_xml_emitter_round_trips_simple_fixture() {
     let args = KernelXmlArgs {
         top_name: "vadd".into(),
-        clock_period: "3.33".into(),
         ports: vec![
             KernelXmlPort {
                 name: "a".into(),

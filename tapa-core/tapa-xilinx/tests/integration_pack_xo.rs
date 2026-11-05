@@ -77,7 +77,6 @@ fn zip_inventory(bytes: &[u8]) -> Vec<ZipEntryInventory> {
 fn kernel_xml_args() -> KernelXmlArgs {
     KernelXmlArgs {
         top_name: "vadd".into(),
-        clock_period: "3.33".into(),
         ports: vec![
             KernelXmlPort {
                 name: "a".into(),
@@ -153,7 +152,6 @@ fn live_pack_xo_roundtrips_vadd_rtl() {
             part_num: "xcu250-figd2104-2L-e".into(),
             clock_period: "3.33".into(),
         })
-        .clock_period("3.33".into())
         .kernel_xml(kernel_xml_args())
         .kernel_out_path(xo_out)
         .build();
