@@ -280,11 +280,7 @@ fn xsim_hls_tb_snapshot() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("module tb_vadd"));
@@ -357,11 +353,7 @@ fn xsim_hls_stream_output_is_serviced_on_posedge() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"));
@@ -381,11 +373,7 @@ fn xsim_hls_stream_input_refills_without_bubble() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     let step_idx = tb
@@ -443,11 +431,7 @@ fn xsim_hls_escapes_banked_mmap_names() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("m_axi_chan__05b0__05d_ARADDR"));
@@ -467,11 +451,7 @@ fn xsim_vitis_tb_contains_control_sequence() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("task automatic ctrl_write"));
@@ -493,11 +473,7 @@ fn xsim_vitis_stream_input_uses_direct_try_read_on_posedge() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(tb.contains("always @(posedge ap_clk) begin"), "{tb}");
@@ -528,11 +504,7 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     // The beat must be consumed on the tready the DUT saw, not on a freshly
@@ -694,11 +666,7 @@ fn xsim_vitis_tb_drains_output_streams_before_finish() {
         &base_addrs,
         &scalar_vals,
         "xc7a100tcsg324-1",
-        XsimOptions {
-            save_waveform: false,
-            legacy: false,
-            start_gui: false,
-        },
+        XsimOptions::default(),
     );
     let tb = generator.render_tb().expect("render tb");
     assert!(
