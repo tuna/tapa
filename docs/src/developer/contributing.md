@@ -5,7 +5,7 @@
 1. Fork the TAPA repository and create a new branch for your feature or bug fix.
 2. Make small, atomic commits with Conventional subjects (for example,
    `fix(tapa-ir): reject invalid stream depths`). Include the required
-   `Co-Authored-By: Kimi K3 (1M) <noreply@moonshot.ai>` trailer in every
+   `Co-Authored-By: Kimi K3.1 Pro <noreply@moonshot.ai>` trailer in every
    commit.
 3. Ensure all tests pass and pre-commit hooks run successfully.
 4. Write a clear and concise description of your changes in the pull request.

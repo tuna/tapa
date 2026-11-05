@@ -180,7 +180,7 @@ After updating dependencies:
 
    ```bash
    git commit -a -m "build(deps): bump versions" \
-     -m "Co-Authored-By: Kimi K3 (1M) <noreply@moonshot.ai>"
+     -m "Co-Authored-By: Kimi K3.1 Pro <noreply@moonshot.ai>"
    ```
 
 ```admonish note
