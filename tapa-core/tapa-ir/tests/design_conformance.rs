@@ -1,19 +1,37 @@
-//! Conformance and round-trip tests for the `tapa-ir` design model.
+//! Conformance and round-trip tests for the `tapa-ir` task-graph model.
+//!
+//! `Graph` and `Design` are aliases of the same `TaskGraph`, so one suite
+//! covers both of its roles: the `tapacc`-output fixtures under
+//! `testdata/task-graph/` and the post-synthesis design fixture under
+//! `testdata/topology/`.
 
 use std::io;
 
 use serde::Serialize;
 use tapa_ir::port::ArgCategory;
 use tapa_ir::task::TaskLevel;
-use tapa_ir::Design;
+use tapa_ir::TaskGraph;
 
-fn fixture(name: &str) -> String {
-    let path = format!("{}/../testdata/topology/{name}", env!("CARGO_MANIFEST_DIR"));
+fn fixture(dir: &str, name: &str) -> String {
+    let path = format!("{}/../testdata/{dir}/{name}", env!("CARGO_MANIFEST_DIR"));
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
 }
 
-fn to_json(design: &Design) -> String {
-    serde_json::to_string_pretty(design).expect("serialize design")
+/// The `VecAdd` design frozen as both of `TaskGraph`'s roles: the
+/// `tapacc`-output task graph and the post-synthesis design. Assertions on
+/// the shared topology must hold for both spellings.
+fn vadd_fixtures() -> [(&'static str, String); 2] {
+    [
+        ("task-graph/vadd.json", fixture("task-graph", "vadd.json")),
+        (
+            "topology/vadd_design.json",
+            fixture("topology", "vadd_design.json"),
+        ),
+    ]
+}
+
+fn to_json(graph: &TaskGraph) -> String {
+    serde_json::to_string_pretty(graph).expect("serialize design")
 }
 
 /// Serialize compactly with `, ` / `: ` separators.
@@ -23,7 +41,7 @@ fn to_json(design: &Design) -> String {
 /// what lets [`canonical_design_json`] pin field order and
 /// `skip_serializing_if` behaviour as one readable literal, which is the
 /// invariant these tests exist to catch drift in.
-fn to_compact_json(design: &Design) -> String {
+fn to_compact_json(graph: &TaskGraph) -> String {
     struct SpacedFormatter;
     impl serde_json::ser::Formatter for SpacedFormatter {
         fn begin_array_value<W: io::Write + ?Sized>(
@@ -57,7 +75,7 @@ fn to_compact_json(design: &Design) -> String {
 
     let mut buf = Vec::new();
     let mut serializer = serde_json::Serializer::with_formatter(&mut buf, SpacedFormatter);
-    design
+    graph
         .serialize(&mut serializer)
         .expect("serialize design with the state formatter");
     String::from_utf8(buf).expect("utf-8 JSON")
@@ -93,36 +111,58 @@ fn canonical_design_json() -> &'static str {
 // ── Positive parse tests ────────────────────────────────────────────
 
 #[test]
-fn parse_vadd_design() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse vadd");
-    assert_eq!(d.top, "VecAdd", "top task");
-    assert_eq!(d.target.as_str(), "xilinx-hls", "target");
-    assert_eq!(d.tasks.len(), 4, "task count");
+fn parse_vadd() {
+    for (path, json) in vadd_fixtures() {
+        let graph = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        assert_eq!(graph.top, "VecAdd", "top task name");
+        assert_eq!(graph.target.as_str(), "xilinx-hls", "target");
+        assert_eq!(graph.tasks.len(), 4, "task count");
+        assert!(graph.tasks.contains_key("VecAdd"), "has VecAdd");
+        assert!(graph.tasks.contains_key("Add"), "has Add");
+    }
 }
 
 #[test]
 fn vadd_upper_task_structure() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let top = &d.tasks["VecAdd"];
-    assert_eq!(top.level, TaskLevel::Upper, "VecAdd is upper");
-    assert_eq!(top.ports.len(), 4, "VecAdd port count");
-    assert_eq!(top.tasks.len(), 3, "VecAdd child task types");
-    assert_eq!(top.fifos.len(), 3, "VecAdd FIFO count");
+    for (path, json) in vadd_fixtures() {
+        let graph = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        let top = &graph.tasks["VecAdd"];
+        assert_eq!(top.level, TaskLevel::Upper, "VecAdd is upper");
+        assert_eq!(top.ports.len(), 4, "VecAdd port count");
+        assert_eq!(top.tasks.len(), 3, "VecAdd child task types");
+        assert_eq!(top.fifos.len(), 3, "VecAdd FIFO count");
+    }
 }
 
 #[test]
 fn vadd_leaf_task() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let add = &d.tasks["Add"];
-    assert_eq!(add.level, TaskLevel::Lower, "Add is lower");
-    assert!(add.tasks.is_empty(), "leaf has no children");
-    assert!(add.fifos.is_empty(), "leaf has no FIFOs");
-    assert_eq!(add.ports.len(), 4, "Add port count");
+    for (path, json) in vadd_fixtures() {
+        let graph = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        let add = &graph.tasks["Add"];
+        assert_eq!(add.level, TaskLevel::Lower, "Add is lower");
+        assert!(add.tasks.is_empty(), "leaf has no children");
+        assert!(add.fifos.is_empty(), "leaf has no FIFOs");
+        assert_eq!(add.ports.len(), 4, "Add port count");
+    }
+}
+
+#[test]
+fn vadd_fifo_endpoints() {
+    for (path, json) in vadd_fixtures() {
+        let graph = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        let fifo = &graph.tasks["VecAdd"].fifos["a_q"];
+        assert_eq!(fifo.depth, Some(2), "a_q depth");
+        let consumer = fifo.consumed_by.as_ref().expect("has consumer");
+        assert_eq!(consumer.0, "Add", "consumer task");
+        assert_eq!(consumer.1, 0, "consumer index");
+        let producer = fifo.produced_by.as_ref().expect("has producer");
+        assert_eq!(producer.0, "Mmap2Stream", "producer task");
+    }
 }
 
 #[test]
 fn vadd_rtl_annotations_preserved() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
+    let d = TaskGraph::from_json(&fixture("topology", "vadd_design.json")).expect("parse");
     let m2s = &d.tasks["Mmap2Stream"];
     let area = m2s.self_area.expect("has self area");
     assert_eq!(area.lut, 414, "LUT value");
@@ -138,7 +178,7 @@ fn vadd_rtl_annotations_preserved() {
 /// and floorplanning derive from the children instead of trusting a zero.
 #[test]
 fn empty_area_annotation_reads_as_unannotated() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
+    let d = TaskGraph::from_json(&fixture("topology", "vadd_design.json")).expect("parse");
     let stream2mmap = &d.tasks["Stream2Mmap"];
     assert_eq!(stream2mmap.self_area, None, "empty self_area is no data");
     let top = &d.tasks["VecAdd"];
@@ -146,19 +186,8 @@ fn empty_area_annotation_reads_as_unannotated() {
 }
 
 #[test]
-fn vadd_fifo_endpoints() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
-    let top = &d.tasks["VecAdd"];
-    let a_q = &top.fifos["a_q"];
-    assert_eq!(a_q.depth, Some(2), "a_q depth");
-    let consumer = a_q.consumed_by.as_ref().expect("has consumer");
-    assert_eq!(consumer.0, "Add", "consumer task");
-    assert_eq!(consumer.1, 0, "consumer index");
-}
-
-#[test]
 fn vadd_instance_args() {
-    let d = Design::from_json(&fixture("vadd_design.json")).expect("parse");
+    let d = TaskGraph::from_json(&fixture("topology", "vadd_design.json")).expect("parse");
     let top = &d.tasks["VecAdd"];
     let add_instances = &top.tasks["Add"];
     assert_eq!(add_instances.len(), 1, "one Add instance");
@@ -169,17 +198,199 @@ fn vadd_instance_args() {
     assert_eq!(a_arg.cat, ArgCategory::Istream, "a is istream");
 }
 
+#[test]
+fn channelized_mmap_port_deserializes() {
+    let g = TaskGraph::from_json(&fixture("task-graph", "mmap_ports.json")).expect("parse");
+    let top = &g.tasks["Top"];
+    let data_port = top
+        .ports
+        .iter()
+        .find(|p| p.name == "data")
+        .expect("data port");
+    assert_eq!(data_port.cat, ArgCategory::Mmap, "data is an mmap port");
+    assert_eq!(data_port.chan_count, Some(4), "chan_count preserved");
+    assert_eq!(data_port.chan_size, Some(1024), "chan_size preserved");
+}
+
+#[test]
+fn all_category_variants_in_fixture() {
+    let g = TaskGraph::from_json(&fixture("task-graph", "mmap_ports.json")).expect("parse");
+    let ports = &g.tasks["Top"].ports;
+    let cats: Vec<_> = ports.iter().map(|p| p.cat).collect();
+    assert!(cats.contains(&ArgCategory::Mmap), "has mmap");
+    assert!(cats.contains(&ArgCategory::AsyncMmap), "has async_mmap");
+    assert!(cats.contains(&ArgCategory::Istreams), "has istreams");
+    assert!(cats.contains(&ArgCategory::Ostreams), "has ostreams");
+    assert!(cats.contains(&ArgCategory::Immap), "has immap");
+    assert!(cats.contains(&ArgCategory::Ommap), "has ommap");
+}
+
+#[test]
+fn negative_step_accepted() {
+    let json = r#"{
+        "schema_version": 3,
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
+            "readable_name": "T",
+            "tasks": {"C": [{"args": {}, "step": -1}]}, "fifos": {}, "ports": []}}
+    }"#;
+    let g = TaskGraph::from_json(json).expect("parse negative step");
+    assert_eq!(g.tasks["T"].tasks["C"][0].step, -1, "negative step");
+}
+
+/// `readable_name` is the one `tapacc`-emitted field that used to ride in
+/// the untyped `extra` bag. It is a typed field now: it must parse and
+/// survive a round-trip. `tapacc` emits the demangled template
+/// specialization for template tasks and the plain task name otherwise.
+#[test]
+fn readable_name_is_typed_and_round_trips() {
+    let json = r#"{
+        "schema_version": 3,
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {
+            "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
+                  "readable_name": "Compute<float, 4>",
+                  "tasks": {}, "fifos": {}, "ports": []},
+            "U": {"srcs": ["U.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+                  "readable_name": "U", "ports": []}
+        }
+    }"#;
+    let g = TaskGraph::from_json(json).expect("parse readable_name");
+    assert_eq!(g.tasks["T"].readable_name, "Compute<float, 4>");
+    assert_eq!(g.tasks["U"].readable_name, "U", "non-template name");
+
+    let g2 = TaskGraph::from_json(&serde_json::to_string_pretty(&g).expect("serialize"))
+        .expect("reparse");
+    assert_eq!(g, g2, "readable_name round-trips");
+}
+
+/// `tapacc` emits `readable_name` unconditionally for every task, so the
+/// field is required rather than defaulted: a payload that omits it does
+/// not describe real `tapacc` output and must be rejected outright. A
+/// `#[serde(default)]` here would silently paper over a malformed graph.
+#[test]
+fn readable_name_is_required() {
+    let json = r#"{
+        "schema_version": 3,
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {
+            "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls", "ports": []}
+        }
+    }"#;
+    let err = TaskGraph::from_json(json).expect_err("omitted readable_name must fail");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("readable_name"),
+        "error must name the missing field; got {msg}",
+    );
+    assert!(
+        msg.contains("tasks.T"),
+        "error must carry a path pointer; got {msg}",
+    );
+}
+
+/// Schema v3's per-task file manifest (`srcs`, `include_dirs`, `defines`)
+/// is required on the wire: producers must emit it. A `#[serde(default)]`
+/// would let a producer drop the fields and have every task read as
+/// source-less, surfacing far away at synth time.
+#[test]
+fn source_manifest_fields_are_required() {
+    for missing in ["srcs", "include_dirs", "defines"] {
+        let json = r#"{
+            "schema_version": 3,
+            "cflags": [], "top": "T", "target": "xilinx-hls",
+            "tasks": {
+                "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [],
+                    "level": "lower", "synth": "hls", "readable_name": "T",
+                    "ports": []}
+            }
+        }"#
+        .replace(missing_member(missing), "");
+        let err =
+            TaskGraph::from_json(&json).expect_err(&format!("removing `{missing}` must fail"));
+        assert!(
+            err.to_string().contains(missing),
+            "error must name the missing field `{missing}`; got {err}",
+        );
+    }
+}
+
+/// The full wire member one iteration of the test above removes.
+fn missing_member(field: &str) -> &'static str {
+    match field {
+        "srcs" => r#""srcs": ["T.cpp"], "#,
+        "include_dirs" => r#""include_dirs": [], "#,
+        _ => r#""defines": [],"#,
+    }
+}
+
+#[test]
+fn consumer_only_fifo() {
+    let json = r#"{
+        "schema_version": 3,
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
+            "readable_name": "T",
+            "tasks": {}, "fifos": {"ext": {"consumed_by": ["X", 0]}}, "ports": []}}
+    }"#;
+    let g = TaskGraph::from_json(json).expect("parse consumer-only FIFO");
+    let f = &g.tasks["T"].fifos["ext"];
+    assert!(f.consumed_by.is_some(), "has consumer");
+    assert!(f.produced_by.is_none(), "no producer");
+    assert!(f.depth.is_none(), "no depth");
+}
+
+#[test]
+fn mmap_port_category_round_trips() {
+    let json = r#"{
+        "schema_version": 3,
+        "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
+            "readable_name": "T",
+            "ports": [{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]}}
+    }"#;
+    let d = TaskGraph::from_json(json).expect("parse mmap port");
+    assert_eq!(d.tasks["T"].ports[0].cat, ArgCategory::Mmap);
+    let serialized = to_json(&d);
+    assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
+}
+
 // ── Round-trip tests ────────────────────────────────────────────────
 
 #[test]
 fn vadd_round_trip() {
-    let json = fixture("vadd_design.json");
-    let d1 = Design::from_json(&json).expect("parse 1");
+    for (path, json) in vadd_fixtures() {
+        let g1 = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        let serialized = serde_json::to_string_pretty(&g1).expect("serialize");
+        let g2 = TaskGraph::from_json(&serialized).expect("parse 2");
+        assert_eq!(g1, g2, "round-trip equality");
+    }
+}
+
+#[test]
+fn mmap_ports_round_trip() {
+    let json = fixture("task-graph", "mmap_ports.json");
+    let g1 = TaskGraph::from_json(&json).expect("parse 1");
+    let serialized = serde_json::to_string_pretty(&g1).expect("serialize");
+    let g2 = TaskGraph::from_json(&serialized).expect("parse 2");
+    assert_eq!(g1, g2, "round-trip equality");
+}
+
+#[test]
+fn annotation_round_trip() {
+    let json = fixture("topology", "vadd_design.json");
+    let d1 = TaskGraph::from_json(&json).expect("parse");
     let serialized = to_json(&d1);
-    let d2 = Design::from_json(&serialized).expect("parse 2");
-    assert_eq!(d1.top, d2.top, "top round-trips");
-    assert_eq!(d1.target, d2.target, "target round-trips");
-    assert_eq!(d1.tasks.len(), d2.tasks.len(), "task count round-trips");
+    let d2 = TaskGraph::from_json(&serialized).expect("parse 2");
+
+    let m2s_1 = &d1.tasks["Mmap2Stream"];
+    let m2s_2 = &d2.tasks["Mmap2Stream"];
+    assert_eq!(m2s_1.self_area, m2s_2.self_area, "self_area round-trips");
+    assert_eq!(m2s_1.total_area, m2s_2.total_area, "total_area round-trips");
+    assert_eq!(
+        m2s_1.clock_period, m2s_2.clock_period,
+        "clock_period round-trips"
+    );
 }
 
 /// Byte-exact re-emission: parsing the canonical payload and serializing
@@ -194,7 +405,7 @@ fn vadd_round_trip() {
 #[test]
 fn round_trip_byte_equal() {
     let json = canonical_design_json();
-    let design = Design::from_json(json).expect("parse canonical task graph");
+    let design = TaskGraph::from_json(json).expect("parse canonical task graph");
     assert_eq!(
         to_compact_json(&design),
         json,
@@ -215,7 +426,7 @@ fn task_order_is_sorted_not_as_written() {
         r#""Add": {"level": "lower", "srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
     );
-    let design = Design::from_json(json).expect("parse");
+    let design = TaskGraph::from_json(json).expect("parse");
     let names: Vec<&str> = design.tasks.keys().map(String::as_str).collect();
     assert_eq!(
         names,
@@ -224,9 +435,43 @@ fn task_order_is_sorted_not_as_written() {
     );
 
     // The emitted form is sorted too, not just the in-memory map.
-    let reparsed = Design::from_json(&to_compact_json(&design)).expect("reparse");
+    let reparsed = TaskGraph::from_json(&to_compact_json(&design)).expect("reparse");
     let emitted: Vec<&str> = reparsed.tasks.keys().map(String::as_str).collect();
     assert_eq!(emitted, vec!["Add", "VecAdd"], "sorted order survives emit");
+}
+
+// ── Negative tests ──────────────────────────────────────────────────
+
+/// A frontend payload is one JSON document. Trailing output must not be
+/// discarded after a valid graph prefix.
+#[test]
+fn graph_parser_rejects_trailing_data() {
+    for (path, json) in vadd_fixtures() {
+        let graph = TaskGraph::from_json(&json).unwrap_or_else(|e| panic!("parse {path}: {e}"));
+        let padded = format!("{json}\n\t\r ");
+        assert_eq!(
+            TaskGraph::from_json(&padded).expect("trailing whitespace is valid"),
+            graph,
+            "JSON whitespace must not change the graph",
+        );
+
+        for suffix in [json.as_str(), "\nnot-json", " []"] {
+            let malformed = format!("{json}{suffix}");
+            TaskGraph::from_json(&malformed)
+                .expect_err("a graph must consume the entire JSON payload");
+        }
+    }
+}
+
+#[test]
+fn unknown_top_level_field_rejected() {
+    let json = r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
+    let err = TaskGraph::from_json(json).unwrap_err();
+    let msg = err.to_string();
+    assert!(
+        msg.contains("bogus") || msg.contains("unknown"),
+        "error mentions field: {msg}"
+    );
 }
 
 /// `Task` carries `deny_unknown_fields`: an unknown *per-task* field is a
@@ -240,7 +485,7 @@ fn unknown_task_field_rejected() {
         r#""T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls", "#,
         r#""ports": [], "tasks": {}, "fifos": {}, "bogus_field": 1}}}"#,
     );
-    let err = Design::from_json(json).expect_err("unknown task field must fail");
+    let err = TaskGraph::from_json(json).expect_err("unknown task field must fail");
     let msg = err.to_string();
     assert!(
         msg.contains("bogus_field") || msg.contains("unknown field"),
@@ -252,47 +497,10 @@ fn unknown_task_field_rejected() {
     );
 }
 
-/// The design model is fully typed with `deny_unknown_fields`, so unknown
-/// fields are rejected instead of round-tripped.
-#[test]
-fn unknown_top_level_field_rejected() {
-    let json = r#"{
-        "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {},
-        "extra_top_field": "rejected"
-    }"#;
-    let err = Design::from_json(json).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("extra_top_field") || msg.contains("unknown"),
-        "error about unknown top-level field: {msg}"
-    );
-}
-
-#[test]
-fn annotation_round_trip() {
-    let json = fixture("vadd_design.json");
-    let d1 = Design::from_json(&json).expect("parse");
-    let serialized = to_json(&d1);
-    let d2 = Design::from_json(&serialized).expect("parse 2");
-
-    let m2s_1 = &d1.tasks["Mmap2Stream"];
-    let m2s_2 = &d2.tasks["Mmap2Stream"];
-    assert_eq!(m2s_1.self_area, m2s_2.self_area, "self_area round-trips");
-    assert_eq!(m2s_1.total_area, m2s_2.total_area, "total_area round-trips");
-    assert_eq!(
-        m2s_1.clock_period, m2s_2.clock_period,
-        "clock_period round-trips"
-    );
-}
-
-// ── Negative tests ──────────────────────────────────────────────────
-
 #[test]
 fn missing_top_field() {
     let json = r#"{"schema_version": 3, "target": "xilinx-hls", "tasks": {}}"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("top") || msg.contains("missing"),
@@ -303,7 +511,7 @@ fn missing_top_field() {
 #[test]
 fn missing_root_target_field() {
     let json = r#"{"schema_version": 3, "top": "T", "tasks": {}}"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("target") || msg.contains("missing"),
@@ -312,39 +520,33 @@ fn missing_root_target_field() {
 }
 
 #[test]
-fn invalid_level() {
+fn invalid_level_rejected() {
     let json = r#"{
         "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "invalid", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls"}}
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "invalid", "synth": "hls"}}
     }"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("level") || msg.contains("invalid"),
-        "error about level: {msg}"
+        "error mentions level: {msg}"
     );
-}
-
-#[test]
-fn empty_input() {
-    let err = Design::from_json("").unwrap_err();
-    assert!(!err.to_string().is_empty(), "error is not empty");
 }
 
 #[test]
 fn invalid_port_category_rejected() {
     let json = r#"{
         "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
-            "ports": [{"cat": "not_a_real_cat", "name": "x", "type": "int", "width": 32}]}}
+        "cflags": [], "top": "T", "target": "xilinx-hls",
+        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+            "ports": [{"cat": "nonexistent", "name": "x", "type": "int", "width": 32}]}}
     }"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
-        msg.contains("not_a_real_cat") || msg.contains("cat") || msg.contains("unknown"),
-        "error about invalid category: {msg}"
+        msg.contains("nonexistent") || msg.contains("cat"),
+        "error about cat: {msg}"
     );
 }
 
@@ -357,7 +559,7 @@ fn invalid_instance_arg_category_rejected() {
             "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
             "fifos": {}}}
     }"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("bogus") || msg.contains("cat") || msg.contains("unknown"),
@@ -374,7 +576,7 @@ fn unknown_task_synth_policy_rejected() {
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "xilinx_vitis"}}
     }"#;
-    let err = Design::from_json(json).unwrap_err();
+    let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
         msg.contains("xilinx_vitis") || msg.contains("synth") || msg.contains("unknown"),
@@ -383,16 +585,7 @@ fn unknown_task_synth_policy_rejected() {
 }
 
 #[test]
-fn mmap_port_category_round_trips() {
-    let json = r#"{
-        "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
-            "readable_name": "T",
-            "ports": [{"cat": "mmap", "name": "data", "type": "float*", "width": 32}]}}
-    }"#;
-    let d = Design::from_json(json).expect("parse mmap port");
-    assert_eq!(d.tasks["T"].ports[0].cat, ArgCategory::Mmap);
-    let serialized = to_json(&d);
-    assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
+fn empty_input_rejected() {
+    let err = TaskGraph::from_json("").unwrap_err();
+    assert!(!err.to_string().is_empty(), "error message is not empty");
 }
