@@ -31,9 +31,6 @@ pub struct PackageXoInputs {
     pub device_info: DeviceInfo,
     pub kernel_xml: KernelXmlArgs,
     pub kernel_out_path: Utf8PathBuf,
-    /// Optional `-kernel_files` C++ sources appended to `package_xo`.
-    #[builder(default)]
-    pub cpp_kernels: Vec<Utf8PathBuf>,
     /// Optional per-port bus parameters, keyed by m_axi port name (no prefix).
     #[builder(default)]
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
@@ -108,20 +105,10 @@ fn render_bus_ifaces(
     .map_err(|e| XilinxError::Template(e.to_string()))
 }
 
-fn render_cpp_kernels(kernels: &[Utf8PathBuf]) -> String {
-    let mut out = String::new();
-    for k in kernels {
-        out.push_str(" -kernel_files ");
-        out.push_str(k.as_str());
-    }
-    out
-}
-
 fn format_package_xo_tcl(
     top_name: &str,
     bus_ifaces: &str,
     registers: &str,
-    cpp_kernels: &str,
     part_num: &str,
     package_xo: bool,
 ) -> Result<String> {
@@ -141,7 +128,7 @@ fn format_package_xo_tcl(
     };
     let package_xo_command = package_xo.then(|| {
         format!(
-            "package_xo -force -xo_path \"$xo_file\" -kernel_name {top_name} \\\n        -ip_directory ${{tmp_ip_dir}} -kernel_xml $kernel_xml_path{cpp_kernels}"
+            "package_xo -force -xo_path \"$xo_file\" -kernel_name {top_name} \\\n        -ip_directory ${{tmp_ip_dir}} -kernel_xml $kernel_xml_path"
         )
     });
     askama::Template::render(&Template {
@@ -157,8 +144,8 @@ fn format_package_xo_tcl(
 /// Build the `.xo` for the given inputs using the provided runner.
 ///
 /// 1. Allocate a staging tempdir and emit `kernel.xml` into it.
-/// 2. Render the packaging TCL with the kernel's `bus_ifaces`,
-///    `cpp_kernels`, and `-part` argument, and invoke Vivado via
+/// 2. Render the packaging TCL with the kernel's `bus_ifaces` and
+///    `-part` argument, and invoke Vivado via
 ///    [`run_vivado`].
 /// 3. Require that Vivado has produced the `.xo` at `kernel_out_path`.
 /// 4. Run [`redact::redact_xo`] on the output so two invocations on the same
@@ -330,12 +317,10 @@ fn run_vivado_packaging(
     } else {
         String::new()
     };
-    let cpp_kernels = render_cpp_kernels(&inputs.cpp_kernels);
     let tcl = format_package_xo_tcl(
         &inputs.top_name,
         &bus_ifaces,
         &registers,
-        &cpp_kernels,
         &inputs.device_info.part_num,
         !slash_ip_only,
     )?;
@@ -590,7 +575,6 @@ mod tests {
             "my_kernel",
             "\n# ifaces\n",
             "",
-            " -kernel_files /tmp/x.cpp",
             "xcu250-figd2104-2L-e",
             true,
         )
@@ -598,11 +582,9 @@ mod tests {
         assert!(tcl.contains("set_property top my_kernel"));
         assert!(tcl.contains("-part xcu250-figd2104-2L-e"));
         assert!(tcl.contains("# ifaces"));
-        assert!(tcl.contains("-kernel_files /tmp/x.cpp"));
         // Nothing left unsubstituted.
         assert!(!tcl.contains("{top_name}"));
         assert!(!tcl.contains("{bus_ifaces}"));
-        assert!(!tcl.contains("{cpp_kernels}"));
         assert!(!tcl.contains("{part_num}"));
     }
 
