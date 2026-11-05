@@ -9,7 +9,7 @@ use crate::module::VerilogModule;
 mod inspection;
 mod tree_sitter;
 
-pub(crate) use inspection::{original_module_text, unconditionally_zero_driven_names};
+pub use inspection::{original_module_text, unconditionally_zero_driven_names};
 
 // ── Error-context helpers ───────────────────────────────────────────
 

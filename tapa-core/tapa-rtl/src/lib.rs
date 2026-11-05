@@ -7,7 +7,7 @@
 //! enabling Verilog text generation via `to_string()` / `format!`.
 
 pub mod builder;
-pub mod emit;
+mod emit;
 pub mod expression;
 pub mod module;
 pub mod mutation;
@@ -16,7 +16,7 @@ pub mod port;
 pub mod signal;
 
 mod error;
-pub mod parser;
+mod parser;
 
 pub use error::{BuilderError, ParseError};
 pub use module::VerilogModule;

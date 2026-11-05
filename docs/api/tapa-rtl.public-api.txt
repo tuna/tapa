@@ -519,7 +519,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::builder::PortArg where T: core:
 pub unsafe fn tapa_rtl::builder::PortArg::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::builder::PortArg
 pub fn tapa_rtl::builder::PortArg::from(T) -> T
-pub mod tapa_rtl::emit
 pub mod tapa_rtl::expression
 pub struct tapa_rtl::expression::Token
 pub tapa_rtl::expression::Token::repr: alloc::string::String
@@ -717,8 +716,6 @@ impl<T> core::clone::CloneToUninit for tapa_rtl::param::Parameter where T: core:
 pub unsafe fn tapa_rtl::param::Parameter::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::param::Parameter
 pub fn tapa_rtl::param::Parameter::from(T) -> T
-pub mod tapa_rtl::parser
-pub fn tapa_rtl::parser::parse_module(&str) -> core::result::Result<tapa_rtl::module::VerilogModule, tapa_rtl::ParseError>
 pub mod tapa_rtl::port
 pub enum tapa_rtl::port::Direction
 pub tapa_rtl::port::Direction::Inout

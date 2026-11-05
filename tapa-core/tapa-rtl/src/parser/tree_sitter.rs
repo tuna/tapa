@@ -255,7 +255,7 @@ fn extract_parameters_from_node(node: Node, src: &[u8]) -> Vec<Parameter> {
 
 // ── Error detection ────────────────────────────────────────────────
 
-pub enum ParseIssue {
+pub(super) enum ParseIssue {
     MalformedPort,
     MalformedParameter,
 }
@@ -511,9 +511,9 @@ fn extract_ports(header: Node, mod_node: Node, src: &[u8]) -> (Vec<Port>, Vec<St
     (ports, port_names)
 }
 
-// ── Public API ──────────────────────────────────────────────────────
+// ── Parser entry point ──────────────────────────────────────────────
 
-pub struct ModuleInfo {
+pub(super) struct ModuleInfo {
     pub name: String,
     pub params: Vec<Parameter>,
     pub ports: Vec<Port>,
@@ -523,7 +523,7 @@ pub struct ModuleInfo {
 
 /// Outcome of extracting a module with tree-sitter; the caller maps the
 /// failure variants onto `ParseError` with text-level context.
-pub enum ModuleParse {
+pub(super) enum ModuleParse {
     /// No `module_declaration` found anywhere in the tree.
     NoModule,
     /// Module found, but the header or module name was not extractable.
@@ -536,7 +536,7 @@ pub enum ModuleParse {
 
 /// Parse a Verilog module with tree-sitter and extract the name, ports,
 /// parameters, and signals.
-pub fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
+pub(super) fn parse_module_info(source: &str) -> Result<ModuleParse, ParseError> {
     let src = source.as_bytes();
     let mut parser = sv_parser();
     let Some(tree) = parser.parse(src, None) else {
