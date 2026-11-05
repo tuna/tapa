@@ -174,6 +174,20 @@ endmodule
     }
 
     #[test]
+    fn header_errors_name_the_module() {
+        for (src, name) in [
+            ("module NoHeader(.*);\nendmodule\n", "NoHeader"),
+            ("module Unclosed (input a\n", "Unclosed"),
+        ] {
+            let err = parse_module(src).unwrap_err();
+            assert!(
+                matches!(&err, ParseError::ParseFailed { module, .. } if module == name),
+                "err: {err:?}"
+            );
+        }
+    }
+
+    #[test]
     fn parse_parameters_body_and_header_block() {
         let src = "\
 module WithParams #(

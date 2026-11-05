@@ -538,12 +538,12 @@ pub(super) struct ModuleInfo {
 }
 
 /// Module name recovered from a possibly-broken header, for error context.
+/// A module without a header node (e.g. `module M(.*);`) carries its name
+/// directly on the declaration.
 fn recovered_name(mod_node: Node, src: &[u8]) -> Option<String> {
-    module_header(mod_node).and_then(|header| {
-        children_of(header)
-            .find(|n| n.kind() == "simple_identifier")
-            .map(|n| text_of(n, src).to_owned())
-    })
+    children_of(module_header(mod_node).unwrap_or(mod_node))
+        .find(|n| n.kind() == "simple_identifier")
+        .map(|n| text_of(n, src).to_owned())
 }
 
 /// Outcome of extracting a module with tree-sitter; the caller maps the
