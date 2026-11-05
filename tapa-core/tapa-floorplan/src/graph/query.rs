@@ -122,10 +122,6 @@ impl FloorGraph {
     }
 
     /// Build the placement graph with optional distributed-control metadata.
-    ///
-    /// Orchestration only — build-graph → cluster → interfaces → finish. The
-    /// step order fixes vertex/edge insertion order, which feeds the
-    /// canonical placement-model fingerprint; do not re-order.
     #[cfg(test)]
     pub(crate) fn build_with_interfaces(
         flat: &TaskGraph,
@@ -153,6 +149,9 @@ impl FloorGraph {
         )
     }
 
+    /// Orchestration only — build-graph → cluster → interfaces → finish. The
+    /// step order fixes vertex/edge insertion order, which feeds the
+    /// canonical placement-model fingerprint; do not re-order.
     fn build_with_scopes(
         flat: &TaskGraph,
         memory: &[MemoryInterface],
