@@ -12,7 +12,7 @@ use tapa_protocol::{
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
-use tapa_rtl::mutation::{wide_wire, wire, MutableModule};
+use tapa_rtl::mutation::MutableModule;
 use tapa_rtl::VerilogModule;
 
 use crate::rtl_state::routing_id_bits;
@@ -209,12 +209,7 @@ pub fn add_bridge_signals(
         for &suffix in tag_suffixes(tag) {
             let name = signal_name(bridge_base, tag, suffix);
             let width = tag_data_width(tag, suffix, data_width);
-            let signal = if width > 1 {
-                wide_wire(&name, &(width - 1).to_string(), "0")
-            } else {
-                wire(&name)
-            };
-            let _ = module.add_signal(signal);
+            let _ = module.add_signal(super::width_wire(&name, width));
         }
     }
 }

@@ -5,7 +5,7 @@ use tapa_protocol::{
     S_AXI_LITE_CTRL_PORTS, S_AXI_NAME,
 };
 use tapa_rtl::builder::{Expr, ParamArg, PortArg};
-use tapa_rtl::mutation::{wide_wire, wire};
+use tapa_rtl::mutation::wide_wire;
 
 use crate::state::views::{DesignView, ModuleTable};
 
@@ -56,11 +56,7 @@ pub fn instantiate_top_control_s_axi(
         let sanitized = tapa_rtl::module::sanitize_array_name(&port.name);
         let ctrl_port_names = if port.cat.is_scalar() {
             let width = port.width.max(1);
-            if width == 1 {
-                let _ = mm.add_signal(wire(&sanitized));
-            } else {
-                let _ = mm.add_signal(wide_wire(&sanitized, &(width - 1).to_string(), "0"));
-            }
+            let _ = mm.add_signal(super::width_wire(&sanitized, width));
             vec![sanitized]
         } else if port.cat.is_mmap_like() {
             if let Some(chan_count) = port.chan_count {

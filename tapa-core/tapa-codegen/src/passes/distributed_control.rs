@@ -17,7 +17,7 @@ use tapa_rtl::builder::{
     AlwaysBlock, ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg, Statement,
 };
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
-use tapa_rtl::mutation::{reg, wide_reg, wide_wire, wire};
+use tapa_rtl::mutation::{reg, wide_reg, wire};
 
 use super::{invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver};
 use crate::error::CodegenError;
@@ -1017,11 +1017,7 @@ fn add_width_wire(
     name: &str,
     width: u32,
 ) -> Result<(), CodegenError> {
-    if width == 1 {
-        module.add_signal(wire(name))?;
-    } else {
-        module.add_signal(wide_wire(name, &(width - 1).to_string(), "0"))?;
-    }
+    module.add_signal(super::width_wire(name, width))?;
     Ok(())
 }
 

@@ -9,7 +9,6 @@ use tapa_ir::{
 use tapa_protocol::{m_axi_channel, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PREFIX};
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
-use tapa_rtl::mutation::{wide_wire, wire};
 
 use super::{invalid_floorplan, parse_atomic_region, OPTIONAL_AXI_ADDRESS_PORTS};
 use crate::error::CodegenError;
@@ -219,12 +218,7 @@ impl DirectAxiPipelinePlan {
                         interface.id_width,
                     );
                     let name = format!("{child_prefix}{suffix}");
-                    let signal = if width > 1 {
-                        wide_wire(name, &(width - 1).to_string(), "0")
-                    } else {
-                        wire(name)
-                    };
-                    module.add_signal(signal)?;
+                    module.add_signal(super::width_wire(&name, width))?;
                 }
             }
 

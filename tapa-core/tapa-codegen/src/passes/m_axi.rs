@@ -10,7 +10,7 @@ use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port, MutableModule};
 use tapa_rtl::port::{Direction, Port};
 
-use super::OPTIONAL_AXI_ADDRESS_PORTS;
+use super::{width_wire, OPTIONAL_AXI_ADDRESS_PORTS};
 use crate::error::CodegenError;
 use crate::passes::children;
 use crate::rtl_state::{routing_id_bits, MMapConnection};
@@ -572,12 +572,7 @@ pub(crate) fn add_m_axi_and_crossbars(
                         let wire_name = format!("{wire_prefix}{suffix}");
                         // Resolve width from suffix name using protocol constants
                         let width = crossbar_slave_suffix_width(conn, suffix);
-                        let sig = if width > 1 {
-                            tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
-                        } else {
-                            tapa_rtl::mutation::wire(&wire_name)
-                        };
-                        let _ = mm.add_signal(sig);
+                        let _ = mm.add_signal(width_wire(&wire_name, width));
                     }
                 }
             }

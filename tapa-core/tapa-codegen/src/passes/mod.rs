@@ -392,3 +392,12 @@ fn mmap_offset_source(parent: &str, mmap_connections: &BTreeMap<String, MMapConn
         },
     )
 }
+
+/// A wire named `name` of `width` bits; a 1-bit wire carries no range.
+fn width_wire(name: &str, width: u32) -> tapa_rtl::signal::Signal {
+    if width > 1 {
+        tapa_rtl::mutation::wide_wire(name, &(width - 1).to_string(), "0")
+    } else {
+        tapa_rtl::mutation::wire(name)
+    }
+}
