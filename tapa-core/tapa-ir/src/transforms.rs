@@ -53,11 +53,7 @@ pub struct FlatProjection {
 
 impl FlatProjection {
     /// Resolve an occurrence's original task definition.
-    pub fn source_task<'g>(
-        &self,
-        graph: &'g TaskGraph,
-        occurrence: OccurrenceId,
-    ) -> Option<&'g Task> {
+    fn source_task<'g>(&self, graph: &'g TaskGraph, occurrence: OccurrenceId) -> Option<&'g Task> {
         let occurrence = self.occurrences.get(occurrence.0)?;
         let name = occurrence
             .source

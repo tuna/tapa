@@ -56,7 +56,7 @@ impl ClockPeriod {
     }
 
     /// Convert a nanosecond quantity, rounding to the nearest picosecond.
-    pub fn from_nanoseconds(nanoseconds: f64) -> Result<Self, ClockPeriodError> {
+    fn from_nanoseconds(nanoseconds: f64) -> Result<Self, ClockPeriodError> {
         let picoseconds = nanoseconds * 1000.0;
         // The upper bound (2**64, exactly representable) keeps the `as u64`
         // below from silently saturating; it also rejects non-finite input.

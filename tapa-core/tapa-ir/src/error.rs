@@ -29,12 +29,3 @@ pub enum ParseError {
     )]
     OutdatedSchemaVersion { found: u32, supported: u32 },
 }
-
-impl From<std::io::Error> for ParseError {
-    fn from(e: std::io::Error) -> Self {
-        Self::Schema {
-            path: "<io>".to_string(),
-            message: e.to_string(),
-        }
-    }
-}

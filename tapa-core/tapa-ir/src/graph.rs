@@ -9,7 +9,6 @@
 //! alphabetically, matching the sorted order `tapa analyze` writes.
 
 use std::collections::BTreeMap;
-use std::io::Read;
 
 use serde::{Deserialize, Serialize};
 
@@ -140,13 +139,6 @@ impl TaskGraph {
             }
         }
         Ok(())
-    }
-
-    /// Parse from any reader.
-    pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, ParseError> {
-        let mut buf = String::new();
-        reader.read_to_string(&mut buf)?;
-        Self::from_json(&buf)
     }
 }
 

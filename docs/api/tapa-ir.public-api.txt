@@ -510,7 +510,6 @@ pub fn tapa_ir::clock::ClockPeriodError::from(T) -> T
 pub struct tapa_ir::clock::ClockPeriod(_)
 impl tapa_ir::clock::ClockPeriod
 pub const tapa_ir::clock::ClockPeriod::ZERO: Self
-pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds(f64) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
 pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds_str(&str) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
 pub const fn tapa_ir::clock::ClockPeriod::from_picoseconds(u64) -> Self
 pub fn tapa_ir::clock::ClockPeriod::nanoseconds(self) -> f64
@@ -1623,7 +1622,6 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
-pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -2523,7 +2521,6 @@ pub tapa_ir::transforms::FlatProjection::flat: tapa_ir::graph::TaskGraph
 pub tapa_ir::transforms::FlatProjection::occurrences: alloc::vec::Vec<tapa_ir::transforms::TaskOccurrence>
 impl tapa_ir::transforms::FlatProjection
 pub fn tapa_ir::transforms::FlatProjection::source_invocation<'g>(&self, &'g tapa_ir::graph::TaskGraph, tapa_ir::transforms::OccurrenceId) -> core::option::Option<&'g tapa_ir::instance::TaskInstance>
-pub fn tapa_ir::transforms::FlatProjection::source_task<'g>(&self, &'g tapa_ir::graph::TaskGraph, tapa_ir::transforms::OccurrenceId) -> core::option::Option<&'g tapa_ir::task::Task>
 impl core::clone::Clone for tapa_ir::transforms::FlatProjection
 pub fn tapa_ir::transforms::FlatProjection::clone(&self) -> tapa_ir::transforms::FlatProjection
 impl core::cmp::Eq for tapa_ir::transforms::FlatProjection
@@ -3249,8 +3246,6 @@ pub tapa_ir::ParseError::UnsupportedSchemaVersion::supported: u32
 pub tapa_ir::ParseError::WorkStateVersion
 pub tapa_ir::ParseError::WorkStateVersion::found: core::option::Option<u32>
 pub tapa_ir::ParseError::WorkStateVersion::supported: u32
-impl core::convert::From<core::io::error::Error> for tapa_ir::ParseError
-pub fn tapa_ir::ParseError::from(core::io::error::Error) -> Self
 impl core::convert::From<serde_json::error::Error> for tapa_ir::ParseError
 pub fn tapa_ir::ParseError::from(serde_json::error::Error) -> Self
 impl core::error::Error for tapa_ir::ParseError
@@ -4207,7 +4202,6 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::AxiEndpoint whe
 pub struct tapa_ir::ClockPeriod(_)
 impl tapa_ir::clock::ClockPeriod
 pub const tapa_ir::clock::ClockPeriod::ZERO: Self
-pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds(f64) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
 pub fn tapa_ir::clock::ClockPeriod::from_nanoseconds_str(&str) -> core::result::Result<Self, tapa_ir::clock::ClockPeriodError>
 pub const fn tapa_ir::clock::ClockPeriod::from_picoseconds(u64) -> Self
 pub fn tapa_ir::clock::ClockPeriod::nanoseconds(self) -> f64
@@ -4358,7 +4352,6 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
-pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -4658,7 +4651,6 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
-pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -5289,7 +5281,6 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
-pub fn tapa_ir::graph::TaskGraph::from_reader<R: alloc::io::read::Read>(R) -> core::result::Result<Self, tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph

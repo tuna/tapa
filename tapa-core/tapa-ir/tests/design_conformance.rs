@@ -229,16 +229,6 @@ fn task_order_is_sorted_not_as_written() {
     assert_eq!(emitted, vec!["Add", "VecAdd"], "sorted order survives emit");
 }
 
-/// `from_reader` is a public parse entry point, so it gets direct coverage.
-#[test]
-fn from_reader_works() {
-    let json = canonical_design_json();
-    let design = Design::from_reader(json.as_bytes()).expect("from_reader");
-    assert_eq!(design.top, "VecAdd", "top");
-    assert_eq!(design.target.as_str(), "xilinx-vitis", "target");
-    assert_eq!(design.tasks.len(), 2, "task count");
-}
-
 /// `Task` carries `deny_unknown_fields`: an unknown *per-task* field is a
 /// malformed graph, not something to round-trip through an `extra` bag.
 /// The error must also carry the `tasks.<name>` path pointer that makes a
