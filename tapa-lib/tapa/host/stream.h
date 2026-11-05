@@ -838,7 +838,7 @@ constexpr bool dependent_false() {
 // catch-all specializations subsume every (param, arg) combination whose
 // param is a by-value or rvalue-reference stream or stream array; any use
 // fires the static_assert at the offending `tapa::task().invoke(...)` site.
-// More special(z)ized allowed accessors (param = lvalue reference) win by
+// More specialized allowed accessors (param = lvalue reference) win by
 // partial ordering.
 #define TAPA_DISALLOWED_REFERENCE_PARAM_BODY(name)                          \
   static Self access(Arg&&, bool) {                                         \
@@ -981,9 +981,6 @@ TAPA_DEFINE_DEVICE_ACCESSOR(i, )
 TAPA_DEFINE_DEVICE_ACCESSOR(i, &)
 TAPA_DEFINE_DEVICE_ACCESSOR(o, )
 TAPA_DEFINE_DEVICE_ACCESSOR(o, &)
-TAPA_DEFINE_DEVICE_ACCESSOR(unbound_, )
-TAPA_DEFINE_DEVICE_ACCESSOR(unbound_, &)
-
 #undef TAPA_DEFINE_DEVICE_ACCESSOR
 
 // Pass-through accessors: underlying mechanism differs per io type.
