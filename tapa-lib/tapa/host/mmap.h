@@ -162,8 +162,14 @@ class async_mmap : public mmap<T> {
         write_data(write_data_q_),
         write_resp(write_resp_q_) {}
 
-  // Direct pointer conversion is not permitted; use the channel APIs.
+  // Direct pointer access is not permitted; use the channel APIs. Deleting
+  // the steps also hides the ones `mmap` defines, which would move only this
+  // handle's copy of the pointer, not the one its channels serve.
   operator T*() = delete;
+  async_mmap& operator++() = delete;
+  async_mmap& operator--() = delete;
+  async_mmap operator++(int) = delete;
+  async_mmap operator--(int) = delete;
 
  public:
   /// Read address channel: write an address to trigger an async read.

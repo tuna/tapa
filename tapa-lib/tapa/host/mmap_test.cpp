@@ -122,5 +122,40 @@ TEST(MmapsTest, SlicesPreserveRegionsAndIncludeTheLastChannel) {
   EXPECT_EQ(buffers[3][2], 99);
 }
 
+// An async_mmap moves data only through its channels: a pointer step would
+// move a copy of the pointer that the channels never see, so it must not
+// compile, while the plain mmap it extends keeps its steps.
+template <typename T, typename = void>
+struct PreIncrements : std::false_type {};
+template <typename T>
+struct PreIncrements<T, std::void_t<decltype(++std::declval<T&>())>>
+    : std::true_type {};
+template <typename T, typename = void>
+struct PreDecrements : std::false_type {};
+template <typename T>
+struct PreDecrements<T, std::void_t<decltype(--std::declval<T&>())>>
+    : std::true_type {};
+template <typename T, typename = void>
+struct PostIncrements : std::false_type {};
+template <typename T>
+struct PostIncrements<T, std::void_t<decltype(std::declval<T&>()++)>>
+    : std::true_type {};
+template <typename T, typename = void>
+struct PostDecrements : std::false_type {};
+template <typename T>
+struct PostDecrements<T, std::void_t<decltype(std::declval<T&>()--)>>
+    : std::true_type {};
+
+static_assert(PreIncrements<mmap<int>>::value &&
+                  PreDecrements<mmap<int>>::value &&
+                  PostIncrements<mmap<int>>::value &&
+                  PostDecrements<mmap<int>>::value,
+              "mmap steps its pointer");
+static_assert(!PreIncrements<async_mmap<int>>::value &&
+                  !PreDecrements<async_mmap<int>>::value &&
+                  !PostIncrements<async_mmap<int>>::value &&
+                  !PostDecrements<async_mmap<int>>::value,
+              "async_mmap rejects pointer steps");
+
 }  // namespace
 }  // namespace tapa
