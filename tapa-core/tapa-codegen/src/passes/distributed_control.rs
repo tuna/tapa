@@ -21,6 +21,7 @@ use tapa_rtl::mutation::{reg, wide_reg, wire};
 
 use super::{
     invalid_floorplan, logical_reduction, mmap_offset_source, parse_atomic_region, scalar_driver,
+    width_wire,
 };
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
@@ -546,8 +547,8 @@ impl DistributedControlPlan {
         let reset_n = Self::child_reset_name(logical_instance);
         let local_completion = format!("{prefix}__local_completion");
 
-        add_width_wire(module, &launch_input, child.launch_width)?;
-        add_width_wire(module, &launch_output, child.launch_width)?;
+        module.add_signal(width_wire(&launch_input, child.launch_width))?;
+        module.add_signal(width_wire(&launch_output, child.launch_width))?;
         module.add_signal(wire(&reset_n))?;
         module.add_signal(wire(&local_completion))?;
 
@@ -600,7 +601,7 @@ impl DistributedControlPlan {
                     }],
                 ));
             } else {
-                add_width_wire(module, &field.output, field.width)?;
+                module.add_signal(width_wire(&field.output, field.width))?;
                 module.add_assign(ContinuousAssign::new(
                     Expr::ident(&field.output),
                     select_bits(&launch_output, field.lsb, field.width),
@@ -1009,15 +1010,6 @@ fn instantiate_or_connect_pipeline(
     } else {
         module.add_assign(ContinuousAssign::new(output, input));
     }
-}
-
-fn add_width_wire(
-    module: &mut tapa_rtl::mutation::MutableModule,
-    name: &str,
-    width: u32,
-) -> Result<(), CodegenError> {
-    module.add_signal(super::width_wire(name, width))?;
-    Ok(())
 }
 
 fn select_bits(signal: &str, lsb: u32, width: u32) -> Expr {
