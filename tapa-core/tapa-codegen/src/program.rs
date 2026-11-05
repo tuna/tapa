@@ -48,16 +48,12 @@ pub const CHILD_STATE_DONE: &str = "2'b10";
 pub fn generate_global_fsm(is_done_signal_names: &[String]) -> GlobalFsmOutput {
     let state = Expr::ident("__tapa_state");
 
-    // Build the RUNNING->DONE transition condition
-    let all_done_cond = if is_done_signal_names.is_empty() {
-        Expr::lit("1'b1") // No children = always done
-    } else {
-        is_done_signal_names
-            .iter()
-            .map(|name| Expr::ident(name.clone()))
-            .reduce(Expr::logical_and)
-            .unwrap_or_else(|| Expr::lit("1'b1"))
-    };
+    // Build the RUNNING->DONE transition condition; no children = always done.
+    let all_done_cond = is_done_signal_names
+        .iter()
+        .map(|name| Expr::ident(name.clone()))
+        .reduce(Expr::logical_and)
+        .unwrap_or_else(|| Expr::lit("1'b1"));
 
     // FSM always block
     let fsm_block = AlwaysBlock::posedge(
