@@ -31,7 +31,8 @@ use crate::route::paths::Cell;
 use crate::solver::assign::{add_one_of_k_row, read_one_of_k, OneOfKError};
 use crate::solver::sparse::SparseRow;
 use crate::solver::{
-    Comparison, LinExpr, LpModel, LpStatus, LpVar, Sense, SolveOpts, Solver, SolverError,
+    Comparison, LinExpr, LpModel, LpSolution, LpStatus, LpVar, Sense, SolveOpts, Solver,
+    SolverError,
 };
 use crate::ExactInt;
 
@@ -430,7 +431,7 @@ struct FeasibleRung {
     usage_limit: f64,
     model: FloorplanModel,
     domains: Vec<Vec<Coor>>,
-    solution: crate::solver::LpSolution,
+    solution: LpSolution,
 }
 
 /// What one rung of the utilization ladder produced.
@@ -793,13 +794,7 @@ fn region_has_tag(device: &Device, region: &Coor, required: &str) -> bool {
 }
 
 pub(crate) fn scaled_area(area: Area, limit: f64) -> Area {
-    Area {
-        lut: scaled_amount(area.lut, limit),
-        ff: scaled_amount(area.ff, limit),
-        bram_18k: scaled_amount(area.bram_18k, limit),
-        dsp: scaled_amount(area.dsp, limit),
-        uram: scaled_amount(area.uram, limit),
-    }
+    Area::from_amounts(|resource| scaled_amount(resource.amount(&area), limit))
 }
 
 fn scaled_area_with_overrides(
@@ -1046,7 +1041,7 @@ impl FloorplanModel {
         &self,
         graph: &FloorGraph,
         domains: &[Vec<Coor>],
-        solution: &crate::solver::LpSolution,
+        solution: &LpSolution,
     ) -> Result<Vec<Coor>, IlpError> {
         let mut assignments = Vec::with_capacity(graph.vertices().len());
 
@@ -1083,8 +1078,8 @@ impl FloorplanModel {
         &mut self,
         solver: &dyn Solver,
         opts: &SolveOpts,
-        primary: &crate::solver::LpSolution,
-    ) -> Result<Option<crate::solver::LpSolution>, IlpError> {
+        primary: &LpSolution,
+    ) -> Result<Option<LpSolution>, IlpError> {
         let pin = self.lp.objective.clone();
         Ok(crate::solver::lexicographic::refine(
             &mut self.lp,
