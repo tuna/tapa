@@ -21,11 +21,11 @@ void IgnoreBackend::EmitMmapPort(const PortContext& p, CodeSink& out) const {
 
 void IgnoreBackend::EmitAsyncMmapPort(const PortContext& p,
                                       CodeSink& out) const {
-  EmitDummyMmapOrScalarRW(p.param, p.kind, out);
+  EmitMmapPort(p, out);
 }
 
 void IgnoreBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
-  EmitDummyMmapOrScalarRW(p.param, p.kind, out);
+  EmitMmapPort(p, out);
 }
 
 void IgnoreBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
