@@ -151,6 +151,40 @@ mod tests {
         find_cuts_for_regions(device, &regions)
     }
 
+    fn mk_slot(x: u32, y: u32, north: u64, south: u64) -> Slot {
+        Slot {
+            x,
+            y,
+            area: Area::default(),
+            centroid_x: i64::from(x),
+            centroid_y: i64::from(y),
+            pblock_ranges: Vec::new(),
+            wire_cap: DirCaps {
+                north,
+                south,
+                east: WIRE_CAPACITY_INF,
+                west: WIRE_CAPACITY_INF,
+            },
+            tags: Vec::new(),
+        }
+    }
+
+    fn toy_device(rows: u32, cols: u32, slots: Vec<Slot>) -> Device {
+        Device {
+            key: "toy".to_string(),
+            part_num: "toy".to_string(),
+            platform_name: None,
+            rows,
+            cols,
+            placement: PlacementStyle::default(),
+            planned_resources: PlannedResources::default(),
+            usage_ceiling: None,
+            user_pblock_name: None,
+            anchors: Vec::new(),
+            slots,
+        }
+    }
+
     #[test]
     fn u280_has_two_row_cuts_and_one_column_cut() {
         let device = select_device("u280").expect("u280");
@@ -191,44 +225,21 @@ mod tests {
 
     #[test]
     fn region_border_uses_the_per_cell_pair_minimum() {
-        let mk_slot = |x, y, north, south| Slot {
-            x,
-            y,
-            area: Area::default(),
-            centroid_x: i64::from(x),
-            centroid_y: i64::from(y),
-            pblock_ranges: Vec::new(),
-            wire_cap: DirCaps {
-                north,
-                south,
-                east: WIRE_CAPACITY_INF,
-                west: WIRE_CAPACITY_INF,
-            },
-            tags: Vec::new(),
-        };
-        let device = Device {
-            key: "toy".to_string(),
-            part_num: "toy".to_string(),
-            platform_name: None,
-            rows: 2,
-            cols: 2,
-            placement: PlacementStyle::default(),
-            planned_resources: PlannedResources::default(),
-            usage_ceiling: None,
-            user_pblock_name: None,
-            anchors: Vec::new(),
-            // Each physical cell-pair boundary is governed by the *smaller* of
-            // its two facing declarations: min(100, 1) + min(1, 100), derated.
-            // Summing each region's full side first (min(101, 101) = 101)
-            // would credit capacity that neither boundary can support —
-            // routing models the same per-pair minimum.
-            slots: vec![
+        // Each physical cell-pair boundary is governed by the *smaller* of its
+        // two facing declarations: min(100, 1) + min(1, 100), derated. Summing
+        // each region's full side first (min(101, 101) = 101) would credit
+        // capacity that neither boundary can support — routing models the
+        // same per-pair minimum.
+        let device = toy_device(
+            2,
+            2,
+            vec![
                 mk_slot(0, 0, 100, 0),
                 mk_slot(1, 0, 1, 0),
                 mk_slot(0, 1, 0, 1),
                 mk_slot(1, 1, 0, 100),
             ],
-        };
+        );
         let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
         let cuts = find_cuts_for_regions(&device, &rows);
         assert_eq!(cuts[0].capacity, 2, "round(1 * 0.7) + round(1 * 0.7)");
@@ -236,33 +247,10 @@ mod tests {
 
     #[test]
     fn partially_aligned_borders_count_only_the_shared_interval() {
-        let mk_slot = |x, y, north, south| Slot {
-            x,
-            y,
-            area: Area::default(),
-            centroid_x: i64::from(x),
-            centroid_y: i64::from(y),
-            pblock_ranges: Vec::new(),
-            wire_cap: DirCaps {
-                north,
-                south,
-                east: WIRE_CAPACITY_INF,
-                west: WIRE_CAPACITY_INF,
-            },
-            tags: Vec::new(),
-        };
-        let device = Device {
-            key: "toy".to_string(),
-            part_num: "toy".to_string(),
-            platform_name: None,
-            rows: 2,
-            cols: 3,
-            placement: PlacementStyle::default(),
-            planned_resources: PlannedResources::default(),
-            usage_ceiling: None,
-            user_pblock_name: None,
-            anchors: Vec::new(),
-            slots: vec![
+        let device = toy_device(
+            2,
+            3,
+            vec![
                 mk_slot(0, 0, 10, 0),
                 mk_slot(1, 0, 10, 0),
                 mk_slot(2, 0, 10, 0),
@@ -270,7 +258,7 @@ mod tests {
                 mk_slot(1, 1, 0, 10),
                 mk_slot(2, 1, 0, 10),
             ],
-        };
+        );
         // The narrow region below shares only x=1 with the wide region above;
         // its other two slots border vertical cuts, not this pair.
         let narrow = Coor::span(1, 0, 1, 0);
@@ -284,39 +272,16 @@ mod tests {
 
     #[test]
     fn one_unconstrained_cell_pair_drops_the_whole_cut() {
-        let mk_slot = |x, y, north, south| Slot {
-            x,
-            y,
-            area: Area::default(),
-            centroid_x: i64::from(x),
-            centroid_y: i64::from(y),
-            pblock_ranges: Vec::new(),
-            wire_cap: DirCaps {
-                north,
-                south,
-                east: WIRE_CAPACITY_INF,
-                west: WIRE_CAPACITY_INF,
-            },
-            tags: Vec::new(),
-        };
-        let device = Device {
-            key: "toy".to_string(),
-            part_num: "toy".to_string(),
-            platform_name: None,
-            rows: 2,
-            cols: 2,
-            placement: PlacementStyle::default(),
-            planned_resources: PlannedResources::default(),
-            usage_ceiling: None,
-            user_pblock_name: None,
-            anchors: Vec::new(),
-            slots: vec![
+        let device = toy_device(
+            2,
+            2,
+            vec![
                 mk_slot(0, 0, 10, 0),
                 mk_slot(1, 0, WIRE_CAPACITY_INF, 0),
                 mk_slot(0, 1, 0, 10),
                 mk_slot(1, 1, 0, WIRE_CAPACITY_INF),
             ],
-        };
+        );
         let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
         assert!(
             find_cuts_for_regions(&device, &rows).is_empty(),
@@ -326,39 +291,16 @@ mod tests {
 
     #[test]
     fn bounded_pairs_keep_the_cut_even_when_their_sum_is_huge() {
-        let mk_slot = |x, y, north, south| Slot {
-            x,
-            y,
-            area: Area::default(),
-            centroid_x: i64::from(x),
-            centroid_y: i64::from(y),
-            pblock_ranges: Vec::new(),
-            wire_cap: DirCaps {
-                north,
-                south,
-                east: WIRE_CAPACITY_INF,
-                west: WIRE_CAPACITY_INF,
-            },
-            tags: Vec::new(),
-        };
-        let device = Device {
-            key: "toy".to_string(),
-            part_num: "toy".to_string(),
-            platform_name: None,
-            rows: 2,
-            cols: 2,
-            placement: PlacementStyle::default(),
-            planned_resources: PlannedResources::default(),
-            usage_ceiling: None,
-            user_pblock_name: None,
-            anchors: Vec::new(),
-            slots: vec![
+        let device = toy_device(
+            2,
+            2,
+            vec![
                 mk_slot(0, 0, 60_000_000, 0),
                 mk_slot(1, 0, 60_000_000, 0),
                 mk_slot(0, 1, 0, 60_000_000),
                 mk_slot(1, 1, 0, 60_000_000),
             ],
-        };
+        );
         let rows = [Coor::span(0, 0, 1, 0), Coor::span(0, 1, 1, 1)];
         let cuts = find_cuts_for_regions(&device, &rows);
         assert_eq!(
