@@ -346,7 +346,7 @@ pub fn connect_fifos(
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
             let is_vitis_top_axis = task_name == design_data.top
-                && crate::top_stream_needs_axis_adapter(design_data.target);
+                && crate::target::top_stream_needs_axis_adapter(design_data.target);
             if let Some(mm) = modules.get_mut(task_name) {
                 let suffixes: &[&str] = if has_consumer {
                     ISTREAM_SUFFIXES

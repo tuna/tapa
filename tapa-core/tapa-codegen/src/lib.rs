@@ -16,7 +16,6 @@ mod template;
 pub use artifact::ArtifactManifest;
 pub use passes::m_axi;
 pub use state::rtl_state;
-pub use target::top_stream_needs_axis_adapter;
 
 use tapa_ir::{task::TaskLevel, SynthTarget};
 

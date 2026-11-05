@@ -10,10 +10,10 @@
 
 pub mod async_mmap;
 mod axi_pipeline;
-pub mod children;
+mod children;
 mod cleanup;
 mod distributed_control;
-pub mod fifos;
+mod fifos;
 mod floorplans;
 pub mod m_axi;
 mod s_axi;
