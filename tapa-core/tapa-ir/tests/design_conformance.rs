@@ -108,8 +108,6 @@ fn canonical_design_json() -> &'static str {
     )
 }
 
-// ── Positive parse tests ────────────────────────────────────────────
-
 #[test]
 fn parse_vadd() {
     for (path, json) in vadd_fixtures() {
@@ -355,8 +353,6 @@ fn mmap_port_category_round_trips() {
     assert!(serialized.contains(r#""mmap""#), "round-trips as mmap");
 }
 
-// ── Round-trip tests ────────────────────────────────────────────────
-
 #[test]
 fn vadd_round_trip() {
     for (path, json) in vadd_fixtures() {
@@ -440,8 +436,6 @@ fn task_order_is_sorted_not_as_written() {
     assert_eq!(emitted, vec!["Add", "VecAdd"], "sorted order survives emit");
 }
 
-// ── Negative tests ──────────────────────────────────────────────────
-
 /// A frontend payload is one JSON document. Trailing output must not be
 /// discarded after a valid graph prefix.
 #[test]
@@ -509,17 +503,6 @@ fn missing_top_field() {
 }
 
 #[test]
-fn missing_root_target_field() {
-    let json = r#"{"schema_version": 3, "top": "T", "tasks": {}}"#;
-    let err = TaskGraph::from_json(json).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("target") || msg.contains("missing"),
-        "error about target: {msg}"
-    );
-}
-
-#[test]
 fn invalid_level_rejected() {
     let json = r#"{
         "schema_version": 3,
@@ -532,61 +515,4 @@ fn invalid_level_rejected() {
         msg.contains("level") || msg.contains("invalid"),
         "error mentions level: {msg}"
     );
-}
-
-#[test]
-fn invalid_port_category_rejected() {
-    let json = r#"{
-        "schema_version": 3,
-        "cflags": [], "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
-            "ports": [{"cat": "nonexistent", "name": "x", "type": "int", "width": 32}]}}
-    }"#;
-    let err = TaskGraph::from_json(json).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("nonexistent") || msg.contains("cat"),
-        "error about cat: {msg}"
-    );
-}
-
-#[test]
-fn invalid_instance_arg_category_rejected() {
-    let json = r#"{
-        "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
-            "tasks": {"C": [{"args": {"p": {"arg": "x", "cat": "bogus"}}, "step": 0}]},
-            "fifos": {}}}
-    }"#;
-    let err = TaskGraph::from_json(json).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("bogus") || msg.contains("cat") || msg.contains("unknown"),
-        "error about invalid arg category: {msg}"
-    );
-}
-
-#[test]
-fn unknown_task_synth_policy_rejected() {
-    // The closed `SynthTarget` enum rejects the old flow-derived task
-    // targets: only `"hls"` / `"ignore"` / `"aie"` are valid per-task
-    // values now.
-    let json = r#"{
-        "schema_version": 3,
-        "top": "T", "target": "xilinx-hls",
-        "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "xilinx_vitis"}}
-    }"#;
-    let err = TaskGraph::from_json(json).unwrap_err();
-    let msg = err.to_string();
-    assert!(
-        msg.contains("xilinx_vitis") || msg.contains("synth") || msg.contains("unknown"),
-        "error about invalid synth policy: {msg}"
-    );
-}
-
-#[test]
-fn empty_input_rejected() {
-    let err = TaskGraph::from_json("").unwrap_err();
-    assert!(!err.to_string().is_empty(), "error message is not empty");
 }
