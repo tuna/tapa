@@ -6,8 +6,10 @@ use camino::Utf8Path;
 use serde::Deserialize;
 use tapa_protocol::M_AXI_PREFIX;
 
-use crate::error::{Result, XilinxError};
+use crate::error::Result;
 use crate::platform::kernel_xml::{KernelXmlPort, PortCategory};
+
+use super::slash_error;
 
 #[derive(Debug)]
 pub(super) struct PackageMetadata {
@@ -193,10 +195,6 @@ struct KernelArgument {
     port: String,
     #[serde(rename = "@type")]
     ctype: String,
-}
-
-fn slash_error(detail: impl Into<String>) -> XilinxError {
-    XilinxError::SlashLink(detail.into())
 }
 
 #[cfg(test)]

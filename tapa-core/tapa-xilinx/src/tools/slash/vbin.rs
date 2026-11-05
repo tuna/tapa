@@ -8,7 +8,9 @@ use flate2::Compression;
 use quick_xml::events::{BytesText, Event};
 use serde::Deserialize;
 
-use crate::error::{Result, XilinxError};
+use crate::error::Result;
+
+use super::slash_error;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SystemMap {
@@ -151,10 +153,6 @@ fn is_gzip(path: &Utf8Path) -> Result<bool> {
     let mut magic = [0_u8; 2];
     let count = file.read(&mut magic)?;
     Ok(count == magic.len() && magic == [0x1f, 0x8b])
-}
-
-fn slash_error(detail: impl Into<String>) -> XilinxError {
-    XilinxError::SlashLink(detail.into())
 }
 
 #[cfg(test)]
