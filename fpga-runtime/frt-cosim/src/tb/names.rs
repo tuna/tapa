@@ -29,8 +29,6 @@ pub fn cpp_identifier(name: &str) -> String {
     for ch in name.chars() {
         if ch.is_ascii_alphanumeric() || ch == '_' {
             out.push(ch);
-        } else if ch == '[' {
-            out.push('_');
         } else if ch == ']' {
             // skip closing bracket
         } else {
