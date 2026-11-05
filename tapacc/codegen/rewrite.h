@@ -1,6 +1,7 @@
 #ifndef TAPA_CODEGEN_REWRITE_H_
 #define TAPA_CODEGEN_REWRITE_H_
 
+#include <set>
 #include <string>
 
 #include "clang/AST/ASTContext.h"
@@ -30,9 +31,12 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
                       const Backends& backends, clang::ASTContext& ctx,
                       TreeSession& session);
 
-// Reports any lowered attribute text left in one final emitted file.
+// Reports any lowered attribute text left in one final emitted file. The
+// same file renders in every TU that sights it, so the same leak reaches
+// this scan once per TU; `reported` dedupes per file and spelling across
+// the run (the caller owns the set, one per pipeline run).
 void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
-                       clang::ASTContext& ctx);
+                       clang::ASTContext& ctx, std::set<std::string>& reported);
 
 }  // namespace tapa::cc
 

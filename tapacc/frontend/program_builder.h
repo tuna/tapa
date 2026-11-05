@@ -234,6 +234,9 @@ class ProgramBuilder {
   std::map<std::string, MergedTask> tasks_;
   std::vector<std::string> errors_;
   std::map<std::string, SynthTarget> task_targets_;
+  // Leaked-attribute spellings already reported this run ("file:name"), so a
+  // shared header's leak is diagnosed once no matter how many TUs render it.
+  std::set<std::string> reported_leaks_;
 };
 
 }  // namespace tapa::cc

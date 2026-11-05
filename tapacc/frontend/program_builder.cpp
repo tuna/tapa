@@ -859,7 +859,7 @@ void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
     return;
   }
   for (const auto& [path, buffer] : session.buffers()) {
-    ReportLeakedAttrs(buffer->Render(), path, ctx);
+    ReportLeakedAttrs(buffer->Render(), path, ctx, reported_leaks_);
   }
 }
 

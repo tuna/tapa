@@ -372,12 +372,10 @@ std::string BlankCommentsAndStrings(llvm::StringRef code) {
 }  // namespace
 
 void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
-                       clang::ASTContext& ctx) {
+                       clang::ASTContext& ctx,
+                       std::set<std::string>& reported) {
   const std::string scannable = BlankCommentsAndStrings(code);
   code = scannable;
-  // The same file renders in every TU that sights it, so the same leak
-  // reaches this scan once per TU; report it once per file and spelling.
-  static std::set<std::string> reported;
   constexpr llvm::StringLiteral kMarker("[[tapa::");
   for (size_t pos = code.find(kMarker); pos != llvm::StringRef::npos;
        pos = code.find(kMarker, pos + kMarker.size())) {
