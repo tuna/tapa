@@ -265,8 +265,7 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
       sighting.primary_key = KeyOf(mangler, pattern);
     }
   }
-  sighting.name =
-      sighting.is_spec ? MangledTaskName(mangler, def) : sighting.plain_name;
+  sighting.name = TaskName(mangler, def);
   sighting.readable_name = ReadableTaskName(ctx, def);
   sighting.task_shaped = GetTapaTaskObject(def->getBody()) != nullptr;
   sighting.ignored = IsIgnored(def);
