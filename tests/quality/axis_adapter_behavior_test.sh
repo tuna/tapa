@@ -20,17 +20,17 @@ resolve_runfile() {
   local path="$1"
   local workspace="${TEST_WORKSPACE:-_main}"
   local candidate
-  for candidate in \
-    "${RUNFILES_DIR:-}/${workspace}/${path}" \
-    "${RUNFILES_DIR:-}/_main/${path}" \
-    "${RUNFILES_DIR:-}/${path}" \
-    "$0.runfiles/${workspace}/${path}" \
-    "$0.runfiles/_main/${path}" \
-    "$0.runfiles/${path}"; do
-    if [[ -f "${candidate}" ]]; then
-      printf '%s\n' "${candidate}"
-      return 0
-    fi
+  local root
+  for root in "${RUNFILES_DIR:-}" "$0.runfiles"; do
+    for candidate in \
+      "${root}/${workspace}/${path}" \
+      "${root}/_main/${path}" \
+      "${root}/${path}"; do
+      if [[ -f "${candidate}" ]]; then
+        printf '%s\n' "${candidate}"
+        return 0
+      fi
+    done
   done
   if [[ -n "${RUNFILES_MANIFEST_FILE:-}" ]]; then
     for candidate in "${workspace}/${path}" "_main/${path}" "${path}"; do
