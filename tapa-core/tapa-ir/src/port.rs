@@ -59,11 +59,9 @@ pub enum ArgCategory {
     Istreams,
     Ostreams,
     Scalar,
-    #[strum(serialize = "mmap")]
     Mmap,
     Immap,
     Ommap,
-    #[strum(serialize = "async_mmap")]
     AsyncMmap,
 }
 
@@ -84,12 +82,7 @@ impl<'de> Deserialize<'de> for ArgCategory {
 impl ArgCategory {
     #[must_use]
     pub fn as_str(self) -> &'static str {
-        if self == Self::Mmap {
-            "mmap"
-        } else {
-            let s: &'static str = self.into();
-            s
-        }
+        self.into()
     }
 
     /// Whether this is an input (consumer) stream port.
