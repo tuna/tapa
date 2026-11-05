@@ -11,42 +11,10 @@
 #include "clang/Frontend/ASTUnit.h"
 #include "clang/Tooling/Tooling.h"
 
+#include "tapa_stub_decls.h"
+
 namespace tapa::cc {
 namespace {
-
-// Minimal stand-ins for the TAPA types so tests don't pull in the full
-// tapa-lib headers. Only the qualified record names matter to the classifier.
-constexpr char kTapaDecls[] = R"cpp(
-  namespace tapa {
-  template <typename T>
-  struct stream {};
-  template <typename T, int N>
-  struct streams {};
-  template <typename T>
-  struct istream {};
-  template <typename T>
-  struct ostream {};
-  template <typename T, int N>
-  struct istreams {};
-  template <typename T, int N>
-  struct ostreams {};
-  template <typename T>
-  struct mmap {};
-  template <typename T, int N>
-  struct mmaps {};
-  template <typename T>
-  struct async_mmap {};
-  template <typename T>
-  struct immap {};
-  template <typename T>
-  struct ommap {};
-  template <typename T, int N, int S>
-  struct hmap {};
-  struct task {};
-  struct seq {};
-  struct executable {};
-  }  // namespace tapa
-)cpp";
 
 // Grab the first parameter of a function named `probe`.
 class ProbeParamFinder : public clang::RecursiveASTVisitor<ProbeParamFinder> {
@@ -61,7 +29,7 @@ class ProbeParamFinder : public clang::RecursiveASTVisitor<ProbeParamFinder> {
 };
 
 TapaKind ClassifyFirstParam(const std::string& decl) {
-  const std::string code = std::string(kTapaDecls) + "\n" + decl + "\n";
+  const std::string code = std::string(kTapaStubDecls) + "\n" + decl + "\n";
   auto ast = clang::tooling::buildASTFromCodeWithArgs(
       code, std::vector<std::string>{"-std=c++17"});
   EXPECT_NE(ast, nullptr);

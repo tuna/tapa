@@ -264,6 +264,7 @@ cc_test(
     copts = TAPACC_COPTS,
     deps = [
         ":classify",
+        ":tapa_stub_decls",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
         CLANG_TOOLING,
