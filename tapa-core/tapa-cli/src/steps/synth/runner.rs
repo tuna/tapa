@@ -97,7 +97,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         _ => None,
     };
     // HLS and codegen see the PL half only; the state keeps the whole graph.
-    let pl_graph = crate::aie::pl_graph(&state.graph)?;
+    let mut pl_graph = crate::aie::pl_graph(&state.graph)?;
     let sources = stage_hls_sources(&ctx.work_dir, &pl_graph)?;
 
     let opts = HlsRunOptions {
@@ -127,11 +127,20 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         files.dedup();
         hdl_inputs.insert(task_name.clone(), files);
 
-        if let Some(task) = state.graph.tasks.get_mut(task_name) {
+        if let Some(task) = pl_graph.tasks.get_mut(task_name) {
             apply_hls_metrics(task_name, task, &out.csynth)?;
         }
     }
-    let mut pl_graph = crate::aie::pl_graph(&state.graph)?;
+    // Fold the HLS annotations from the PL projection back into the
+    // whole graph the state persists; nothing else mutates `state.graph`
+    // in between, so one copy-back pass replaces re-deriving `pl_graph`.
+    for (name, task) in &pl_graph.tasks {
+        if let Some(original) = state.graph.tasks.get_mut(name) {
+            original.clock_period = task.clock_period;
+            original.self_area = task.self_area;
+            original.total_area = task.total_area;
+        }
+    }
     let projection = state
         .flow
         .flatten_hierarchy
