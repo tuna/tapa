@@ -3,6 +3,9 @@
 // The no-op logging macros used by every target that has no glog: the Xilinx
 // HLS device target and the parse-only stub. Both used to carry byte-identical
 // copies of this list, which had to be kept in step by hand.
+//
+// The macro set deliberately mirrors glog's full surface so that user kernels
+// calling any glog macro still compile under synthesis; do not trim it.
 
 #include "tapa/base/logging.h"
 
