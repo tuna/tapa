@@ -271,7 +271,7 @@ class mmaps {
   mmaps& operator=(const mmaps&) = default;
   mmaps& operator=(mmaps&&) = default;
 
-  mmap<T>& operator[](int idx) { return mmaps_[idx]; };
+  mmap<T>& operator[](int idx) { return mmaps_[idx]; }
 
   template <uint64_t offset, uint64_t length>
   mmaps<T, length> slice() {
@@ -349,8 +349,6 @@ class hmap : public mmap<T> {
 #define TAPA_DEFINE_TAGGED_MMAP(tag, kind)                        \
   template <typename T>                                           \
   class tag##_##kind : public kind<T> {                           \
-    tag##_##kind(T* ptr) : kind<T>(ptr) {}                        \
-                                                                  \
    public:                                                        \
     using kind<T>::kind;                                          \
     tag##_##kind(const kind<T>& base) : kind<T>(base) {}          \
@@ -379,23 +377,21 @@ TAPA_DEFINE_TAGGED_MMAP_FAMILY(ommap);
 #undef TAPA_DEFINE_TAGGED_MMAP
 
 // `mmaps` carries an extra size parameter, so it does not fit the macro above.
-#define TAPA_DEFINE_MMAPS(tag)                                        \
-  template <typename T, uint64_t S>                                   \
-  class tag##_mmaps : public mmaps<T, S> {                            \
-    tag##_mmaps(const std::array<T*, S>& ptrs) : mmaps<T, S>(ptrs){}; \
-                                                                      \
-   public:                                                            \
-    using mmaps<T, S>::mmaps;                                         \
-    tag##_mmaps(const mmaps<T, S>& base) : mmaps<T, S>(base) {}       \
-                                                                      \
-    template <uint64_t N>                                             \
-    tag##_mmaps<vec_t<T, N>, S> vectorized() const {                  \
-      return mmaps<T, S>::template vectorized<N>();                   \
-    }                                                                 \
-    template <typename U>                                             \
-    tag##_mmaps<U, S> reinterpret() const {                           \
-      return mmaps<T, S>::template reinterpret<U>();                  \
-    }                                                                 \
+#define TAPA_DEFINE_MMAPS(tag)                                  \
+  template <typename T, uint64_t S>                             \
+  class tag##_mmaps : public mmaps<T, S> {                      \
+   public:                                                      \
+    using mmaps<T, S>::mmaps;                                   \
+    tag##_mmaps(const mmaps<T, S>& base) : mmaps<T, S>(base) {} \
+                                                                \
+    template <uint64_t N>                                       \
+    tag##_mmaps<vec_t<T, N>, S> vectorized() const {            \
+      return mmaps<T, S>::template vectorized<N>();             \
+    }                                                           \
+    template <typename U>                                       \
+    tag##_mmaps<U, S> reinterpret() const {                     \
+      return mmaps<T, S>::template reinterpret<U>();            \
+    }                                                           \
   }
 TAPA_DEFINE_MMAPS(placeholder);
 TAPA_DEFINE_MMAPS(read_only);
