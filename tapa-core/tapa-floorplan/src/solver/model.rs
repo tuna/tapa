@@ -61,13 +61,6 @@ impl LinExpr {
         }
     }
 
-    /// Append one `coef·var` term.
-    #[must_use]
-    pub fn term(mut self, coef: f64, var: LpVar) -> Self {
-        self.terms.push((coef, var));
-        self
-    }
-
     /// Set the constant offset.
     #[must_use]
     pub fn plus_constant(mut self, constant: f64) -> Self {
