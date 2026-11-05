@@ -26,14 +26,10 @@ pub fn state_from_json(json: &str) -> WorkState {
     WorkState::new(TaskGraph::from_json(json).expect("parse fixture graph"))
 }
 
-/// A minimal context rooted at `work_dir`: no temp dir, no remote, no
-/// verbosity.
+/// A minimal context rooted at `work_dir`: no remote runner.
 pub fn ctx_at(work_dir: &Path) -> CliContext {
     CliContext {
         work_dir: work_dir.to_path_buf(),
-        temp_dir: None,
         remote_config: None,
-        verbose: 0,
-        quiet: 0,
     }
 }
