@@ -25,13 +25,6 @@ pub struct Cli {
 
 /// Global flags accepted before any subcommand.
 #[derive(Debug, Clone, Parser)]
-#[command(
-    name = "tapa",
-    about = "The TAPA compiler.",
-    version = VERSION,
-    disable_help_subcommand = true,
-    after_help = SUBCOMMAND_HELP,
-)]
 pub struct GlobalArgs {
     /// Increase logging verbosity.
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]
