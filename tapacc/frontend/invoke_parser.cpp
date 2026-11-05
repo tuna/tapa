@@ -536,9 +536,7 @@ void ValidateStreams(UpperTaskContext& uc) {
     }
     const bool produced = it->second.produced_by.has_value();
     const bool consumed = it->second.consumed_by.has_value();
-    const clang::SourceLocation loc = it->second.decl != nullptr
-                                          ? it->second.decl->getBeginLoc()
-                                          : clang::SourceLocation();
+    const clang::SourceLocation loc = it->second.decl->getBeginLoc();
     if (!produced && !consumed) {
       ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Warning, loc,
                        "stream '%0' is declared but never used")
