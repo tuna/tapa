@@ -56,11 +56,6 @@ pub struct AieKernelReport {
     /// Used program memory in bytes, from the `Used` count in this tile's
     /// 8-bit-wide PM linker-map section.
     pub program_bytes: u64,
-    /// Per-kernel data memory in bytes. The supported compiler reports do
-    /// not define this unambiguously, so this is currently always `None`;
-    /// stack, heap, stream buffers, and system memory are not substitutes.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub data_bytes: Option<u64>,
 }
 
 /// Read a graph report, excluding the reserved PL-control PLIO when present.
@@ -99,7 +94,6 @@ pub fn read_report_with_control(graph_dir: &Utf8Path, pl_control: bool) -> Resul
             AieKernelReport {
                 tile: kernel.tile,
                 program_bytes,
-                data_bytes: None,
             },
         );
     }
@@ -425,7 +419,6 @@ mod tests {
             AieKernelReport {
                 tile: AieTile { column: 23, row: 0 },
                 program_bytes: 0,
-                data_bytes: None,
             },
             "an explicit zero program size is preserved"
         );
@@ -434,10 +427,6 @@ mod tests {
             AieTile { column: 25, row: 1 }
         );
         assert_eq!(report.per_kernel["tapa_aie_Z_0"].program_bytes, 11668);
-        assert!(report
-            .per_kernel
-            .values()
-            .all(|kernel| kernel.data_bytes.is_none()));
     }
 
     #[test]

@@ -31,7 +31,6 @@
 //!     <full_adf_kernel_function_name>:
 //!       tile: { column: <n>, row: <n> }
 //!       program_bytes: <n>
-//!       data_bytes: <n>    # omitted when unknown
 //!   aiesim:                # folded in by `tapa aiesim --cycle-accurate`
 //!     streams:             # one entry per measured boundary FIFO
 //!       <fifo>:
@@ -615,7 +614,6 @@ mod tests {
                 AieKernelReport {
                     tile: AieTile { column: 23, row: 2 },
                     program_bytes: 4096,
-                    data_bytes: None,
                 },
             )]),
         };
@@ -632,7 +630,7 @@ mod tests {
     }
 
     #[test]
-    fn aie_json_has_widths_channels_and_optional_kernel_data_only_at_root() {
+    fn aie_json_has_widths_and_channels_only_at_root() {
         let dir = tempfile::tempdir().expect("tempdir");
         let design = Design {
             schema_version: tapa_ir::graph::SCHEMA_VERSION,
@@ -695,9 +693,6 @@ mod tests {
                 }
             })
         );
-        assert!(parsed["aie"]["per_kernel"]["tapa_aie_Add_0"]
-            .get("data_bytes")
-            .is_none());
         assert!(parsed["performance"]["critical_path"]["Add"]
             .get("aie")
             .is_none());

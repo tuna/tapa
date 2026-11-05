@@ -497,7 +497,6 @@ mod tests {
                 AieKernelReport {
                     tile: AieTile { column: 1, row: 0 },
                     program_bytes,
-                    data_bytes: None,
                 },
             )]),
         };

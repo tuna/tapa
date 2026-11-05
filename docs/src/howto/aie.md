@@ -239,8 +239,8 @@ tapa link --package vadd.xo -o vadd.xclbin
   After a successful hardware AI Engine build, `report.json` and `report.yaml`
   have a root-level `aie` block. It records `tiles_used`, a `plio_map` with each
   logical PLIO's direction, interface column, width and consumed 64-bit
-  channels, and `per_kernel` tile and program-memory usage (`data_bytes` is
-  omitted when unknown). PL-only builds and `--skip-aie` omit this block. For
+  channels, and `per_kernel` tile and program-memory usage. PL-only builds
+  and `--skip-aie` omit this block. For
   the supported AIE1 flow, synth also logs each occupied interface column's
   usage against 8 PL-to-AI Engine and 6 AI Engine-to-PL 64-bit channels; a
   128-bit PLIO consumes two channels. A mapping over either limit is an error.
