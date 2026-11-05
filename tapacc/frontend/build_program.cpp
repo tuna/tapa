@@ -67,17 +67,14 @@ bool IsInSourceFiles(const clang::ASTContext& ctx, clang::SourceLocation loc,
 std::vector<const clang::FunctionDecl*> CollectFileFuncs(
     const clang::ASTContext& ctx, const std::set<clang::FileID>& files) {
   FileFuncCollector collector(ctx, files);
-  // TraverseDecl mutates nothing but is non-const in the API.
-  collector.TraverseDecl(
-      const_cast<clang::ASTContext&>(ctx).getTranslationUnitDecl());
+  collector.TraverseDecl(ctx.getTranslationUnitDecl());
   return collector.funcs;
 }
 
 std::vector<const clang::FunctionDecl*> CollectLocalFuncs(
     const clang::ASTContext& ctx, const std::set<clang::FileID>& files) {
   LocalFuncCollector collector(ctx, files);
-  collector.TraverseDecl(
-      const_cast<clang::ASTContext&>(ctx).getTranslationUnitDecl());
+  collector.TraverseDecl(ctx.getTranslationUnitDecl());
   return collector.funcs;
 }
 
