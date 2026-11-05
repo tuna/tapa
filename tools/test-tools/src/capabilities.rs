@@ -9,10 +9,10 @@ use serde_json::{Map, Value as JsonValue};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 use tempfile::TempDir;
 
-use crate::common::{read_json, require_file, workspace_path, Result};
+use crate::common::{read_json, require_file, run_analyze, workspace_path, Result, VADD_TASKS};
 
 /// Manifest location, relative to the workspace root.
 const MANIFEST: &str = "tests/functional/multi-file/testdata/capabilities.json";
@@ -145,7 +145,7 @@ fn probe_sanity_vadd_analyze(env: &Env) -> Result<ProbeOutcome> {
             let graph = read_graph(work_dir.path())?;
             let mut actual = task_names(&graph)?;
             actual.sort_unstable();
-            let mut expected = ["VecAdd", "Mmap2Stream", "Add", "Stream2Mmap"];
+            let mut expected = VADD_TASKS.to_vec();
             expected.sort_unstable();
             if actual == expected {
                 Ok(ProbeOutcome::Pass)
@@ -322,23 +322,7 @@ fn tapa_analyze(
     for input in inputs {
         require_file(input)?;
     }
-    let work_dir = TempDir::with_prefix("tapa-capabilities-")
-        .map_err(|error| format!("failed to create temp dir: {error}"))?;
-    let mut command = Command::new(env.tapa);
-    command
-        .arg("--work-dir")
-        .arg(work_dir.path())
-        .arg("analyze");
-    for input in inputs {
-        command.arg("--input").arg(input);
-    }
-    command.arg("--top").arg(top);
-    for flag in cflags {
-        command.arg("--cflags").arg(flag);
-    }
-    let output = command
-        .output()
-        .map_err(|error| format!("failed to run {}: {error}", env.tapa.display()))?;
+    let (work_dir, output) = run_analyze(env.tapa, "tapa-capabilities-", top, inputs, cflags)?;
     if !output.status.success() {
         return Ok(AnalyzeOutcome::Failure(one_line_reason(&output)));
     }

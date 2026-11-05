@@ -1,10 +1,10 @@
 use serde_json::Value as JsonValue;
 use std::env;
 use std::path::Path;
-use std::process::Command;
-use tempfile::TempDir;
 
-use crate::common::{read_json, require_dir, require_file, workspace_path, Result};
+use crate::common::{
+    read_json, require_dir, require_file, run_analyze, workspace_path, Result, VADD_TASKS,
+};
 
 const VALID_PORT_CATS: &[&str] = &[
     "istream", "istreams", "ostream", "ostreams", "mmap", "scalar",
@@ -29,7 +29,7 @@ const ANALYZE_APPS: &[AnalyzeApp] = &[
         name: "vadd",
         sources: &["tests/apps/vadd/vadd.cpp"],
         top: "VecAdd",
-        expected_tasks: &["VecAdd", "Mmap2Stream", "Add", "Stream2Mmap"],
+        expected_tasks: VADD_TASKS,
         requires_vendor: false,
         extra_cflags: &[],
     },
@@ -125,38 +125,29 @@ fn run_analyze_app(app: &AnalyzeApp, tapa: &Path, tapa_lib: &Path) -> Result<()>
     for source in &sources {
         require_file(source)?;
     }
-    let work_dir = TempDir::with_prefix(format!("tapa-analyze-{}-", app.name))
-        .map_err(|error| format!("failed to create temp dir: {error}"))?;
     let source_dir = sources
         .first()
         .and_then(|source| source.parent())
         .ok_or_else(|| format!("{}: source has no parent", app.name))?;
 
-    let mut command = Command::new(tapa);
-    command
-        .arg("--work-dir")
-        .arg(work_dir.path())
-        .arg("analyze");
-    for source in &sources {
-        command.arg("--input").arg(source);
-    }
-    command
-        .arg("--top")
-        .arg(app.top)
-        .arg("--cflags")
-        .arg(format!("-I{}", source_dir.display()))
-        .arg("--cflags")
-        .arg(format!("-I{}", tapa_lib.display()));
+    let mut cflags = vec![
+        format!("-I{}", source_dir.display()),
+        format!("-I{}", tapa_lib.display()),
+    ];
     for flag in app.extra_cflags {
         let value = match flag.strip_prefix("-I") {
             Some(dir) => format!("-I{}", workspace_path(dir).display()),
             None => (*flag).to_string(),
         };
-        command.arg("--cflags").arg(value);
+        cflags.push(value);
     }
-    let output = command
-        .output()
-        .map_err(|error| format!("failed to run {}: {error}", tapa.display()))?;
+    let (work_dir, output) = run_analyze(
+        tapa,
+        &format!("tapa-analyze-{}-", app.name),
+        app.top,
+        &sources,
+        &cflags,
+    )?;
 
     if !output.status.success() {
         return Err(format!(

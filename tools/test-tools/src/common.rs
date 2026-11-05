@@ -3,9 +3,14 @@ use std::env;
 use std::ffi::OsString;
 use std::fs::{self, File};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use tempfile::TempDir;
 use zip::ZipArchive;
 
 pub type Result<T> = std::result::Result<T, String>;
+
+/// The four tasks of the vadd design's task graph.
+pub const VADD_TASKS: &[&str] = &["VecAdd", "Mmap2Stream", "Add", "Stream2Mmap"];
 
 pub fn arg_str<'a>(args: &'a [OsString], index: usize, usage: &str) -> Result<&'a str> {
     args.get(index)
@@ -64,4 +69,33 @@ pub fn archive_text(archive: &mut ZipArchive<File>, name: &str) -> Result<String
     std::io::Read::read_to_string(&mut file, &mut contents)
         .map_err(|error| format!("failed to read {name}: {error}"))?;
     Ok(contents)
+}
+
+/// Run `tapa analyze` in a fresh temp work dir and hand back the work dir
+/// and process output; the caller owns the exit-status policy.
+pub fn run_analyze(
+    tapa: &Path,
+    work_dir_prefix: &str,
+    top: &str,
+    inputs: &[PathBuf],
+    cflags: &[String],
+) -> Result<(TempDir, Output)> {
+    let work_dir = TempDir::with_prefix(work_dir_prefix)
+        .map_err(|error| format!("failed to create temp dir: {error}"))?;
+    let mut command = Command::new(tapa);
+    command
+        .arg("--work-dir")
+        .arg(work_dir.path())
+        .arg("analyze");
+    for input in inputs {
+        command.arg("--input").arg(input);
+    }
+    command.arg("--top").arg(top);
+    for flag in cflags {
+        command.arg("--cflags").arg(flag);
+    }
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to run {}: {error}", tapa.display()))?;
+    Ok((work_dir, output))
 }
