@@ -166,7 +166,7 @@ impl Drop for SimProcess {
     }
 }
 
-pub(crate) struct SimDevice {
+pub struct SimDevice {
     transport: Box<dyn FrameTransport>,
     process: Option<SimProcess>,
     // Own the archive and its TempDir until after the process and transport
@@ -267,7 +267,7 @@ fn endpoint(vbin: &Vbin) -> Result<String> {
 }
 
 impl SimDevice {
-    pub(crate) fn open(vbin: Vbin) -> Result<Self> {
+    pub fn open(vbin: Vbin) -> Result<Self> {
         let executable = validated_vpp_sim(&vbin)?;
         let endpoint = endpoint(&vbin)?;
         // Load/connect libzmq before creating a child. If spawning then fails,
