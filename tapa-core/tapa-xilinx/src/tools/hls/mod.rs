@@ -45,13 +45,6 @@ pub struct HlsJob {
     /// Solution name; defaults to the task name when empty.
     #[builder(default)]
     pub solution_name: String,
-    /// Reset level for `config_rtl`; defaults to `low`.
-    #[builder(default = true)]
-    pub reset_low: bool,
-    /// Enable `-module_auto_prefix` on the `config_rtl` line. Defaults
-    /// to `true`.
-    #[builder(default = true)]
-    pub auto_prefix: bool,
 }
 
 impl HlsJob {
@@ -75,20 +68,6 @@ pub struct HlsOutput {
     pub report_paths: Vec<Utf8PathBuf>,
     pub stdout: String,
     pub stderr: String,
-}
-
-/// Build the `config_rtl` line selecting the reset level, with the
-/// optional `-module_auto_prefix`.
-fn build_rtl_config(reset_low: bool, auto_prefix: bool) -> String {
-    let mut line = format!(
-        "config_rtl -reset_level {}",
-        if reset_low { "low" } else { "high" }
-    );
-    if auto_prefix {
-        // Vitis HLS accepts `-module_auto_prefix` here.
-        line.push_str(" -module_auto_prefix");
-    }
-    line
 }
 
 /// Collect every `-I<dir>` / `-isystem<dir>` destination from the
@@ -194,14 +173,13 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     } else {
         format!("{}\n", job.other_configs)
     };
-    let rtl = build_rtl_config(job.reset_low, job.auto_prefix);
     askama::Template::render(&Template {
         top: &job.top_name,
         solution: solution_name(job),
         part: &job.target_part,
         clock: &job.clock_period,
         other: &other,
-        rtl: &rtl,
+        rtl: "config_rtl -reset_level low -module_auto_prefix",
     })
     .map_err(|e| XilinxError::Template(e.to_string()))
 }
