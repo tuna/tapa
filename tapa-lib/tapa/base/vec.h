@@ -325,13 +325,11 @@ inline vec_t<T, N1 + N2> cat(const vec_t<T, N1>& v1, const vec_t<T, N2>& v2) {
   return result;
 }
 
-#if __cplusplus >= 201402L
 template <typename T, typename... Args>
 inline auto cat(T arg, Args... args) {
   TAPA_VEC_INLINE;
   return cat(arg, cat(args...));
 }
-#endif  // __cplusplus >= 201402L
 
 namespace internal {
 
