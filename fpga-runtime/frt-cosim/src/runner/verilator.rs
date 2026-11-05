@@ -10,10 +10,8 @@ use std::process::Command;
 use std::sync::LazyLock;
 use which::which;
 
-/// Acquire an exclusive `flock`-based lock on the given path.
-///
-/// Creates the file (and parent directories) if they don't exist.
-/// Returns the open `File` whose lifetime holds the lock.
+/// Creates the file (and parent directories) if needed; the returned open
+/// `File` holds the exclusive `flock` lock for its lifetime.
 #[cfg(unix)]
 fn acquire_exclusive_lock(lock_path: &Path) -> Result<std::fs::File> {
     if let Some(parent) = lock_path.parent() {

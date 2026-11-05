@@ -46,7 +46,6 @@ fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
     }
 }
 
-/// Read all Verilog file contents for peek-port detection and similar scans.
 pub(crate) fn read_verilog_contents(spec: &KernelSpec) -> Vec<String> {
     spec.verilog_files
         .iter()
@@ -153,7 +152,6 @@ pub(crate) fn port_declaration(verilog_contents: &[String], port: &str) -> Optio
 /// mmaps, scalars, input streams, output streams.
 pub(crate) type ClassifiedArgs = (Vec<MmapArg>, Vec<ScalarArg>, Vec<StreamArg>, Vec<StreamArg>);
 
-/// Classify spec args into four groups by applying backend-specific constructors.
 #[allow(
     clippy::implicit_hasher,
     reason = "generic hasher adds no value for internal helper"
