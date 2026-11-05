@@ -46,8 +46,8 @@ impl TopologyWithRtl {
     /// Catalog child M-AXI interfaces connected directly to ports of
     /// `task_name`.
     ///
-    /// The first floorplanned implementation intentionally accepts only the
-    /// Shared mmap and hmap interfaces are rejected. A FIFO-style async mmap
+    /// The first floorplanned implementation intentionally accepts only
+    /// shared mmap; hmap interfaces are rejected. A FIFO-style async mmap
     /// is represented by its generated bridge and only the AXI directions
     /// that survive conservative RTL tie-off analysis.
     pub fn direct_mmap_interfaces(

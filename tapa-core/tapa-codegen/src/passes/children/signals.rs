@@ -329,7 +329,7 @@ fn pipeline_wire_names(inst_name: &str, port_name: &str, is_mmap: bool) -> (Stri
 /// - FSM module gets an input port for the parent arg and an output port for the pipeline signal
 /// - Parent module gets a wire for the pipeline output
 /// - The FSM module uses a registered pipeline (always @(posedge clk)) to
-///   delay the signal by one cycle, matching `add_pipeline` behavior
+///   delay the signal by one cycle, via `add_pipeline_stage` below
 fn declare_instance_pipeline_signals(
     stage: &mut ChildStageCtx<'_, '_>,
     child_name: &str,
