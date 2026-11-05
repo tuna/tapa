@@ -87,8 +87,8 @@ impl<'a> ModuleTable<'a> {
     }
 
     /// Attach (or replace) the module attached to `task_name`.
-    pub fn insert(&mut self, task_name: String, module: MutableModule) -> Option<MutableModule> {
-        self.map.insert(task_name, module)
+    pub fn insert(&mut self, task_name: String, module: MutableModule) {
+        self.map.insert(task_name, module);
     }
 
     /// Iterate all attached modules in key order.
@@ -176,12 +176,12 @@ impl<'a> OutputSet<'a> {
     }
 
     /// Insert a generated auxiliary RTL file.
-    pub fn insert_generated(&mut self, path: String, rtl: String) -> Option<String> {
-        self.generated_files.insert(path, rtl)
+    pub fn insert_generated(&mut self, path: String, rtl: String) {
+        self.generated_files.insert(path, rtl);
     }
 
     /// Insert a port-only custom RTL template.
-    pub fn insert_template(&mut self, path: String, template: String) -> Option<String> {
-        self.template_files.insert(path, template)
+    pub fn insert_template(&mut self, path: String, template: String) {
+        self.template_files.insert(path, template);
     }
 }
