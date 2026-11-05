@@ -38,7 +38,7 @@ use vitis_packaging::{pack_slash, pack_vitis};
     about = "Pack the generated RTL into a Xilinx object file."
 )]
 pub struct PackArgs {
-    /// Output `.xo` (Vitis target) or `.zip` (HLS target).
+    /// Output `.xo` (Vitis target) or `.zip` (HLS and SLASH targets).
     #[arg(short = 'o', long = "output", value_name = "FILE")]
     pub output: Option<PathBuf>,
 
