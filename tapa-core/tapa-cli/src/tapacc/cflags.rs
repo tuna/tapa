@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::tapacc::discover::find_resource;
+use crate::tapacc::discover::{find_resource, search_anchor};
 
 /// Base TAPA include flags plus warning suppressions. Order is
 /// significant so vendor headers cascade correctly through `tapacc`.
@@ -140,11 +140,7 @@ pub fn get_tapa_ldflags() -> Vec<String> {
 /// (gflags, glog, boost). Outside of Bazel, no `tapa.runfiles` exists
 /// and the helper returns an empty vector.
 fn find_external_lib_in_runfiles() -> Vec<PathBuf> {
-    let anchor = std::env::var_os("TAPA_CLI_SEARCH_ANCHOR")
-        .map(PathBuf::from)
-        .or_else(|| std::env::current_exe().ok())
-        .unwrap_or_else(|| PathBuf::from("."));
-
+    let anchor = search_anchor();
     let mut cursor: Option<&Path> = Some(anchor.as_path());
     while let Some(parent) = cursor {
         let candidate = parent.join("tapa.runfiles");

@@ -43,7 +43,7 @@ static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
 
 /// Override the search anchor for tests: when the override is set, we
 /// walk its parents instead of the binary's parents.
-fn search_anchor() -> PathBuf {
+pub(crate) fn search_anchor() -> PathBuf {
     static OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
     OVERRIDE
         .get_or_init(|| std::env::var_os("TAPA_CLI_SEARCH_ANCHOR").map(PathBuf::from))
