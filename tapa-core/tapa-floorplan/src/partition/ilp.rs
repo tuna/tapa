@@ -228,7 +228,6 @@ fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> Placemen
         .collect();
     PlacementConstraints {
         max_resource_limits,
-        ..PlacementConstraints::default()
     }
 }
 

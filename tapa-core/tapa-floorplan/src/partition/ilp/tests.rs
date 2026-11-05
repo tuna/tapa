@@ -1508,7 +1508,6 @@ fn invalid_usage_limit_is_rejected_before_model_building() {
                 Coor::slot(0, 0).region_name(),
                 BTreeMap::from([(Resource::Lut, 0.0)]),
             )]),
-            ..PlacementConstraints::default()
         },
         ..PlacementConfig::default()
     };
