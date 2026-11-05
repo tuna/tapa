@@ -607,14 +607,14 @@ struct accessor<hmap<T, chan_count, chan_size>&&, Arg> {
 // variants.
 template <typename T>
 struct accessor<mmap<T>, mmap<T>> {
-  static_assert(!std::is_same<T, T>::value,
+  static_assert(dependent_false<T>(),
                 "must use one of "
                 "placeholder_mmap/read_only_mmap/write_only_mmap/"
                 "read_write_mmap in tapa::invoke");
 };
-template <typename T, int64_t S>
+template <typename T, uint64_t S>
 struct accessor<mmaps<T, S>, mmaps<T, S>> {
-  static_assert(!std::is_same<T, T>::value,
+  static_assert(dependent_false<T>(),
                 "must use one of "
                 "placeholder_mmaps/read_only_mmaps/write_only_mmaps/"
                 "read_write_mmaps in tapa::invoke");
