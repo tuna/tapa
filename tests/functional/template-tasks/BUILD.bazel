@@ -71,5 +71,4 @@ tapa_xo(
     include = ["."],
     target = "xilinx-hls",
     top_name = "VecAdd",
-    visibility = ["//tests/functional:__subpackages__"],
 )

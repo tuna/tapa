@@ -50,7 +50,6 @@ cc_binary(
     srcs = glob([
         "*.cpp",
     ]),
-    visibility = ["//tests/functional:__subpackages__"],
     deps = [
         "//tapa-lib:tapa-host",
         "@gflags",

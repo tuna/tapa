@@ -43,5 +43,4 @@ tapa_xo(
     hdrs = ["vadd.h"],
     include = ["."],
     top_name = "VecAdd",
-    visibility = ["//tests/functional:__subpackages__"],
 )
