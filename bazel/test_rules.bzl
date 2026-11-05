@@ -15,10 +15,6 @@ load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
 _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
 
-# Must name the same device as XILINX_PART_NUM, which is what the `.xo` these
-# targets link was synthesized for. See the note in VARS.bzl.
-_HW_EMU_PLATFORM = XILINX_HW_EMU_PLATFORM
-
 # No vendor include path: host CPU simulation must be self-contained, which
 # is what proves the vendor-agnostic migration actually landed.
 _HOST_DEPS = [
@@ -48,10 +44,7 @@ def tapa_app_test(
     `<name>-host` cc_binary; `<name>-xo` and `<name>-zip` tapa_xo targets;
     and a `<name>-hw-emu-xclbin` vpp_xclbin target.
 
-    Each simulation target is named for what it simulates. `-xosim` and
-    `-hw-emu` were swapped until 2026-08, which read as cosim having been
-    dropped: the XRT-gated target wore the `-xosim` name, so a host without
-    XRT skipped what looked like the `.xo` tier.
+    Each simulation target is named for what it simulates.
 
     Args:
         name: App name; also the basename of the `<name>.cpp` kernel source.
@@ -129,7 +122,7 @@ def tapa_app_test(
 
     # Vitis hardware emulation: the linked `.xclbin` under XRT, kernel plus
     # platform shell. Needs XRT and a platform v++ will still accept, so it
-    # is gated -- see the HAS_XRT note in VARS.local.bzl.
+    # is gated on HAS_XRT.
     sh_test(
         name = "%s-hw-emu" % name,
         size = "enormous",
@@ -195,7 +188,10 @@ def tapa_app_test(
 
     vpp_xclbin(
         name = "%s-hw-emu-xclbin" % name,
-        platform_name = _HW_EMU_PLATFORM,
+        # Must name the same device as XILINX_PART_NUM, which is what the
+        # `.xo` these targets link was synthesized for. See the note in
+        # VARS.bzl.
+        platform_name = XILINX_HW_EMU_PLATFORM,
         target = "hw_emu",
         target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
         top_name = top_name,
