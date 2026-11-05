@@ -96,8 +96,8 @@ struct StreamDecl {
 };
 
 // The typed model of one TAPA task. Built by the frontend with no source
-// rewriting; consumed by codegen and (later) the JSON serializer. Every field
-// is computed once here, so level/target/name are never recomputed downstream.
+// rewriting; consumed by codegen and the JSON serializer. Every field is
+// computed once here, so level/target/name are never recomputed downstream.
 struct TaskModel {
   const clang::FunctionDecl* def = nullptr;  // the definition
   // The function whose body instantiates this task; the mangled wrapper for a
