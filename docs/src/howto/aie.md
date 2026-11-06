@@ -53,11 +53,11 @@ cannot be run through XRT.)
 | `mmap`, `async_mmap`, `mmaps`, `hmap` | No. Read memory in a PL task and stream the data in. |
 | Scalars | Yes. |
 | Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body declares. The stack must fit in the tile's 32 KB data memory. |
-| `[[tapa::pipeline]]` | Lowered to `chess_prepare_for_pipelining`; every nested loop is flattened automatically, as in HLS nested-loop pipelining. |
-| `[[tapa::unroll]]` | Lowered to `chess_flatten_loop` when full and `chess_unroll_loop(k)` with a factor. |
+| `[[tapa::pipeline]]` on a loop | Lowered to `chess_prepare_for_pipelining`. Every loop nested in it is fully unrolled, as HLS does when it pipelines a loop; `[[tapa::unroll(k)]]` on a nested loop unrolls it `k` times instead. On a function it is ignored with a remark: put it on the loop. |
+| `[[tapa::unroll]]` | Lowered to `chess_flatten_loop`, the AI Engine compiler's full unroll, when full and `chess_unroll_loop(k)` with a factor. |
 | `tapa::wait()`, `tapa::reg()` | Accepted. As in software simulation, `wait` does nothing and `reg` returns its argument: the core has no PL clock cycle to yield. |
 | `[[tapa::tripcount(min, max)]]` on a loop | Lowered to `chess_loop_range(min, max)`. HLS only reports the range, but the AI Engine compiler optimizes on it: a loop that runs fewer than `min` or more than `max` times is undefined behavior on the AI Engine. |
-| HLS-only attributes such as `partition` and `dependence` | Ignored with a remark; they still affect the PL build. |
+| HLS-only attributes such as `partition`, `dependence` and `flatten` | Ignored with a remark; they still affect the PL build. The AI Engine compiler does not merge loop nests, so `flatten` has nothing to control there. |
 
 A PL task must not `close()` a stream that feeds an AI Engine task, because
 the end-of-transmission token would be read as data.
@@ -90,7 +90,7 @@ These habits decide AI Engine performance:
 - Use a 32-bit loop counter and `[[tapa::pipeline]]` on the hot loop. A 64-bit
   counter keeps the loop from being software-pipelined. Pipeline the loops
   that fill and drain local arrays too, so that a short loop nested in them,
-  such as one over the parts of a vector, is flattened as well.
+  such as one over the parts of a vector, is unrolled as well.
 - Accumulate into a local `vec_t` variable, not an array element. The AI
   Engine compiler keeps an array in memory, so each multiply-accumulate would
   wait on a load and a store.

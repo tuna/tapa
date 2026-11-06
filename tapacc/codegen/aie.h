@@ -21,7 +21,7 @@ class AieBackend final : public Backend {
   }
   void LowerPipeline(int ii, const std::string& style, const clang::Stmt* body,
                      EditSink& edits) const override;
-  // A function-level pipeline has no chess form.
+  // A function-level pipeline has no chess form, so it is ignored.
   void LowerFuncPipeline(int, const std::string&, const clang::Stmt* body,
                          EditSink& edits) const override;
   void LowerUnroll(int factor, const clang::Stmt* body,

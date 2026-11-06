@@ -105,7 +105,7 @@ TEST(AieTest, LeafFrameReachesTheGraphAndItsOwnVariant) {
       << "no HLS interface pragmas in the AI Engine variant: " << full;
 }
 
-TEST(AieTest, PipelineFlattensNestedLoops) {
+TEST(AieTest, PipelineUnrollsNestedLoops) {
   const TreePipelineRun automatic = Analyze(
       "nested_pipeline", Design(R"cpp(
         [[tapa::target("aie")]]
@@ -138,6 +138,21 @@ TEST(AieTest, PipelineFlattensNestedLoops) {
       CountOccurrences(explicit_unroll.files.at("nested_explicit_unroll.cpp"),
                        "chess_flatten_loop"),
       1);
+
+  // A function-level pipeline has no chess form: ignored, like other
+  // HLS-only attributes, so a portable source still builds.
+  const TreePipelineRun function_level = Analyze(
+      "function_pipeline", Design(R"cpp(
+        [[tapa::target("aie")]] [[tapa::pipeline]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          for (int i = 0; i < n; ++i) c.write(a.read());
+        }
+      )cpp"));
+  ASSERT_TRUE(function_level.ok)
+      << (function_level.diags.empty() ? "" : function_level.diags.front());
+  EXPECT_EQ(function_level.files.at("function_pipeline.cpp")
+                .find("chess_prepare_for_pipelining"),
+            std::string::npos);
 }
 
 TEST(AieTest, PlOnlyAttrsAreIgnoredWithoutChangingThePlVariant) {
@@ -269,12 +284,6 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
            c.write(a.peek(nullptr));
          })cpp",
        "blocking and expose no occupancy"},
-      {"function_pipeline", R"cpp(
-         [[tapa::target("aie")]] [[tapa::pipeline]]
-         void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
-           for (int i = 0; i < n; ++i) c.write(a.read());
-         })cpp",
-       "function-level [[tapa::pipeline]] has no AI Engine lowering"},
       {"narrow", R"cpp(
          [[tapa::target("aie")]]
          void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n,

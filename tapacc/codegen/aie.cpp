@@ -58,19 +58,19 @@ bool HasUnrollAttr(const clang::Stmt* stmt) {
   return false;
 }
 
-void FlattenNestedLoops(const clang::Stmt* stmt, EditSink& edits) {
+void UnrollNestedLoops(const clang::Stmt* stmt, EditSink& edits) {
   for (const clang::Stmt* child : stmt->children()) {
     if (child == nullptr) continue;
     if (HasUnrollAttr(child)) {
       const clang::Stmt* body =
           LoopBody(clang::cast<clang::AttributedStmt>(child)->getSubStmt());
-      if (body != nullptr) FlattenNestedLoops(body, edits);
+      if (body != nullptr) UnrollNestedLoops(body, edits);
       continue;
     }
     if (const clang::Stmt* body = LoopBody(child)) {
       edits.InsertTextBefore(body->getBeginLoc(), "chess_flatten_loop ");
     }
-    FlattenNestedLoops(child, edits);
+    UnrollNestedLoops(child, edits);
   }
 }
 
@@ -79,9 +79,9 @@ void FlattenNestedLoops(const clang::Stmt* stmt, EditSink& edits) {
 void AieBackend::LowerPipeline(int /*ii*/, const std::string& /*style*/,
                                const clang::Stmt* body, EditSink& edits) const {
   // Match HLS nested-loop pipelining: the outer loop is pipelined and every
-  // inner loop is flattened, without requiring an explicit unroll attribute.
+  // inner loop without an unroll attribute is fully unrolled.
   if (body != nullptr) {
-    FlattenNestedLoops(body, edits);
+    UnrollNestedLoops(body, edits);
     edits.InsertTextBefore(body->getBeginLoc(),
                            "chess_prepare_for_pipelining ");
   }
@@ -119,10 +119,10 @@ void AieBackend::LowerFuncPipeline(int, const std::string&,
                                    const clang::Stmt* body,
                                    EditSink& edits) const {
   if (body != nullptr) {
-    ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Error,
+    ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Remark,
                      body->getBeginLoc(),
-                     "function-level [[tapa::pipeline]] has no AI Engine "
-                     "lowering; put it on the loop");
+                     "function-level [[tapa::pipeline]] is ignored for the AI "
+                     "Engine; put it on the loop to pipeline the loop there");
   }
 }
 
@@ -137,6 +137,16 @@ void AieBackend::LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
                            "chess_loop_range(" +
                                std::to_string(tripcount->getMin()) + ", " +
                                std::to_string(tripcount->getMax()) + ") ");
+    return;
+  }
+  // chess has no loop-nest merge, and its automatic step is the unroll that
+  // LowerPipeline adds, which `unroll(k)` controls.
+  if (attr.getKind() == clang::attr::TapaFlatten) {
+    ReportCustomDiag(edits.getASTContext(), clang::DiagnosticsEngine::Remark,
+                     attr.getRange().getBegin(),
+                     "[[tapa::flatten]] is ignored for the AI Engine; a loop "
+                     "nested in a pipelined loop is fully unrolled there "
+                     "unless it carries [[tapa::unroll(k)]]");
     return;
   }
   ReportUnsupportedAttr(attr, edits);
