@@ -333,6 +333,50 @@ pub extern "C" fn frt_instance_host_stream(
     c_int::try_from(stream.index).unwrap_or(-1)
 }
 
+/// The number of upper task instances the instance was built with inlined,
+/// which [`frt_instance_inlined`] enumerates; -1 on an invalid handle.
+#[no_mangle]
+pub extern "C" fn frt_instance_inlined_count(handle: *const std::ffi::c_void) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    c_int::try_from(h.device.inlined_instances().len()).unwrap_or(-1)
+}
+
+/// The `nth` upper task instance the instance was built with inlined, as
+/// its position among its parent's invokes.
+///
+/// The NUL-terminated name of the inlined instance that invokes it (empty
+/// for the top) goes to `parent_out`, and its own to `name_out`, each
+/// truncated to its length. Returns -1 when `nth` is out of range or the
+/// handle is invalid.
+#[no_mangle]
+pub extern "C" fn frt_instance_inlined(
+    handle: *const std::ffi::c_void,
+    nth: u32,
+    parent_out: *mut c_char,
+    parent_len: usize,
+    name_out: *mut c_char,
+    name_len: usize,
+) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    let inlined = h.device.inlined_instances();
+    let Some(instance) = inlined.get(nth as usize) else {
+        set_last_error(format!(
+            "inlined instance {nth} out of range ({} declared)",
+            inlined.len()
+        ));
+        return -1;
+    };
+    write_c_string(parent_out, parent_len, &instance.parent);
+    write_c_string(name_out, name_len, &instance.name);
+    c_int::try_from(instance.position).unwrap_or(-1)
+}
+
 /// How the instance meets the host's software tasks when it runs only the
 /// design's AI Engine graph: 1 relays every stream live, so the host runs
 /// only the tasks off the graph's side and closes each stream the instance

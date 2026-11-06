@@ -1,0 +1,32 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aie_sim_test")
+
+cc_binary(
+    name = "aie-mixed-host",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+sh_test(
+    name = "aie-mixed",
+    size = "small",
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(rootpath :aie-mixed-host)"],
+    data = [":aie-mixed-host"],
+)
+
+# A PL <-> AI Engine stream inside an upper task the partition inlines: the
+# host must run that task's body and name its stream as the graph does.
+aie_sim_test(
+    name = "aie-mixed-x86sim",
+    host = ":aie-mixed-host",
+    kernel = "mixed",
+    top_name = "Mixed",
+)

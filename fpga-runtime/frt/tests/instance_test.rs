@@ -641,6 +641,7 @@ fn cosim_aligned_narrow_incr_bursts_use_requested_bytes_and_bus_lanes() {
         tcl_files: vec![],
         xci_files: vec![],
         scalar_register_map: HashMap::new(),
+        inlined: Vec::new(),
     };
     let initial = [0x1122_3344_u32, 0x5566_7788, 0x99aa_bbcc]
         .into_iter()

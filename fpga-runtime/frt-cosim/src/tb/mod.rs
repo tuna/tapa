@@ -575,6 +575,7 @@ mod tests {
             tcl_files: vec![],
             xci_files: vec![],
             scalar_register_map: register_map,
+            inlined: Vec::new(),
         }
     }
 

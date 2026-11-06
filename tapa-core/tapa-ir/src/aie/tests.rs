@@ -334,6 +334,38 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
 
     let err = AiePartition::derive(&vadd_below(1)).expect_err("sequential mixed upper");
     assert!(err.0.contains("invoked sequentially (step 1)"), "{err}");
+
+    // A host program finds each inlined instance by where its parent
+    // invokes it, so the positions must tell the parent's invokes apart.
+    let mut twice = vadd_below(0);
+    let mids = twice
+        .tasks
+        .get_mut("Top")
+        .and_then(|top| top.tasks.get_mut("Mid"))
+        .expect("Mid instances");
+    mids.push(mids[0].clone());
+    let err = crate::inlined_instances(&twice).expect_err("same position");
+    assert!(err.0.contains("re-run `tapa analyze`"), "{err}");
+    twice
+        .tasks
+        .get_mut("Top")
+        .expect("top")
+        .tasks
+        .get_mut("Mid")
+        .expect("Mid")[0]
+        .position = 1;
+    let found: Vec<_> = crate::inlined_instances(&twice)
+        .expect("inlined")
+        .into_iter()
+        .map(|i| (i.parent, i.position, i.name))
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (String::new(), 1, "Mid_0".into()),
+            (String::new(), 0, "Mid_1".into())
+        ]
+    );
 }
 
 /// A PL leaf inside an AI Engine upper task runs on the PL: the upper's tag

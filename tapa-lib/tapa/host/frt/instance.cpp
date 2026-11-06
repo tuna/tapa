@@ -70,7 +70,7 @@ std::vector<HostStream> Instance::HostStreams() const {
   const int count = frt_instance_host_stream_count(impl_->handle);
   LOG_IF(FATAL, count < 0) << "host_stream_count failed: " << LastErr();
   for (int i = 0; i < count; ++i) {
-    char name[256];
+    char name[1024];
     int kernel_reads = 0;
     const int index = frt_instance_host_stream(impl_->handle, i, name,
                                                sizeof(name), &kernel_reads);
@@ -78,6 +78,21 @@ std::vector<HostStream> Instance::HostStreams() const {
     streams.push_back({index, name, kernel_reads != 0});
   }
   return streams;
+}
+
+std::vector<InlinedTask> Instance::InlinedTasks() const {
+  std::vector<InlinedTask> tasks;
+  const int count = frt_instance_inlined_count(impl_->handle);
+  LOG_IF(FATAL, count < 0) << "inlined_count failed: " << LastErr();
+  for (int i = 0; i < count; ++i) {
+    char parent[1024];
+    char name[1024];
+    const int position = frt_instance_inlined(
+        impl_->handle, i, parent, sizeof(parent), name, sizeof(name));
+    LOG_IF(FATAL, position < 0) << "inlined failed: " << LastErr();
+    tasks.push_back({parent, position, name});
+  }
+  return tasks;
 }
 
 AieSimulation Instance::SimulatesAie() const {

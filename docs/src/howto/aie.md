@@ -50,8 +50,8 @@ whose tasks run on both is dissolved into its parent when the design is
 built: its streams become the parent's, named `<instance>__<stream>` (such as
 `Stage_0__mid`), so it must be invoked joined or detached and must invoke its
 own tasks joined or detached. Hybrid cosimulation and a simulator package
-split the host's run at the top task's invocations, so they need every
-crossing to be a stream the top declares.
+run the body of such a task on the host and split the run among the tasks
+it invokes, so a crossing may be declared at any level.
 
 A hybrid top must also keep at least one
 scalar or memory (`mmap`) argument: a top with only stream ports packages as
@@ -220,10 +220,11 @@ tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
 ```
 
 The kernel leaves one AXIS stream per AI Engine stream to the host. TAPA runs
-the top task's body, binds each of those streams by name, and runs in
-software the invocations on the AI Engine side of them. The PL invocations run
-in the kernel, as in any `.xo` cosimulation. As with a simulator package,
-name each boundary stream after its variable.
+the top task's body, and the body of every upper task dissolved into it,
+binds each of those streams by name, and runs in software the invocations on
+the AI Engine side of them. The PL invocations run in the kernel, as in any
+`.xo` cosimulation. As with a simulator package, name each boundary stream
+after its variable.
 
 ## Building and linking
 

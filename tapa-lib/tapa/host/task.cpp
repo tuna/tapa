@@ -8,6 +8,7 @@
 #include <csignal>
 #include <cstdlib>
 
+#include <algorithm>
 #include <atomic>
 #include <deque>
 #include <fstream>
@@ -231,12 +232,64 @@ std::pair<size_t, const stream_use*> find_binding(
       if (KernelArgName(use.name) == name) return {i, &use};
     }
   }
-  LOG(FATAL) << "kernel stream '" << name << "' connects to no task the top "
-             << "task invokes; hybrid cosimulation runs in software only AI "
-             << "Engine tasks the top invokes, and binds each stream by its "
-             << "name, so name it after its variable, e.g. tapa::stream<T> "
-             << name << "(\"" << name << "\")";
+  // A stream inside an inlined instance is named after the instance.
+  const size_t scope = name.rfind("__");
+  const std::string variable =
+      scope == std::string::npos ? name : name.substr(scope + 2);
+  LOG(FATAL) << "kernel stream '" << name << "' connects to no task; the "
+             << "host binds each stream by its name, so name it after its "
+             << "variable, e.g. tapa::stream<T> " << variable << "(\""
+             << variable << "\")";
   return {0, nullptr};
+}
+
+// The invokes of an upper task's body, flattened as the kernel was built:
+// the invoke of an instance the kernel inlined is replaced by the invokes
+// of that instance's body, and a stream declared in that body is named
+// after the instance, e.g. `Stage_0__mid`. Each inlined instance is found
+// by its position, as the host makes a body's invokes in the order tapacc
+// records. `scope` names the body: empty for the top, else an inlined
+// instance.
+std::vector<recorded_invoke> flatten(
+    std::vector<recorded_invoke> invokes, const std::string& scope,
+    const std::vector<frt::InlinedTask>& inlined) {
+  std::vector<recorded_invoke> flat;
+  for (size_t i = 0; i < invokes.size(); ++i) {
+    const auto task = std::find_if(
+        inlined.begin(), inlined.end(), [&](const frt::InlinedTask& task) {
+          return task.parent == scope && task.position == static_cast<int>(i);
+        });
+    if (task == inlined.end()) {
+      flat.push_back(std::move(invokes[i]));
+      continue;
+    }
+    std::unordered_map<const void*, std::string> outer;
+    for (const stream_use& use : invokes[i].uses) {
+      outer.emplace(use.queue, use.name);
+    }
+    hybrid_recorder body;
+    std::vector<recorded_invoke> children = body.run(invokes[i].functor);
+    for (recorded_invoke& child : children) {
+      for (stream_use& use : child.uses) {
+        const auto known = outer.find(use.queue);
+        use.name =
+            known != outer.end() ? known->second : task->name + "__" + use.name;
+      }
+    }
+    for (recorded_invoke& child :
+         flatten(std::move(children), task->name, inlined)) {
+      flat.push_back(std::move(child));
+    }
+  }
+  for (const frt::InlinedTask& task : inlined) {
+    LOG_IF(FATAL, task.parent == scope &&
+                      task.position >= static_cast<int>(invokes.size()))
+        << "the kernel inlines '" << task.name << "', invoke " << task.position
+        << " of " << (scope.empty() ? "the top" : scope)
+        << ", which makes only " << invokes.size() << " invokes; rebuild "
+        << "the kernel from this source";
+  }
+  return flat;
 }
 
 // An AI Engine simulator that replays: every invoke runs in software, each
@@ -288,6 +341,15 @@ void replay(frt::Instance& instance,
 
 hybrid_recorder* hybrid_recorder::current() { return current_recorder; }
 
+std::vector<recorded_invoke> hybrid_recorder::run(
+    const std::function<void()>& body) {
+  hybrid_recorder* const outer = current_recorder;
+  current_recorder = this;
+  body();
+  current_recorder = outer;
+  return std::move(invokes_);
+}
+
 bool hybrid_run(frt::Instance& instance, int bound_args,
                 const std::function<void()>& top_body) {
   std::unordered_map<std::string, frt::HostStream> ports;
@@ -297,10 +359,8 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   if (ports.empty()) return false;
 
   hybrid_recorder recorder;
-  current_recorder = &recorder;
-  top_body();
-  current_recorder = nullptr;
-  std::vector<recorded_invoke>& invokes = recorder.invokes_;
+  const std::vector<recorded_invoke> invokes =
+      flatten(recorder.run(top_body), "", instance.InlinedTasks());
 
   const frt::AieSimulation aie = instance.SimulatesAie();
   if (aie == frt::AieSimulation::kReplay) {
@@ -352,9 +412,9 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
     const std::vector<bool> near = side(/*far=*/false);
     for (size_t i = 0; i < invokes.size(); ++i) {
       LOG_IF(FATAL, near[i] && software[i])
-          << "an invoke of the top task binds AI Engine streams from both "
-          << "sides; the top must invoke its AI Engine and PL tasks "
-          << "separately to run against an AI Engine simulator";
+          << "a task binds AI Engine streams from both sides, which only an "
+          << "upper task the kernel was built with inlined can do; rebuild "
+          << "the kernel from this source with this version of TAPA";
       software[i] = !near[i];
     }
   }

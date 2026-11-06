@@ -379,6 +379,57 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieStream where T: core::cl
 pub unsafe fn tapa_ir::aie::AieStream::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AieStream
 pub fn tapa_ir::aie::AieStream::from(T) -> T
+pub struct tapa_ir::aie::InlinedInstance
+pub tapa_ir::aie::InlinedInstance::name: alloc::string::String
+pub tapa_ir::aie::InlinedInstance::parent: alloc::string::String
+pub tapa_ir::aie::InlinedInstance::position: u32
+impl core::clone::Clone for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::clone(&self) -> tapa_ir::aie::InlinedInstance
+impl core::cmp::Eq for tapa_ir::aie::InlinedInstance
+impl core::cmp::PartialEq for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::eq(&self, &tapa_ir::aie::InlinedInstance) -> bool
+impl core::fmt::Debug for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::InlinedInstance
+impl serde_core::ser::Serialize for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::aie::InlinedInstance
+impl core::marker::Send for tapa_ir::aie::InlinedInstance
+impl core::marker::Sync for tapa_ir::aie::InlinedInstance
+impl core::marker::Unpin for tapa_ir::aie::InlinedInstance
+impl core::marker::UnsafeUnpin for tapa_ir::aie::InlinedInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::InlinedInstance
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::InlinedInstance
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::InlinedInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::InlinedInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::InlinedInstance where U: core::convert::From<T>
+pub fn tapa_ir::aie::InlinedInstance::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::InlinedInstance where U: core::convert::Into<T>
+pub type tapa_ir::aie::InlinedInstance::Error = core::convert::Infallible
+pub fn tapa_ir::aie::InlinedInstance::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::InlinedInstance where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::InlinedInstance::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::InlinedInstance::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::InlinedInstance where T: core::clone::Clone
+pub type tapa_ir::aie::InlinedInstance::Owned = T
+pub fn tapa_ir::aie::InlinedInstance::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::InlinedInstance::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::InlinedInstance where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::InlinedInstance where T: ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::InlinedInstance where T: ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::InlinedInstance where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::InlinedInstance::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::aie::InlinedInstance where T: for<'de> serde_core::de::Deserialize<'de>
+pub fn tapa_ir::aie::inlined_instances(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::InlinedInstance>, tapa_ir::aie::AieError>
 pub mod tapa_ir::bindings
 pub struct tapa_ir::bindings::FifoEndpoint<'a>
 pub tapa_ir::bindings::FifoEndpoint::binding: core::option::Option<tapa_ir::bindings::PortBinding<'a>>
@@ -4608,6 +4659,56 @@ pub unsafe fn tapa_ir::graph::TaskGraph::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::InlinedInstance
+pub tapa_ir::InlinedInstance::name: alloc::string::String
+pub tapa_ir::InlinedInstance::parent: alloc::string::String
+pub tapa_ir::InlinedInstance::position: u32
+impl core::clone::Clone for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::clone(&self) -> tapa_ir::aie::InlinedInstance
+impl core::cmp::Eq for tapa_ir::aie::InlinedInstance
+impl core::cmp::PartialEq for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::eq(&self, &tapa_ir::aie::InlinedInstance) -> bool
+impl core::fmt::Debug for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::InlinedInstance
+impl serde_core::ser::Serialize for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::aie::InlinedInstance
+impl core::marker::Send for tapa_ir::aie::InlinedInstance
+impl core::marker::Sync for tapa_ir::aie::InlinedInstance
+impl core::marker::Unpin for tapa_ir::aie::InlinedInstance
+impl core::marker::UnsafeUnpin for tapa_ir::aie::InlinedInstance
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::InlinedInstance
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::InlinedInstance
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::InlinedInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::InlinedInstance where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::InlinedInstance where U: core::convert::From<T>
+pub fn tapa_ir::aie::InlinedInstance::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::InlinedInstance where U: core::convert::Into<T>
+pub type tapa_ir::aie::InlinedInstance::Error = core::convert::Infallible
+pub fn tapa_ir::aie::InlinedInstance::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::InlinedInstance where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::InlinedInstance::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::InlinedInstance::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::InlinedInstance where T: core::clone::Clone
+pub type tapa_ir::aie::InlinedInstance::Owned = T
+pub fn tapa_ir::aie::InlinedInstance::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::InlinedInstance::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::InlinedInstance where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::InlinedInstance where T: ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::InlinedInstance where T: ?core::marker::Sized
+pub fn tapa_ir::aie::InlinedInstance::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::InlinedInstance where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::InlinedInstance::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::InlinedInstance
+pub fn tapa_ir::aie::InlinedInstance::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::aie::InlinedInstance where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::InterconnectDefinition
 pub tapa_ir::InterconnectDefinition::consumed_by: core::option::Option<tapa_ir::interconnect::EndpointRef>
 pub tapa_ir::InterconnectDefinition::depth: core::option::Option<u32>
@@ -5376,5 +5477,6 @@ pub fn tapa_ir::control_pipeline_instance_name(&str, tapa_ir::floorplan::Control
 pub fn tapa_ir::flatten(&tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::transforms::TransformError>
 pub const fn tapa_ir::floorplanned_fifo_storage_depth(u32) -> u32
 pub const fn tapa_ir::global_controller_instance_name() -> &'static str
+pub fn tapa_ir::inlined_instances(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::InlinedInstance>, tapa_ir::aie::AieError>
 pub fn tapa_ir::local_controller_instance_name(&str) -> alloc::string::String
 pub fn tapa_ir::scope_controller_instance_name(&str) -> alloc::string::String

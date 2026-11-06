@@ -70,6 +70,10 @@ pub struct KernelSpec {
     pub tcl_files: Vec<PathBuf>,
     pub xci_files: Vec<PathBuf>,
     pub scalar_register_map: HashMap<String, u32>,
+    /// The upper task instances the design's PL kernel was built with
+    /// inlined (see [`tapa_ir::InlinedInstance`]); none without the
+    /// design's task graph.
+    pub inlined: Vec<tapa_ir::InlinedInstance>,
 }
 
 /// Normalize a scalar argument's raw bytes to exactly the width declared
@@ -131,6 +135,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
 ) -> Result<(KernelSpec, tempfile::TempDir)> {
     let mut kernel_xml = None;
     let mut part_num = None;
+    let mut inlined = Vec::new();
     let mut scalar_register_map = HashMap::new();
 
     let (extract_dir, files) = extract_archive(zip, "xo", |name, path, files| {
@@ -142,6 +147,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
             let state = tapa_ir::WorkState::from_json(&std::fs::read_to_string(path)?)
                 .map_err(CosimError::metadata)?;
             part_num = state.flow.part_num;
+            inlined = tapa_ir::inlined_instances(&state.graph).map_err(CosimError::metadata)?;
             return Ok(());
         }
         // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
@@ -158,6 +164,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     })?;
     let mut spec = xo::parse_kernel_xml(&xml)?;
     spec.part_num = part_num;
+    spec.inlined = inlined;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;
@@ -196,6 +203,7 @@ fn load_zip_spec<R: Read + std::io::Seek>(
     let state = tapa_ir::WorkState::from_json(&json).map_err(CosimError::metadata)?;
     let mut spec = zip_pkg::spec_from_task_graph(&state.graph)?;
     spec.part_num = state.flow.part_num;
+    spec.inlined = tapa_ir::inlined_instances(&state.graph).map_err(CosimError::metadata)?;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;

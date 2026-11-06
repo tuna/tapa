@@ -316,13 +316,82 @@ impl AiePartition {
     }
 }
 
-/// `graph` with every non-top upper task whose leaves are not all on its own
-/// fabric inlined into its parent, so each remaining upper task below the
-/// top is purely PL or purely AI Engine. An upper task's tag is only the
-/// default its leaves inherit; the leaves decide where the work runs.
-fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
+/// An upper task instance dissolved into its parent for running on both
+/// fabrics.
+///
+/// The partition and the PL projection inline it. A host program running
+/// the design against one fabric runs the instance's body itself, so it
+/// has to find the instance among its parent's invokes.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InlinedInstance {
+    /// The inlined instance that invokes it; empty for the top.
+    pub parent: String,
+    /// Where it sits in the parent's chain of invokes.
+    pub position: u32,
+    /// Its name once inlined, which prefixes the names of its streams.
+    pub name: String,
+}
+
+/// Every instance the partition inlines (see [`InlinedInstance`]), each
+/// after its parent.
+///
+/// # Errors
+///
+/// A parent whose invokes do not have distinct positions: the task graph
+/// is older than invoke positions.
+pub fn inlined_instances(graph: &TaskGraph) -> Result<Vec<InlinedInstance>, AieError> {
+    let mixed = mixed_uppers(graph);
+    let mut inlined = Vec::new();
+    let mut scopes = vec![(String::new(), graph.top.as_str())];
+    while let Some((scope, task)) = scopes.pop() {
+        let Some(def) = graph.tasks.get(task) else {
+            continue;
+        };
+        let mut positions = BTreeSet::new();
+        let total: usize = def.tasks.values().map(Vec::len).sum();
+        positions.extend(
+            def.tasks
+                .values()
+                .flatten()
+                .map(|instance| instance.position),
+        );
+        let mut found = false;
+        for (child, instances) in def
+            .tasks
+            .iter()
+            .filter(|(child, _)| mixed.contains(child.as_str()))
+        {
+            for (index, instance) in instances.iter().enumerate() {
+                let local = instance.canonical_name(child, index);
+                let name = if scope.is_empty() {
+                    local.into_owned()
+                } else {
+                    format!("{scope}__{local}")
+                };
+                inlined.push(InlinedInstance {
+                    parent: scope.clone(),
+                    position: instance.position,
+                    name: name.clone(),
+                });
+                scopes.push((name, child.as_str()));
+                found = true;
+            }
+        }
+        if found && positions.len() != total {
+            return Err(AieError(format!(
+                "`{task}` has invokes at the same position; re-run `tapa analyze` so the task \
+                 graph records where each invoke sits"
+            )));
+        }
+    }
+    Ok(inlined)
+}
+
+/// The upper tasks below the top whose leaves are not all on their own
+/// fabric.
+fn mixed_uppers(graph: &TaskGraph) -> BTreeSet<&str> {
     let mut leaves = BTreeMap::new();
-    let mixed: BTreeSet<&str> = graph
+    graph
         .tasks
         .iter()
         .filter(|(name, def)| *name != &graph.top && def.level == TaskLevel::Upper)
@@ -333,7 +402,15 @@ fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
                 .any(|&leaf| leaf != aie)
         })
         .map(|(name, _)| name.as_str())
-        .collect();
+        .collect()
+}
+
+/// `graph` with every non-top upper task whose leaves are not all on its own
+/// fabric inlined into its parent, so each remaining upper task below the
+/// top is purely PL or purely AI Engine. An upper task's tag is only the
+/// default its leaves inherit; the leaves decide where the work runs.
+fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
+    let mixed = mixed_uppers(graph);
     if mixed.is_empty() {
         return Ok(Cow::Borrowed(graph));
     }

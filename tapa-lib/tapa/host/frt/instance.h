@@ -20,6 +20,14 @@ struct HostStream {
   bool kernel_reads;  // the host writes it
 };
 
+// An upper task instance the instance was built with inlined: the host
+// runs its body itself to bind the streams inside it (see `hybrid_run`).
+struct InlinedTask {
+  std::string parent;  // the inlined instance that invokes it; empty: the top
+  int position;        // where it sits among the parent's invokes
+  std::string name;    // its name once inlined, which prefixes its streams
+};
+
 // How an instance that runs only the design's AI Engine graph meets the
 // host's software tasks (see `hybrid_run`).
 enum class AieSimulation {
@@ -49,6 +57,9 @@ class Instance {
   // The stream arguments the host binds, in argument order; none on
   // hardware.
   std::vector<HostStream> HostStreams() const;
+  // The upper task instances the instance was built with inlined, each
+  // after its parent; none on hardware.
+  std::vector<InlinedTask> InlinedTasks() const;
   // How the instance meets the host's software tasks if it runs only the
   // design's AI Engine graph. Live, the host runs every task off the
   // graph's side in software and closes each stream the instance reads

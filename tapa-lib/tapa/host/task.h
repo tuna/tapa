@@ -77,15 +77,17 @@ struct recorded_invoke {
   std::vector<stream_use> uses;
 };
 
-// Collects the invokes of a hybrid run's top body (see `hybrid_run`).
+// Collects the invokes of an upper task's body that a hybrid run runs to
+// see them (see `hybrid_run`).
 class hybrid_recorder {
  public:
-  // The recorder of the top body running now, or null.
+  // The recorder of the body running now, or null.
   static hybrid_recorder* current();
   void record(recorded_invoke invoke) { invokes_.push_back(std::move(invoke)); }
+  // Runs `body`, which records its invokes here instead of making them.
+  std::vector<recorded_invoke> run(const std::function<void()>& body);
 
  private:
-  friend bool hybrid_run(frt::Instance&, int, const std::function<void()>&);
   std::vector<recorded_invoke> invokes_;
 };
 
@@ -99,7 +101,9 @@ class hybrid_recorder {
 // in the kernel. An AI Engine simulator is the other way around: live, the
 // AI Engine side runs in it and everything else in software; replaying,
 // everything runs in software and the simulator replays the streams (see
-// `frt::AieSimulation`). Returns false, doing nothing, when the kernel
+// `frt::AieSimulation`). An invoke of an upper task the kernel was built
+// with inlined, because its tasks are on both sides, is replaced by the
+// invokes its body records. Returns false, doing nothing, when the kernel
 // leaves no stream to the host past the `bound_args` the caller set.
 bool hybrid_run(frt::Instance& instance, int bound_args,
                 const std::function<void()>& top_body);

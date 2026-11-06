@@ -83,6 +83,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
         tcl_files: vec![],
         xci_files: vec![],
         scalar_register_map: HashMap::new(),
+        inlined: Vec::new(),
     })
 }
 

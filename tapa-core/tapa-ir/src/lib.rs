@@ -26,8 +26,8 @@ pub mod work_state;
 mod error;
 
 pub use aie::{
-    AieError, AieKernel, AieKernelPort, AiePartition, AiePortKind, AieStream, AieStreamKind,
-    ScalarBinding,
+    inlined_instances, AieError, AieKernel, AieKernelPort, AiePartition, AiePortKind, AieStream,
+    AieStreamKind, InlinedInstance, ScalarBinding,
 };
 pub use bindings::{FifoEndpoint, PortBinding};
 pub use clock::ClockPeriod;

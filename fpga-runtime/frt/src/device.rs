@@ -74,6 +74,12 @@ pub trait Device: Send {
     fn host_streams(&self) -> Vec<HostStream> {
         Vec::new()
     }
+    /// The upper task instances the device was built with inlined, whose
+    /// bodies the host runs itself to bind the streams inside them; none
+    /// for a device without host streams.
+    fn inlined_instances(&self) -> Vec<tapa_ir::InlinedInstance> {
+        Vec::new()
+    }
     /// How the device meets the host's software tasks when it runs only a
     /// design's AI Engine graph; `None` for any other device.
     fn aie_simulation(&self) -> Option<AieSimulation> {

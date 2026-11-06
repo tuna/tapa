@@ -70,6 +70,24 @@ int frt_instance_host_stream(const void *handle,
                              uintptr_t name_len,
                              int *kernel_reads);
 
+/// The number of upper task instances the instance was built with inlined,
+/// which [`frt_instance_inlined`] enumerates; -1 on an invalid handle.
+int frt_instance_inlined_count(const void *handle);
+
+/// The `nth` upper task instance the instance was built with inlined, as
+/// its position among its parent's invokes.
+///
+/// The NUL-terminated name of the inlined instance that invokes it (empty
+/// for the top) goes to `parent_out`, and its own to `name_out`, each
+/// truncated to its length. Returns -1 when `nth` is out of range or the
+/// handle is invalid.
+int frt_instance_inlined(const void *handle,
+                         uint32_t nth,
+                         char *parent_out,
+                         uintptr_t parent_len,
+                         char *name_out,
+                         uintptr_t name_len);
+
 /// How the instance meets the host's software tasks when it runs only the
 /// design's AI Engine graph: 1 relays every stream live, so the host runs
 /// only the tasks off the graph's side and closes each stream the instance

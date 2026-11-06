@@ -47,6 +47,9 @@ struct Manifest {
     /// The PL <-> AI Engine streams, which the host binds as stream
     /// arguments after the top's own.
     plios: Vec<Plio>,
+    /// The upper task instances the graph is built with inlined, whose
+    /// bodies the host runs itself to bind the streams inside them.
+    inlined: Vec<tapa_ir::InlinedInstance>,
 }
 
 #[derive(Serialize)]
@@ -166,6 +169,7 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
             .collect(),
         runtime_parameters: runtime_parameters(partition),
         plios,
+        inlined: tapa_ir::inlined_instances(graph)?,
     })
 }
 

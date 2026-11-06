@@ -53,6 +53,8 @@ struct Manifest {
     /// The scalar behind each line of `rtp.txt`, in order.
     runtime_parameters: Vec<String>,
     plios: Vec<Plio>,
+    /// The upper task instances the graph was built with inlined.
+    inlined: Vec<tapa_ir::InlinedInstance>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -392,6 +394,10 @@ impl Device for AieSimDevice {
                 kernel_reads: plio.input,
             })
             .collect()
+    }
+
+    fn inlined_instances(&self) -> Vec<tapa_ir::InlinedInstance> {
+        self.manifest.inlined.clone()
     }
 
     fn aie_simulation(&self) -> Option<AieSimulation> {
