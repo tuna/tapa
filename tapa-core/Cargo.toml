@@ -8,6 +8,7 @@ members = [
   "tapa-xilinx",
   "tapa-floorplan",
   "tapa-cli",
+  "tools/slash-table",
 ]
 
 # Baseline clippy policy for TAPA Rust code. `tools/test-tools` mirrors this

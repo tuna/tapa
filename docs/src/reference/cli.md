@@ -137,7 +137,7 @@ This stage can run on a remote host via `--remote-host`.
 | Flag | Description |
 |------|-------------|
 | `--part-num PART` | Target FPGA part number. Required if `--platform` is not set. |
-| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name or directory. Required if `--part-num` is not set. A name is looked up under `platforms/` of `/opt/xilinx` and `$XILINX_VITIS`, and under `$XILINX_VITIS/base_platforms/` for the base platforms Vitis ships (for example `xilinx_vck190_base_202520_1`). The built-in SLASH shells resolve from a typed table instead of a platform directory: `slash_v80_service` builds part `xcv80-lsva4737-2MHP-e-S` at a 3.33 ns default clock and requires the `xilinx-slash` target, which in turn accepts no other platform. |
+| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform name or directory. Required if `--part-num` is not set. A name is looked up under `platforms/` of `/opt/xilinx` and `$XILINX_VITIS`, and under `$XILINX_VITIS/base_platforms/` for the base platforms Vitis ships (for example `xilinx_vck190_base_202520_1`). The built-in SLASH shells resolve from a typed table instead of a platform directory: `slash_v80_service` and `slash_v80_compute` build part `xcv80-lsva4737-2MHP-e-S` at default clocks of 3.33 ns. Both require the `xilinx-slash` target, which accepts only built-in SLASH platforms. |
 
 ### Optional flags
 
@@ -197,6 +197,7 @@ Floorplanning needs a device table describing the slot grid and where each memor
 | Alveo U250 | `xcu250-figd2104-2L-e` | `DDR[0]`–`DDR[3]`, one per SLR | `xilinx_u250_gen3x16_xdma_4_1_202210_1` |
 | Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` | `xilinx_u280_gen3x16_xdma_1_202211_1` |
 | Alveo V80 (SLASH service shell) | `xcv80-lsva4737-2MHP-e-S` | `HBM[0]`–`HBM[63]`, `DDR[0]`–`DDR[3]` | `slash_v80_service` |
+| Alveo V80 (SLASH compute shell) | `xcv80-lsva4737-2MHP-e-S` | `HBM[0]`–`HBM[63]`, `DDR[0]`–`DDR[11]` | `slash_v80_compute` |
 | VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller | `xilinx_vck190_base_202410_1` |
 
 Floorplanning also accepts other part strings in these same device families;

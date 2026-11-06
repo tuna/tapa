@@ -138,6 +138,7 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                 CliError::InvalidArg("SLASH link requires `--connectivity <config.cfg>`".into())
             })?;
             Ok(LinkPlan::Slash(SlashLinkJob {
+                platform: slash_platform(state)?,
                 package: crate::util::utf8(&args.package),
                 config: crate::util::utf8(connectivity),
                 output: crate::util::utf8(&args.output),
@@ -160,6 +161,26 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                 .into(),
         )),
     }
+}
+
+pub(crate) fn slash_platform(state: &WorkState) -> Result<&'static tapa_xilinx::SlashPlatform> {
+    let platform = state
+        .flow
+        .platform
+        .as_deref()
+        .and_then(tapa_xilinx::find_slash_platform)
+        .ok_or_else(|| {
+            CliError::InvalidArg(
+                "SLASH requires a known shell platform; rerun `tapa synth --platform`".into(),
+            )
+        })?;
+    if state.flow.part_num.as_deref() != Some(platform.part_num) {
+        return Err(CliError::InvalidArg(format!(
+            "SLASH platform {} requires part {}",
+            platform.name, platform.part_num
+        )));
+    }
+    Ok(platform)
 }
 
 fn require_extension(path: &Path, expected: &str, label: &str) -> Result<()> {
@@ -238,7 +259,12 @@ mod tests {
                 Target::XilinxHls => "xilinx-hls",
             }
         ));
-        state.flow.platform = Some("platform_from_package".into());
+        if target == Target::XilinxSlash {
+            state.flow.platform = Some("slash_v80_service".into());
+            state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".into());
+        } else {
+            state.flow.platform = Some("platform_from_package".into());
+        }
         state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
         state
     }
@@ -252,6 +278,37 @@ mod tests {
         assert_eq!(parsed.slashkit, "slash-custom");
         assert_eq!(parsed.vivado, "vivado-custom");
         assert_eq!(parsed.jobs, 3);
+    }
+
+    #[test]
+    fn slash_profiles_agree_with_floorplan_interfaces_and_reach_link_jobs() {
+        for platform in tapa_xilinx::SLASH_PLATFORMS {
+            let device = tapa_floorplan::device::select_device_with_shell(
+                platform.part_num,
+                Some(platform.shell),
+            )
+            .expect("table");
+            for (kind, count) in [("HBM", platform.hbm_ports), ("DDR", platform.ddr_ports)] {
+                for index in 0..count {
+                    assert_eq!(
+                        device.slots_with_tag(&format!("{kind}[{index}]")).count(),
+                        1
+                    );
+                }
+                assert_eq!(
+                    device.slots_with_tag(&format!("{kind}[{count}]")).count(),
+                    0
+                );
+            }
+            let mut state = state(Target::XilinxSlash);
+            state.flow.platform = Some(platform.name.into());
+            let plan = plan_link(&args("Top.zip", "Top.vbin"), Path::new("/work"), &state)
+                .expect("link plan");
+            let LinkPlan::Slash(job) = plan else {
+                panic!("SLASH job")
+            };
+            assert_eq!(job.platform, platform);
+        }
     }
 
     #[test]

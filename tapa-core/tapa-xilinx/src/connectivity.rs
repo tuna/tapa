@@ -6,6 +6,7 @@ use std::fmt::Write as _;
 use tapa_ir::{MemoryBank, MemoryBinding, MemoryBindings, MemoryEndpoint, MemoryKind};
 
 use crate::platform::kernel_xml::KernelXmlPort;
+use crate::SlashPlatform;
 
 /// Errors produced while extracting memory assignments from a connectivity
 /// configuration.
@@ -102,8 +103,9 @@ pub fn parse_slash_config(
     input: &str,
     top: &str,
     ports: &[KernelXmlPort],
+    platform: &SlashPlatform,
 ) -> Result<MemoryBindings, String> {
-    parse_slash(input, top, ports).map(|parsed| parsed.bindings)
+    parse_slash(input, top, ports, platform).map(|parsed| parsed.bindings)
 }
 
 /// Validate a SLASH configuration and add the one kernel clock when absent.
@@ -114,24 +116,42 @@ pub fn prepare_slash_config(
     top: &str,
     ports: &[KernelXmlPort],
     requested_hz: u64,
+    platform: &SlashPlatform,
 ) -> Result<String, String> {
-    let parsed = parse_slash(input, top, ports)?;
-    enforce_slash_clock(input, &parsed.instance, requested_hz)
+    let parsed = parse_slash(input, top, ports, platform)?;
+    let mut output = enforce_slash_clock(input, &parsed.instance, requested_hz)?;
+    if !parsed.has_shell && platform.shell != "service" {
+        let mut offset = 0;
+        for line in input.split_inclusive('\n') {
+            if strip_comment(line).trim() == "[connectivity]" {
+                output.insert_str(
+                    offset + line.trim_end_matches(['\r', '\n']).len(),
+                    &format!("\nshell={}", platform.shell),
+                );
+                break;
+            }
+            offset += line.len();
+        }
+    }
+    Ok(output)
 }
 
 struct ParsedSlashConfig {
     instance: String,
     bindings: MemoryBindings,
+    has_shell: bool,
 }
 
 fn parse_slash(
     input: &str,
     top: &str,
     ports: &[KernelXmlPort],
+    platform: &SlashPlatform,
 ) -> Result<ParsedSlashConfig, String> {
     let mut in_connectivity = false;
     let mut instance = None;
     let mut entries = Vec::new();
+    let mut has_shell = false;
     for original in input.lines() {
         let line = strip_comment(original).trim();
         if line.starts_with('[') {
@@ -145,6 +165,15 @@ fn parse_slash(
             return Err(format!("invalid SLASH entry `{line}`"));
         };
         match key.trim() {
+            "shell" => {
+                if has_shell || value.trim() != platform.shell {
+                    return Err(format!(
+                        "expected at most one `shell={}` for `{}`",
+                        platform.shell, platform.name
+                    ));
+                }
+                has_shell = true;
+            }
             "nk" => {
                 let fields: Vec<_> = value.trim().split(':').collect();
                 if instance.is_some()
@@ -185,9 +214,22 @@ fn parse_slash(
         writeln!(normalized, "sp={top}.{logical}:{kind}[{index}]").expect("write String");
     }
     let bindings = parse_vitis_config(&normalized).map_err(|error| error.to_string())?;
+    for binding in bindings.iter() {
+        let limit = match binding.bank.kind {
+            MemoryKind::Hbm => platform.hbm_ports,
+            MemoryKind::Ddr => platform.ddr_ports,
+        };
+        if binding.bank.index >= limit {
+            return Err(format!(
+                "{} is not available on {}",
+                binding.bank, platform.name
+            ));
+        }
+    }
     Ok(ParsedSlashConfig {
         instance: instance.to_string(),
         bindings,
+        has_shell,
     })
 }
 
@@ -422,13 +464,50 @@ mod tests {
         }
     }
 
+    fn service() -> &'static SlashPlatform {
+        crate::find_slash_platform("slash_v80_service").expect("service")
+    }
+
+    #[test]
+    fn slash_shell_selection_and_memory_limits_are_checked_without_floorplanning() {
+        let compute = crate::find_slash_platform("slash_v80_compute").expect("compute");
+        for (platform, target) in [(service(), "DDR3"), (compute, "DDR11"), (compute, "HBM63")] {
+            let input = format!(
+                "[connectivity] # shell selection\nnk=Top:1:Top_0\nsp=Top_0.m_axi_a:{target}\n"
+            );
+            let prepared =
+                prepare_slash_config(&input, "Top", &[slash_port("a")], 200_000_000, platform)
+                    .expect("available interface");
+            assert_eq!(
+                prepared.contains("shell=compute"),
+                platform.shell == "compute"
+            );
+            parse_slash_config(&prepared, "Top", &[slash_port("a")], platform)
+                .expect("prepared config");
+        }
+        for (platform, entry) in [
+            (service(), "sp=Top_0.m_axi_a:DDR4"),
+            (compute, "sp=Top_0.m_axi_a:DDR12"),
+            (compute, "sp=Top_0.m_axi_a:HBM64"),
+            (compute, "shell=service"),
+            (service(), "shell=compute"),
+            (compute, "shell=compute\nshell=compute"),
+            (compute, "shell=unknown"),
+        ] {
+            let input = format!("[connectivity]\nnk=Top:1:Top_0\n{entry}\n");
+            parse_slash_config(&input, "Top", &[slash_port("a")], platform)
+                .expect_err("wrong shell or unavailable interface");
+        }
+    }
+
     #[test]
     fn slash_config_uses_typed_compiled_ports_and_appends_clock() {
         let input = "[connectivity]\nnk=VecAdd:1:VecAdd_0\nsp=VecAdd_0.m_axi_a:HBM0\n";
-        let prepared = prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
-            .expect("valid SLASH config");
+        let prepared =
+            prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000, service())
+                .expect("valid SLASH config");
         assert!(prepared.ends_with("[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n"));
-        let bindings = parse_slash_config(&prepared, "VecAdd", &[slash_port("a")])
+        let bindings = parse_slash_config(&prepared, "VecAdd", &[slash_port("a")], service())
             .expect("typed port resolves");
         assert_eq!(
             bindings.get("VecAdd", "a"),
@@ -444,17 +523,18 @@ mod tests {
         let input =
             "[connectivity]\nnk=VecAdd:1:VecAdd_0\n\n[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n";
         assert_eq!(
-            prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000)
+            prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000, service())
                 .expect("matching clock"),
             input,
         );
-        prepare_slash_config(input, "VecAdd", &[slash_port("a")], 200_000_000)
+        prepare_slash_config(input, "VecAdd", &[slash_port("a")], 200_000_000, service())
             .expect_err("different requested clock must fail");
         prepare_slash_config(
             "[connectivity]\nnk=VecAdd:1:VecAdd_0\nsp=VecAdd_0.m_axi_missing:HBM0\n",
             "VecAdd",
             &[slash_port("a")],
             300_000_000,
+            service(),
         )
         .expect_err("unknown compiled port must fail");
     }

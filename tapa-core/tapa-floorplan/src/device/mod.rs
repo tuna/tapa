@@ -7,4 +7,4 @@ pub use model::{
     Coor, Device, DeviceAnchor, DirCaps, PlacementStyle, PlannedResources, Resource, Slot,
     DEFAULT_USAGE_LIMIT, UNIT_DIST_X, UNIT_DIST_Y, VERTICAL_DIST_PENALTY, WIRE_CAPACITY_INF,
 };
-pub use select::{select_device, SelectError};
+pub use select::{select_device, select_device_with_shell, SelectError};

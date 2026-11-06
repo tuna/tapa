@@ -3,14 +3,14 @@
 use super::api::{
     api, Api, BarFile, VrtdBuffer, ALLOC_DIR_BIDIRECTIONAL, ALLOC_DIR_DEVICE_TO_HOST,
     ALLOC_DIR_HOST_TO_DEVICE, ALLOC_TYPE_DDR, ALLOC_TYPE_HBM, ALLOC_TYPE_HBM_VNOC,
-    CLOCK_REGION_USER,
+    CLOCK_REGION_USER, MM_CHANNEL_AUTO,
 };
 use super::vbin::{register_words, Arg, ArgKind, Kernel, MemoryTarget, Platform, Vbin};
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
 use frt_shm::env_non_empty;
 use std::collections::BTreeMap;
-use std::ffi::{c_int, c_ulong, CString};
+use std::ffi::{c_int, CString};
 use std::path::Path;
 use std::ptr;
 use std::time::{Duration, Instant};
@@ -23,19 +23,10 @@ const CTRL_OFFSET: u32 = 0;
 const CTRL_START: u32 = 1;
 const CTRL_DONE: u32 = 1 << 1;
 
-// Linux dma-buf uapi: _IOW('b', 0, struct dma_buf_sync { __u64 flags; }).
-// x86_64 and aarch64 both use the generic _IOC layout; this is the same ioctl
-// issued by the pinned inline slash_bar_file_start/end_{read,write} helpers.
-const DMA_BUF_IOCTL_SYNC: c_ulong = 0x4008_6200;
 const DMA_BUF_SYNC_START_READ: u64 = 1;
 const DMA_BUF_SYNC_START_WRITE: u64 = 2;
 const DMA_BUF_SYNC_END_READ: u64 = 1 | (1 << 2);
 const DMA_BUF_SYNC_END_WRITE: u64 = 2 | (1 << 2);
-
-#[repr(C)]
-struct DmaBufSync {
-    flags: u64,
-}
 
 #[derive(Clone, Copy)]
 enum ExecutionState {
@@ -109,6 +100,7 @@ fn check(rc: c_int, action: &str) -> Result<()> {
         6 => "INTERNAL_ERROR",
         7 => "AUTH_ERROR",
         8 => "BUSY",
+        9 => "SHELL_LOCKED",
         _ => "UNKNOWN",
     };
     Err(FrtError::Vrt(format!(
@@ -200,7 +192,9 @@ impl VrtDevice {
             let path = path_cstring(pdi)?;
             tracing::info!(path = %pdi.display(), device = device_index, "programming VRT PDI");
             // SAFETY: live socket and path; vrtd closes the file it opens.
-            let rc = unsafe { (api.design_write_file)(fd, device_index, path.as_ptr()) };
+            let rc = unsafe {
+                (api.design_write_file)(fd, device_index, path.as_ptr(), vbin.shell as u8)
+            };
             check(rc, &format!("program PDI `{}`", pdi.display()))?;
         }
         std::thread::sleep(PROGRAM_SETTLE);
@@ -216,7 +210,7 @@ impl VrtDevice {
         let mut set_achieved_hz = 0;
         // SAFETY: live socket and writable output pointer.
         let rc = unsafe {
-            (self.api.clock_set_rate)(
+            (self.api.clock_set_rate_round_down)(
                 self.fd,
                 self.device_index,
                 CLOCK_REGION_USER,
@@ -252,8 +246,7 @@ impl VrtDevice {
             map: ptr::null_mut(),
             len: 0,
             fd: -1,
-            mock: 0,
-            mock_path: ptr::null_mut(),
+            transport: 0,
         };
         // SAFETY: live socket and a correctly laid-out output BarFile.
         let rc = unsafe { (self.api.open_bar_file)(self.fd, self.device_index, 0, &raw mut bar) };
@@ -278,17 +271,32 @@ impl VrtDevice {
         }
     }
 
+    /// Mirrors SLASH-dev's inline `slash_bar_file_sync`.
     fn bar_sync(bar: &BarFile, flags: u64) -> Result<()> {
-        if bar.mock != 0 {
-            return Ok(());
-        }
-        let sync = DmaBufSync { flags };
-        // SAFETY: fd belongs to the open dma-buf BAR and sync has the exact
-        // pinned uapi layout. The ioctl borrows sync only for this call.
-        let rc = unsafe { libc::ioctl(bar.fd, DMA_BUF_IOCTL_SYNC, &sync) };
+        let fd = bar.fd;
+        let rc = if bar.transport == 1 {
+            let how = if flags & 4 != 0 {
+                libc::LOCK_UN
+            } else if flags & 2 != 0 {
+                libc::LOCK_EX
+            } else {
+                libc::LOCK_SH
+            };
+            loop {
+                // SAFETY: fd belongs to the live BAR mapping; flock borrows it.
+                let rc = unsafe { libc::flock(fd, how) };
+                if rc != -1 || std::io::Error::last_os_error().raw_os_error() != Some(libc::EINTR) {
+                    break rc;
+                }
+            }
+        } else {
+            // Linux generic _IOW('b', 0, struct dma_buf_sync { __u64 flags; }).
+            // SAFETY: fd is a live dma-buf; flags has the exact uapi layout.
+            unsafe { libc::ioctl(fd, 0x4008_6200 as libc::c_ulong, &raw const flags) }
+        };
         if rc == -1 {
             Err(FrtError::Vrt(format!(
-                "BAR dma-buf synchronization failed: {}",
+                "BAR synchronization failed: {}",
                 std::io::Error::last_os_error()
             )))
         } else {
@@ -483,6 +491,7 @@ impl Device for VrtDevice {
                 allocation.direction,
                 allocation.region,
                 size,
+                MM_CHANNEL_AUTO,
                 &raw mut handle,
             )
         };

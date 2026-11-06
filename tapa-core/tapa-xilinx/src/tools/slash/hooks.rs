@@ -1,23 +1,12 @@
-//! Generated SLASH pre-synthesis hook and implementation-only clock XDC.
+//! Generated SLASH pre-synthesis and placement hooks.
 
 pub(super) const HOOK_NAME: &str = "tapa_pre_synth.tcl";
-pub(super) const CLOCK_XDC_NAME: &str = "tapa_user_clock.xdc";
 pub(super) const PLACE_HOOK_NAME: &str = "tapa_pre_place.tcl";
 pub(super) const FLOORPLAN_XDC_NAME: &str = "floorplan.xdc";
 
-pub(super) fn user_clock_xdc(target_mhz: u32) -> String {
-    let period_ns = 1000.0 / f64::from(target_mhz);
-    format!(
-        "# TAPA: time the reconfigurable module at the requested kernel period instead\n\
-         # of the static shell default (clkout1_primitive_2 = 5.000 ns).\n\
-         set tapa_clk [get_clocks clkout1_primitive_2]\n\
-         set tapa_src [get_pins [get_property SOURCE_PINS $tapa_clk]]\n\
-         create_clock -period {period_ns:.3} -name tapa_user_clk $tapa_src\n"
-    )
-}
-
-pub(super) fn pre_place_hook(has_floorplan: bool) -> String {
-    let mut hook = include_str!("pre_place.tcl").to_owned();
+pub(super) fn pre_place_hook(has_floorplan: bool, has_hbm: bool) -> String {
+    let mut hook =
+        include_str!("pre_place.tcl").replace("@TAPA_HAS_HBM@", if has_hbm { "1" } else { "0" });
     if has_floorplan {
         hook.push_str("\nsource [file join $tapa_place_hook_dir floorplan.xdc]\n");
     }
@@ -45,11 +34,7 @@ pub(super) fn pre_synth_hook(hbm_indices: &[u32]) -> String {
      # Register the pre-place script so Vivado executes it in the impl_1 run.\n\
      set tapa_place_hook [file join $tapa_hook_dir tapa_pre_place.tcl]\n\
      add_files -fileset utils_1 -norecurse $tapa_place_hook\n\
-     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files [file tail $tapa_place_hook]]] [get_runs impl_1]\n\
-     set tapa_user_clock_xdc [file join $tapa_hook_dir tapa_user_clock.xdc]\n\
-     add_files -fileset constrs_1 -norecurse $tapa_user_clock_xdc\n\
-     set_property USED_IN_SYNTHESIS false [get_files $tapa_user_clock_xdc]\n\
-     set_property USED_IN_IMPLEMENTATION true [get_files $tapa_user_clock_xdc]\n"
+     set_property STEPS.PLACE_DESIGN.TCL.PRE [list [get_files [file tail $tapa_place_hook]]] [get_runs impl_1]\n"
         .to_string();
     hook.push_str(&hbm_slices);
     hook
@@ -60,30 +45,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clock_xdc_matches_the_measured_slash_hook_shape() {
-        assert_eq!(
-            user_clock_xdc(300),
-            include_str!(concat!(
-                env!("CARGO_MANIFEST_DIR"),
-                "/testdata/slash/tapa_user_clock.xdc"
-            )),
-        );
-        let xdc = user_clock_xdc(250);
-        assert!(xdc.contains("get_property SOURCE_PINS"));
-        assert!(xdc.contains("create_clock -period 4.000 -name tapa_user_clk"));
-    }
-
-    #[test]
-    fn hooks_register_pre_place_and_implementation_clock() {
+    fn hooks_register_pre_place_without_redefining_the_slash_clock() {
         let hook = pre_synth_hook(&[0, 1, 2]);
         assert!(hook.contains("strategy Congestion_SSI_SpreadLogic_high"));
         assert!(hook.contains("add_files -fileset utils_1"));
         assert!(hook.contains("STEPS.PLACE_DESIGN.TCL.PRE"));
         assert!(hook.contains("[get_files [file tail $tapa_place_hook]]"));
         assert!(!hook.contains("STEPS.OPT_DESIGN.TCL.PRE"));
-        assert!(hook.contains("add_files -fileset constrs_1"));
-        assert!(hook.contains("USED_IN_SYNTHESIS false"));
-        assert!(hook.contains("USED_IN_IMPLEMENTATION true"));
+        assert!(!hook.contains("add_files -fileset constrs_1"));
+        assert!(!hook.contains("create_clock"));
         assert!(!hook.contains("assign_bd_address"));
         assert!(!hook.contains("020200010000"));
 
@@ -92,12 +62,12 @@ mod tests {
         assert!(!pre_synth_hook(&[]).contains("set selected [list"));
         assert!(!pre_synth_hook(&[]).contains("tapa_hbm_slice"));
 
-        let placement = pre_place_hook(true);
+        let placement = pre_place_hook(true, true);
         assert!(placement.contains("USER_SLR_ASSIGNMENT SLR2"));
         assert!(placement.contains("tapa_rm_uram_used > $tapa_rm_uram_capacity"));
         assert!(placement.contains("control-coverage.tsv"));
         assert!(placement.contains("FORCE_MAX_FANOUT 64"));
         assert!(placement.ends_with(include_str!("control_replication.tcl")));
-        assert!(!pre_place_hook(false).contains("floorplan.xdc"));
+        assert!(!pre_place_hook(false, false).contains("floorplan.xdc"));
     }
 }

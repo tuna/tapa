@@ -104,7 +104,7 @@ work.out/
 | `floorplan-metrics.json` | Frequency and utilization information for the selected floorplan after `--run-impl` or `--dse`. |
 | `floorplan-timing.rpt` | Post-implementation timing report used to produce those metrics. |
 | `floorplan.xclbin` / `floorplan.vbin` | The winning implementation's bitstream from `--run-impl` or `--dse` (`.xclbin` from the Vitis backend, `.vbin` from SLASH). |
-| `link/link-metrics.json` | SLASH link record: pinned `slash_commit`, `requested_mhz` vs `recorded_mhz`, kernel WNS and Fmax, `timing_closed`, and the fixed-shell domain's WNS. A `--sim` link records only the commit and requested versus recorded MHz — simulation produces no routed timing report. |
+| `link/link-metrics.json` | SLASH link record: `platform`, `shell_type`, `requested_mhz` vs `recorded_mhz`, kernel WNS and Fmax, `timing_closed`, and the fixed-shell domain's WNS. A `--sim` link records only platform identity and requested versus recorded MHz — simulation produces no routed timing report. |
 | `link/hbm-slices.tsv` | Full AXI register-slice configuration on each HBM interface selected by the connectivity map. |
 | `link/control-coverage.tsv` | Eligible high-fanout fabric controls requested for clock-region replication. |
 | `dse/candidates.json` | Exploration results and ranking diagnostics for all candidates explored by `--dse`; final full-link metrics are in `floorplan-metrics.json`. |

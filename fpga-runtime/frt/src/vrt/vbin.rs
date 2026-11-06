@@ -22,6 +22,16 @@ pub enum Platform {
     Emulation,
 }
 
+/// Shell identity in the VBIN, also the required-shell wire value in vrtd.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "lowercase")]
+#[repr(u8)]
+pub enum ShellType {
+    #[default]
+    Service = 1,
+    Compute = 2,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArgKind {
     Scalar,
@@ -94,6 +104,7 @@ pub struct Vbin {
     /// Owns every extracted path for as long as a backend needs them.
     temp_dir: TempDir,
     pub platform: Platform,
+    pub shell: ShellType,
     pub clock_frequency_hz: u64,
     pub kernel: Kernel,
     pub pdi_paths: Vec<PathBuf>,
@@ -121,6 +132,7 @@ impl Vbin {
         Ok(Self {
             temp_dir,
             platform: metadata.platform,
+            shell: metadata.shell,
             clock_frequency_hz: metadata.clock_frequency_hz,
             kernel: metadata.kernel,
             pdi_paths,
@@ -255,6 +267,7 @@ fn safe_relative_path(path: &Path) -> Result<Option<PathBuf>> {
 #[derive(Debug)]
 struct Metadata {
     platform: Platform,
+    shell: ShellType,
     clock_frequency_hz: u64,
     kernel: Kernel,
 }
@@ -262,6 +275,8 @@ struct Metadata {
 #[derive(Deserialize)]
 #[serde(rename = "SystemMap")]
 struct RawSystemMap {
+    #[serde(rename = "ShellType", default)]
+    shell: ShellType,
     #[serde(rename = "Platform")]
     platform: String,
     #[serde(rename = "ClockFrequency")]
@@ -382,6 +397,7 @@ fn parse_system_map(xml: &str) -> Result<Metadata> {
         }
     }
     Ok(Metadata {
+        shell: raw.shell,
         platform,
         clock_frequency_hz,
         kernel: Kernel {
@@ -447,7 +463,10 @@ fn parse_memory_target(target: &str) -> Result<MemoryTarget> {
         return Ok(MemoryTarget::Hbm(bank));
     }
     if let Some(bank) = target.strip_prefix("DDR") {
-        if bank.len() == 1 && bank.bytes().all(|digit| digit.is_ascii_digit()) {
+        if !bank.is_empty()
+            && bank.bytes().all(|digit| digit.is_ascii_digit())
+            && bank.parse::<u32>().is_ok()
+        {
             return Ok(MemoryTarget::Ddr);
         }
     }
@@ -523,7 +542,9 @@ pub fn register_words(offset: u32, range: u32, value: &[u8]) -> Result<Vec<(u32,
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_system_map, ArgKind, MemoryTarget, Platform, Vbin};
+    use super::{
+        parse_memory_target, parse_system_map, ArgKind, MemoryTarget, Platform, ShellType, Vbin,
+    };
     use flate2::{write::GzEncoder, Compression};
     use std::io::Write;
     use std::path::Path;
