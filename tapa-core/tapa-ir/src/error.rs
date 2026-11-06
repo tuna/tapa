@@ -25,11 +25,23 @@ pub enum ParseError {
     UnsupportedSchemaVersion { found: u32, supported: u32 },
 
     #[error(
-        "task graph schema version {found} predates typed invoke-site \
-         constants (version {supported}); a stale graph's constants would \
-         be misread as wire names — regenerate the task graph with this tapa"
+        "task graph schema version {found} is older than the supported \
+         version {supported}, whose fields it would misread; regenerate the \
+         task graph with this tapa"
     )]
     OutdatedSchemaVersion { found: u32, supported: u32 },
+
+    #[error(
+        "stream `{stream}` of task `{task}` has depth {depth}, but `{port}` moves \
+         frames of {frame} elements; give it a depth of at least {frame}"
+    )]
+    FrameDepth {
+        task: String,
+        stream: String,
+        depth: u32,
+        port: String,
+        frame: u32,
+    },
 }
 
 /// Deserialize one complete JSON document with field-path error

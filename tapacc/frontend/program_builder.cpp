@@ -165,14 +165,7 @@ nlohmann::json PortJson(const Port& port) {
                    {kFieldWidth, port.width}};
   if (port.chan_count) j[kFieldChanCount] = *port.chan_count;
   if (port.chan_size) j[kFieldChanSize] = *port.chan_size;
-  if (port.aie_frame) j[kFieldAieFrame] = *port.aie_frame;
-  if (port.aie_plio) j[kFieldAiePlio] = *port.aie_plio;
-  return j;
-}
-
-nlohmann::json AieLocationJson(const AieLocation& location) {
-  nlohmann::json j{{kFieldCol, location.col}, {kFieldRow, location.row}};
-  if (location.instance) j[kFieldInstance] = *location.instance;
+  if (port.frame) j[kFieldFrame] = *port.frame;
   return j;
 }
 
@@ -817,7 +810,7 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
     TaskModel& model = view.tasks.at(task.model.name);
     // Ports, instances, and streams exist only where the definition is.
     model.ports = BuildPorts(ctx, model.def);
-    ReadAieAttrs(ctx, model);
+    ReadFrameAttrs(ctx, model);
     if (model.target == SynthTarget::kAie) {
       CheckAieTask(ctx, model);
       if (model.level == TaskLevel::kLower) {
@@ -971,12 +964,6 @@ nlohmann::json ProgramBuilder::EmitJson() const {
     t[kFieldPorts] = nlohmann::json::array();
     for (const Port& port : model.ports) {
       t[kFieldPorts].push_back(PortJson(port));
-    }
-    if (!model.aie_locations.empty()) {
-      t[kFieldAieLocation] = nlohmann::json::array();
-      for (const AieLocation& location : model.aie_locations) {
-        t[kFieldAieLocation].push_back(AieLocationJson(location));
-      }
     }
     if (model.aie_stack_bytes > 0) {
       t[kFieldAieStackBytes] = model.aie_stack_bytes;

@@ -617,7 +617,7 @@ mod tests {
     fn two_task_stream_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {
@@ -664,7 +664,7 @@ mod tests {
 
     fn one_stream_graph(depth: u32, producer_area: Area, consumer_area: Area) -> FloorGraph {
         let design = serde_json::json!({
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {
@@ -700,7 +700,7 @@ mod tests {
     fn one_mmap_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {"readable_name":"Top","srcs": ["Top.cpp"], "include_dirs": [], "defines": [],"level":"upper","synth":"hls",
@@ -743,7 +743,7 @@ mod tests {
     fn one_controlled_task_graph() -> FloorGraph {
         let design = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-hls",
                 "tasks": {
                     "Top": {"readable_name":"Top","srcs": ["Top.cpp"], "include_dirs": [], "defines": [],"level":"upper","synth":"hls",

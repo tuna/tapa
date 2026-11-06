@@ -94,7 +94,7 @@ fn to_compact_json(graph: &TaskGraph) -> String {
 /// renaming, or dropping any field breaks the byte comparison.
 fn canonical_design_json() -> &'static str {
     concat!(
-        r#"{"schema_version": 3, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
+        r#"{"schema_version": 4, "top": "VecAdd", "target": "xilinx-vitis", "cflags": ["-std=c++17"], "tasks": "#,
         r#"{"Add": {"level": "lower", "srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "readable_name": "Add", "#,
         r#""synth": "hls", "ports": [{"cat": "istream", "name": "a", "type": "float", "#,
         r#""width": 32}], "tasks": {}, "fifos": {}, "clock_period": 2342, "#,
@@ -226,7 +226,7 @@ fn all_category_variants_in_fixture() {
 #[test]
 fn negative_step_accepted() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
             "readable_name": "T",
@@ -243,7 +243,7 @@ fn negative_step_accepted() {
 #[test]
 fn readable_name_is_typed_and_round_trips() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
             "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
@@ -269,7 +269,7 @@ fn readable_name_is_typed_and_round_trips() {
 #[test]
 fn readable_name_is_required() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {
             "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls", "ports": []}
@@ -295,7 +295,7 @@ fn readable_name_is_required() {
 fn source_manifest_fields_are_required() {
     for missing in ["srcs", "include_dirs", "defines"] {
         let json = r#"{
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "T", "target": "xilinx-hls",
             "tasks": {
                 "T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [],
@@ -325,7 +325,7 @@ fn missing_member(field: &str) -> &'static str {
 #[test]
 fn consumer_only_fifo() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
             "readable_name": "T",
@@ -341,7 +341,7 @@ fn consumer_only_fifo() {
 #[test]
 fn mmap_port_category_round_trips() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls",
             "readable_name": "T",
@@ -416,7 +416,7 @@ fn round_trip_byte_equal() {
 #[test]
 fn task_order_is_sorted_not_as_written() {
     let json = concat!(
-        r#"{"schema_version": 3, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#"{"schema_version": 4, "top": "VecAdd", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""VecAdd": {"level": "upper", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "readable_name": "VecAdd", "#,
         r#""synth": "hls", "ports": [], "tasks": {}, "fifos": {}}, "#,
         r#""Add": {"level": "lower", "srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "readable_name": "Add", "#,
@@ -459,7 +459,7 @@ fn graph_parser_rejects_trailing_data() {
 
 #[test]
 fn unknown_top_level_field_rejected() {
-    let json = r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
+    let json = r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-hls", "tasks": {}, "bogus": true}"#;
     let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -475,7 +475,7 @@ fn unknown_top_level_field_rejected() {
 #[test]
 fn unknown_task_field_rejected() {
     let json = concat!(
-        r#"{"schema_version": 3, "top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
+        r#"{"schema_version": 4, "top": "T", "target": "xilinx-hls", "cflags": [], "tasks": {"#,
         r#""T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls", "#,
         r#""ports": [], "tasks": {}, "fifos": {}, "bogus_field": 1}}}"#,
     );
@@ -493,7 +493,7 @@ fn unknown_task_field_rejected() {
 
 #[test]
 fn missing_top_field() {
-    let json = r#"{"schema_version": 3, "target": "xilinx-hls", "tasks": {}}"#;
+    let json = r#"{"schema_version": 4, "target": "xilinx-hls", "tasks": {}}"#;
     let err = TaskGraph::from_json(json).unwrap_err();
     let msg = err.to_string();
     assert!(
@@ -505,7 +505,7 @@ fn missing_top_field() {
 #[test]
 fn invalid_level_rejected() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [], "top": "T", "target": "xilinx-hls",
         "tasks": {"T": {"srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "invalid", "synth": "hls"}}
     }"#;

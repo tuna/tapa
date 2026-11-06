@@ -119,14 +119,15 @@ These habits decide AI Engine performance:
 
 ## Knobs
 
-| Attribute | Where | Effect |
+| Knob | Where | Effect |
 |---|---|---|
-| `[[tapa::aie_frame(N)]]` | `istream`/`ostream` parameter of an AI Engine leaf | The stream arrives as frames of `N` elements in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. |
-| `[[tapa::aie_plio(W)]]` | `istream`/`ostream` parameter of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
-| `[[tapa::aie_location(col, row)]]` | AI Engine leaf task | Pins the task to a tile. Add a third argument to pick one instance of a task invoked several times. |
+| `[[tapa::frame(N)]]` | `istream`/`ostream` parameter of a leaf task | The port moves whole frames of `N` elements, and its stream must hold at least one: `tapa analyze` rejects a shallower stream on every target, since the AI Engine fills a frame before its reader sees any of it. On the AI Engine the frames arrive in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. On PL the port is an ordinary stream. |
+| `tapa analyze --aie-plio TASK.PORT:W` | `istream`/`ostream` port of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
+| `tapa analyze --aie-location TASK:COL,ROW[,INSTANCE]` | AI Engine leaf task | Pins the task to a tile; `INSTANCE` picks one instance of a task invoked several times. |
 
-A task built for PL ignores these attributes, so a source annotated for the AI
-Engine still builds for PL when `--target` leaves the task there.
+Placement and PLIO widths depend on the device, so they stay out of the
+source; a source annotated for the AI Engine still builds for PL when
+`--target` leaves the task there.
 
 Where the two targets want different code, guard the AI Engine side with
 `#if defined(TAPA_TARGET_AIE_)`. The AI Engine compile defines it, on x86sim
@@ -196,7 +197,7 @@ On an AI Engine 1 device, a kernel reads about 32 bits from its input streams
 per AI Engine cycle in total, however many stream ports it reads. That is one
 128-bit beat every 3.2 ns at 1.25 GHz, so the two-input add above runs at
 6.4 ns per output beat. Measure each kernel this way rather than planning on
-the port count. A frame port (`[[tapa::aie_frame(N)]]`) is filled by DMA and
+the port count. A frame port (`[[tapa::frame(N)]]`) is filled by DMA and
 does not consume that budget.
 
 ## Hybrid cosimulation

@@ -8,7 +8,7 @@ use crate::task::TaskLevel;
 
 fn vadd_two_level_graph_json() -> &'static str {
     r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": ["-std=c++14"],
         "top": "VecAdd",
         "target": "xilinx-hls",
@@ -202,7 +202,7 @@ fn flatten_preserves_top_metadata() {
 fn flatten_propagates_constants_through_upper_tasks() {
     let g = TaskGraph::from_json(
         r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [],
         "top": "Top",
         "target": "xilinx-hls",
@@ -265,7 +265,7 @@ fn flatten_propagates_constants_through_upper_tasks() {
 #[test]
 fn flatten_accepts_nested_upper_without_error() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -299,7 +299,7 @@ fn flatten_accepts_nested_upper_without_error() {
 #[test]
 fn flatten_hoists_leaf_under_nested_upper() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -370,7 +370,7 @@ fn flatten_hoists_leaf_under_nested_upper() {
 }
 
 const NESTED_CLUSTERS_GRAPH_JSON: &str = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",
@@ -603,7 +603,7 @@ fn flatten_uses_instance_paths_for_nested_fifos_and_named_leaves() {
 #[test]
 fn flatten_resolves_indexed_stream_bundle_args_through_parent_binding() {
     let json = r#"{
-        "schema_version": 3,
+        "schema_version": 4,
         "cflags": [],
         "top": "Outer",
         "target": "xilinx-hls",

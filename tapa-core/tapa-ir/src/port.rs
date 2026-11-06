@@ -146,11 +146,12 @@ pub struct Port {
     /// Channel size for hierarchical memory ports.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chan_size: Option<u32>,
-    /// `[[tapa::aie_frame(N)]]`: an AI Engine task's stream port arrives
-    /// as frames of `N` elements in tile memory.
+    /// `[[tapa::frame(N)]]`: the stream port moves whole frames of `N`
+    /// elements, and its channel holds at least one. On the AI Engine the
+    /// frames arrive in tile memory.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub aie_frame: Option<u32>,
-    /// `[[tapa::aie_plio(W)]]`: the PLIO width (32, 64 or 128 bits) of an
+    pub frame: Option<u32>,
+    /// `tapa analyze --aie-plio`: the PLIO width (32, 64 or 128 bits) of an
     /// AI Engine task's boundary stream port. On a top port of the PL
     /// projection (`AiePartition::pl_projection`) it marks the AXIS port
     /// wired to the PLIO of that width.

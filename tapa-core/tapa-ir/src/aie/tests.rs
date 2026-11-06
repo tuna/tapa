@@ -25,7 +25,7 @@ fn graph(tasks: Value) -> TaskGraph {
             task["defines"] = json!([]);
         }
     }
-    serde_json::from_value(json!({"schema_version": 3, "top": "Top",
+    serde_json::from_value(json!({"schema_version": 4, "top": "Top",
         "target": "xilinx-vitis", "tasks": tasks}))
     .expect("graph fixture")
 }
@@ -62,7 +62,7 @@ fn a_pl_only_graph_has_no_partition() {
 fn boundary_streams_become_plios_and_scalars_runtime_parameters() {
     let add = leaf(
         &json!([
-            {"cat": "istream", "name": "a", "type": "vec4f", "width": 128, "aie_frame": 64},
+            {"cat": "istream", "name": "a", "type": "vec4f", "width": 128, "frame": 64},
             stream("ostream", "c", 32),
             scalar("n"),
         ]),

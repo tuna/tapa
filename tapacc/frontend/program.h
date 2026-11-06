@@ -38,16 +38,7 @@ struct Port {
   uint32_t width = 0;
   std::optional<uint32_t> chan_count;  // hmap / istreams / ostreams
   std::optional<uint32_t> chan_size;   // hmap
-  std::optional<uint32_t> aie_frame;   // [[tapa::aie_frame(N)]]
-  std::optional<uint32_t> aie_plio;    // [[tapa::aie_plio(W)]]
-};
-
-// A `[[tapa::aie_location(col, row[, instance])]]` tile pin of an AI Engine
-// task; `instance` picks one invocation of a task invoked several times.
-struct AieLocation {
-  uint32_t col = 0;
-  uint32_t row = 0;
-  std::optional<uint32_t> instance;
+  std::optional<uint32_t> frame;       // [[tapa::frame(N)]]
 };
 
 // One argument of a child invocation: what the child port binds to in the
@@ -112,7 +103,6 @@ struct TaskModel {
   SynthTarget target = SynthTarget::kXilinxHls;
 
   std::vector<Port> ports;
-  std::vector<AieLocation> aie_locations;
   // AI Engine leaf tasks only: the bytes of the body's local variables,
   // which the kernel keeps on its stack.
   uint32_t aie_stack_bytes = 0;

@@ -94,7 +94,7 @@ fn port(name: &str, cat: ArgCategory, width: u32, chan_count: Option<u32>) -> Po
         width,
         chan_count,
         chan_size: None,
-        aie_frame: None,
+        frame: None,
         aie_plio: None,
         stream_depth: None,
         mmap_addr_width: None,

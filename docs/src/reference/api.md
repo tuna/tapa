@@ -103,7 +103,7 @@ Read-only view of a stream. Always passed by reference in task signatures: `tapa
 | `read()` | yes | yes | Blocks until an element is available, then returns it. |
 | `read(bool& ok)` | no | yes | Non-blocking read; sets `ok` to true if an element was consumed. |
 | `read(nullptr)` | no | yes | Non-blocking read that discards the success flag; returns `T()` when the stream is empty. Use after an `empty()` / `try_eot()` check has already established that data is there. |
-| `read(U* dst, int n)` | yes | yes | Reads `n` values of `U` into `dst`. The sizes of `U` and `T` must divide one another, and the values line up with the elements byte for byte: a wider `U` takes `sizeof(U) / sizeof(T)` elements per value, and a narrower one takes `sizeof(T) / sizeof(U)` values from each element, so `n` must then be a multiple of that. A `U` that is itself an array, such as a row of a two-dimensional array, follows the same size rule, including elements that span multiple rows: pass the array, `read(rows, n)`, rather than a pointer to its first element, which HLS takes to cover only the first row. On an AI Engine frame port (`[[tapa::aie_frame(N)]]`) it copies whole runs of a frame. In HLS, independent bulk transfers run concurrently. |
+| `read(U* dst, int n)` | yes | yes | Reads `n` values of `U` into `dst`. The sizes of `U` and `T` must divide one another, and the values line up with the elements byte for byte: a wider `U` takes `sizeof(U) / sizeof(T)` elements per value, and a narrower one takes `sizeof(T) / sizeof(U)` values from each element, so `n` must then be a multiple of that. A `U` that is itself an array, such as a row of a two-dimensional array, follows the same size rule, including elements that span multiple rows: pass the array, `read(rows, n)`, rather than a pointer to its first element, which HLS takes to cover only the first row. On an AI Engine frame port (`[[tapa::frame(N)]]`) it copies whole runs of a frame. In HLS, independent bulk transfers run concurrently. |
 | `try_read(T& val)` | no | yes | Non-blocking read; returns true and writes to `val` if successful. |
 | `operator>>(T& val)` | yes | yes | Blocking read into `val`; returns the stream so reads can be chained. Equivalent to `val = read()`. |
 | `peek(bool& ok)` | no | no | Returns the next element without consuming it; sets `ok` to whether one was available. |
@@ -454,8 +454,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 | `[[tapa::aggregate]]` | `aggregate` | Pack a struct into a single wide word. |
 | `[[tapa::bind_op(op, impl, latency)]]` | `bind_op` | Bind an operation to a specific implementation, e.g. `("mul", "dsp")`. |
 | `[[tapa::array_map(instance, offset, orient)]]` | `array_map` | Map an array into a larger physical instance. `offset` is positional and optional — `-1` omits it. |
-| `[[tapa::aie_frame(N)]]` | — | On a stream parameter of an AI Engine leaf task: the stream arrives as frames of `N` elements in tile memory; final partial output frames are zero-padded. See [AI Engine Tasks](../howto/aie.md). |
-| `[[tapa::aie_plio(W)]]` | — | On a stream parameter of an AI Engine task: PLIO width of 32, 64 or 128 bits. |
+| `[[tapa::frame(N)]]` | — | On a stream parameter of a leaf task: the port moves whole frames of `N` elements, and `tapa analyze` rejects a stream that holds fewer, on every target. On the AI Engine the frames arrive in tile memory; final partial output frames are zero-padded. See [AI Engine Tasks](../howto/aie.md). |
 
 **On a function.**
 
@@ -463,7 +462,6 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 |-----------|-------------|
 | `[[tapa::target("ignore")]]` | Mark a task for custom RTL replacement. TAPA generates a port-signature template but does not synthesize the task body. |
 | `[[tapa::target("aie")]]` | Run the task, or an upper task's whole subtree, on the Versal AI Engine array. See [AI Engine Tasks](../howto/aie.md). |
-| `[[tapa::aie_location(col, row)]]` | Pin an AI Engine leaf task to a tile; a third argument picks one instance. |
 
 ```admonish note
 The `-1` sentinel in `partition` and `array_map` exists because the arguments are positional and zero is a meaningful value (`dim = 0` means *all* dimensions). Passing a dim where a factor is expected is silently accepted by the vendor and partitions the wrong dimension, so spell the sentinel rather than dropping the argument.

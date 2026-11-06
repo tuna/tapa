@@ -1618,6 +1618,7 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -2136,12 +2137,12 @@ impl<T> core::convert::From<T> for tapa_ir::port::ArgCategory
 pub fn tapa_ir::port::ArgCategory::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::ArgCategory where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::port::Port
-pub tapa_ir::port::Port::aie_frame: core::option::Option<u32>
 pub tapa_ir::port::Port::aie_plio: core::option::Option<u32>
 pub tapa_ir::port::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::port::Port::chan_count: core::option::Option<u32>
 pub tapa_ir::port::Port::chan_size: core::option::Option<u32>
 pub tapa_ir::port::Port::ctype: alloc::string::String
+pub tapa_ir::port::Port::frame: core::option::Option<u32>
 pub tapa_ir::port::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::port::Port::name: alloc::string::String
 pub tapa_ir::port::Port::stream_depth: core::option::Option<u32>
@@ -3180,6 +3181,12 @@ impl<T> core::convert::From<T> for tapa_ir::connectivity::MemoryKind
 pub fn tapa_ir::connectivity::MemoryKind::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryKind where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::ParseError
+pub tapa_ir::ParseError::FrameDepth
+pub tapa_ir::ParseError::FrameDepth::depth: u32
+pub tapa_ir::ParseError::FrameDepth::frame: u32
+pub tapa_ir::ParseError::FrameDepth::port: alloc::string::String
+pub tapa_ir::ParseError::FrameDepth::stream: alloc::string::String
+pub tapa_ir::ParseError::FrameDepth::task: alloc::string::String
 pub tapa_ir::ParseError::Json(serde_json::error::Error)
 pub tapa_ir::ParseError::OutdatedSchemaVersion
 pub tapa_ir::ParseError::OutdatedSchemaVersion::found: u32
@@ -4245,6 +4252,7 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -4544,6 +4552,7 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -4972,12 +4981,12 @@ impl<T> core::convert::From<T> for tapa_ir::floorplan::PipelineRoute
 pub fn tapa_ir::floorplan::PipelineRoute::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::PipelineRoute where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Port
-pub tapa_ir::Port::aie_frame: core::option::Option<u32>
 pub tapa_ir::Port::aie_plio: core::option::Option<u32>
 pub tapa_ir::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::Port::chan_count: core::option::Option<u32>
 pub tapa_ir::Port::chan_size: core::option::Option<u32>
 pub tapa_ir::Port::ctype: alloc::string::String
+pub tapa_ir::Port::frame: core::option::Option<u32>
 pub tapa_ir::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::Port::name: alloc::string::String
 pub tapa_ir::Port::stream_depth: core::option::Option<u32>
@@ -5142,6 +5151,7 @@ pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph

@@ -43,7 +43,7 @@ pub fn port(name: &str, cat: ArgCategory, ctype: &str, width: u32) -> Port {
         width,
         chan_count: None,
         chan_size: None,
-        aie_frame: None,
+        frame: None,
         aie_plio: None,
         stream_depth: None,
         mmap_addr_width: None,

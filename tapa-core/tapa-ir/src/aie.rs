@@ -45,7 +45,7 @@ pub struct AieKernel {
     pub call: String,
     /// The task's parameters, in declaration order.
     pub ports: Vec<AieKernelPort>,
-    /// A `[[tapa::aie_location]]` tile pin.
+    /// A `tapa analyze --aie-location` tile pin.
     pub location: Option<(u32, u32)>,
     /// The bytes of the task's local variables, which the kernel's stack
     /// must hold on top of its own needs.
@@ -77,7 +77,7 @@ pub enum AiePortKind {
         streams: Vec<usize>,
         /// 32-bit words per element.
         words: u32,
-        /// `[[tapa::aie_frame(N)]]` elements per frame.
+        /// `[[tapa::frame(N)]]` elements per frame.
         frame: Option<u32>,
     },
     /// A scalar, read at run time or fixed at the invoke site.
@@ -258,7 +258,7 @@ impl AiePartition {
                 width: pl_port.width,
                 chan_count: None,
                 chan_size: None,
-                aie_frame: None,
+                frame: None,
                 aie_plio: Some(width),
                 stream_depth: None,
                 mmap_addr_width: None,
@@ -413,7 +413,7 @@ impl Builder<'_> {
                 let consumer_aie = endpoint_is_aie(graph, fifo.consumed_by.as_ref());
                 let words = stream_words(graph, child, port)?;
                 let aie_port = task(graph, child)?.port(port);
-                let frame = aie_port.and_then(|port| port.aie_frame);
+                let frame = aie_port.and_then(|port| port.frame);
                 let kind = if producer_aie && consumer_aie {
                     AieStreamKind::Net {
                         depth_words: fifo.depth.unwrap_or(0) * words,
@@ -490,7 +490,7 @@ impl Builder<'_> {
             let words = stream_words(graph, &endpoint.0, &port)?;
             let frame = task(graph, &endpoint.0)?
                 .port(&port)
-                .and_then(|port| port.aie_frame);
+                .and_then(|port| port.frame);
             let stream = self.push_stream(
                 sanitize_identifier_name(&format!("{path}__{fifo_name}")),
                 fifo_name,
@@ -568,7 +568,7 @@ impl Builder<'_> {
                     plural,
                     streams,
                     words: port.width.div_ceil(32),
-                    frame: port.aie_frame,
+                    frame: port.frame,
                 }
             } else if port.cat.is_scalar() {
                 let Some(Binding::Scalar(value)) = scope.get(&port.name) else {
@@ -625,16 +625,15 @@ impl Builder<'_> {
                 match pin.instance {
                     None if instances > 1 => {
                         return Err(AieError(format!(
-                            "[[tapa::aie_location({}, {})]] on `{name}` names no instance, but \
-                             the task has {instances}; add the instance index as a third \
-                             argument",
+                            "`--aie-location {name}:{},{}` names no instance, but the task \
+                             has {instances}; add the instance index as a third number",
                             pin.col, pin.row
                         )))
                     }
                     Some(i) if i as usize >= instances => {
                         return Err(AieError(format!(
-                            "[[tapa::aie_location({}, {}, {i})]] on `{name}` names instance \
-                             {i}, but the task has {instances}",
+                            "`--aie-location {name}:{},{},{i}` names instance {i}, but the \
+                             task has {instances}",
                             pin.col, pin.row
                         )))
                     }

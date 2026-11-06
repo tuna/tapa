@@ -8,7 +8,7 @@ namespace tapa::cc {
 // The AI Engine backend. An AI Engine task keeps its TAPA signature and its
 // body as written: `tapa/aie/tapa.h` gives the stream and vector types their
 // AI Engine meaning, and the generated ADF kernel wrapper builds the ports.
-// The backend only gives a `[[tapa::aie_frame(N)]]` port its frame type in
+// The backend only gives a `[[tapa::frame(N)]]` port its frame type in
 // the task's own variant, and lowers loop attributes to chess keywords.
 class AieBackend final : public Backend {
  public:

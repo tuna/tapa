@@ -10,7 +10,7 @@
 #define TAPA_AIE_TEST_FRAME_SIZE 0
 #endif
 #if TAPA_AIE_TEST_FRAME_SIZE > 0
-#define TAPA_AIE_TEST_FRAME_ATTR [[tapa::aie_frame(TAPA_AIE_TEST_FRAME_SIZE)]]
+#define TAPA_AIE_TEST_FRAME_ATTR [[tapa::frame(TAPA_AIE_TEST_FRAME_SIZE)]]
 #else
 #define TAPA_AIE_TEST_FRAME_ATTR
 #endif
@@ -38,9 +38,12 @@ void Stream2Mmap(tapa::istream<vec4f>& stream, tapa::mmap<vec4f> mmap, int n) {
 
 void VecAdd(tapa::mmap<vec4f> a, tapa::mmap<vec4f> b, tapa::mmap<vec4f> c,
             int n) {
-  tapa::stream<vec4f> a_q("a_q");
-  tapa::stream<vec4f> b_q("b_q");
-  tapa::stream<vec4f> c_q("c_q");
+  // A frame port's stream holds a whole frame, on every target.
+  constexpr uint64_t kDepth =
+      TAPA_AIE_TEST_FRAME_SIZE > 2 ? TAPA_AIE_TEST_FRAME_SIZE : 2;
+  tapa::stream<vec4f, kDepth> a_q("a_q");
+  tapa::stream<vec4f, kDepth> b_q("b_q");
+  tapa::stream<vec4f, kDepth> c_q("c_q");
 
   tapa::task()
       .invoke(Mmap2Stream, a, n, a_q)

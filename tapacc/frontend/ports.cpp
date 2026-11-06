@@ -3,6 +3,7 @@
 #include <optional>
 #include <string>
 
+#include "clang/AST/Attr.h"
 #include "clang/Basic/Diagnostic.h"
 
 #include "classify.h"
@@ -137,7 +138,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kOmmap:
       case TapaKind::kAsyncMmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width, std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kMmaps: {
@@ -146,28 +147,26 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         for (uint32_t i = 0; i < n; ++i) {
           ports.push_back(Port{ArrayNameAt(name, static_cast<int>(i)),
                                TapaKind::kMmap, elem + "*", elem_width,
-                               std::nullopt, std::nullopt, std::nullopt,
-                               std::nullopt});
+                               std::nullopt, std::nullopt, std::nullopt});
         }
         break;
       }
 
       case TapaKind::kHmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width,
-                             IntArg(param, 1), IntArg(param, 2), std::nullopt,
-                             std::nullopt});
+                             IntArg(param, 1), IntArg(param, 2), std::nullopt});
         break;
 
       case TapaKind::kIStream:
       case TapaKind::kOStream:
         ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kIStreams:
       case TapaKind::kOStreams:
         ports.push_back(Port{name, kind, elem, elem_width, IntArg(param, 1),
-                             std::nullopt, std::nullopt, std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       default:
@@ -175,11 +174,34 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         ports.push_back(Port{name, TapaKind::kNotTapa,
                              param->getType().getAsString(),
                              BitWidth(ctx, param->getType()), std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
     }
   }
   return ports;
+}
+
+void ReadFrameAttrs(const clang::ASTContext& ctx, TaskModel& task) {
+  const bool leaf = task.level == TaskLevel::kLower;
+  for (const clang::FunctionDecl* decl : task.def->redecls()) {
+    for (const clang::ParmVarDecl* param : decl->parameters()) {
+      const auto* frame = param->getAttr<clang::TapaFrameAttr>();
+      if (frame == nullptr) continue;
+      const TapaKind kind = ClassifyTapaType(param);
+      const bool single_stream =
+          kind == TapaKind::kIStream || kind == TapaKind::kOStream;
+      if (!leaf || !single_stream || frame->getSize() <= 0) {
+        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                         frame->getLocation(),
+                         "[[tapa::frame(N)]] needs a positive N on a "
+                         "tapa::istream or tapa::ostream parameter of a leaf "
+                         "task ('%0' of task '%1')")
+            << param->getNameAsString() << task.name;
+      } else if (Port* port = FindPort(task, param->getNameAsString())) {
+        port->frame = static_cast<uint32_t>(frame->getSize());
+      }
+    }
+  }
 }
 
 }  // namespace tapa::cc

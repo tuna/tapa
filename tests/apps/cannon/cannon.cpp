@@ -66,21 +66,22 @@ void Gather(tapa::mmap<beat_t> matrix, tapa::istreams<io_t, p * p>& lo,
 // own accumulator so that their multiply-accumulates overlap: lane k of A's
 // row i times vector j of B's row k. Every round but the last it passes its
 // blocks of A and B on to its neighbors and receives theirs once it is done,
-// so a ring stream holds a whole block. On the AI Engine every port is a frame
-// (`aie_frame`, ignored on PL): the blocks move by DMA, so the PE hands both
-// over whole before it computes. On PL it sends the chunks of A and B an
-// iteration computes with, and B has a bank per row and per vector of a chunk,
-// so the iteration's kCols * kB multiply-accumulates issue in one cycle.
-void ProcElem([[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
-              [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& a_hi,
-              [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& b_lo,
-              [[tapa::aie_frame(kHalfParts)]] tapa::istream<io_t>& b_hi,
-              [[tapa::aie_frame(kHalfParts)]] tapa::ostream<io_t>& c_lo,
-              [[tapa::aie_frame(kHalfParts)]] tapa::ostream<io_t>& c_hi,
-              [[tapa::aie_frame(kChunks)]] tapa::ostream<chunk_t>& i_prev,
-              [[tapa::aie_frame(kChunks)]] tapa::istream<chunk_t>& i_next,
-              [[tapa::aie_frame(kChunks)]] tapa::ostream<chunk_t>& j_prev,
-              [[tapa::aie_frame(kChunks)]] tapa::istream<chunk_t>& j_next) {
+// so a ring stream holds a whole block. Every port is a frame, whose channel
+// therefore holds a whole frame on every target. On the AI Engine the blocks
+// move by DMA, so the PE hands both over whole before it computes. On PL it
+// sends the chunks of A and B an iteration computes with, and B has a bank per
+// row and per vector of a chunk, so the iteration's kCols * kB
+// multiply-accumulates issue in one cycle.
+void ProcElem([[tapa::frame(kHalfParts)]] tapa::istream<io_t>& a_lo,
+              [[tapa::frame(kHalfParts)]] tapa::istream<io_t>& a_hi,
+              [[tapa::frame(kHalfParts)]] tapa::istream<io_t>& b_lo,
+              [[tapa::frame(kHalfParts)]] tapa::istream<io_t>& b_hi,
+              [[tapa::frame(kHalfParts)]] tapa::ostream<io_t>& c_lo,
+              [[tapa::frame(kHalfParts)]] tapa::ostream<io_t>& c_hi,
+              [[tapa::frame(kChunks)]] tapa::ostream<chunk_t>& i_prev,
+              [[tapa::frame(kChunks)]] tapa::istream<chunk_t>& i_next,
+              [[tapa::frame(kChunks)]] tapa::ostream<chunk_t>& j_prev,
+              [[tapa::frame(kChunks)]] tapa::istream<chunk_t>& j_next) {
   [[tapa::partition("cyclic", kRowVecs)]] vec_t a[kVecs];
   [[tapa::partition("complete", -1, 1)]] [[tapa::partition("cyclic", kCols, 2)]]
   vec_t b[kB][kRowVecs];

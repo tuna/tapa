@@ -1095,7 +1095,7 @@ ap_clk              0.400        0.000
         fs_err::write(dir.path().join("report.yaml"), "candidate: report\n").expect("write report");
         let mut state = crate::testutil::state_from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-slash",
                 "tasks": {"Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "lower",
                     "synth": "hls", "ports": [{"cat": "scalar", "name": "n", "type": "int", "width": 32}],
@@ -1227,7 +1227,7 @@ ap_clk              0.400        0.000
     fn implementation_target_dispatches_by_flow_and_validates_platform_and_clock() {
         let graph = tapa_ir::TaskGraph::from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name":"Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level":"lower",
                     "synth":"hls", "ports":[], "self_area":{"lut":1}}}

@@ -17,6 +17,12 @@ namespace tapa::cc {
 std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
                              const clang::FunctionDecl* task);
 
+// Reads `[[tapa::frame(N)]]` onto a leaf task's stream ports on every target,
+// from every redeclaration so a forward declaration and its definition agree.
+// Reports an error for a frame on another kind of task or port, or with a
+// non-positive N.
+void ReadFrameAttrs(const clang::ASTContext& ctx, TaskModel& task);
+
 }  // namespace tapa::cc
 
 #endif  // TAPA_FRONTEND_PORTS_H_

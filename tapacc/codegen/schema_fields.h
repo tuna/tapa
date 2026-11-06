@@ -22,7 +22,7 @@ inline constexpr const char* kFieldTasks = "tasks";
 // `tapa_ir::SCHEMA_VERSION`; the conformance test locks the pair, and
 // tapa-ir rejects graphs newer than it understands with a regenerate
 // message instead of a field-level misparse.
-inline constexpr int kSchemaVersion = 3;
+inline constexpr int kSchemaVersion = 4;
 
 // ── Task ────────────────────────────────────────────────────────────
 // The per-task source manifest (schema v3). `srcs` names rewritten-tree
@@ -45,14 +45,7 @@ inline constexpr const char* kFieldType = "type";
 inline constexpr const char* kFieldWidth = "width";
 inline constexpr const char* kFieldChanCount = "chan_count";
 inline constexpr const char* kFieldChanSize = "chan_size";
-inline constexpr const char* kFieldAieFrame = "aie_frame";
-inline constexpr const char* kFieldAiePlio = "aie_plio";
-
-// ── AI Engine tile pin (task "aie_location" entries) ────────────────
-inline constexpr const char* kFieldAieLocation = "aie_location";
-inline constexpr const char* kFieldCol = "col";
-inline constexpr const char* kFieldRow = "row";
-inline constexpr const char* kFieldInstance = "instance";
+inline constexpr const char* kFieldFrame = "frame";
 
 // ── AI Engine leaf stack (task "aie_stack_bytes") ───────────────────
 inline constexpr const char* kFieldAieStackBytes = "aie_stack_bytes";

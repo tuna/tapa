@@ -263,7 +263,7 @@ class ostreams {
 
 namespace aie {
 
-// A `[[tapa::aie_frame(N)]]` stream port: the stream arrives as frames of
+// A `[[tapa::frame(N)]]` stream port: the stream arrives as frames of
 // `N` elements in tile memory (async ping-pong buffers), and `read()` walks
 // the current frame, acquiring the next buffer every `N` reads. tapacc
 // rewrites the port's type to `frame_t<...>` in the AI Engine variant only.

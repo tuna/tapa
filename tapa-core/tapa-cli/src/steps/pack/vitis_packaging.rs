@@ -557,7 +557,7 @@ mod tests {
     fn pl_only_state() -> WorkState {
         let mut state = crate::testutil::state_from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}
@@ -570,7 +570,7 @@ mod tests {
     fn packaging_state() -> WorkState {
         let mut state = crate::testutil::state_from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {"Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "lower",
                     "synth": "hls",
@@ -627,7 +627,7 @@ mod tests {
     fn aie_state(skip_aie: bool) -> WorkState {
         let mut state = crate::testutil::state_from_json(
             r#"{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "xilinx-vitis",
                 "tasks": {
                     "Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper",

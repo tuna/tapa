@@ -429,7 +429,7 @@ mod tests {
     #[test]
     fn plan_end_to_end_on_vadd() {
         let json = r#"{
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "VecAdd", "target": "xilinx-hls",
             "tasks": {
                 "VecAdd": {
@@ -481,7 +481,7 @@ mod tests {
         // capacity (2 * 120000 > 220800 * 0.7) must split into adjacent slots,
         // so their connecting stream crosses one boundary.
         let json = r#"{
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "VecAdd", "target": "xilinx-vitis",
             "tasks": {
                 "VecAdd": {
@@ -548,7 +548,7 @@ mod tests {
 
     fn nested_control_graph() -> tapa_ir::TaskGraph {
         let json = r#"{
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "Top", "target": "xilinx-vitis",
             "tasks": {
                 "Top": {
@@ -778,7 +778,7 @@ mod tests {
     #[test]
     fn plan_without_part_number_errors() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls",
+            r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-hls",
                 "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
@@ -793,7 +793,7 @@ mod tests {
     #[test]
     fn exact_memory_map_requires_its_recorded_platform() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-vitis",
+            r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-vitis",
                 "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
@@ -823,7 +823,7 @@ mod tests {
     #[test]
     fn devices_without_exact_bank_tags_reject_memory_inputs_before_solving() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-vitis",
+            r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-vitis",
                 "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )
@@ -902,7 +902,7 @@ mod tests {
     #[test]
     fn plan_options_fail_before_solver_or_device_lookup() {
         let graph = tapa_ir::TaskGraph::from_json(
-            r#"{"schema_version": 3, "cflags": [], "top": "T", "target": "xilinx-hls",
+            r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-hls",
                 "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
                     "synth": "hls", "ports": [], "tasks": {}, "fifos": {}}}}"#,
         )

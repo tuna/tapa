@@ -40,7 +40,7 @@ pub struct TaskGraph {
 }
 
 /// The task-graph schema version this crate reads and writes.
-pub const SCHEMA_VERSION: u32 = 3;
+pub const SCHEMA_VERSION: u32 = 4;
 
 /// A pre-versioning producer's graph is version 1 by definition.
 const fn default_schema_version() -> u32 {
@@ -56,7 +56,12 @@ impl TaskGraph {
     }
 
     /// Validate graph invariants at both frontend and persisted-state boundaries.
-    pub(crate) fn validate(&self) -> Result<(), ParseError> {
+    ///
+    /// # Errors
+    ///
+    /// A schema version other than [`SCHEMA_VERSION`], an invalid
+    /// invoke-site constant, or a stream shallower than a frame it carries.
+    pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
             return Err(ParseError::UnsupportedSchemaVersion {
                 found: self.schema_version,
@@ -69,7 +74,76 @@ impl TaskGraph {
                 supported: SCHEMA_VERSION,
             });
         }
-        self.validate_literals()
+        self.validate_literals()?;
+        self.validate_frame_depths()
+    }
+
+    /// A stream that carries `[[tapa::frame(N)]]` frames holds at least one
+    /// whole frame, on every target: the AI Engine fills a frame before its
+    /// reader sees any of it, so a shallower channel on PL or in software
+    /// simulation could deadlock a design the AI Engine runs.
+    fn validate_frame_depths(&self) -> Result<(), ParseError> {
+        let mut memo = BTreeMap::new();
+        for (task_name, task) in &self.tasks {
+            for (child_name, instances) in &task.tasks {
+                let frames = self.port_frames(child_name, &mut memo);
+                for instance in instances {
+                    for (port_name, arg) in &instance.args {
+                        let (Some(&frame), Some(stream)) = (frames.get(port_name), arg.arg.name())
+                        else {
+                            continue;
+                        };
+                        let Some(depth) = task.fifos.get(stream).and_then(|fifo| fifo.depth) else {
+                            continue;
+                        };
+                        if depth < frame {
+                            return Err(ParseError::FrameDepth {
+                                task: task_name.clone(),
+                                stream: stream.to_string(),
+                                depth,
+                                port: format!("{child_name}.{port_name}"),
+                                frame,
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// The largest frame each stream port of task `name` moves: a leaf's own
+    /// `[[tapa::frame(N)]]`, and for an upper task the frames of the child
+    /// ports bound to that port.
+    fn port_frames(
+        &self,
+        name: &str,
+        memo: &mut BTreeMap<String, BTreeMap<String, u32>>,
+    ) -> BTreeMap<String, u32> {
+        if let Some(known) = memo.get(name) {
+            return known.clone();
+        }
+        let mut frames = BTreeMap::new();
+        if let Some(task) = self.tasks.get(name) {
+            for port in &task.ports {
+                if let Some(frame) = port.frame {
+                    frames.insert(port.name.clone(), frame);
+                }
+            }
+            for (child_name, instances) in &task.tasks {
+                let child = self.port_frames(child_name, memo);
+                for (port_name, arg) in instances.iter().flat_map(|instance| &instance.args) {
+                    if let (Some(&frame), Some(outer)) = (child.get(port_name), arg.arg.name()) {
+                        if task.port(outer).is_some() {
+                            let entry = frames.entry(outer.to_string()).or_insert(0);
+                            *entry = (*entry).max(frame);
+                        }
+                    }
+                }
+            }
+        }
+        memo.insert(name.to_string(), frames.clone());
+        frames
     }
 
     /// Reject invalid invoke-site constants and undeclared or non-scalar child
@@ -157,7 +231,7 @@ mod tests {
     #[test]
     fn invalid_invoke_constant_is_rejected_at_the_boundary() {
         let payload = r#"{
-            "schema_version": 3, "top": "T", "target": "xilinx-hls", "cflags": [],
+            "schema_version": 4, "top": "T", "target": "xilinx-hls", "cflags": [],
             "tasks": {
                 "T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls",
                     "ports": [], "fifos": {},
@@ -183,7 +257,7 @@ mod tests {
     #[test]
     fn invoke_constant_must_match_declared_scalar_port() {
         let payload = r#"{
-            "schema_version": 3, "top": "T", "target": "xilinx-hls",
+            "schema_version": 4, "top": "T", "target": "xilinx-hls",
             "tasks": {
                 "T": {"level": "upper", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "readable_name": "T", "synth": "hls",
                     "tasks": {"A": [{"args": {
@@ -277,7 +351,7 @@ mod tests {
     #[test]
     fn current_schema_version_is_accepted() {
         let g = TaskGraph::from_json(
-            r#"{"schema_version": 3, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
+            r#"{"schema_version": 4, "top": "T", "target": "xilinx-hls", "tasks": {}}"#,
         )
         .unwrap();
         assert_eq!(g.schema_version, SCHEMA_VERSION);
@@ -297,7 +371,7 @@ mod tests {
     fn parses_named_child_instances() {
         TaskGraph::from_json(
             r#"{
-              "schema_version": 3,
+              "schema_version": 4,
         "cflags": [],
               "top": "Top",
               "target": "xilinx-hls",
@@ -335,12 +409,66 @@ mod tests {
         // The flow target is required at the root now that it is the single
         // home for the vendor flow (analyze injects it before parsing).
         let err = TaskGraph::from_json(
-            r#"{"schema_version":3,"cflags":[],"top":"T","tasks":{"T":{"srcs":["T.cpp"],"include_dirs":[],"defines":[],"level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
+            r#"{"schema_version":4,"cflags":[],"top":"T","tasks":{"T":{"srcs":["T.cpp"],"include_dirs":[],"defines":[],"level":"upper","synth":"hls","readable_name":"T","ports":[],"tasks":{},"fifos":{}}}}"#,
         )
         .expect_err("missing root `target` must fail");
         assert!(
             err.to_string().contains("target"),
             "error must point at the missing target field; got {err}",
         );
+    }
+
+    #[test]
+    fn a_stream_must_hold_a_whole_frame_through_upper_tasks() {
+        // Leaf's frame reaches T's stream `q` through Mid's port `out`.
+        let graph = |depth: u32| {
+            let task = |level: &str, ports: &str, tasks: &str| {
+                format!(
+                    r#"{{"level": "{level}", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [{ports}],
+                        "tasks": {{{tasks}}}, "fifos": {{}}}}"#
+                )
+            };
+            let out = r#"{"cat": "ostream", "name": "out", "type": "int", "width": 32}"#;
+            let framed =
+                r#"{"cat": "ostream", "name": "out", "type": "int", "width": 32, "frame": 8}"#;
+            let top = task(
+                "upper",
+                "",
+                r#""Mid": [{"step": 0, "args": {"out": {"arg": "q", "cat": "ostream"}}}],
+                   "Sink": [{"step": 0, "args": {"in": {"arg": "q", "cat": "istream"}}}]"#,
+            )
+            .replace(
+                r#""fifos": {}"#,
+                &format!(
+                    r#""fifos": {{"q": {{"depth": {depth}, "produced_by": ["Mid", 0],
+                                         "consumed_by": ["Sink", 0]}}}}"#
+                ),
+            );
+            let mid = task(
+                "upper",
+                out,
+                r#""Leaf": [{"step": 0, "args": {"out": {"arg": "out", "cat": "ostream"}}}]"#,
+            );
+            let leaf = task("lower", framed, "");
+            let sink = task(
+                "lower",
+                r#"{"cat": "istream", "name": "in", "type": "int", "width": 32}"#,
+                "",
+            );
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{"T": {top}, "Mid": {mid}, "Leaf": {leaf},
+                    "Sink": {sink}}}}}"#
+            )
+        };
+        let error = TaskGraph::from_json(&graph(4)).expect_err("a frame of 8 in depth 4");
+        let message = error.to_string();
+        assert!(
+            message.contains("stream `q` of task `T` has depth 4"),
+            "{message}"
+        );
+        assert!(message.contains("`Mid.out` moves frames of 8"), "{message}");
+        TaskGraph::from_json(&graph(8)).expect("depth 8 holds a frame of 8");
     }
 }

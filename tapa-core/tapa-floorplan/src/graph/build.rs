@@ -660,7 +660,7 @@ mod tests {
     #[test]
     fn producer_consumer_width_mismatch_fails_closed() {
         let json = r#"{
-            "schema_version": 3,
+            "schema_version": 4,
             "cflags": [], "top": "Top", "target": "xilinx-hls",
             "tasks": {
                 "Top": {

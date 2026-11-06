@@ -66,24 +66,21 @@ std::string Design(const std::string& add, const std::string& load = R"cpp(
   )cpp";
 }
 
-TEST(AieTest, LeafKnobsReachTheGraphAndItsOwnVariant) {
-  const TreePipelineRun run = Analyze(
-      "leaf", Design(R"cpp(
-        [[tapa::target("aie")]] [[tapa::aie_location(10, 0)]]
-        void Add([[tapa::aie_frame(64)]] tapa::istream<float>& a,
-                 [[tapa::aie_plio(128)]] tapa::ostream<float>& c, int n) {
-          float bias[8] = {};
-          [[tapa::pipeline]] for (int i = 0; i < n; ++i)
-            c.write(a.read() + bias[i % 8]);
-        }
-      )cpp"));
+TEST(AieTest, LeafFrameReachesTheGraphAndItsOwnVariant) {
+  const TreePipelineRun run =
+      Analyze("leaf", Design(R"cpp(
+                [[tapa::target("aie")]]
+                void Add([[tapa::frame(64)]] tapa::istream<float>& a,
+                         tapa::ostream<float>& c, int n) {
+                  float bias[8] = {};
+                  [[tapa::pipeline]] for (int i = 0; i < n; ++i)
+                    c.write(a.read() + bias[i % 8]);
+                }
+              )cpp"));
   ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
   const nlohmann::json add = nlohmann::json::parse(run.json)["tasks"]["Add"];
   EXPECT_EQ(add["synth"], "aie");
-  EXPECT_EQ(add["ports"][0]["aie_frame"], 64);
-  EXPECT_EQ(add["ports"][1]["aie_plio"], 128);
-  EXPECT_EQ(add["aie_location"],
-            nlohmann::json::parse(R"([{"col": 10, "row": 0}])"));
+  EXPECT_EQ(add["ports"][0]["frame"], 64);
   // The kernel's stack holds `bias` and the loop counter.
   EXPECT_EQ(add["aie_stack_bytes"], 8 * 4 + 4);
 
@@ -103,7 +100,7 @@ TEST(AieTest, LeafKnobsReachTheGraphAndItsOwnVariant) {
             std::string::npos)
       << full;
   EXPECT_NE(other.find("tapa::istream<float>& a"), std::string::npos) << other;
-  EXPECT_EQ(tu.find("aie_frame"), std::string::npos) << "attribute lowered";
+  EXPECT_EQ(tu.find("[[tapa::frame"), std::string::npos) << "attribute lowered";
   EXPECT_EQ(full.find("#pragma HLS"), std::string::npos)
       << "no HLS interface pragmas in the AI Engine variant: " << full;
 }
@@ -197,18 +194,19 @@ TEST(AieTest, TripcountBoundsTheLoopItIsWrittenOn) {
 TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {
   const std::string add = R"cpp(
     [[tapa::target("aie")]]
-    void Add([[tapa::aie_frame(64)]] tapa::istream<float>& a,
+    void Add([[tapa::frame(64)]] tapa::istream<float>& a,
              tapa::ostream<float>& c, int n) {
       for (int i = 0; i < n; ++i) c.write(a.read());
     }
   )cpp";
-  // Mapped to PL, the same source builds there and its knobs do nothing.
+  // Mapped to PL, the same source builds there; its frame stays in the graph
+  // as the channel contract every target checks.
   const TreePipelineRun pl =
       Analyze("map_hls", Design(add), {{"Add", SynthTarget::kXilinxHls}});
   ASSERT_TRUE(pl.ok) << (pl.diags.empty() ? "" : pl.diags.front());
   const nlohmann::json pl_add = nlohmann::json::parse(pl.json)["tasks"]["Add"];
   EXPECT_EQ(pl_add["synth"], "hls");
-  EXPECT_FALSE(pl_add["ports"][0].contains("aie_frame"));
+  EXPECT_EQ(pl_add["ports"][0]["frame"], 64);
 
   const TreePipelineRun aie = Analyze(
       "map_aie", Design(R"cpp(
@@ -285,13 +283,13 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
            for (int i = 0; i < n; ++i) c.write(a.read());
          })cpp",
        "carries 16-bit elements"},
-      {"bad_plio", R"cpp(
+      {"frame_on_scalar", R"cpp(
          [[tapa::target("aie")]]
-         void Add(tapa::istream<float>& a,
-                  [[tapa::aie_plio(48)]] tapa::ostream<float>& c, int n) {
+         void Add(tapa::istream<float>& a, tapa::ostream<float>& c,
+                  [[tapa::frame(8)]] int n) {
            for (int i = 0; i < n; ++i) c.write(a.read());
          })cpp",
-       "[[tapa::aie_plio(W)]] needs W of 32, 64 or 128"},
+       "[[tapa::frame(N)]] needs a positive N"},
   };
   for (const auto& c : cases) {
     const TreePipelineRun run = Analyze(c.name, Design(c.add));
@@ -312,7 +310,7 @@ TEST(AieTest, BulkReadsBlockWhereNonBlockingReadsAreRejected) {
   const TreePipelineRun bulk =
       Analyze("bulk", Design(R"cpp(
                 [[tapa::target("aie")]]
-                void Add([[tapa::aie_frame(64)]] tapa::istream<float>& a,
+                void Add([[tapa::frame(64)]] tapa::istream<float>& a,
                          tapa::ostream<float>& c, int n) {
                   float block[64];
                   a.read(block, 64);
@@ -437,10 +435,9 @@ TEST(AieTest, APlTaskMustNotCloseThroughHelpersAliasesOrUpperTasks) {
   }
 }
 
-TEST(AieTest, ForwardDeclarationsCarryAieKnobsWithoutLeaking) {
+TEST(AieTest, ForwardDeclarationsCarryFramesWithoutLeaking) {
   const std::string code = Design(R"cpp(
-    [[tapa::aie_location(10, 0)]]
-    void Add([[tapa::aie_frame(64)]] tapa::istream<float>& a,
+    void Add([[tapa::frame(64)]] tapa::istream<float>& a,
              tapa::ostream<float>& c, int n);
     [[tapa::target("aie")]]
     void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
@@ -450,24 +447,19 @@ TEST(AieTest, ForwardDeclarationsCarryAieKnobsWithoutLeaking) {
   const TreePipelineRun aie = Analyze("decl_aie", code);
   ASSERT_TRUE(aie.ok) << (aie.diags.empty() ? "" : aie.diags.front());
   const nlohmann::json add = nlohmann::json::parse(aie.json)["tasks"]["Add"];
-  EXPECT_EQ(add["ports"][0]["aie_frame"], 64);
-  EXPECT_EQ(add["aie_location"],
-            nlohmann::json::parse(R"([{"col": 10, "row": 0}])"));
+  EXPECT_EQ(add["ports"][0]["frame"], 64);
   const std::string& tu = aie.files.at("decl_aie.cpp");
   EXPECT_NE(tu.find("tapa::aie::frame_t<tapa::istream<float>, 64>& a"),
             std::string::npos)
       << tu;
-  EXPECT_EQ(tu.find("aie_frame"), std::string::npos) << tu;
-  EXPECT_EQ(tu.find("aie_location"), std::string::npos) << tu;
+  EXPECT_EQ(tu.find("[[tapa::frame"), std::string::npos) << tu;
 
   const TreePipelineRun pl =
       Analyze("decl_hls", code, {{"Add", SynthTarget::kXilinxHls}});
   ASSERT_TRUE(pl.ok) << (pl.diags.empty() ? "" : pl.diags.front());
   const nlohmann::json pl_add = nlohmann::json::parse(pl.json)["tasks"]["Add"];
-  EXPECT_FALSE(pl_add["ports"][0].contains("aie_frame"));
-  EXPECT_FALSE(pl_add.contains("aie_location"));
-  EXPECT_EQ(pl.files.at("decl_hls.cpp").find("aie_frame"), std::string::npos);
-  EXPECT_EQ(pl.files.at("decl_hls.cpp").find("aie_location"),
+  EXPECT_EQ(pl_add["ports"][0]["frame"], 64);
+  EXPECT_EQ(pl.files.at("decl_hls.cpp").find("[[tapa::frame"),
             std::string::npos);
 }
 

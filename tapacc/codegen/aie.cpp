@@ -27,11 +27,11 @@ void AieBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
   // portable `tapa::istream<T>&` spelling.
   for (unsigned index = 0; index < task.def->getNumParams(); ++index) {
     const clang::ParmVarDecl* param = task.def->getParamDecl(index);
-    const clang::TapaAieFrameAttr* frame = nullptr;
+    const clang::TapaFrameAttr* frame = nullptr;
     for (const clang::FunctionDecl* decl : task.def->redecls()) {
       if (index < decl->getNumParams()) {
         if (const auto* attr =
-                decl->getParamDecl(index)->getAttr<clang::TapaAieFrameAttr>()) {
+                decl->getParamDecl(index)->getAttr<clang::TapaFrameAttr>()) {
           frame = attr;
         }
       }
@@ -144,20 +144,14 @@ void AieBackend::LowerStmtAttr(const clang::Attr& attr, const clang::Stmt* body,
 
 void AieBackend::LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl&,
                                const clang::DeclStmt&, EditSink& edits) const {
-  if (attr.getKind() == clang::attr::TapaAieFrame ||
-      attr.getKind() == clang::attr::TapaAiePlio) {
-    return;
-  }
+  if (attr.getKind() == clang::attr::TapaFrame) return;
   ReportUnsupportedAttr(attr, edits);
 }
 
 void AieBackend::LowerParamAttr(const clang::Attr& attr,
                                 const clang::ParmVarDecl&, const clang::Stmt*,
                                 EditSink& edits) const {
-  if (attr.getKind() == clang::attr::TapaAieFrame ||
-      attr.getKind() == clang::attr::TapaAiePlio) {
-    return;
-  }
+  if (attr.getKind() == clang::attr::TapaFrame) return;
   ReportUnsupportedAttr(attr, edits);
 }
 }  // namespace tapa::cc

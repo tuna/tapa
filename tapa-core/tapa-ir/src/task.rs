@@ -19,8 +19,8 @@ pub enum TaskLevel {
     Upper,
 }
 
-/// A `[[tapa::aie_location(col, row[, instance])]]` tile pin of an AI
-/// Engine leaf task; `instance` picks one invocation of a task invoked
+/// A `tapa analyze --aie-location TASK:COL,ROW[,INSTANCE]` tile pin of an
+/// AI Engine leaf task; `instance` picks one invocation of a task invoked
 /// several times.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -64,7 +64,7 @@ pub struct Task {
     pub readable_name: String,
     /// Per-task synthesis policy (`"hls"` / `"ignore"` / `"aie"`).
     pub synth: SynthTarget,
-    /// AI Engine tile pins (`[[tapa::aie_location]]`); empty otherwise.
+    /// AI Engine tile pins (`tapa analyze --aie-location`); empty otherwise.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub aie_location: Vec<AieLocation>,
     /// AI Engine leaf tasks: the bytes of the body's local variables, which

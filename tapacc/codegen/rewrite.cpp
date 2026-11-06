@@ -64,14 +64,12 @@ const clang::Stmt* GetRegionBody(const clang::Stmt* stmt) {
 constexpr bool IsTapaAttr(clang::attr::Kind kind) {
   switch (kind) {
     case clang::attr::TapaAggregate:
-    case clang::attr::TapaAieFrame:
-    case clang::attr::TapaAieLocation:
-    case clang::attr::TapaAiePlio:
     case clang::attr::TapaArrayMap:
     case clang::attr::TapaBalance:
     case clang::attr::TapaBindOp:
     case clang::attr::TapaDependence:
     case clang::attr::TapaFlatten:
+    case clang::attr::TapaFrame:
     case clang::attr::TapaLatency:
     case clang::attr::TapaPartition:
     case clang::attr::TapaPipeline:
@@ -85,12 +83,11 @@ constexpr bool IsTapaAttr(clang::attr::Kind kind) {
   }
 }
 
-// TapaPipeline belongs on functions and statements, TapaTarget and
-// TapaAieLocation on functions. None is a variable pragma.
+// TapaPipeline belongs on functions and statements, TapaTarget on functions.
+// Neither is a variable pragma.
 constexpr bool IsTapaDeclAttr(clang::attr::Kind kind) {
   return IsTapaAttr(kind) && kind != clang::attr::TapaPipeline &&
-         kind != clang::attr::TapaTarget &&
-         kind != clang::attr::TapaAieLocation;
+         kind != clang::attr::TapaTarget;
 }
 
 // Lower a function-level [[tapa::pipeline]] into the function's body.
@@ -108,12 +105,10 @@ void LowerFuncAttrPragmas(const clang::FunctionDecl* func,
 
 // Drop a function-level [[tapa::pipeline]] without lowering it: a task's
 // stub branch keeps only its signature, so no body carries the pragma, but
-// the attribute text must not reach the vendor. An AI Engine tile pin has
-// already been read into the task graph.
+// the attribute text must not reach the vendor.
 void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
   for (const clang::Attr* attr : func->attrs()) {
-    if (attr->getKind() == clang::attr::TapaPipeline ||
-        attr->getKind() == clang::attr::TapaAieLocation) {
+    if (attr->getKind() == clang::attr::TapaPipeline) {
       RemoveLoweredAttr(edits, attr->getRange());
     }
   }
@@ -126,10 +121,6 @@ void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
                     EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) {
     for (const clang::Attr* attr : func->attrs()) {
-      if (attr->getKind() == clang::attr::TapaAieLocation) {
-        RemoveLoweredAttr(edits, attr->getRange());
-        continue;
-      }
       if (attr->getKind() != clang::attr::TapaPipeline) continue;
       ReportCustomDiag(func->getASTContext(), clang::DiagnosticsEngine::Error,
                        attr->getRange().getBegin(),

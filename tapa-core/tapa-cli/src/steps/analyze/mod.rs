@@ -26,8 +26,10 @@ use crate::tapacc::discover::find_clang_binary;
 /// file that can drift from the first.
 const TAPACC_ARTIFACT: &str = "tapacc.json";
 
+mod aie_pins;
 mod run_tapacc;
 
+use aie_pins::{parse_aie_location, parse_aie_plio, AieLocationArg, AiePlioArg};
 use run_tapacc::run_tapacc;
 
 /// True when the top task in `graph` is a leaf-level task.
@@ -162,6 +164,21 @@ pub struct AnalyzeArgs {
     #[arg(long = "target", value_name = "TARGET", value_parser = parse_target_arg)]
     pub targets: Vec<TargetArg>,
 
+    /// Pin an AI Engine leaf task to a tile, `TASK:COL,ROW`, or one instance
+    /// of a task invoked several times, `TASK:COL,ROW,INSTANCE`. Repeatable.
+    #[arg(
+        long = "aie-location",
+        value_name = "TASK:COL,ROW[,INSTANCE]",
+        value_parser = parse_aie_location
+    )]
+    pub aie_locations: Vec<AieLocationArg>,
+
+    /// The PLIO width (32, 64 or 128 bits) of an AI Engine task's boundary
+    /// stream port, `TASK.PORT:WIDTH`; the default is the element width,
+    /// capped at 128. Repeatable.
+    #[arg(long = "aie-plio", value_name = "TASK.PORT:WIDTH", value_parser = parse_aie_plio)]
+    pub aie_plios: Vec<AiePlioArg>,
+
     /// Explicit path to the `tapacc` binary. Overrides the walk-up
     /// `find_resource` search anchored at the `tapa` binary. Used by
     /// Bazel driver rules (`bazel/tapa_rules.bzl::_tapa_xo_impl`)
@@ -260,11 +277,13 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         );
     }
 
-    let graph: Graph = serde_json::from_value(graph_dict).map_err(|e| {
+    let mut graph: Graph = serde_json::from_value(graph_dict).map_err(|e| {
         CliError::Codegen(format!(
             "cannot parse the task graph produced by `tapacc`: {e}"
         ))
     })?;
+    aie_pins::apply(&mut graph, &args.aie_locations, &args.aie_plios)?;
+    graph.validate()?;
 
     if is_top_leaf(&graph, &args.top) && flow == AnalyzeTarget::XilinxVitis {
         return Err(CliError::InvalidArg(
@@ -357,7 +376,7 @@ mod tests {
         // tapacc-shaped task graph on stdout.
         // Mirrors real `tapacc` output: `readable_name` is emitted for every
         // task (equal to the task name for these non-template tasks).
-        let fixed_graph = r#"{"schema_version": 3, "cflags": [], "tasks": {"VecAdd": {"srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Middle": [{"step": -1, "args": {}}]}, "fifos": {}}, "Middle": {"srcs": ["Middle.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls", "readable_name": "Middle", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
+        let fixed_graph = r#"{"schema_version": 4, "cflags": [], "tasks": {"VecAdd": {"srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls", "readable_name": "VecAdd", "ports": [], "tasks": {"Middle": [{"step": -1, "args": {}}]}, "fifos": {}}, "Middle": {"srcs": ["Middle.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls", "readable_name": "Middle", "ports": [], "tasks": {"Add": [{"step": 0, "args": {}}]}, "fifos": {}}, "Add": {"srcs": ["Add.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls", "readable_name": "Add", "ports": []}}, "top": "VecAdd"}"#;
         fs::write(
             &tapacc,
             format!(

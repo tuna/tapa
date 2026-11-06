@@ -4,7 +4,7 @@
     },
     "graph": {
         "cflags": [],
-        "schema_version": 3,
+        "schema_version": 4,
         "target": "xilinx-hls",
         "tasks": {
             "manual_hls_top": {

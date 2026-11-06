@@ -227,7 +227,7 @@ mod tests {
     fn state(target: Target) -> WorkState {
         let mut state = crate::testutil::state_from_json(&format!(
             r#"{{
-                "schema_version": 3,
+                "schema_version": 4,
                 "cflags": [], "top": "Top", "target": "{}",
                 "tasks": {{"Top": {{"readable_name":"Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level":"lower",
                     "synth":"hls", "ports":[], "tasks":{{}}, "fifos":{{}}}}}}
