@@ -19,4 +19,12 @@ struct burst {
   int64_t n = 0;
 };
 
+namespace internal {
+
+// The request an AI Engine task's kernel sends on each request channel it
+// uses once its body returns: the PL mover then finishes and returns.
+inline constexpr burst end_of_requests() { return burst(0, -1); }
+inline constexpr bool ends_requests(const burst& value) { return value.n < 0; }
+
+}  // namespace internal
 }  // namespace tapa

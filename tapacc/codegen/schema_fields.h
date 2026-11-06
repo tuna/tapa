@@ -46,6 +46,9 @@ inline constexpr const char* kFieldWidth = "width";
 inline constexpr const char* kFieldChanCount = "chan_count";
 inline constexpr const char* kFieldChanSize = "chan_size";
 inline constexpr const char* kFieldFrame = "frame";
+inline constexpr const char* kFieldAieMovers = "aie_movers";
+inline constexpr const char* kFieldReads = "reads";
+inline constexpr const char* kFieldWrites = "writes";
 
 // ── AI Engine leaf stack (task "aie_stack_bytes") ───────────────────
 inline constexpr const char* kFieldAieStackBytes = "aie_stack_bytes";

@@ -770,6 +770,14 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
                                    GenerateWrapper(model, backend, ctx) +
                                    "#endif\n");
   }
+  // Each mover follows the AI Engine task it serves, under its own guard.
+  for (const Mover& mover : program.movers) {
+    edits.Describe("mover '" + mover.name + "'");
+    edits.InsertTextAfterToken(mover.after->getEndLoc(),
+                               "\n#ifdef " + TaskGuardDefine(mover.name) +
+                                   "\n" + shared.GenerateMover(mover) +
+                                   "#endif\n");
+  }
 }
 
 }  // namespace tapa::cc

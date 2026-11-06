@@ -1,6 +1,8 @@
 #ifndef TAPA_CODEGEN_BACKEND_H_
 #define TAPA_CODEGEN_BACKEND_H_
 
+#include <string>
+
 #include "clang/AST/Decl.h"
 #include "clang/AST/Stmt.h"
 #include "edit_sink.h"
@@ -99,6 +101,9 @@ class Backend {
   virtual void LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl& var,
                              const clang::DeclStmt& decl,
                              EditSink& edits) const {}
+  //  - GenerateMover: the definition of a PL mover (see Mover); only a PL
+  //    backend has one.
+  virtual std::string GenerateMover(const Mover&) const { return ""; }
 
  protected:
   // Per-category port hooks: a vendor overrides only what it needs; the

@@ -5,8 +5,10 @@
 #include <functional>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Expr.h"
@@ -192,17 +194,31 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
 void CheckAieTask(const clang::ASTContext& ctx, const TaskModel& task) {
   for (const clang::ParmVarDecl* param : task.def->parameters()) {
     const TapaKind kind = ClassifyTapaType(param);
-    if (IsMmapInterface(kind)) {
+    if (IsMmapInterface(kind) && !IsAsyncMmap(kind)) {
       ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
                        param->getLocation(),
-                       "AI Engine task '%0' takes the memory port '%1'; AI "
-                       "Engine tasks have no memory path, so read the memory "
-                       "in a PL task and stream the data in")
+                       "AI Engine task '%0' takes the memory port '%1'; an AI "
+                       "Engine task reaches memory through a "
+                       "'tapa::async_mmap<T>&' port, which TAPA serves from "
+                       "the PL")
           << task.name << param->getNameAsString();
       continue;
     }
-    if (!IsStreamInterface(kind)) continue;
     const Port* port = FindPort(task, param->getNameAsString());
+    if (IsAsyncMmap(kind)) {
+      if (port != nullptr && port->width != 32 && port->width != 64 &&
+          port->width != 128) {
+        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                         param->getLocation(),
+                         "async_mmap '%0' of AI Engine task '%1' has %2-bit "
+                         "elements; an AI Engine memory element is 32, 64 or "
+                         "128 bits, the widths that cross a PLIO and line up "
+                         "with a 128-bit request")
+            << param->getNameAsString() << task.name << port->width;
+      }
+      continue;
+    }
+    if (!IsStreamInterface(kind)) continue;
     if (port != nullptr && (port->width == 0 || port->width % 32 != 0)) {
       ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
                        param->getLocation(),
@@ -223,6 +239,62 @@ void CheckAieTask(const clang::ASTContext& ctx, const TaskModel& task) {
         << op << task.name << problem;
   });
   calls.TraverseStmt(task.def->getBody());
+}
+
+namespace {
+
+// How a body names one parameter: through which members, and whether it
+// is ever named otherwise.
+class MemoryUseVisitor : public clang::RecursiveASTVisitor<MemoryUseVisitor> {
+ public:
+  explicit MemoryUseVisitor(const clang::ParmVarDecl* param) : param_(param) {}
+
+  bool VisitMemberExpr(clang::MemberExpr* member) {
+    const auto* ref =
+        llvm::dyn_cast<clang::DeclRefExpr>(member->getBase()->IgnoreImplicit());
+    if (ref == nullptr || ref->getDecl() != param_) return true;
+    through_member_.insert(ref);
+    const std::string name = member->getMemberDecl()->getNameAsString();
+    if (name == "read_addr" || name == "read_data") {
+      use_.reads = true;
+    } else if (name == "write_addr" || name == "write_data") {
+      use_.writes = true;
+    } else if (name == "write_resp") {
+      use_.writes = true;
+      use_.responses = true;
+    } else {
+      use_ = {true, true, true};
+    }
+    return true;
+  }
+
+  bool VisitDeclRefExpr(clang::DeclRefExpr* ref) {
+    if (ref->getDecl() == param_) refs_.push_back(ref);
+    return true;
+  }
+
+  MemoryUse Result() const {
+    for (const clang::DeclRefExpr* ref : refs_) {
+      if (through_member_.count(ref) == 0) return {true, true, true};
+    }
+    return use_;
+  }
+
+ private:
+  const clang::ParmVarDecl* param_;
+  MemoryUse use_;
+  std::vector<const clang::DeclRefExpr*> refs_;
+  std::set<const clang::DeclRefExpr*> through_member_;
+};
+
+}  // namespace
+
+MemoryUse UsedDirections(const clang::FunctionDecl* def,
+                         const clang::ParmVarDecl* param) {
+  if (def == nullptr || !def->hasBody()) return {true, true, true};
+  MemoryUseVisitor visitor(param);
+  visitor.TraverseStmt(def->getBody());
+  return visitor.Result();
 }
 
 uint32_t LocalBytes(const clang::ASTContext& ctx,

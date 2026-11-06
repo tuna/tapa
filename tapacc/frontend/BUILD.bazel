@@ -220,6 +220,7 @@ cc_library(
         ":names",
         ":ports",
         ":program",
+        ":type_args",
         "//tapacc/codegen:aie",
         "//tapacc/codegen:conventions",
         "//tapacc/codegen:ignore",

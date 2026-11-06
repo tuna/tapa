@@ -98,6 +98,7 @@ fn port(name: &str, cat: ArgCategory, width: u32, chan_count: Option<u32>) -> Po
         aie_plio: None,
         stream_depth: None,
         mmap_addr_width: None,
+        aie_movers: None,
     }
 }
 

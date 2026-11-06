@@ -13,6 +13,7 @@
 #include "tapa/base/task.h"
 #include "tapa/base/util.h"
 
+#include "tapa/aie/mmap.h"
 #include "tapa/aie/stream.h"
 #include "tapa/aie/vec.h"
 
@@ -24,8 +25,6 @@ template <typename T>
 class immap;
 template <typename T>
 class ommap;
-template <typename T>
-struct async_mmap;
 template <typename T, uint64_t S>
 class mmaps;
 template <typename T, int chan_count, int64_t chan_size>

@@ -47,6 +47,7 @@ pub fn port(name: &str, cat: ArgCategory, ctype: &str, width: u32) -> Port {
         aie_plio: None,
         stream_depth: None,
         mmap_addr_width: None,
+        aie_movers: None,
     }
 }
 

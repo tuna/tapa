@@ -14,3 +14,6 @@
 #include "tapa/xilinx/hls/task.h"
 #include "tapa/xilinx/hls/util.h"
 #include "tapa/xilinx/hls/vec.h"
+
+// After the stream and memory types it is written against.
+#include "tapa/base/mover.h"

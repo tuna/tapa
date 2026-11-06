@@ -23,6 +23,7 @@ config_setting(
 _PUBLIC_HEADERS = [
     "tapa.h",
     "tapa/aie/frame.h",
+    "tapa/aie/mmap.h",
     "tapa/aie/stream.h",
     "tapa/aie/tapa.h",
     "tapa/aie/vec.h",
@@ -32,6 +33,7 @@ _PUBLIC_HEADERS = [
     "tapa/base/logging_dummy.h",
     "tapa/base/int.h",
     "tapa/base/mmap.h",
+    "tapa/base/mover.h",
     "tapa/base/stream.h",
     "tapa/base/tapa.h",
     "tapa/base/task.h",

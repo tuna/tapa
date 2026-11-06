@@ -34,16 +34,16 @@ Lvl LvlOf(TaskLevel level, bool is_top, bool is_vitis) {
   return Lvl::kMiddle;
 }
 
-// HLS interface pragmas for a stream port's FIFO(s).
-void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
+// HLS interface pragmas for the FIFO(s) of the stream port `name`: one, or
+// `channels` of an istreams/ostreams port.
+void EmitLowerStream(const std::string& name, TapaKind kind, int64_t channels,
                      CodeSink& out) {
-  const std::string name = param->getNameAsString();
   out.Pragma({"HLS disaggregate variable =", name});
 
   std::vector<std::string> names;
   if (kind == TapaKind::kIStreams || kind == TapaKind::kOStreams) {
     out.Pragma({"HLS array_partition variable =", name, "complete"});
-    for (int64_t i = 0; i < ArraySize(param); ++i) {
+    for (int64_t i = 0; i < channels; ++i) {
       names.push_back(ArrayNameAt(name, static_cast<int>(i)));
     }
   } else {
@@ -67,9 +67,8 @@ void EmitLowerStream(const clang::ParmVarDecl* param, TapaKind kind,
   }
 }
 
-// The five FIFOs of an async_mmap.
-void EmitLowerAsyncMmap(const clang::ParmVarDecl* param, CodeSink& out) {
-  const std::string name = param->getNameAsString();
+// The five FIFOs of the async_mmap port `name`.
+void EmitLowerAsyncMmap(const std::string& name, CodeSink& out) {
   out.Pragma({"HLS disaggregate variable =", name});
   for (const char* tag : {".read_addr", ".read_data", ".write_addr",
                           ".write_data", ".write_resp"}) {
@@ -131,7 +130,10 @@ void XilinxBackend::EmitStreamPort(const PortContext& p, CodeSink& out) const {
     EmitDummyStreamRW(p.param, p.kind, out, /*qdma=*/true);
     return;
   }
-  EmitLowerStream(p.param, p.kind, out);
+  const bool plural =
+      p.kind == TapaKind::kIStreams || p.kind == TapaKind::kOStreams;
+  EmitLowerStream(p.param->getNameAsString(), p.kind,
+                  plural ? ArraySize(p.param) : 1, out);
   if (lvl != Lvl::kLower) {  // middle / top-non-vitis also need anti-DCE reads
     EmitDummyStreamRW(p.param, p.kind, out, /*qdma=*/false);
   }
@@ -183,11 +185,42 @@ void XilinxBackend::EmitAsyncMmapPort(const PortContext& p,
                                       CodeSink& out) const {
   const Lvl lvl = LvlOf(p.level, p.is_top, is_vitis_);
   if (lvl == Lvl::kLower) {
-    EmitLowerAsyncMmap(p.param, out);
+    EmitLowerAsyncMmap(p.param->getNameAsString(), out);
   } else {
     // Middle/top async_mmap is handled like a scalar offset register.
     EmitScalarPort(p, out);
   }
+}
+
+std::string XilinxBackend::GenerateMover(const Mover& mover) const {
+  // The ports MoverPorts lists: a write request and its data share the
+  // request channel.
+  const std::string& t = mover.element;
+  std::string params = "tapa::async_mmap<" + t + ">& mem";
+  std::string call;
+  CodeSink sink;
+  EmitLowerAsyncMmap("mem", sink);
+  EmitLowerStream("requests", TapaKind::kIStream, 1, sink);
+  if (!mover.writes) {
+    params += ", tapa::istream<tapa::burst>& requests";
+    params += ", tapa::ostream<" + t + ">& data";
+    call = "tapa::internal::serve_reads(mem, requests, data";
+    EmitLowerStream("data", TapaKind::kOStream, 1, sink);
+  } else {
+    params += ", tapa::istream<" + t + ">& requests";
+    call = "tapa::internal::serve_writes(mem, requests";
+    if (mover.responses) {
+      params += ", tapa::ostream<uint32_t>& responses";
+      call += ", responses";
+      EmitLowerStream("responses", TapaKind::kOStream, 1, sink);
+    }
+  }
+  std::string code = "\n\nvoid " + mover.name + "(" + params + ") {\n";
+  for (const std::string& line : sink.Lines()) {
+    code += "  " + line + "\n";
+  }
+  code += "  " + call + ");\n}\n";
+  return code;
 }
 
 void XilinxBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {

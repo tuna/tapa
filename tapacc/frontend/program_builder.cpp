@@ -1,5 +1,6 @@
 #include "program_builder.h"
 
+#include <algorithm>
 #include <functional>
 #include <queue>
 #include <set>
@@ -24,6 +25,7 @@
 #include "invoke_parser.h"
 #include "names.h"
 #include "ports.h"
+#include "type_args.h"
 
 namespace tapa::cc {
 
@@ -166,7 +168,52 @@ nlohmann::json PortJson(const Port& port) {
   if (port.chan_count) j[kFieldChanCount] = *port.chan_count;
   if (port.chan_size) j[kFieldChanSize] = *port.chan_size;
   if (port.frame) j[kFieldFrame] = *port.frame;
+  if (port.aie_reads || port.aie_writes) {
+    nlohmann::json& movers = j[kFieldAieMovers] = nlohmann::json::object();
+    if (port.aie_reads) movers[kFieldReads] = *port.aie_reads;
+    if (port.aie_writes) movers[kFieldWrites] = *port.aie_writes;
+  }
   return j;
+}
+
+// The task serving one direction of an AI Engine task's async_mmap port.
+// HLS folds a run of underscores in a top's name into one, so a mover's
+// name never has two in a row.
+std::string MoverName(const std::string& task, const std::string& port,
+                      bool writes) {
+  const std::string raw =
+      "tapa_mover_" + task + "_" + port + (writes ? "_writes" : "_reads");
+  std::string name;
+  for (const char c : raw) {
+    if (c == '_' && !name.empty() && name.back() == '_') continue;
+    name += c;
+  }
+  return name;
+}
+
+// The ports of a mover (tapa/base/mover.h) serving one direction of the AI
+// Engine task's async_mmap port `memory`: a write request and its data share
+// the request channel.
+std::vector<Port> MoverPorts(const Port& memory, bool writes, bool responses) {
+  const std::string element = memory.ctype.substr(0, memory.ctype.size() - 1);
+  const auto port = [](std::string name, TapaKind kind, std::string ctype,
+                       uint32_t width) {
+    return Port{std::move(name), kind,         std::move(ctype),
+                width,           std::nullopt, std::nullopt,
+                std::nullopt,    std::nullopt, std::nullopt};
+  };
+  std::vector<Port> ports{
+      port("mem", TapaKind::kAsyncMmap, memory.ctype, memory.width)};
+  if (!writes) {
+    ports.push_back(port("requests", TapaKind::kIStream, "tapa::burst", 128));
+    ports.push_back(port("data", TapaKind::kOStream, element, memory.width));
+    return ports;
+  }
+  ports.push_back(port("requests", TapaKind::kIStream, element, memory.width));
+  if (responses) {
+    ports.push_back(port("responses", TapaKind::kOStream, "uint32_t", 32));
+  }
+  return ports;
 }
 
 nlohmann::json InstanceJson(const Instance& inst) {
@@ -829,6 +876,7 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
                                   unsigned index) {
     return FirstSighting(KeyOf(*mangler, callee)).parameter_names.at(index);
   };
+  std::vector<MergedTask> movers;
   for (auto& [key, task] : tasks_) {
     if (task.owner_tu != tu) continue;
     TaskModel& model = view.tasks.at(task.model.name);
@@ -839,6 +887,7 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
       CheckAieTask(ctx, model);
       if (model.level == TaskLevel::kLower) {
         model.aie_stack_bytes = LocalBytes(ctx, model.def);
+        AddMovers(tu, model, view, movers);
       }
     } else if (model.target != SynthTarget::kIgnore) {
       model.closed_ports = ClosedPorts(model.def);
@@ -847,6 +896,36 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
       ParseUpperTask(ctx, model, /*is_top=*/model.name == top_, parameter_name);
     }
     task.model = model;
+  }
+  for (MergedTask& mover : movers) {
+    tasks_.emplace(mover.model.name, std::move(mover));
+  }
+}
+
+void ProgramBuilder::AddMovers(int tu, TaskModel& model, Program& view,
+                               std::vector<MergedTask>& movers) const {
+  for (const clang::ParmVarDecl* param : model.def->parameters()) {
+    if (!IsAsyncMmap(ClassifyTapaType(param))) continue;
+    const std::string name = param->getNameAsString();
+    auto port = std::find_if(model.ports.begin(), model.ports.end(),
+                             [&](const Port& p) { return p.name == name; });
+    if (port == model.ports.end()) continue;
+    const MemoryUse use = UsedDirections(model.def, param);
+    for (const bool writes : {false, true}) {
+      if (!(writes ? use.writes : use.reads)) continue;
+      MergedTask mover;
+      mover.owner_tu = tu;
+      mover.model.name = MoverName(model.name, name, writes);
+      mover.model.readable_name = mover.model.name;
+      mover.model.level = TaskLevel::kLower;
+      mover.model.target = default_target_;
+      const bool responses = writes && use.responses;
+      mover.model.ports = MoverPorts(*port, writes, responses);
+      (writes ? port->aie_writes : port->aie_reads) = mover.model.name;
+      view.movers.push_back(Mover{mover.model.name, writes, responses,
+                                  ElementTypeName(param), model.def});
+      movers.push_back(std::move(mover));
+    }
   }
 }
 

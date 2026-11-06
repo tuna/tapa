@@ -18,6 +18,8 @@ namespace tapa::cc {
 // Minimal stand-in declarations for the TAPA types, prepended to test snippets
 // so unit tests don't pull in the full tapa-lib headers. Only the qualified
 // record names and template arity matter to the frontend.
+// Tests pin line numbers past these declarations, so keep them as written.
+// clang-format off
 inline constexpr char kTapaStubDecls[] = R"cpp(
   namespace tapa {
   template <typename T>
@@ -49,8 +51,8 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   };
   template <typename T, int N>
   struct mmaps {};
-  template <typename T>
-  struct async_mmap {};
+  struct burst { template <typename O, typename N> burst(O, N); }; struct request_ostream { void write(long long); void write(const burst&); };
+  template <typename T> struct async_mmap { request_ostream read_addr, write_addr; istream<T> read_data; ostream<T> write_data; istream<unsigned char> write_resp; };
   template <typename T>
   struct immap {};
   template <typename T>
@@ -93,6 +95,7 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct executable {};
   }  // namespace tapa
 )cpp";
+// clang-format on
 
 // A test snippet parsed on top of the stub decls: `ast` owns the parsed code,
 // so it must outlive every use of `fn` (the function named `probe`).

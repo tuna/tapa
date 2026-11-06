@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use tapa_ir::port::sanitize_identifier_name;
-use tapa_ir::{AieKernel, AiePartition, AiePortKind, AieStream, AieStreamKind, ScalarBinding};
+use tapa_ir::{
+    AieKernel, AieMemoryPort, AiePartition, AiePortKind, AieStream, AieStreamKind, ScalarBinding,
+};
 
 use crate::error::{Result, XilinxError};
 
@@ -172,6 +174,50 @@ const DEFAULT_STACK_BYTES: u32 = 1024;
 
 /// The stack a kernel whose task has `locals` bytes of local variables
 /// needs, kept 16-byte aligned.
+/// The ADF ports of an `async_mmap` port, in parameter order: the
+/// parameter's name suffix, its stream, and whether the kernel reads it.
+fn memory_channels(memory: &AieMemoryPort) -> Vec<(&'static str, usize, bool)> {
+    let mut channels = Vec::new();
+    if let Some(reads) = &memory.reads {
+        channels.push(("read_addr", reads.requests, false));
+        channels.push(("read_data", reads.data, true));
+    }
+    if let Some(writes) = &memory.writes {
+        channels.push(("write", writes.requests, false));
+        if let Some(responses) = writes.responses {
+            channels.push(("write_resp", responses, true));
+        }
+    }
+    channels
+}
+
+/// The `tapa::aie::memory{read_addr, read_data, write_addr, write_data,
+/// write_resp}` of an `async_mmap` port: a write request and its data share
+/// one port, and a channel the body never names is null.
+fn memory_arg(name: &str, memory: &AieMemoryPort) -> String {
+    let port = |present: bool, suffix: &str| {
+        if present {
+            format!("{name}_{suffix}")
+        } else {
+            "nullptr".to_string()
+        }
+    };
+    let reads = memory.reads.is_some();
+    let writes = memory.writes.is_some();
+    let responses = memory
+        .writes
+        .as_ref()
+        .is_some_and(|w| w.responses.is_some());
+    format!(
+        "tapa::aie::memory{{{}, {}, {}, {}, {}}}",
+        port(reads, "read_addr"),
+        port(reads, "read_data"),
+        port(writes, "write"),
+        port(writes, "write"),
+        port(responses, "write_resp")
+    )
+}
+
 const fn stack_size(locals: u32) -> u32 {
     DEFAULT_STACK_BYTES
         .saturating_add(locals)
@@ -210,6 +256,12 @@ fn signature(kernel: &AieKernel) -> Result<String> {
                 value: ScalarBinding::Runtime(_),
             } => params.push(format!("{} {name}", rtp_type(ctype, *width)?)),
             AiePortKind::Scalar { .. } => {}
+            AiePortKind::Memory(memory) => {
+                for (channel, _, input) in memory_channels(memory) {
+                    let dir = if input { "input" } else { "output" };
+                    params.push(format!("{dir}_stream<int32>* {name}_{channel}"));
+                }
+            }
         }
     }
     Ok(format!(
@@ -237,6 +289,7 @@ fn wrapper(kernel: &AieKernel, source: &KernelSource, signature: &str) -> String
                 value: ScalarBinding::Constant(value),
                 ..
             } => args.push(format!("tapa::aie::bits{{{:#x}ULL}}", value.value)),
+            AiePortKind::Memory(memory) => args.push(memory_arg(&name, memory)),
             AiePortKind::Streams { .. } | AiePortKind::Scalar { .. } => args.push(name),
         }
     }
@@ -353,6 +406,23 @@ impl GraphText {
                     inputs += 1;
                 }
                 AiePortKind::Scalar { .. } => {}
+                AiePortKind::Memory(memory) => {
+                    for (_, stream, input) in memory_channels(memory) {
+                        let (table, dir, index) = if input {
+                            (&mut self.consumers, "in", &mut inputs)
+                        } else {
+                            (&mut self.producers, "out", &mut outputs)
+                        };
+                        table.insert(
+                            stream,
+                            End {
+                                port: format!("{k}.{dir}[{index}]"),
+                                frame: false,
+                            },
+                        );
+                        *index += 1;
+                    }
+                }
             }
         }
         Ok(())
@@ -608,6 +678,75 @@ mod tests {
             ],
             run_forever: false,
         }
+    }
+
+    #[test]
+    fn a_memory_port_takes_one_adf_port_per_channel_its_body_uses() {
+        let plio = |name: &str, input, width| AieStream {
+            name: name.into(),
+            fifo: name.into(),
+            words: width / 32,
+            frame: None,
+            kind: AieStreamKind::Plio { input, width },
+        };
+        let memory = tapa_ir::AieMemoryPort {
+            memory: "buf".into(),
+            reads: Some(tapa_ir::AieMemoryReads {
+                mover: "Reads".into(),
+                requests: 0,
+                data: 1,
+            }),
+            writes: None,
+        };
+        let partition = AiePartition {
+            kernels: vec![AieKernel {
+                name: "Scale_0".into(),
+                task: "Scale".into(),
+                call: "Scale".into(),
+                ports: vec![port("mem", AiePortKind::Memory(memory))],
+                location: None,
+                stack_bytes: None,
+                ordered: true,
+            }],
+            streams: vec![
+                plio("Scale_0__mem_read_addr", false, 128),
+                plio("Scale_0__mem_read_data", true, 32),
+            ],
+            run_forever: false,
+        };
+        let options = GraphOptions {
+            sources: BTreeMap::from([(
+                "Scale".into(),
+                KernelSource {
+                    tu: "design.cpp".into(),
+                    defines: vec!["TAPA_TASK_DEF_Scale".into()],
+                },
+            )]),
+            rtp_args: BTreeMap::new(),
+            plio_mhz: None,
+            pl_control: false,
+            sim: None,
+        };
+        let files = render_graph(&partition, &options).expect("render");
+        assert!(
+            files["kernels/Scale_0.cc"].contains(
+                "void tapa_aie_Scale_0(output_stream<int32>* mem_read_addr, \
+                 input_stream<int32>* mem_read_data) {\n  \
+                 tapa::aie::invoke(Scale, tapa::aie::memory{mem_read_addr, mem_read_data, \
+                 nullptr, nullptr, nullptr});\n}\n"
+            ),
+            "{}",
+            files["kernels/Scale_0.cc"]
+        );
+        let graph = &files["graph.cpp"];
+        assert!(
+            graph.contains("(k_Scale_0.out[0], p_Scale_0__mem_read_addr.in[0])"),
+            "{graph}"
+        );
+        assert!(
+            graph.contains("(p_Scale_0__mem_read_data.out[0], k_Scale_0.in[0])"),
+            "{graph}"
+        );
     }
 
     fn render_with_control(sim: Option<SimMain>, pl_control: bool) -> BTreeMap<String, String> {

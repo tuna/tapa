@@ -212,6 +212,11 @@ class ProgramBuilder {
   std::set<clang::FileID> TreeFiles(
       clang::ASTContext& ctx, const std::vector<IncludeDirective>& log) const;
   void FillOwnedTasks(int tu, Program& view, clang::ASTContext& ctx);
+  // The PL movers of an AI Engine leaf's async_mmap ports, one task per
+  // direction its body uses, named after the task and the port; each port
+  // records its movers.
+  void AddMovers(int tu, TaskModel& model, Program& view,
+                 std::vector<MergedTask>& movers) const;
   int RegisterTu(const std::string& file);
   int TuOf(const std::string& file) const;
   void Fail(std::string message);

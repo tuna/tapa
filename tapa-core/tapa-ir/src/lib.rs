@@ -26,8 +26,9 @@ pub mod work_state;
 mod error;
 
 pub use aie::{
-    inlined_instances, AieError, AieKernel, AieKernelPort, AiePartition, AiePortKind, AieStream,
-    AieStreamKind, InlinedInstance, ScalarBinding,
+    inlined_instances, AieError, AieKernel, AieKernelPort, AieMemoryPort, AieMemoryReads,
+    AieMemoryWrites, AiePartition, AiePortKind, AieStream, AieStreamKind, InlinedInstance,
+    ScalarBinding,
 };
 pub use bindings::{FifoEndpoint, PortBinding};
 pub use clock::ClockPeriod;
@@ -46,7 +47,7 @@ pub use graph::TaskGraph;
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use memory::MemoryGeometry;
-pub use port::{ArgCategory, Port};
+pub use port::{AieMovers, ArgCategory, Port};
 pub use synth_target::SynthTarget;
 pub use target::Target;
 pub use task::{Task, TaskLevel};

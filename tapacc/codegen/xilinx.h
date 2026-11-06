@@ -30,6 +30,7 @@ class XilinxBackend final : public Backend {
                      EditSink& edits) const override;
   void LowerParamAttr(const clang::Attr& attr, const clang::ParmVarDecl& param,
                       const clang::Stmt* body, EditSink& edits) const override;
+  std::string GenerateMover(const Mover& mover) const override;
 
  protected:
   void EmitStreamPort(const PortContext&, CodeSink&) const override;

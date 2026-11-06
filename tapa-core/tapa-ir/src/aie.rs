@@ -14,7 +14,7 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::instance::{ArgSource, WireValue};
-use crate::interconnect::EndpointRef;
+use crate::interconnect::{EndpointRef, InterconnectDefinition};
 use crate::port::{sanitize_identifier_name, ArgCategory};
 use crate::synth_target::SynthTarget;
 use crate::task::{Task, TaskLevel};
@@ -89,7 +89,74 @@ pub enum AiePortKind {
         width: u32,
         value: ScalarBinding,
     },
+    /// An `async_mmap` port, served from the PL over PLIO.
+    Memory(AieMemoryPort),
 }
+
+impl AiePortKind {
+    /// The indices into [`AiePartition::streams`] the parameter reads or
+    /// writes: its stream channels, or every channel of a memory port.
+    #[must_use]
+    pub fn streams(&self) -> Vec<usize> {
+        match self {
+            Self::Streams { streams, .. } => streams.clone(),
+            Self::Scalar { .. } => Vec::new(),
+            Self::Memory(memory) => {
+                let reads = memory.reads.iter().flat_map(|r| [r.requests, r.data]);
+                let writes = memory
+                    .writes
+                    .iter()
+                    .flat_map(|w| std::iter::once(w.requests).chain(w.responses));
+                reads.chain(writes).collect()
+            }
+        }
+    }
+}
+
+/// An AI Engine task's `async_mmap` port: the PLIO channels of each
+/// direction its body uses, which PL movers serve from a memory of the top.
+/// The fields of the directions index [`AiePartition::streams`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AieMemoryPort {
+    /// The top task's memory argument the port is bound to.
+    pub memory: String,
+    pub reads: Option<AieMemoryReads>,
+    pub writes: Option<AieMemoryWrites>,
+}
+
+/// The reads of an [`AieMemoryPort`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AieMemoryReads {
+    /// The PL task serving them.
+    pub mover: String,
+    /// Requests, from the AI Engine to the PL.
+    pub requests: usize,
+    /// Data, from the PL to the AI Engine.
+    pub data: usize,
+}
+
+/// The writes of an [`AieMemoryPort`]. A kernel has two output stream ports,
+/// so each write request and then its data share one channel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AieMemoryWrites {
+    /// The PL task serving them.
+    pub mover: String,
+    /// Requests, each followed by its data, from the AI Engine to the PL.
+    pub requests: usize,
+    /// Acknowledgements, from the PL to the AI Engine, when the body reads
+    /// them.
+    pub responses: Option<usize>,
+}
+
+/// The ports of the movers (tapa/base/mover.h): `serve_reads(mem,
+/// requests, data)` and `serve_writes(mem, requests[, responses])`.
+const MOVER_MEMORY: &str = "mem";
+const MOVER_REQUESTS: &str = "requests";
+const MOVER_DATA: &str = "data";
+const MOVER_RESPONSES: &str = "responses";
+
+/// 32-bit words of a `tapa::burst` request: two `int64_t`.
+const BURST_WORDS: u32 = 4;
 
 /// Where a scalar parameter's value comes from.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -251,7 +318,15 @@ impl AiePartition {
                 aie_plio: Some(width),
                 stream_depth: None,
                 mmap_addr_width: None,
+                aie_movers: None,
             });
+        }
+        for kernel in &self.kernels {
+            for port in &kernel.ports {
+                if let AiePortKind::Memory(memory) = &port.kind {
+                    self.add_movers(graph, original, top, &kernel.name, &port.name, memory)?;
+                }
+            }
         }
         // The same rule `kernel.xml` applies: `has_s_axi_control` exists only
         // beside a scalar or memory argument, never a stream.
@@ -269,6 +344,115 @@ impl AiePartition {
             )));
         }
         Ok(pl)
+    }
+
+    /// The PL movers of one kernel's `async_mmap` port, invoked by the top
+    /// on the port's memory, and the top's AXIS ports for its channels.
+    fn add_movers(
+        &self,
+        graph: &TaskGraph,
+        original: &Task,
+        top: &mut Task,
+        kernel: &str,
+        port: &str,
+        memory: &AieMemoryPort,
+    ) -> Result<(), AieError> {
+        // Nothing orders an AI Engine task's accesses against a PL task's.
+        for (child, instances) in &original.tasks {
+            if task(graph, child)?.synth == SynthTarget::Aie {
+                continue;
+            }
+            let shares = instances.iter().any(|instance| {
+                instance.args.values().any(|arg| {
+                    arg.cat.is_mmap_like()
+                        && matches!(&arg.arg, ArgSource::Name(name) if *name == memory.memory)
+                })
+            });
+            if shares {
+                return Err(AieError(format!(
+                    "the memory `{}` is bound to the async_mmap port `{port}` of the AI Engine \
+                     kernel `{kernel}` and to the PL task `{child}`; nothing orders their \
+                     accesses, so give each its own memory",
+                    memory.memory
+                )));
+            }
+        }
+        let reads = memory.reads.as_ref().map(|reads| {
+            let ports = vec![(MOVER_REQUESTS, reads.requests), (MOVER_DATA, reads.data)];
+            ("reads", &reads.mover, ports)
+        });
+        let writes = memory.writes.as_ref().map(|writes| {
+            let mut ports = vec![(MOVER_REQUESTS, writes.requests)];
+            ports.extend(writes.responses.map(|stream| (MOVER_RESPONSES, stream)));
+            ("writes", &writes.mover, ports)
+        });
+        for (direction, mover_name, ports) in reads.into_iter().chain(writes) {
+            let mover = task(graph, mover_name)?;
+            let instance = top.tasks.get(mover_name).map_or(0, Vec::len);
+            let endpoint = EndpointRef(
+                mover_name.clone(),
+                u32::try_from(instance).unwrap_or(u32::MAX),
+            );
+            let mut args = BTreeMap::new();
+            args.insert(
+                MOVER_MEMORY.to_string(),
+                crate::Arg::named(memory.memory.clone(), ArgCategory::AsyncMmap),
+            );
+            for (mover_port, stream) in ports {
+                let stream = &self.streams[stream];
+                let AieStreamKind::Plio { input, width } = stream.kind else {
+                    continue;
+                };
+                let pl_port = mover.port(mover_port).ok_or_else(|| {
+                    AieError(format!(
+                        "the mover `{mover_name}` has no port `{mover_port}`"
+                    ))
+                })?;
+                top.ports.push(crate::Port {
+                    cat: if input {
+                        ArgCategory::Ostream
+                    } else {
+                        ArgCategory::Istream
+                    },
+                    name: stream.name.clone(),
+                    ctype: pl_port.ctype.clone(),
+                    width: pl_port.width,
+                    chan_count: None,
+                    chan_size: None,
+                    frame: None,
+                    aie_plio: Some(width),
+                    stream_depth: None,
+                    mmap_addr_width: None,
+                    aie_movers: None,
+                });
+                args.insert(
+                    mover_port.to_string(),
+                    crate::Arg::named(stream.name.clone(), pl_port.cat),
+                );
+                // Codegen gives the port its AXIS interface through an
+                // external FIFO, as for any PLIO of the projection.
+                top.fifos.insert(
+                    stream.name.clone(),
+                    InterconnectDefinition {
+                        depth: None,
+                        produced_by: input.then(|| endpoint.clone()),
+                        consumed_by: (!input).then(|| endpoint.clone()),
+                    },
+                );
+            }
+            top.tasks
+                .entry(mover_name.clone())
+                .or_default()
+                .push(crate::TaskInstance {
+                    name: Some(sanitize_identifier_name(&format!(
+                        "{kernel}__{port}_{direction}"
+                    ))),
+                    args,
+                    step: 0,
+                    position: 0,
+                });
+        }
+        Ok(())
     }
 
     /// Sets [`AieKernel::ordered`] on every kernel a stream cycle runs
@@ -311,7 +495,13 @@ impl AiePartition {
             }
         }
         for (index, kernel) in self.kernels.iter_mut().enumerate() {
-            kernel.ordered = reaches_itself(&edges, &Node::Kernel(index));
+            // A memory port's requests and data are a round trip through
+            // its PL mover, the same as a cycle.
+            let memory = kernel
+                .ports
+                .iter()
+                .any(|port| matches!(port.kind, AiePortKind::Memory(_)));
+            kernel.ordered = memory || reaches_itself(&edges, &Node::Kernel(index));
         }
     }
 }
@@ -496,6 +686,10 @@ fn endpoint_is_aie(graph: &TaskGraph, endpoint: Option<&EndpointRef>) -> bool {
 enum Binding {
     Stream(usize),
     Scalar(ScalarBinding),
+    /// A memory argument of the top, bound to an `async_mmap` port.
+    Memory(String),
+    /// That memory, once a leaf's port has its PLIO channels.
+    MemoryPort(AieMemoryPort),
 }
 
 struct Builder<'g> {
@@ -562,11 +756,75 @@ impl Builder<'_> {
                 self.top_streams.insert(name.clone(), index);
                 Ok(Binding::Stream(index))
             }
+            ArgSource::Name(name)
+                if arg.cat == ArgCategory::AsyncMmap
+                    && top.port(name).is_some_and(|p| p.cat.is_mmap_like()) =>
+            {
+                Ok(Binding::Memory(name.clone()))
+            }
             ArgSource::Name(name) => Err(AieError(format!(
                 "port `{port}` of the AI Engine task `{child}` is bound to the memory `{name}`; \
-                 AI Engine tasks have no memory path"
+                 an AI Engine task reaches memory only through a `tapa::async_mmap<T>&` port \
+                 bound to a memory argument of the top"
             ))),
         }
+    }
+
+    /// The PLIO channels of a leaf's `async_mmap` port, one set per
+    /// direction its body uses, named after the kernel and the port.
+    fn memory_port(
+        &mut self,
+        task_name: &str,
+        path: &str,
+        port: &crate::Port,
+        memory: String,
+    ) -> Result<AieMemoryPort, AieError> {
+        let movers = port.aie_movers.as_ref().ok_or_else(|| {
+            AieError(format!(
+                "the async_mmap port `{}` of the AI Engine task `{task_name}` names no PL \
+                 movers; re-run `tapa analyze` with this version of TAPA",
+                port.name
+            ))
+        })?;
+        if ![32, 64, 128].contains(&port.width) {
+            return Err(AieError(format!(
+                "the async_mmap port `{}` of the AI Engine task `{task_name}` has {}-bit \
+                 elements; an AI Engine memory element is 32, 64 or 128 bits, the widths \
+                 that cross a PLIO and line up with a 128-bit request",
+                port.name, port.width
+            )));
+        }
+        let words = port.width / 32;
+        let graph = self.graph;
+        let mut channel = |channel: &str, input: bool, words: u32| {
+            let name = sanitize_identifier_name(&format!("{path}__{}_{channel}", port.name));
+            let kind = AieStreamKind::Plio {
+                input,
+                width: plio_width(words * 32),
+            };
+            self.push_stream(name.clone(), &name, words, None, kind)
+        };
+        let reads = movers.reads.as_ref().map(|mover| AieMemoryReads {
+            mover: mover.clone(),
+            requests: channel("read_addr", false, BURST_WORDS),
+            data: channel("read_data", true, words),
+        });
+        let writes = match &movers.writes {
+            Some(mover) => {
+                let respond = task(graph, mover)?.port(MOVER_RESPONSES).is_some();
+                Some(AieMemoryWrites {
+                    mover: mover.clone(),
+                    requests: channel("write", false, words),
+                    responses: respond.then(|| channel("write_resp", true, 1)),
+                })
+            }
+            None => None,
+        };
+        Ok(AieMemoryPort {
+            memory,
+            reads,
+            writes,
+        })
     }
 
     fn push_stream(
@@ -598,7 +856,16 @@ impl Builder<'_> {
         let graph = self.graph;
         let def = task(graph, task_name)?;
         if def.level == TaskLevel::Lower {
-            let kernel = Self::kernel(task_name, index, path, def, scope)?;
+            let mut scope = Cow::Borrowed(scope);
+            for port in def.ports.iter().filter(|p| p.cat == ArgCategory::AsyncMmap) {
+                if let Some(Binding::Memory(memory)) = scope.get(&port.name).cloned() {
+                    let bound = self.memory_port(task_name, path, port, memory)?;
+                    scope
+                        .to_mut()
+                        .insert(port.name.clone(), Binding::MemoryPort(bound));
+                }
+            }
+            let kernel = Self::kernel(task_name, index, path, def, &scope)?;
             self.partition.kernels.push(kernel);
             return Ok(());
         }
@@ -706,10 +973,13 @@ impl Builder<'_> {
                     width: port.width,
                     value: value.clone(),
                 }
+            } else if let Some(Binding::MemoryPort(memory)) = scope.get(&port.name) {
+                AiePortKind::Memory(memory.clone())
             } else {
                 return Err(AieError(format!(
-                    "the AI Engine task `{task_name}` takes the memory port `{}`; AI Engine \
-                     tasks have no memory path",
+                    "the AI Engine task `{task_name}` takes the memory port `{}`; an AI Engine \
+                     task reaches memory only through a `tapa::async_mmap<T>&` port bound to a \
+                     memory argument of the top",
                     port.name
                 )));
             };

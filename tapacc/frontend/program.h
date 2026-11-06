@@ -39,6 +39,10 @@ struct Port {
   std::optional<uint32_t> chan_count;  // hmap / istreams / ostreams
   std::optional<uint32_t> chan_size;   // hmap
   std::optional<uint32_t> frame;       // [[tapa::frame(N)]]
+  // An AI Engine task's async_mmap: the PL tasks serving the directions its
+  // body uses (see Mover).
+  std::optional<std::string> aie_reads;
+  std::optional<std::string> aie_writes;
 };
 
 // One argument of a child invocation: what the child port binds to in the
@@ -142,6 +146,18 @@ inline std::string ArrayBaseName(std::string_view name) {
 // The whole program: the top-level task name, the ordered list of global
 // functions defined in the main file (drives codegen's per-task file assembly),
 // and every TAPA task reachable from the top, keyed by name.
+// A PL task tapacc adds to serve one direction of an AI Engine task's
+// async_mmap port: a variant calling `tapa::internal::serve_reads` or
+// `serve_writes` (tapa/base/mover.h), spliced right after the AI Engine
+// task's definition under its own guard.
+struct Mover {
+  std::string name;
+  bool writes = false;
+  bool responses = false;  // writes the body reads acknowledgements of
+  std::string element;     // the element type, as C++ spells it
+  const clang::FunctionDecl* after = nullptr;
+};
+
 struct Program {
   std::string top;
   std::vector<const clang::FunctionDecl*> file_funcs;
@@ -149,6 +165,8 @@ struct Program {
   // inline policy so the vendor cannot choose their hierarchy for us.
   std::vector<const clang::FunctionDecl*> local_funcs;
   std::map<std::string, TaskModel> tasks;
+  // The movers of the AI Engine tasks this TU defines.
+  std::vector<Mover> movers;
 };
 
 }  // namespace tapa::cc

@@ -565,3 +565,98 @@ fn kernels_on_a_stream_cycle_are_ordered() {
     let partition = AiePartition::derive(&ring).expect("derive").expect("aie");
     assert!(partition.kernels.iter().all(|kernel| kernel.ordered));
 }
+
+/// The AI Engine task `Scale` reads and writes the top's memory `buf`
+/// through an `async_mmap`, served by its two PL movers.
+fn memory_graph(also_on_pl: bool) -> TaskGraph {
+    let memory = json!({"cat": "async_mmap", "name": "mem", "type": "float", "width": 32,
+        "aie_movers": {"reads": "Reads", "writes": "Writes"}});
+    let burst = json!({"cat": "istream", "name": "requests", "type": "tapa::burst",
+        "width": 128});
+    let mut top_tasks = json!({"Scale": [{"args": {"mem": arg("buf", "async_mmap"),
+        "n": arg("n", "scalar")}}]});
+    if also_on_pl {
+        top_tasks["Peek"] = json!([{"args": {"mem": arg("buf", "mmap")}}]);
+    }
+    graph(json!({
+        "Top": {"level": "upper", "synth": "hls",
+            "ports": [{"cat": "mmap", "name": "buf", "type": "float*", "width": 32},
+                      scalar("n")],
+            "tasks": top_tasks, "fifos": {}},
+        "Scale": leaf(&json!([memory, scalar("n")]), "aie"),
+        "Reads": leaf(&json!([{"cat": "async_mmap", "name": "mem", "type": "float",
+            "width": 32}, burst, stream("ostream", "data", 32)]), "hls"),
+        // Write requests share one channel with their data, as elements.
+        "Writes": leaf(&json!([{"cat": "async_mmap", "name": "mem", "type": "float",
+            "width": 32}, stream("istream", "requests", 32),
+            {"cat": "ostream", "name": "responses", "type": "uint32_t", "width": 32}]), "hls"),
+        "Peek": leaf(&json!([{"cat": "mmap", "name": "mem", "type": "float*",
+            "width": 32}]), "hls"),
+    }))
+}
+
+#[test]
+fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
+    let g = memory_graph(false);
+    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let kernel = &partition.kernels[0];
+    assert!(kernel.ordered, "a memory round trip orders the kernel");
+    let AiePortKind::Memory(memory) = &kernel.ports[0].kind else {
+        panic!("memory port: {:?}", kernel.ports[0]);
+    };
+    assert_eq!(memory.memory, "buf");
+    let names: Vec<(&str, bool, u32)> = partition
+        .streams
+        .iter()
+        .map(|s| match s.kind {
+            AieStreamKind::Plio { input, width } => (s.name.as_str(), input, width),
+            AieStreamKind::Net { .. } => panic!("net {}", s.name),
+        })
+        .collect();
+    assert_eq!(
+        names,
+        [
+            ("Scale_0__mem_read_addr", false, 128),
+            ("Scale_0__mem_read_data", true, 32),
+            ("Scale_0__mem_write", false, 32),
+            ("Scale_0__mem_write_resp", true, 32),
+        ]
+    );
+
+    let pl = partition.pl_projection(&g).expect("projection");
+    let top = &pl.tasks["Top"];
+    let reads = &top.tasks["Reads"][0];
+    assert_eq!(reads.name.as_deref(), Some("Scale_0__mem_reads"));
+    assert_eq!(reads.args["mem"].arg, ArgSource::Name("buf".into()));
+    assert_eq!(
+        reads.args["data"].arg,
+        ArgSource::Name("Scale_0__mem_read_data".into())
+    );
+    assert_eq!(top.tasks["Writes"][0].args.len(), 3);
+    // The AXIS port comes from an external FIFO the mover drives.
+    let fifo = &top.fifos["Scale_0__mem_read_data"];
+    assert_eq!(fifo.produced_by, Some(EndpointRef("Reads".into(), 0)));
+    assert_eq!((fifo.depth, &fifo.consumed_by), (None, &None));
+    let axis: Vec<(&str, ArgCategory, Option<u32>)> = top
+        .ports
+        .iter()
+        .filter(|p| p.cat.is_stream())
+        .map(|p| (p.name.as_str(), p.cat, p.aie_plio))
+        .collect();
+    assert_eq!(
+        axis,
+        [
+            ("Scale_0__mem_read_addr", ArgCategory::Istream, Some(128)),
+            ("Scale_0__mem_read_data", ArgCategory::Ostream, Some(32)),
+            ("Scale_0__mem_write", ArgCategory::Istream, Some(32)),
+            ("Scale_0__mem_write_resp", ArgCategory::Ostream, Some(32)),
+        ]
+    );
+
+    let g = memory_graph(true);
+    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let err = partition
+        .pl_projection(&g)
+        .expect_err("shared with a PL task");
+    assert!(err.0.contains("nothing orders their accesses"), "{err}");
+}

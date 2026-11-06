@@ -230,7 +230,22 @@ pub fn pl_graph(graph: &Graph) -> Result<Graph> {
 /// one 128-bit PLIO beat. The PL moves one element per cycle, and only a
 /// 128-bit PLIO keeps up with the AI Engine stream port at the other end.
 pub fn warn_narrow_boundaries(partition: &AiePartition) {
-    for stream in &partition.streams {
+    // A write acknowledgement is one word, which no element type widens.
+    let responses: std::collections::BTreeSet<usize> = partition
+        .kernels
+        .iter()
+        .flat_map(|kernel| &kernel.ports)
+        .filter_map(|port| {
+            let tapa_ir::AiePortKind::Memory(memory) = &port.kind else {
+                return None;
+            };
+            memory.writes.as_ref().and_then(|writes| writes.responses)
+        })
+        .collect();
+    for (index, stream) in partition.streams.iter().enumerate() {
+        if responses.contains(&index) {
+            continue;
+        }
         let bits = stream.words * 32;
         if matches!(stream.kind, tapa_ir::AieStreamKind::Plio { .. }) && bits < 128 {
             log::warn!(
@@ -255,10 +270,10 @@ pub fn report_crossings(partition: &AiePartition) {
             .kernels
             .iter()
             .filter(|kernel| {
-                kernel.ports.iter().any(|port| {
-                    matches!(&port.kind, tapa_ir::AiePortKind::Streams { streams, .. }
-                        if streams.contains(&index))
-                })
+                kernel
+                    .ports
+                    .iter()
+                    .any(|port| port.kind.streams().contains(&index))
             })
             .map(|kernel| kernel.name.as_str())
             .collect();

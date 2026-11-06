@@ -105,6 +105,47 @@ TEST(AieTest, LeafFrameReachesTheGraphAndItsOwnVariant) {
       << "no HLS interface pragmas in the AI Engine variant: " << full;
 }
 
+TEST(AieTest, AnAsyncMmapGetsAMoverPerDirectionItsBodyUses) {
+  const TreePipelineRun run = Analyze("memory", R"cpp(
+    [[tapa::target("aie")]]
+    void Scale(tapa::async_mmap<float>& src, tapa::async_mmap<float>& dst,
+               int n) {
+      float tile[16];
+      src.read_addr.write({0, n});
+      src.read_data.read(tile, 16);
+      dst.write_addr.write({0, 16});
+      dst.write_data.write(tile, 16);
+    }
+    void Top(tapa::mmap<float> a, tapa::mmap<float> c, int n) {
+      tapa::task().invoke(Scale, a, c, n);
+    }
+  )cpp");
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  const nlohmann::json tasks = nlohmann::json::parse(run.json)["tasks"];
+  EXPECT_EQ(tasks["Scale"]["ports"][0]["aie_movers"],
+            nlohmann::json({{"reads", "tapa_mover_Scale_src_reads"}}));
+  EXPECT_EQ(tasks["Scale"]["ports"][1]["aie_movers"],
+            nlohmann::json({{"writes", "tapa_mover_Scale_dst_writes"}}));
+  const nlohmann::json& writes = tasks["tapa_mover_Scale_dst_writes"];
+  EXPECT_EQ(writes["synth"], tasks["Top"]["synth"]);
+  // The body never reads `write_resp`, so the mover has no response port,
+  // and a write request shares its channel with the data.
+  ASSERT_EQ(writes["ports"].size(), 2u) << writes;
+  EXPECT_EQ(writes["ports"][1]["type"], "float");
+
+  const std::string& tu = run.files.at("memory.cpp");
+  const size_t guard =
+      tu.find("#ifdef TAPA_TASK_DEF_tapa_mover_Scale_src_reads");
+  ASSERT_NE(guard, std::string::npos) << tu;
+  const std::string mover = tu.substr(guard, tu.find("#endif", guard) - guard);
+  EXPECT_NE(mover.find("tapa::internal::serve_reads(mem, requests, data);"),
+            std::string::npos)
+      << mover;
+  EXPECT_NE(mover.find("#pragma HLS interface ap_fifo port = requests._"),
+            std::string::npos)
+      << mover;
+}
+
 TEST(AieTest, PipelineUnrollsNestedLoops) {
   const TreePipelineRun automatic = Analyze(
       "nested_pipeline", Design(R"cpp(

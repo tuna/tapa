@@ -24,6 +24,9 @@
 #include "tapa/host/util.h"
 #include "tapa/host/vec.h"
 
+// After the stream and memory types it is written against.
+#include "tapa/base/mover.h"
+
 namespace tapa {
 
 /// Invokes @p f; if @p bitstream is non-empty, programs the FPGA and returns

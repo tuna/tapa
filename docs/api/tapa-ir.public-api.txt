@@ -1,6 +1,7 @@
 pub mod tapa_ir
 pub mod tapa_ir::aie
 pub enum tapa_ir::aie::AiePortKind
+pub tapa_ir::aie::AiePortKind::Memory(tapa_ir::aie::AieMemoryPort)
 pub tapa_ir::aie::AiePortKind::Scalar
 pub tapa_ir::aie::AiePortKind::Scalar::ctype: alloc::string::String
 pub tapa_ir::aie::AiePortKind::Scalar::value: tapa_ir::aie::ScalarBinding
@@ -11,6 +12,8 @@ pub tapa_ir::aie::AiePortKind::Streams::input: bool
 pub tapa_ir::aie::AiePortKind::Streams::plural: bool
 pub tapa_ir::aie::AiePortKind::Streams::streams: alloc::vec::Vec<usize>
 pub tapa_ir::aie::AiePortKind::Streams::words: u32
+impl tapa_ir::aie::AiePortKind
+pub fn tapa_ir::aie::AiePortKind::streams(&self) -> alloc::vec::Vec<usize>
 impl core::clone::Clone for tapa_ir::aie::AiePortKind
 pub fn tapa_ir::aie::AiePortKind::clone(&self) -> tapa_ir::aie::AiePortKind
 impl core::cmp::Eq for tapa_ir::aie::AiePortKind
@@ -284,6 +287,141 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieKernelPort where T: core
 pub unsafe fn tapa_ir::aie::AieKernelPort::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AieKernelPort
 pub fn tapa_ir::aie::AieKernelPort::from(T) -> T
+pub struct tapa_ir::aie::AieMemoryPort
+pub tapa_ir::aie::AieMemoryPort::memory: alloc::string::String
+pub tapa_ir::aie::AieMemoryPort::reads: core::option::Option<tapa_ir::aie::AieMemoryReads>
+pub tapa_ir::aie::AieMemoryPort::writes: core::option::Option<tapa_ir::aie::AieMemoryWrites>
+impl core::clone::Clone for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::clone(&self) -> tapa_ir::aie::AieMemoryPort
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryPort
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::eq(&self, &tapa_ir::aie::AieMemoryPort) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryPort
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryPort
+impl core::marker::Send for tapa_ir::aie::AieMemoryPort
+impl core::marker::Sync for tapa_ir::aie::AieMemoryPort
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryPort
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryPort
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryPort
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryPort
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryPort where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryPort where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryPort::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryPort::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryPort::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryPort::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryPort::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryPort where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryPort::Owned = T
+pub fn tapa_ir::aie::AieMemoryPort::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryPort::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryPort where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryPort where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryPort where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryPort where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryPort::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::from(T) -> T
+pub struct tapa_ir::aie::AieMemoryReads
+pub tapa_ir::aie::AieMemoryReads::data: usize
+pub tapa_ir::aie::AieMemoryReads::mover: alloc::string::String
+pub tapa_ir::aie::AieMemoryReads::requests: usize
+impl core::clone::Clone for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::clone(&self) -> tapa_ir::aie::AieMemoryReads
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryReads
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::eq(&self, &tapa_ir::aie::AieMemoryReads) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryReads
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryReads
+impl core::marker::Send for tapa_ir::aie::AieMemoryReads
+impl core::marker::Sync for tapa_ir::aie::AieMemoryReads
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryReads
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryReads
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryReads
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryReads
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryReads where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryReads where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryReads::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryReads::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryReads::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryReads::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryReads::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryReads where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryReads::Owned = T
+pub fn tapa_ir::aie::AieMemoryReads::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryReads::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryReads where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryReads where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryReads where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryReads where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryReads::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::from(T) -> T
+pub struct tapa_ir::aie::AieMemoryWrites
+pub tapa_ir::aie::AieMemoryWrites::mover: alloc::string::String
+pub tapa_ir::aie::AieMemoryWrites::requests: usize
+pub tapa_ir::aie::AieMemoryWrites::responses: core::option::Option<usize>
+impl core::clone::Clone for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::clone(&self) -> tapa_ir::aie::AieMemoryWrites
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryWrites
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::eq(&self, &tapa_ir::aie::AieMemoryWrites) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Send for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Sync for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryWrites
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryWrites
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryWrites
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryWrites
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryWrites where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryWrites where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryWrites::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryWrites::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryWrites::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryWrites::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryWrites::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryWrites where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryWrites::Owned = T
+pub fn tapa_ir::aie::AieMemoryWrites::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryWrites::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryWrites where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryWrites where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryWrites where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryWrites where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryWrites::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::from(T) -> T
 pub struct tapa_ir::aie::AiePartition
 pub tapa_ir::aie::AiePartition::kernels: alloc::vec::Vec<tapa_ir::aie::AieKernel>
 pub tapa_ir::aie::AiePartition::run_forever: bool
@@ -2188,7 +2326,59 @@ pub unsafe fn tapa_ir::port::ArgCategory::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::port::ArgCategory
 pub fn tapa_ir::port::ArgCategory::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::ArgCategory where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::port::AieMovers
+pub tapa_ir::port::AieMovers::reads: core::option::Option<alloc::string::String>
+pub tapa_ir::port::AieMovers::writes: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::clone(&self) -> tapa_ir::port::AieMovers
+impl core::cmp::Eq for tapa_ir::port::AieMovers
+impl core::cmp::PartialEq for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::eq(&self, &tapa_ir::port::AieMovers) -> bool
+impl core::default::Default for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::default() -> tapa_ir::port::AieMovers
+impl core::fmt::Debug for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::port::AieMovers
+impl serde_core::ser::Serialize for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::port::AieMovers
+impl core::marker::Send for tapa_ir::port::AieMovers
+impl core::marker::Sync for tapa_ir::port::AieMovers
+impl core::marker::Unpin for tapa_ir::port::AieMovers
+impl core::marker::UnsafeUnpin for tapa_ir::port::AieMovers
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::port::AieMovers
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::port::AieMovers
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::port::AieMovers where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::port::AieMovers where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::port::AieMovers where U: core::convert::From<T>
+pub fn tapa_ir::port::AieMovers::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::port::AieMovers where U: core::convert::Into<T>
+pub type tapa_ir::port::AieMovers::Error = core::convert::Infallible
+pub fn tapa_ir::port::AieMovers::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::port::AieMovers where U: core::convert::TryFrom<T>
+pub type tapa_ir::port::AieMovers::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::port::AieMovers::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::port::AieMovers where T: core::clone::Clone
+pub type tapa_ir::port::AieMovers::Owned = T
+pub fn tapa_ir::port::AieMovers::clone_into(&self, &mut T)
+pub fn tapa_ir::port::AieMovers::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::port::AieMovers where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::port::AieMovers where T: ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::port::AieMovers where T: ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::port::AieMovers where T: core::clone::Clone
+pub unsafe fn tapa_ir::port::AieMovers::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::AieMovers where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::port::Port
+pub tapa_ir::port::Port::aie_movers: core::option::Option<tapa_ir::port::AieMovers>
 pub tapa_ir::port::Port::aie_plio: core::option::Option<u32>
 pub tapa_ir::port::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::port::Port::chan_count: core::option::Option<u32>
@@ -2827,6 +3017,7 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::work_state::WorkState wher
 pub const tapa_ir::work_state::FILE_NAME: &str
 pub const tapa_ir::work_state::VERSION: u32
 pub enum tapa_ir::AiePortKind
+pub tapa_ir::AiePortKind::Memory(tapa_ir::aie::AieMemoryPort)
 pub tapa_ir::AiePortKind::Scalar
 pub tapa_ir::AiePortKind::Scalar::ctype: alloc::string::String
 pub tapa_ir::AiePortKind::Scalar::value: tapa_ir::aie::ScalarBinding
@@ -2837,6 +3028,8 @@ pub tapa_ir::AiePortKind::Streams::input: bool
 pub tapa_ir::AiePortKind::Streams::plural: bool
 pub tapa_ir::AiePortKind::Streams::streams: alloc::vec::Vec<usize>
 pub tapa_ir::AiePortKind::Streams::words: u32
+impl tapa_ir::aie::AiePortKind
+pub fn tapa_ir::aie::AiePortKind::streams(&self) -> alloc::vec::Vec<usize>
 impl core::clone::Clone for tapa_ir::aie::AiePortKind
 pub fn tapa_ir::aie::AiePortKind::clone(&self) -> tapa_ir::aie::AiePortKind
 impl core::cmp::Eq for tapa_ir::aie::AiePortKind
@@ -3843,6 +4036,192 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieKernelPort where T: core
 pub unsafe fn tapa_ir::aie::AieKernelPort::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AieKernelPort
 pub fn tapa_ir::aie::AieKernelPort::from(T) -> T
+pub struct tapa_ir::AieMemoryPort
+pub tapa_ir::AieMemoryPort::memory: alloc::string::String
+pub tapa_ir::AieMemoryPort::reads: core::option::Option<tapa_ir::aie::AieMemoryReads>
+pub tapa_ir::AieMemoryPort::writes: core::option::Option<tapa_ir::aie::AieMemoryWrites>
+impl core::clone::Clone for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::clone(&self) -> tapa_ir::aie::AieMemoryPort
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryPort
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::eq(&self, &tapa_ir::aie::AieMemoryPort) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryPort
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryPort
+impl core::marker::Send for tapa_ir::aie::AieMemoryPort
+impl core::marker::Sync for tapa_ir::aie::AieMemoryPort
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryPort
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryPort
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryPort
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryPort
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryPort where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryPort where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryPort::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryPort::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryPort::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryPort where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryPort::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryPort::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryPort where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryPort::Owned = T
+pub fn tapa_ir::aie::AieMemoryPort::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryPort::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryPort where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryPort where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryPort where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryPort::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryPort where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryPort::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryPort
+pub fn tapa_ir::aie::AieMemoryPort::from(T) -> T
+pub struct tapa_ir::AieMemoryReads
+pub tapa_ir::AieMemoryReads::data: usize
+pub tapa_ir::AieMemoryReads::mover: alloc::string::String
+pub tapa_ir::AieMemoryReads::requests: usize
+impl core::clone::Clone for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::clone(&self) -> tapa_ir::aie::AieMemoryReads
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryReads
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::eq(&self, &tapa_ir::aie::AieMemoryReads) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryReads
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryReads
+impl core::marker::Send for tapa_ir::aie::AieMemoryReads
+impl core::marker::Sync for tapa_ir::aie::AieMemoryReads
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryReads
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryReads
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryReads
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryReads
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryReads where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryReads where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryReads::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryReads::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryReads::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryReads where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryReads::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryReads::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryReads where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryReads::Owned = T
+pub fn tapa_ir::aie::AieMemoryReads::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryReads::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryReads where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryReads where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryReads where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryReads::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryReads where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryReads::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryReads
+pub fn tapa_ir::aie::AieMemoryReads::from(T) -> T
+pub struct tapa_ir::AieMemoryWrites
+pub tapa_ir::AieMemoryWrites::mover: alloc::string::String
+pub tapa_ir::AieMemoryWrites::requests: usize
+pub tapa_ir::AieMemoryWrites::responses: core::option::Option<usize>
+impl core::clone::Clone for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::clone(&self) -> tapa_ir::aie::AieMemoryWrites
+impl core::cmp::Eq for tapa_ir::aie::AieMemoryWrites
+impl core::cmp::PartialEq for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::eq(&self, &tapa_ir::aie::AieMemoryWrites) -> bool
+impl core::fmt::Debug for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Freeze for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Send for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Sync for tapa_ir::aie::AieMemoryWrites
+impl core::marker::Unpin for tapa_ir::aie::AieMemoryWrites
+impl core::marker::UnsafeUnpin for tapa_ir::aie::AieMemoryWrites
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::AieMemoryWrites
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::AieMemoryWrites
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::AieMemoryWrites where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::AieMemoryWrites where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::From<T>
+pub fn tapa_ir::aie::AieMemoryWrites::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::Into<T>
+pub type tapa_ir::aie::AieMemoryWrites::Error = core::convert::Infallible
+pub fn tapa_ir::aie::AieMemoryWrites::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::AieMemoryWrites where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::AieMemoryWrites::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::AieMemoryWrites::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::AieMemoryWrites where T: core::clone::Clone
+pub type tapa_ir::aie::AieMemoryWrites::Owned = T
+pub fn tapa_ir::aie::AieMemoryWrites::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::AieMemoryWrites::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::AieMemoryWrites where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::AieMemoryWrites where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::AieMemoryWrites where T: ?core::marker::Sized
+pub fn tapa_ir::aie::AieMemoryWrites::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieMemoryWrites where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::AieMemoryWrites::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryWrites
+pub fn tapa_ir::aie::AieMemoryWrites::from(T) -> T
+pub struct tapa_ir::AieMovers
+pub tapa_ir::AieMovers::reads: core::option::Option<alloc::string::String>
+pub tapa_ir::AieMovers::writes: core::option::Option<alloc::string::String>
+impl core::clone::Clone for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::clone(&self) -> tapa_ir::port::AieMovers
+impl core::cmp::Eq for tapa_ir::port::AieMovers
+impl core::cmp::PartialEq for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::eq(&self, &tapa_ir::port::AieMovers) -> bool
+impl core::default::Default for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::default() -> tapa_ir::port::AieMovers
+impl core::fmt::Debug for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::port::AieMovers
+impl serde_core::ser::Serialize for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::serialize<__S>(&self, __S) -> core::result::Result<<__S as serde_core::ser::Serializer>::Ok, <__S as serde_core::ser::Serializer>::Error> where __S: serde_core::ser::Serializer
+impl<'de> serde_core::de::Deserialize<'de> for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::deserialize<__D>(__D) -> core::result::Result<Self, <__D as serde_core::de::Deserializer>::Error> where __D: serde_core::de::Deserializer<'de>
+impl core::marker::Freeze for tapa_ir::port::AieMovers
+impl core::marker::Send for tapa_ir::port::AieMovers
+impl core::marker::Sync for tapa_ir::port::AieMovers
+impl core::marker::Unpin for tapa_ir::port::AieMovers
+impl core::marker::UnsafeUnpin for tapa_ir::port::AieMovers
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::port::AieMovers
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::port::AieMovers
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::port::AieMovers where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::port::AieMovers where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::port::AieMovers where U: core::convert::From<T>
+pub fn tapa_ir::port::AieMovers::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::port::AieMovers where U: core::convert::Into<T>
+pub type tapa_ir::port::AieMovers::Error = core::convert::Infallible
+pub fn tapa_ir::port::AieMovers::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::port::AieMovers where U: core::convert::TryFrom<T>
+pub type tapa_ir::port::AieMovers::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::port::AieMovers::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::port::AieMovers where T: core::clone::Clone
+pub type tapa_ir::port::AieMovers::Owned = T
+pub fn tapa_ir::port::AieMovers::clone_into(&self, &mut T)
+pub fn tapa_ir::port::AieMovers::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::port::AieMovers where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::port::AieMovers where T: ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::port::AieMovers where T: ?core::marker::Sized
+pub fn tapa_ir::port::AieMovers::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::port::AieMovers where T: core::clone::Clone
+pub unsafe fn tapa_ir::port::AieMovers::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::port::AieMovers
+pub fn tapa_ir::port::AieMovers::from(T) -> T
+impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::AieMovers where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::AiePartition
 pub tapa_ir::AiePartition::kernels: alloc::vec::Vec<tapa_ir::aie::AieKernel>
 pub tapa_ir::AiePartition::run_forever: bool
@@ -5091,6 +5470,7 @@ impl<T> core::convert::From<T> for tapa_ir::floorplan::PipelineRoute
 pub fn tapa_ir::floorplan::PipelineRoute::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::PipelineRoute where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::Port
+pub tapa_ir::Port::aie_movers: core::option::Option<tapa_ir::port::AieMovers>
 pub tapa_ir::Port::aie_plio: core::option::Option<u32>
 pub tapa_ir::Port::cat: tapa_ir::port::ArgCategory
 pub tapa_ir::Port::chan_count: core::option::Option<u32>

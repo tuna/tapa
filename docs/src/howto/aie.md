@@ -68,7 +68,8 @@ cannot be run through XRT.)
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
 | `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |
 | `peek`, `empty`, `full` | No. AI Engine streams expose no occupancy. |
-| `mmap`, `async_mmap`, `mmaps`, `hmap` | No. Read memory in a PL task and stream the data in. |
+| `async_mmap` | Yes, served from the PL; see [Memory](#memory). Elements must be 32, 64 or 128 bits. |
+| `mmap`, `mmaps`, `hmap` | No. Use an `async_mmap`, or read memory in a PL task and stream the data in. |
 | Scalars | Yes. |
 | Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body declares. The stack must fit in the tile's 32 KB data memory. |
 | `[[tapa::pipeline]]` on a loop | Lowered to `chess_prepare_for_pipelining`. Every loop nested in it is fully unrolled, as HLS does when it pipelines a loop; `[[tapa::unroll(k)]]` on a nested loop unrolls it `k` times instead. On a function it is ignored with a remark: put it on the loop. |
@@ -134,6 +135,49 @@ These habits decide AI Engine performance:
   last, a PE writes its blocks of A and B whole, multiplies, and then reads
   its neighbors' blocks whole. Its blocks from and to the PL travel as two
   halves on two frame ports, so over two PLIO channels at once.
+
+## Memory
+
+An AI Engine task reaches memory through a `tapa::async_mmap<T>&` port bound
+to a memory argument of the top. The AI Engine has no memory interface of its
+own: for each direction the body uses, TAPA adds a PL task to the PL kernel,
+bound to that memory, and joins it to the task over PLIO. The same source
+runs as a PL task too.
+
+```cpp
+[[tapa::target("aie")]] void Scale(tapa::async_mmap<float>& src,
+                                   tapa::async_mmap<float>& dst, uint64_t n) {
+  float tile[kTile];
+  src.read_addr.write({0, kTile});  // request tile 0
+  for (uint64_t t = 0; t < n / kTile; ++t) {
+    if (t + 1 < n / kTile) src.read_addr.write({(t + 1) * kTile, kTile});
+    src.read_data.read(tile, kTile);  // tile t, while t + 1 is on its way
+    for (int i = 0; i < kTile; ++i) tile[i] *= 2;
+    dst.write_addr.write({t * kTile, kTile});
+    dst.write_data.write(tile, kTile);
+  }
+}
+```
+
+- Request a range at once with a burst, `{offset, n}` (see
+  [async_mmap](../concepts/async-mmap.md)). Requesting the next tile before
+  computing this one hides the round trip through the PL and memory behind
+  the computation.
+- Every operation blocks, as on AI Engine streams: request ahead instead of
+  polling. `full()` is always false.
+- A write request's data follows it before the next write request: the two
+  share one stream port, since a kernel has only two output stream ports.
+- Reading `write_resp` is optional. The PL task waits for every write to be
+  acknowledged before the PL kernel finishes, so a body that only needs its
+  writes done by then can leave the acknowledgements alone.
+- Reads cost two PLIO channels (requests, data) and the kernel an output and
+  an input stream port; writes cost one channel and an output port, plus an
+  input port and a channel when the body reads `write_resp`. Together with
+  its stream ports they must fit the kernel's two inputs and two outputs.
+- No PL task may bind the same memory: nothing orders its accesses against
+  the AI Engine task's.
+- Software simulation serves the port from host memory, as for a PL task.
+  The AI Engine simulators and hybrid cosimulation do not yet serve it.
 
 ## Knobs
 

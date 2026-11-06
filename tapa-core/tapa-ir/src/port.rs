@@ -171,6 +171,27 @@ pub struct Port {
     /// must treat as the historical default of 64.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mmap_addr_width: Option<u32>,
+    /// An AI Engine task's `async_mmap` port: the PL tasks that serve it,
+    /// one per direction its body uses. tapacc stamps them; the AI Engine
+    /// partition instantiates them in the PL kernel.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aie_movers: Option<AieMovers>,
+}
+
+/// The PL movers of an AI Engine task's `async_mmap` port, by task name:
+/// specializations of `tapa::internal::serve_reads<T>` and `serve_writes<T>`
+/// (tapa/base/mover.h).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct AieMovers {
+    /// Serves the port's reads, when the body names `read_addr` or
+    /// `read_data`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reads: Option<String>,
+    /// Serves the port's writes, when the body names `write_addr`,
+    /// `write_data` or `write_resp`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writes: Option<String>,
 }
 
 impl Port {

@@ -1,0 +1,28 @@
+"""An AI Engine task reading and writing memory through async_mmap."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+
+cc_binary(
+    name = "aie-mmap-host",
+    srcs = glob(
+        [
+            "*.cpp",
+            "*.h",
+        ],
+    ),
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+# Software simulation: the AI Engine task runs as an ordinary task, its
+# async_mmap served from host memory.
+sh_test(
+    name = "aie-mmap",
+    size = "small",
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(rootpath :aie-mmap-host)"],
+    data = [":aie-mmap-host"],
+)
