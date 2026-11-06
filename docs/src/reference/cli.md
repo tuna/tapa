@@ -64,7 +64,7 @@ documented for those three stages.
 | `--target {xilinx-vitis,xilinx-slash,xilinx-hls}` | Output target (default: `xilinx-vitis`). Also takes `TASK:TARGET` mappings, see `analyze`. |
 | `-j N` / `--jobs N` | Number of parallel HLS jobs. |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeatable. |
-| `--aie-sim {x86sim,aiesim}` | Build only the AI Engine graph, as a package for `x86simulator` or the cycle-approximate `aiesimulator` at `--output`, with no HLS run. The host program runs it with `--bitstream=<package>`, its PL tasks in software. See [AI Engine Tasks](../howto/aie.md). |
+| `--aie-sim {x86sim,aiesim}` | Build only the AI Engine graph, as a package for `x86simulator` or the cycle-approximate `aiesimulator` at `--output`, with no HLS run. The host program runs it with `--bitstream=<package>`: against `x86simulator` live, its PL tasks in software; against `aiesimulator` as a replay of a software run, checked and timed. See [AI Engine Tasks](../howto/aie.md). |
 
 ### Example
 

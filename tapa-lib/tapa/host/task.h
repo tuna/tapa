@@ -96,8 +96,11 @@ class hybrid_recorder {
 // reads, is on the AI Engine side, and so is every invoke it shares a
 // stream with that is not a kernel port. Those run in software, with the
 // kernel's streams bound by name, alongside the kernel; the PL invokes run
-// in the kernel. Returns false, doing nothing, when the kernel leaves no
-// stream to the host past the `bound_args` the caller set.
+// in the kernel. An AI Engine simulator is the other way around: live, the
+// AI Engine side runs in it and everything else in software; replaying,
+// everything runs in software and the simulator replays the streams (see
+// `frt::AieSimulation`). Returns false, doing nothing, when the kernel
+// leaves no stream to the host past the `bound_args` the caller set.
 bool hybrid_run(frt::Instance& instance, int bound_args,
                 const std::function<void()>& top_body);
 

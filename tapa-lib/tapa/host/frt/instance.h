@@ -20,6 +20,14 @@ struct HostStream {
   bool kernel_reads;  // the host writes it
 };
 
+// How an instance that runs only the design's AI Engine graph meets the
+// host's software tasks (see `hybrid_run`).
+enum class AieSimulation {
+  kNone,    // not an AI Engine simulator
+  kLive,    // relays every stream while the simulator runs
+  kReplay,  // replays a finished software run of the whole design
+};
+
 // Thin RAII handle over the Rust `frt_instance_*` C ABI. Argument lowering is
 // performed once by tapa-lib's accessors, which call the three `Set*Arg`
 // methods directly; there is no additional templated marshalling layer here.
@@ -41,10 +49,13 @@ class Instance {
   // The stream arguments the host binds, in argument order; none on
   // hardware.
   std::vector<HostStream> HostStreams() const;
-  // Whether the instance runs only the design's AI Engine graph, so the
-  // host runs every other task in software and closes each stream the
-  // instance reads once its software producer returns.
-  bool SimulatesAie() const;
+  // How the instance meets the host's software tasks if it runs only the
+  // design's AI Engine graph. Live, the host runs every task off the
+  // graph's side in software and closes each stream the instance reads
+  // once its software producer returns; replaying, the host runs the whole
+  // design in software and binds a copy of each stream, closed once the
+  // software run ends.
+  AieSimulation SimulatesAie() const;
 
   void WriteToDevice();
   void ReadFromDevice();

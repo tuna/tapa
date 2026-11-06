@@ -220,6 +220,70 @@ std::string KernelArgName(const std::string& name) {
   return out;
 }
 
+// The invoke that binds the kernel stream `name`, among those `in` marks,
+// and its use of that stream.
+std::pair<size_t, const stream_use*> find_binding(
+    const std::vector<recorded_invoke>& invokes, const std::vector<bool>& in,
+    const std::string& name) {
+  for (size_t i = 0; i < invokes.size(); ++i) {
+    if (!in[i]) continue;
+    for (const stream_use& use : invokes[i].uses) {
+      if (KernelArgName(use.name) == name) return {i, &use};
+    }
+  }
+  LOG(FATAL) << "kernel stream '" << name << "' connects to no task the top "
+             << "task invokes; hybrid cosimulation runs in software only AI "
+             << "Engine tasks the top invokes, and binds each stream by its "
+             << "name, so name it after its variable, e.g. tapa::stream<T> "
+             << name << "(\"" << name << "\")";
+  return {0, nullptr};
+}
+
+// An AI Engine simulator that replays: every invoke runs in software, each
+// kernel stream gets a copy of what is pushed on it, and the copies close
+// once every joined invoke has returned. The instance takes the copies
+// from the moment it runs, so it runs before any task.
+void replay(frt::Instance& instance,
+            const std::unordered_map<std::string, frt::HostStream>& ports,
+            const std::vector<recorded_invoke>& invokes) {
+  const std::vector<bool> every(invokes.size(), true);
+  auto closes = std::make_shared<std::vector<std::function<void()>>>();
+  for (const auto& [name, port] : ports) {
+    auto [path, close] = find_binding(invokes, every, name).second->copy();
+    instance.SetStreamArg(port.index, path);
+    closes->push_back(std::move(close));
+  }
+  const auto close_all = [closes] {
+    for (const std::function<void()>& close : *closes) close();
+  };
+  auto joined = std::make_shared<std::atomic<size_t>>(0);
+  for (const recorded_invoke& invoke : invokes) {
+    if (!invoke.detach) joined->fetch_add(1);
+  }
+
+  LOG(INFO) << "AI Engine simulation: the design runs in software, then the "
+            << "simulator replays its " << ports.size() << " PLIO stream(s)";
+  instance.WriteToDevice();
+  instance.Exec();
+  if (joined->load() == 0) close_all();
+  task scope;
+  for (const recorded_invoke& invoke : invokes) {
+    if (invoke.detach) {
+      schedule(/*detach=*/true, invoke.functor);
+      continue;
+    }
+    schedule(/*detach=*/false, [functor = invoke.functor, joined, close_all] {
+      functor();
+      if (joined->fetch_sub(1) == 1) close_all();
+    });
+  }
+  schedule(/*detach=*/false, [&instance] {
+    while (!instance.IsFinished()) yield("the AI Engine simulator is running");
+    instance.ReadFromDevice();
+    instance.Finish();
+  });
+}
+
 }  // namespace
 
 hybrid_recorder* hybrid_recorder::current() { return current_recorder; }
@@ -238,12 +302,18 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   current_recorder = nullptr;
   std::vector<recorded_invoke>& invokes = recorder.invokes_;
 
+  const frt::AieSimulation aie = instance.SimulatesAie();
+  if (aie == frt::AieSimulation::kReplay) {
+    replay(instance, ports, invokes);
+    return true;
+  }
+
   // Each side of the kernel streams: an invoke binding one from the far
   // side, or from the kernel's own (near) side, and everything it reaches
   // through streams the kernel does not own. A PL kernel runs every invoke
-  // not on the far side, so only the far side runs in software; an AI
+  // not on the far side, so only the far side runs in software; a live AI
   // Engine simulator runs only its near side, so everything else does.
-  const bool aie_device = instance.SimulatesAie();
+  const bool aie_device = aie == frt::AieSimulation::kLive;
   const auto side = [&](bool far) {
     std::vector<bool> marked(invokes.size(), false);
     for (size_t i = 0; i < invokes.size(); ++i) {
@@ -295,23 +365,7 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   auto kernel_done = std::make_shared<std::atomic<bool>>(false);
   std::vector<std::function<void()>> forwards;
   for (const auto& [name, port] : ports) {
-    const stream_use* bound = nullptr;
-    size_t producer = 0;
-    for (size_t i = 0; i < invokes.size() && bound == nullptr; ++i) {
-      if (!software[i]) continue;
-      for (const stream_use& use : invokes[i].uses) {
-        if (KernelArgName(use.name) == name) {
-          bound = &use;
-          producer = i;
-        }
-      }
-    }
-    LOG_IF(FATAL, bound == nullptr)
-        << "kernel stream '" << name << "' connects to no task the top task "
-        << "invokes; hybrid cosimulation runs in software only AI Engine "
-        << "tasks the top invokes, and binds each stream by its name, so "
-        << "name it after its variable, e.g. tapa::stream<T> " << name << "(\""
-        << name << "\")";
+    const auto [producer, bound] = find_binding(invokes, software, name);
     if (port.kernel_reads) {
       instance.SetStreamArg(port.index, bound->frt_path());
       if (aie_device) closes[producer].push_back(bound->close);

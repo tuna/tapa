@@ -70,11 +70,13 @@ int frt_instance_host_stream(const void *handle,
                              uintptr_t name_len,
                              int *kernel_reads);
 
-/// 1 when the instance runs only the design's AI Engine graph, so the host
-/// runs every other task in software and closes each stream the instance
-/// reads once its software producer returns; 0 otherwise; -1 on an invalid
-/// handle.
-int frt_instance_simulates_aie(const void *handle);
+/// How the instance meets the host's software tasks when it runs only the
+/// design's AI Engine graph: 1 relays every stream live, so the host runs
+/// only the tasks off the graph's side and closes each stream the instance
+/// reads once its software producer returns; 2 replays, so the host runs
+/// the whole design and binds a copy of each stream, closed once the
+/// software run ends. 0 for any other instance; -1 on an invalid handle.
+int frt_instance_aie_simulation(const void *handle);
 
 int frt_instance_write_to_device(void *handle);
 

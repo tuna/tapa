@@ -3,8 +3,8 @@
 //! Every TAPA PLIO carries 32-bit words, so a file holds one beat per line
 //! as decimal 32-bit integers. An input beat is followed by a `TLAST` line;
 //! an output file interleaves `T <time> <unit>` timestamp lines and `TLAST`
-//! markers with the data lines. The relay writes and reads both as the data
-//! arrives, so each side keeps the partial beat or line between calls.
+//! markers with the data lines. The live relay writes and reads both as the
+//! data arrives, so each side keeps the partial beat or line between calls.
 
 /// Turns a stream of words into input beat lines.
 pub struct BeatWriter {
@@ -107,6 +107,42 @@ impl LineParser {
     }
 }
 
+/// Where a replayed output first departs from what software simulation
+/// pushed on it: the same words, then only the zero padding that rounds
+/// the last transfer up, are a match.
+pub fn first_mismatch(got: &[u32], want: &[u32], transfer_words: usize) -> Option<usize> {
+    if let Some(index) = got.iter().zip(want).position(|(got, want)| got != want) {
+        return Some(index);
+    }
+    let padded = want.len().next_multiple_of(transfer_words.max(1));
+    if got.len() < want.len() {
+        Some(got.len())
+    } else if got.len() > padded {
+        Some(padded)
+    } else {
+        got[want.len()..]
+            .iter()
+            .position(|word| *word != 0)
+            .map(|index| want.len() + index)
+    }
+}
+
+/// `, beats at <first>..<last> ns (<mean> ns apart)`, or nothing when no
+/// beat was timed.
+pub fn timing(beat_times_ns: &[f64]) -> String {
+    let (Some(first), Some(last)) = (beat_times_ns.first(), beat_times_ns.last()) else {
+        return String::new();
+    };
+    // A lone beat has no interval to average.
+    let gaps = u32::try_from(beat_times_ns.len() - 1).unwrap_or(u32::MAX);
+    let spacing = if gaps > 0 {
+        format!(" ({:.2} ns apart)", (last - first) / f64::from(gaps))
+    } else {
+        String::new()
+    };
+    format!(", beats at {first:.1}..{last:.1} ns{spacing}")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,5 +164,38 @@ mod tests {
         parser.feed(b" 3\nT 6960 ns\nTLAST\n-1 5 6 7\n", &mut words);
         assert_eq!(words, [0, 1, 2, 3, 0xffff_ffff, 5, 6, 7]);
         assert_eq!(parser.beat_times_ns, [6956.8, 6960.0]);
+    }
+
+    #[test]
+    fn a_replayed_output_matches_up_to_zero_padding_of_its_last_transfer() {
+        assert_eq!(first_mismatch(&[1, 2], &[1, 2], 1), None);
+        assert_eq!(first_mismatch(&[1], &[1, 2], 1), Some(1), "short");
+        assert_eq!(
+            first_mismatch(&[1, 2, 1, 2], &[1, 2], 1),
+            Some(2),
+            "surplus"
+        );
+        assert_eq!(first_mismatch(&[9], &[], 1), Some(0));
+        assert_eq!(first_mismatch(&[1, 2, 3, 0], &[1, 2, 3], 4), None);
+        assert_eq!(
+            first_mismatch(&[1, 2, 3, 4], &[1, 2, 3], 4),
+            Some(3),
+            "padding is zero"
+        );
+        assert_eq!(
+            first_mismatch(&[1, 2, 0, 0, 0], &[1, 2], 4),
+            Some(4),
+            "one transfer only"
+        );
+        let padded = [1, 2, 0, 0, 0, 0, 0, 0];
+        assert_eq!(
+            first_mismatch(&padded, &[1, 2], 12),
+            None,
+            "a partial last beat"
+        );
+        let mut nonzero = padded;
+        nonzero[3] = 9;
+        assert_eq!(first_mismatch(&nonzero, &[1, 2], 12), Some(3));
+        assert_eq!(first_mismatch(&[1, 3], &[1, 2], 1), Some(1), "differs");
     }
 }

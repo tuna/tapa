@@ -54,17 +54,30 @@ pub enum ExecutionState {
     Finished,
 }
 
+/// How a device that runs only a design's AI Engine graph meets the host's
+/// software tasks over the PLIO streams.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AieSimulation {
+    /// The host runs only the tasks off the graph's side of the streams and
+    /// closes each stream the device reads once its software producer
+    /// returns; the device relays every stream while the simulator runs.
+    Live,
+    /// The host runs the whole design in software and binds to each stream
+    /// a copy of what was pushed on it, closed once the software run ends;
+    /// the device then replays the inputs and checks the outputs.
+    Replay,
+}
+
 pub trait Device: Send {
     /// The stream arguments the host binds, in argument order. A backend
     /// without host streams has none.
     fn host_streams(&self) -> Vec<HostStream> {
         Vec::new()
     }
-    /// Whether the device runs only a design's AI Engine graph, so the
-    /// host runs every other task in software and closes each stream the
-    /// device reads once its software producer returns.
-    fn simulates_aie(&self) -> bool {
-        false
+    /// How the device meets the host's software tasks when it runs only a
+    /// design's AI Engine graph; `None` for any other device.
+    fn aie_simulation(&self) -> Option<AieSimulation> {
+        None
     }
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()>;
     fn set_buffer_arg(

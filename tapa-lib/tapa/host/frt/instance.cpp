@@ -80,10 +80,10 @@ std::vector<HostStream> Instance::HostStreams() const {
   return streams;
 }
 
-bool Instance::SimulatesAie() const {
-  const int simulates = frt_instance_simulates_aie(impl_->handle);
-  LOG_IF(FATAL, simulates < 0) << "simulates_aie failed: " << LastErr();
-  return simulates != 0;
+AieSimulation Instance::SimulatesAie() const {
+  const int mode = frt_instance_aie_simulation(impl_->handle);
+  LOG_IF(FATAL, mode < 0 || mode > 2) << "aie_simulation failed: " << LastErr();
+  return static_cast<AieSimulation>(mode);
 }
 
 void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,

@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include <glog/logging.h>
@@ -112,8 +113,20 @@ class base_queue : public type_erased_queue {
   // Returns a stream suitable for passing to FRT. Crashes if incompatible.
   virtual frt::Stream<T>& get_frt_stream() = 0;
 
+  // Hands every element pushed from now on to `recorder` as well (an AI
+  // Engine replay, see `hybrid_run`); set before any task uses the queue.
+  void set_recorder(std::function<void(const T&)> recorder) {
+    recorder_ = std::move(recorder);
+  }
+
  protected:
   using type_erased_queue::type_erased_queue;
+
+  // What every push shows the stream log and the recorder.
+  void observe(const T& elem) {
+    this->maybe_log(elem);
+    if (recorder_) recorder_(elem);
+  }
 
   void log_leftovers(int n) final override {
     for (int i = 0; i < n && !this->empty(); ++i) {
@@ -121,6 +134,9 @@ class base_queue : public type_erased_queue {
                    << "' leftover: " << this->pop();
     }
   }
+
+ private:
+  std::function<void(const T&)> recorder_;
 };
 
 template <typename T>
@@ -153,7 +169,7 @@ class locked_queue : public base_queue<T> {
   }
   void push(const T& val) override {
     std::unique_lock<std::mutex> lock(this->mtx);
-    this->maybe_log(val);
+    this->observe(val);
     this->buffer.push_back(val);
   }
 
@@ -179,7 +195,7 @@ class frt_queue : public base_queue<T> {
   bool empty() const override { return poll(stream_.empty()); }
   bool full() const override { return poll(stream_.full()); }
   void push(const T& val) override {
-    this->maybe_log(val);
+    this->observe(val);
     stream_.push(val);
   }
   T pop() override { return stream_.pop(); }
@@ -857,6 +873,47 @@ struct accessor<ostreams<T, L>, Arg> {
   TAPA_DISALLOWED_REFERENCE_PARAM_BODY("ostreams<T, L>&")
 };
 
+// The copy of a stream an AI Engine replay binds (see `hybrid_run`): every
+// element pushed on the stream, without its end-of-transmission tokens,
+// until `close` ends the copy with one. A later push, from a detached task,
+// is dropped.
+template <typename T>
+class stream_copy {
+ public:
+  explicit stream_copy(const std::string& name)
+      : queue_(kDepth, name + ".copy"), path_(queue_.get_frt_stream().path()) {}
+
+  const std::string& path() const { return path_; }
+
+  void push(const elem_t<T>& elem) {
+    if (elem.eot) return;
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (!closed_) put(elem);
+  }
+
+  void close() {
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (closed_) return;
+    put({T{}, true});
+    closed_ = true;
+  }
+
+ private:
+  static constexpr int64_t kDepth = 1024;
+
+  // The instance drains the copy on a thread of its own from the moment it
+  // runs, so waiting here for room never waits on another task.
+  void put(const elem_t<T>& elem) {
+    while (queue_.full()) std::this_thread::yield();
+    queue_.push(elem);
+  }
+
+  frt_queue<elem_t<T>> queue_;
+  const std::string path_;
+  std::mutex mtx_;
+  bool closed_ = false;
+};
+
 // One stream a recorded invoke touches (hybrid cosimulation, see
 // `hybrid_run`): the queue it names, the stream's name, whether the task
 // reads it, and how to hand it to a kernel argument. `frt_path` binds the
@@ -866,6 +923,8 @@ struct accessor<ostreams<T, L>, Arg> {
 // and the queue drained: a stream into the AI Engine asserts TLAST on every
 // beat, which the cosimulation reads as EoT. `close` ends the stream with
 // an EoT token, which tells an AI Engine simulator its input is complete.
+// `copy` starts a `stream_copy` and returns its path and the function that
+// closes it.
 struct stream_use {
   const void* queue;
   std::string name;
@@ -875,6 +934,7 @@ struct stream_use {
                             std::function<bool()> kernel_done)>
       frt_path_dropping_eot;
   std::function<void()> close;
+  std::function<std::pair<std::string, std::function<void()>>()> copy;
 };
 
 struct stream_access {
@@ -909,6 +969,14 @@ struct stream_access {
             [stream, name] {
               while (stream.get_queue().full()) yield(name, "full");
               stream.get_queue().push({T{}, true});
+            },
+            [stream, name] {
+              auto copy = std::make_shared<stream_copy<T>>(name);
+              stream.get_queue().set_recorder(
+                  [copy](const elem_t<T>& elem) { copy->push(elem); });
+              return std::make_pair(copy->path(), std::function<void()>([copy] {
+                                      copy->close();
+                                    }));
             }};
   }
   static constexpr int64_t kHybridForwardDepth = 64;

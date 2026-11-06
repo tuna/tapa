@@ -1,7 +1,8 @@
 #!/bin/bash
 # Builds the AI Engine graph of a design as a simulator package and runs the
-# host program against it: the PL tasks in software, the graph in the
-# simulator, every PL <-> AI Engine stream relayed live.
+# host program against it: for x86sim, the PL tasks in software and every
+# PL <-> AI Engine stream relayed live; for aiesim, the whole design in
+# software, then the simulator replaying its streams.
 #
 # usage: run_aie_sim.sh TAPA HOST KERNEL TOP SIMULATOR [compile flags...]
 set -euo pipefail

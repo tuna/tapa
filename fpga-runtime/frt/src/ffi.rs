@@ -333,17 +333,23 @@ pub extern "C" fn frt_instance_host_stream(
     c_int::try_from(stream.index).unwrap_or(-1)
 }
 
-/// 1 when the instance runs only the design's AI Engine graph, so the host
-/// runs every other task in software and closes each stream the instance
-/// reads once its software producer returns; 0 otherwise; -1 on an invalid
-/// handle.
+/// How the instance meets the host's software tasks when it runs only the
+/// design's AI Engine graph: 1 relays every stream live, so the host runs
+/// only the tasks off the graph's side and closes each stream the instance
+/// reads once its software producer returns; 2 replays, so the host runs
+/// the whole design and binds a copy of each stream, closed once the
+/// software run ends. 0 for any other instance; -1 on an invalid handle.
 #[no_mangle]
-pub extern "C" fn frt_instance_simulates_aie(handle: *const std::ffi::c_void) -> c_int {
+pub extern "C" fn frt_instance_aie_simulation(handle: *const std::ffi::c_void) -> c_int {
     clear_last_error();
     let Some(h) = with_handle_ref(handle) else {
         return -1;
     };
-    c_int::from(h.device.simulates_aie())
+    match h.device.aie_simulation() {
+        None => 0,
+        Some(crate::device::AieSimulation::Live) => 1,
+        Some(crate::device::AieSimulation::Replay) => 2,
+    }
 }
 
 #[no_mangle]

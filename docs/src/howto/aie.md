@@ -183,12 +183,29 @@ when the PL task writing it returns; it is then zero-padded to a whole frame
 and PLIO beat. A final partial output frame arrives zero-padded, as on
 hardware, and its padding is left unread in the stream.
 
+`--aie-sim aiesim` builds the graph for the cycle-approximate `aiesimulator`
+instead. It reads each input in full when it starts, so it cannot be fed as
+the data flows: the host program runs the whole design in software, keeping
+a copy of each PL↔AI Engine stream, and then the simulator replays the copies
+of the inputs. Each output it writes must match what software simulation
+wrote to that stream, padding aside, or the run fails at the first differing
+word. Each output is printed with the simulated time of its beats:
+
+```text
+dst_q: 256 of 256 words, beats at 256.0..656.0 ns (6.35 ns apart)
+AI Engine simulation matches software simulation
+```
+
+The times are the AI Engine's alone, fed as fast as its inputs allow; the PL
+tasks ran in software, and nothing the PL does with an output reaches the
+simulator.
+
 On an AI Engine 1 device, a kernel reads about 32 bits from its input streams
 per AI Engine cycle in total, however many stream ports it reads. That is one
 128-bit beat every 3.2 ns at 1.25 GHz, so the two-input add above runs at
-6.4 ns per output beat. Measure each kernel this way rather than planning on
-the port count. A frame port (`[[tapa::frame(N)]]`) is filled by DMA and
-does not consume that budget.
+6.4 ns per output beat. Measure each kernel with `--aie-sim aiesim` rather
+than planning on the port count. A frame port (`[[tapa::frame(N)]]`) is
+filled by DMA and does not consume that budget.
 
 ## Hybrid cosimulation
 
