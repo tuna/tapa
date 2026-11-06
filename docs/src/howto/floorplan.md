@@ -21,7 +21,7 @@ needed when the design already meets timing.
 - For `--run-impl` or `--dse`: the `xilinx-vitis` or `xilinx-slash` target,
   and the matching toolchain — Vitis/Vivado with a platform the installed
   `v++` accepts, or SLASH's `slashkit` with the V80 static shell for
-  `slash_v80_service` (see [Alveo V80 with SLASH](v80.md)).
+  `slash_v80_service` or `slash_v80_compute` (see [Alveo V80 with SLASH](v80.md)).
 
 For tighter designs, consider `tapa synth --enable-synth-util` before
 floorplanning. It provides more accurate per-task resource estimates at the

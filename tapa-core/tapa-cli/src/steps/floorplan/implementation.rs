@@ -152,13 +152,19 @@ pub(super) fn validate_target(
             "implementation requires a synthesized target part; rerun `tapa synth`".to_string(),
         )
     })?;
-    select_device(part_num).map_err(|error| CliError::Floorplan(error.to_string()))?;
     let platform = state.flow.platform.as_deref().ok_or_else(|| {
         CliError::InvalidArg(
             "implementation requires synthesis with `--platform <installed-platform-name>`"
                 .to_string(),
         )
     })?;
+    let shell = if flow == Target::XilinxSlash {
+        Some(crate::steps::link::slash_platform(state)?.shell)
+    } else {
+        None
+    };
+    tapa_floorplan::device::select_device_with_shell(part_num, shell)
+        .map_err(|error| CliError::Floorplan(error.to_string()))?;
     if flow == Target::XilinxVitis && !is_logical_platform_name(platform) {
         return Err(CliError::InvalidArg(format!(
             "implementation platform `{platform}` must be an installed platform name, not a path",
@@ -347,8 +353,9 @@ fn try_implement_one(
 
     if target.flow == Target::XilinxSlash {
         log::info!(
-            "floorplan candidate_{:03} [3/3]: running SLASH service-shell implementation",
+            "floorplan candidate_{:03} [3/3]: running SLASH implementation for {}",
             candidate.index,
+            target.platform,
         );
         let _config = connectivity.ok_or_else(|| {
             CliError::InvalidArg(
@@ -358,6 +365,7 @@ fn try_implement_one(
         let output = tapa_xilinx::tools::slash::link(
             runner,
             &tapa_xilinx::tools::slash::SlashLinkJob {
+                platform: crate::steps::link::slash_platform(&candidate_state)?,
                 package,
                 config: crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY)),
                 output: crate::util::utf8(paths.vbin.clone()),
@@ -1290,6 +1298,10 @@ ap_clk              0.400        0.000
             ("slash-custom", "vivado-custom")
         );
         assert_eq!(target.platform, "slash_v80_service");
+        assert_eq!(target.target_mhz, 300);
+        state.flow.platform = Some("slash_v80_compute".into());
+        let target = validate_target(&state, &args).expect("compute DSE target");
+        assert_eq!(target.platform, "slash_v80_compute");
         assert_eq!(target.target_mhz, 300);
     }
 }

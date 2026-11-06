@@ -4,4 +4,4 @@ pub mod model;
 pub mod select;
 
 pub use model::Coor;
-pub use select::select_device;
+pub use select::{select_device, select_device_with_shell};

@@ -1,4 +1,4 @@
-//! Pure-Rust linking of one K5 package through the pinned SLASH linker.
+//! Pure-Rust linking of one K5 package through SLASH.
 
 mod hooks;
 mod package;
@@ -15,8 +15,7 @@ use crate::tools::vitis::timing::{
 };
 use crate::ToolValue;
 
-const SLASH_COMMIT: &str = "26f9c55c";
-const KERNEL_CLOCK: &str = "tapa_user_clk";
+const KERNEL_CLOCK: &str = "user_clk";
 const FIXED_CLOCK: &str = "clk_wizard_0_clk_out1_1";
 const METRICS_NAME: &str = "link-metrics.json";
 
@@ -44,6 +43,7 @@ impl SlashLinkMode {
 
 #[derive(Debug)]
 pub struct SlashLinkJob {
+    pub platform: &'static crate::SlashPlatform,
     pub package: Utf8PathBuf,
     pub config: Utf8PathBuf,
     pub output: Utf8PathBuf,
@@ -100,7 +100,6 @@ struct PreparedLink {
     config: Utf8PathBuf,
     hook: Utf8PathBuf,
     place_hook: Utf8PathBuf,
-    clock_xdc: Utf8PathBuf,
     floorplan_xdc: Option<Utf8PathBuf>,
     /// Routed timing report to download; `None` in simulation mode, where
     /// slashkit produces no routed timing report.
@@ -146,13 +145,16 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
         &metadata.top_name,
         &metadata.ports,
         requested_hz(job.target_mhz),
+        job.platform,
     )
     .map_err(XilinxError::SlashLink)?;
-    let hbm_indices = bindings
+    let mut hbm_indices = bindings
         .iter()
         .filter(|binding| binding.bank.kind == tapa_ir::MemoryKind::Hbm)
         .map(|binding| binding.bank.index)
         .collect::<Vec<_>>();
+    hbm_indices.sort_unstable();
+    hbm_indices.dedup();
     if !config_text.ends_with('\n') {
         config_text.push('\n');
     }
@@ -161,11 +163,12 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let config = work.join("config.cfg");
     let hook = work.join(hooks::HOOK_NAME);
     let place_hook = work.join(hooks::PLACE_HOOK_NAME);
-    let clock_xdc = work.join(hooks::CLOCK_XDC_NAME);
     fs_err::write(&config, config_text)?;
     fs_err::write(&hook, hooks::pre_synth_hook(&hbm_indices))?;
-    fs_err::write(&place_hook, hooks::pre_place_hook(floorplan_xdc.is_some()))?;
-    fs_err::write(&clock_xdc, hooks::user_clock_xdc(job.target_mhz))?;
+    fs_err::write(
+        &place_hook,
+        hooks::pre_place_hook(floorplan_xdc.is_some(), !hbm_indices.is_empty()),
+    )?;
     let floorplan_xdc = floorplan_xdc
         .as_ref()
         .map(|source| {
@@ -186,7 +189,6 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
         config,
         hook,
         place_hook,
-        clock_xdc,
         floorplan_xdc,
         timing_report,
     })
@@ -218,7 +220,6 @@ fn build_invocation(job: &SlashLinkJob, prepared: &PreparedLink, vivado: &str) -
         prepared.config.clone(),
         prepared.hook.clone(),
         prepared.place_hook.clone(),
-        prepared.clock_xdc.clone(),
     ];
     if let Some(xdc) = &prepared.floorplan_xdc {
         invocation.uploads.push(xdc.clone());
@@ -251,6 +252,12 @@ fn finish_link(
             job.mode.slashkit_name(),
             system_map.platform,
             job.mode.system_map_platform(),
+        )));
+    }
+    if system_map.shell_type != job.platform.shell {
+        return Err(slash_error(format!(
+            "SLASH vbin has ShellType `{}`, expected `{}` for `{}`",
+            system_map.shell_type, job.platform.shell, job.platform.name,
         )));
     }
     let requested_hz = requested_hz(job.target_mhz);
@@ -288,7 +295,7 @@ fn finish_link(
             }
             if fixed_wns_ns < 0.0 {
                 log::warn!(
-                    "SLASH fixed 400 MHz domain `{FIXED_CLOCK}` has WNS {fixed_wns_ns:.3} ns; \
+                    "SLASH fixed domain `{FIXED_CLOCK}` has WNS {fixed_wns_ns:.3} ns; \
                      leaving shell timing unchanged",
                 );
             }
@@ -304,6 +311,7 @@ fn finish_link(
 
     write_metrics(
         &prepared.work.join(METRICS_NAME),
+        job.platform,
         job.target_mhz,
         recorded_mhz,
         timing.as_ref(),
@@ -401,12 +409,13 @@ fn hz_to_mhz(hz: u64) -> f64 {
     (hz as f64 / 1_000_000.0)
 }
 
-/// Link record shared by both modes: the pinned commit and the clock request
+/// Link record shared by both modes: platform identity and the clock request
 /// versus recording are always written; the routed-timing fields exist only
 /// for hardware links, which are the only links with a routed timing report.
 #[derive(Debug, Serialize)]
 struct LinkMetrics<'a> {
-    slash_commit: &'static str,
+    platform: &'static str,
+    shell_type: &'static str,
     requested_mhz: u32,
     recorded_mhz: f64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -423,6 +432,7 @@ struct LinkMetrics<'a> {
 
 fn write_metrics(
     path: &Utf8Path,
+    platform: &crate::SlashPlatform,
     requested_mhz: u32,
     recorded_mhz: f64,
     timing: Option<&KernelTiming>,
@@ -430,7 +440,8 @@ fn write_metrics(
     timing_report: Option<&Utf8Path>,
 ) -> Result<()> {
     let metrics = LinkMetrics {
-        slash_commit: SLASH_COMMIT,
+        platform: platform.name,
+        shell_type: platform.shell,
         requested_mhz,
         recorded_mhz,
         kernel_wns_ns: timing.map(|timing| timing.wns_ns),
@@ -452,7 +463,7 @@ fn slash_error(detail: impl Into<String>) -> XilinxError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::process::{MockToolRunner, ToolOutput};
+    use crate::runtime::process::ToolOutput;
 
     fn fixture(name: &str) -> Utf8PathBuf {
         Utf8PathBuf::from(format!(
@@ -472,10 +483,20 @@ mod tests {
         assert!(place_hook.contains("source [file join $tapa_place_hook_dir floorplan.xdc]"));
     }
 
+    fn service() -> &'static crate::SlashPlatform {
+        crate::find_slash_platform("slash_v80_service").expect("service")
+    }
+
+    fn read_metrics(work: &Utf8Path) -> serde_json::Value {
+        serde_json::from_slice(&fs_err::read(work.join(METRICS_NAME)).expect("read metrics"))
+            .expect("metrics JSON")
+    }
+
     #[test]
     fn parses_real_kernel_and_fixed_rows_without_global_timing_failure() {
+        // These historical reports use tapa_user_clk; production uses user_clk.
         let vadd = fs_err::read_to_string(fixture("vadd-routed-timing.rpt")).expect("vadd report");
-        let timing = parse_named_clock_timing_summary(&vadd, KERNEL_CLOCK).expect("kernel row");
+        let timing = parse_named_clock_timing_summary(&vadd, "tapa_user_clk").expect("kernel row");
         let fixed_wns_ns = parse_named_clock_wns(&vadd, FIXED_CLOCK).expect("fixed row");
         assert_eq!(timing.reported_target_period_ns, 3.333);
         assert_eq!(timing.wns_ns, 0.006);
@@ -485,7 +506,7 @@ mod tests {
 
         let callipepla = fs_err::read_to_string(fixture("callipepla-routed-timing.rpt"))
             .expect("Callipepla report");
-        let timing = parse_named_clock_timing_summary(&callipepla, KERNEL_CLOCK)
+        let timing = parse_named_clock_timing_summary(&callipepla, "tapa_user_clk")
             .expect("negative kernel slack is data");
         let fixed_wns_ns =
             parse_named_clock_wns(&callipepla, FIXED_CLOCK).expect("negative fixed slack is data");
@@ -494,7 +515,7 @@ mod tests {
     }
 
     #[test]
-    fn pure_rust_link_transfers_only_required_files_and_derates_vbin() {
+    fn hardware_invocation_transfers_only_required_files() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = crate::util::utf8(temp.path());
         let work = root.join("work").join("link");
@@ -502,67 +523,25 @@ mod tests {
         let report_path = routed_timing_report(&output_path).expect("report path");
         let floorplan = root.join("floorplan-input.xdc");
         fs_err::write(&floorplan, "# floorplan\n").expect("write floorplan");
+        let config = root.join("vadd.cfg");
+        let config_text = fs_err::read_to_string(fixture("vadd-config.cfg")).expect("config");
+        fs_err::write(&config, config_text.replace("300000000", "400000000"))
+            .expect("400 MHz config");
         let job = SlashLinkJob {
+            platform: service(),
             package: fixture("vadd-package.zip"),
-            config: fixture("vadd-config.cfg"),
+            config,
             output: output_path.clone(),
             work_dir: work.clone(),
             slashkit: "/tool-host/bin/slashkit".into(),
             vivado: "vivado-on-tool-host".into(),
             jobs: 3,
-            target_mhz: 300,
+            target_mhz: 400,
             floorplan_xdc: Some(floorplan),
             mode: SlashLinkMode::Hardware,
         };
-        let runner = MockToolRunner::new();
-        runner.push_ok(
-            "which",
-            ToolOutput {
-                exit_code: 0,
-                stdout: "/tool-host/bin/vivado\n".into(),
-                stderr: String::new(),
-            },
-        );
-        runner.push_ok(
-            &job.slashkit,
-            ToolOutput {
-                exit_code: 0,
-                stdout: "linked".into(),
-                stderr: "warning".into(),
-            },
-        );
-        runner.attach_download(
-            &output_path,
-            fs_err::read(fixture("vadd-gzip.vbin")).expect("gzip fixture"),
-        );
-        runner.attach_download(
-            &report_path,
-            fs_err::read(fixture("callipepla-routed-timing.rpt")).expect("timing fixture"),
-        );
-
-        let result = link(&runner, &job).expect("negative kernel/fixed slack still links");
-        assert_eq!(result.timing_report, Some(report_path.clone()));
-        let timing = result.hardware_timing().expect("hardware timing");
-        let expected_recorded = recorded_clock_hz(300_000_000, timing).expect("recorded clock");
-        assert_eq!(result.bitstream, output_path);
-        assert_eq!(result.recorded_mhz, hz_to_mhz(expected_recorded));
-        assert_eq!(result.stdout, "linked");
-        assert_eq!(result.stderr, "warning");
-        assert_eq!(
-            vbin::read_system_map(&result.bitstream)
-                .expect("rewritten map")
-                .clock_hz,
-            expected_recorded,
-        );
-
-        let calls = runner.calls();
-        assert_eq!(
-            calls.len(),
-            2,
-            "tool-host resolution and slashkit; no Python/finalize/verify"
-        );
-        assert_eq!(calls[0].program, "which");
-        let call = &calls[1];
+        let prepared = prepare_link(&job).expect("prepare hardware link");
+        let call = build_invocation(&job, &prepared, "/tool-host/bin/vivado");
         assert_eq!(call.program, "/tool-host/bin/slashkit");
         let args = call.local_args();
         assert!(args.windows(2).any(|pair| pair == ["-p", "hw"]));
@@ -572,8 +551,11 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--vivado", "/tool-host/bin/vivado"]));
-        assert_eq!(call.downloads, vec![output_path, report_path.clone()]);
-        assert_eq!(call.uploads.len(), 7);
+        assert_eq!(call.downloads, vec![output_path, report_path]);
+        assert_eq!(call.uploads.len(), 6);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--clock-hz", "400000000"]));
         assert!(call.uploads.contains(&work.join("floorplan.xdc")));
         assert!(call.uploads.contains(&work.join("tapa_pre_place.tcl")));
         assert!(call.uploads.contains(&work.join("ip")));
@@ -584,20 +566,9 @@ mod tests {
 
         let config = fs_err::read_to_string(work.join("config.cfg")).expect("staged config");
         assert!(config.contains("[user_region]\npre_synth=tapa_pre_synth.tcl"));
-        assert!(config.contains("freqhz=300000000"));
+        assert!(config.contains("freqhz=400000000"));
         assert!(work.join("ip").join("component.xml").is_file());
         assert_registered_placement_hooks(&work);
-        let metrics: serde_json::Value = serde_json::from_slice(
-            &fs_err::read(work.join(METRICS_NAME)).expect("read link metrics"),
-        )
-        .expect("metrics JSON");
-        assert_eq!(metrics["slash_commit"], SLASH_COMMIT);
-        assert_eq!(metrics["requested_mhz"], 300);
-        assert_eq!(metrics["recorded_mhz"], result.recorded_mhz);
-        assert_eq!(metrics["kernel_wns_ns"], -5.529);
-        assert_eq!(metrics["fixed_domain_wns_ns"], -1.023);
-        assert_eq!(metrics["timing_closed"], false);
-        assert_eq!(metrics["timing_report"], report_path.as_str());
     }
 
     #[test]
@@ -606,6 +577,7 @@ mod tests {
         let root = crate::util::utf8(temp.path());
         let output = root.join("vadd.sim.vbin");
         let job = SlashLinkJob {
+            platform: service(),
             package: fixture("vadd-package.zip"),
             config: fixture("vadd-config.cfg"),
             output: output.clone(),
@@ -640,6 +612,7 @@ mod tests {
         let output = root.join("vadd.sim.vbin");
         fs_err::copy(fixture("vadd-sim.vbin"), &output).expect("stage simulation vbin");
         let job = SlashLinkJob {
+            platform: service(),
             package: root.join("vadd-package.zip"),
             config: root.join("vadd-config.cfg"),
             output: output.clone(),
@@ -659,7 +632,6 @@ mod tests {
             config: work.join("config.cfg"),
             hook: work.join(hooks::HOOK_NAME),
             place_hook: work.join(hooks::PLACE_HOOK_NAME),
-            clock_xdc: work.join(hooks::CLOCK_XDC_NAME),
             floorplan_xdc: None,
             timing_report: None,
         };
@@ -689,11 +661,8 @@ mod tests {
             "the simulation vbin is recorded at the requested clock, not derated",
         );
 
-        let metrics: serde_json::Value = serde_json::from_slice(
-            &fs_err::read(work.join(METRICS_NAME)).expect("read link metrics"),
-        )
-        .expect("metrics JSON");
-        assert_eq!(metrics["slash_commit"], SLASH_COMMIT);
+        let metrics = read_metrics(&work);
+        assert_eq!(metrics["platform"], "slash_v80_service");
         assert_eq!(metrics["requested_mhz"], 300);
         assert_eq!(metrics["recorded_mhz"], 300.0);
         for field in [

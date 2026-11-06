@@ -15,6 +15,7 @@ use super::slash_error;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct SystemMap {
     pub platform: String,
+    pub shell_type: String,
     pub clock_hz: u64,
 }
 
@@ -50,12 +51,15 @@ fn system_map_from_tar(reader: impl Read) -> Result<SystemMap> {
     }
     Ok(SystemMap {
         platform: parsed.platform,
+        shell_type: parsed.shell_type.unwrap_or_else(|| "service".to_owned()),
         clock_hz: parsed.clock_frequency,
     })
 }
 
 #[derive(Debug, Deserialize)]
 struct SystemMapXml {
+    #[serde(rename = "ShellType")]
+    shell_type: Option<String>,
     #[serde(rename = "Platform")]
     platform: String,
     #[serde(rename = "ClockFrequency")]

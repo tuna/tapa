@@ -1,10 +1,12 @@
 # Keep the shell-facing HBM bridges next to their fixed NoC terminals.
 set tapa_place_hook_dir [file dirname [file normalize [info script]]]
 set tapa_hbm_bridges [get_cells -quiet -hierarchical -regexp -filter {IS_PRIMITIVE == 0 && NAME =~ "^(.*/)?slash/hbm_sc_[0-9]+$"}]
-if {![llength $tapa_hbm_bridges]} {
-  error "TAPA V80 link could not resolve the service-shell HBM bridges"
+if {@TAPA_HAS_HBM@ && ![llength $tapa_hbm_bridges]} {
+  error "TAPA V80 link could not resolve the shell HBM bridges"
 }
-set_property USER_SLR_ASSIGNMENT SLR2 $tapa_hbm_bridges
+if {[llength $tapa_hbm_bridges]} {
+  set_property USER_SLR_ASSIGNMENT SLR2 $tapa_hbm_bridges
+}
 
 # Check the optimized netlist against the actual RM inventory before placement.
 set tapa_rm_urams [get_cells -quiet -hierarchical -regexp -filter {IS_PRIMITIVE == 1 && REF_NAME =~ "^URAM288.*$" && NAME =~ "^(.*/)?slash/.*$"}]

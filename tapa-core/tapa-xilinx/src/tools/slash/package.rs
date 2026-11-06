@@ -238,6 +238,7 @@ mod tests {
             &metadata.top_name,
             &metadata.ports,
             300_000_000,
+            crate::find_slash_platform("slash_v80_service").expect("service"),
         )
         .expect("real config matches real typed ports");
     }

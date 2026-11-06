@@ -20,9 +20,23 @@ const TABLES: &[(&str, &str)] = &[
     ("v80", include_str!("tables/v80.json")),
 ];
 
+#[derive(serde::Deserialize)]
+struct V80Shells {
+    service: Device,
+    compute: Device,
+}
+
 /// Why [`select_device`] could not return a device.
 #[derive(Debug, thiserror::Error)]
 pub enum SelectError {
+    /// A shell was requested for a part that has no such shell table.
+    #[error("no floorplan table matches shell `{shell}` and part `{part_num}`")]
+    ShellMismatch {
+        /// The requested shell.
+        shell: String,
+        /// The part number or alias the caller asked for.
+        part_num: String,
+    },
     /// No table's key, part number, or part family matched the query.
     #[error("no floorplan device table matches `{query}` (known: {known})")]
     UnknownPart {
@@ -49,31 +63,37 @@ pub enum SelectError {
     },
 }
 
-/// The keys of every table.
-fn keys() -> Vec<&'static str> {
-    TABLES.iter().map(|(key, _)| *key).collect()
-}
-
-/// Parse every table, surfacing a malformed one as an error.
+/// Parse every table — the V80 file holds one device per shell — surfacing a
+/// malformed one as an error.
 fn all_devices() -> Result<Vec<Device>, SelectError> {
-    TABLES
-        .iter()
-        .map(|(key, json)| {
-            let device = serde_json::from_str::<Device>(json).map_err(|source| {
-                SelectError::MalformedTable {
-                    key: (*key).to_string(),
-                    source,
-                }
-            })?;
+    let mut devices = Vec::new();
+    for (key, json) in TABLES {
+        let parsed = if *key == "v80" {
+            serde_json::from_str::<V80Shells>(json)
+                .map(|shells| vec![shells.service, shells.compute])
+        } else {
+            serde_json::from_str::<Device>(json).map(|device| vec![device])
+        }
+        .map_err(|source| SelectError::MalformedTable {
+            key: (*key).to_string(),
+            source,
+        })?;
+        for device in parsed {
             device
                 .validate()
                 .map_err(|source| SelectError::InvalidTable {
-                    key: (*key).to_string(),
+                    key: device.key.clone(),
                     source,
                 })?;
-            Ok(device)
-        })
-        .collect()
+            devices.push(device);
+        }
+    }
+    Ok(devices)
+}
+
+fn matches_part(device: &Device, query: &str) -> bool {
+    query == device.key.to_ascii_lowercase()
+        || part_family(query) == part_family(&device.part_num.to_ascii_lowercase())
 }
 
 /// The leading token of a part string, e.g. `xcu280` from
@@ -87,23 +107,54 @@ fn part_family(part: &str) -> &str {
 ///
 /// Matching is case-insensitive and accepts the table key (`u280`), the full
 /// part number (`xcu280-fsvh2892-2L-e`), or any part string in the same family
-/// (`xcu280-…`).
+/// (`xcu280-…`). `v80` remains an alias for `v80_service`.
 pub fn select_device(part_num: &str) -> Result<Device, SelectError> {
     let query = part_num.trim().to_ascii_lowercase();
-    let query_family = part_family(&query);
+    let query = if query == "v80" {
+        "v80_service"
+    } else {
+        &query
+    };
 
+    let mut known = Vec::new();
     for device in all_devices()? {
-        let key = device.key.to_ascii_lowercase();
-        let part = device.part_num.to_ascii_lowercase();
-        if query == key || query == part || query_family == part_family(&part) {
+        if matches_part(&device, query) {
             return Ok(device);
         }
+        known.push(device.key);
     }
 
     Err(SelectError::UnknownPart {
         query: part_num.to_string(),
-        known: keys().join(", "),
+        known: known.join(", "),
     })
+}
+
+/// Select a device by part, optionally choosing the V80 service or compute shell.
+/// Without a shell, selection is identical to [`select_device`].
+pub fn select_device_with_shell(
+    part_num: &str,
+    shell: Option<&str>,
+) -> Result<Device, SelectError> {
+    let device = select_device(part_num)?;
+    let Some(shell) = shell else {
+        return Ok(device);
+    };
+    let key = match (device.key.as_str(), shell) {
+        ("v80_service" | "v80_compute", "service") => "v80_service",
+        ("v80_service" | "v80_compute", "compute") => "v80_compute",
+        _ => {
+            return Err(SelectError::ShellMismatch {
+                shell: shell.to_owned(),
+                part_num: part_num.to_owned(),
+            })
+        }
+    };
+    if device.key == key {
+        Ok(device)
+    } else {
+        select_device(key)
+    }
 }
 
 #[cfg(test)]
@@ -111,6 +162,62 @@ mod tests {
     use super::*;
 
     use crate::device::model::PlacementStyle;
+
+    #[test]
+    fn same_v80_part_selects_distinct_shells_and_preserves_result_keys() {
+        let part = "xcv80-lsva4737-2MHP-e-S";
+        let service = select_device_with_shell(part, Some("service")).expect("service");
+        let compute = select_device_with_shell(part, Some("compute")).expect("compute");
+        assert_eq!(service.key, "v80_service");
+        assert_eq!(select_device("v80").expect("old alias"), service);
+        assert_eq!(
+            select_device(&service.key).expect("service result"),
+            service
+        );
+        assert_eq!(
+            select_device_with_shell(part, None).expect("default shell"),
+            service
+        );
+        assert_eq!(
+            select_device(part).expect("legacy part lookup").key,
+            service.key
+        );
+        assert_eq!(compute.key, "v80_compute");
+        assert_eq!(
+            select_device(&compute.key).expect("result restoration"),
+            compute
+        );
+        assert_eq!(
+            select_device_with_shell("v80_compute", Some("service")).expect("explicit shell"),
+            service
+        );
+        assert_eq!(
+            select_device_with_shell("v80_compute", None).expect("preserve result key"),
+            compute
+        );
+        assert_eq!(service.slot(0, 0).expect("SLR0").area.lut, 0);
+        assert!(compute.slot(0, 0).expect("SLR0").area.lut > 0);
+        for index in 0..12 {
+            let tag = format!("DDR[{index}]");
+            let slots: Vec<_> = compute.slots_with_tag(&tag).collect();
+            assert_eq!(slots.len(), 1);
+            assert_eq!(slots[0].y, if index < 3 { 2 } else { 1 });
+        }
+        for (part, shell) in [
+            (part, "unknown"),
+            ("xcu280", "service"),
+            ("xcu280", "compute"),
+        ] {
+            assert!(matches!(
+                select_device_with_shell(part, Some(shell)),
+                Err(SelectError::ShellMismatch { .. })
+            ));
+        }
+        assert_eq!(
+            select_device_with_shell("xcu280", None).expect("ordinary device"),
+            select_device("xcu280").expect("unchanged part lookup")
+        );
+    }
 
     #[test]
     fn every_table_parses_and_covers_its_grid() {
@@ -584,8 +691,8 @@ mod tests {
     /// error. Family tags like the bare `HBM` are deliberately shared.
     #[test]
     fn no_device_table_repeats_an_exact_tag() {
-        for (key, _) in TABLES {
-            let device = select_device(key).expect("known device resolves");
+        for device in all_devices().expect("all shells") {
+            let key = &device.key;
             let mut seen = std::collections::BTreeSet::new();
             for slot in &device.slots {
                 for tag in &slot.tags {

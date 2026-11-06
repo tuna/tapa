@@ -453,11 +453,11 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     let interfaces = rtl_state
         .direct_mmap_interfaces(&projection.flat.top)
         .map_err(|error| CliError::Floorplan(error.to_string()))?;
-    let connectivity = if state
+    let connectivity = if let Some(platform) = state
         .flow
         .platform
         .as_deref()
-        .is_some_and(|p| tapa_xilinx::find_slash_platform(p).is_some())
+        .and_then(tapa_xilinx::find_slash_platform)
     {
         read_connectivity(args.connectivity.as_deref(), |text| {
             let ports = interfaces
@@ -470,7 +470,12 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
                     ctype: String::new(),
                 })
                 .collect::<Vec<_>>();
-            tapa_xilinx::connectivity::parse_slash_config(text, &projection.flat.top, &ports)
+            tapa_xilinx::connectivity::parse_slash_config(
+                text,
+                &projection.flat.top,
+                &ports,
+                platform,
+            )
         })?
     } else {
         read_connectivity(args.connectivity.as_deref(), parse_vitis_config)?
