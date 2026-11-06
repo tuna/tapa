@@ -1,9 +1,10 @@
-//! The pinned libvrtd C ABI, loaded only when a hardware VBIN is opened.
+//! SLASH-dev libvrtd C ABI, loaded only for hardware VBINs.
 //!
 //! No SLASH headers or libraries are needed to build FRT. The declarations
-//! below mirror `vrtd/vrtd.h`, `vrtd/wire.h`, and `slash/ctldev.h` from the
-//! pinned SLASH release. The library is deliberately never unloaded: its
-//! function pointers remain valid for every device for the process lifetime.
+//! below mirror `vrtd/vrtd.h`, `vrtd/wire.h`, and `slash/ctldev.h` from SLASH
+//! dev revision 230fc629. Both service and compute use this one ABI.
+//! The library is deliberately never unloaded: its function pointers remain
+//! valid for every device for the process lifetime.
 
 use std::ffi::{c_char, c_int, c_void, OsStr};
 use std::sync::OnceLock;
@@ -12,6 +13,7 @@ use crate::dl::dl_sym;
 use crate::error::{FrtError, Result};
 
 pub(super) const CLOCK_REGION_USER: u32 = 1;
+pub(super) const MM_CHANNEL_AUTO: c_int = 0;
 pub(super) const ALLOC_TYPE_DDR: u32 = 0;
 pub(super) const ALLOC_TYPE_HBM: u32 = 1;
 pub(super) const ALLOC_TYPE_HBM_VNOC: u32 = 2;
@@ -19,19 +21,16 @@ pub(super) const ALLOC_DIR_BIDIRECTIONAL: u32 = 0;
 pub(super) const ALLOC_DIR_HOST_TO_DEVICE: u32 = 1;
 pub(super) const ALLOC_DIR_DEVICE_TO_HOST: u32 = 2;
 
-/// `struct slash_bar_file` from the pinned `slash/ctldev.h`.
+/// `struct slash_bar_file` from SLASH-dev's `slash/ctldev.h`.
 #[repr(C)]
 pub(super) struct BarFile {
     pub map: *mut c_void,
     pub len: usize,
     pub fd: c_int,
-    /// C `_Bool`; an integer avoids importing invalid non-zero representations
-    /// into Rust's `bool` if a future C implementation uses another value.
-    pub mock: u8,
-    pub mock_path: *mut c_char,
+    pub transport: c_int,
 }
 
-/// `struct vrtd_buffer` from the pinned `vrtd/vrtd.h`.
+/// `struct vrtd_buffer` from SLASH-dev's `vrtd/vrtd.h`.
 #[repr(C)]
 pub(super) struct VrtdBuffer {
     pub sock_fd: c_int,
@@ -42,31 +41,28 @@ pub(super) struct VrtdBuffer {
     pub size: u64,
     pub phys_addr: u64,
     pub qpair_fd: c_int,
+    pub qpair_count: u32,
+    pub buffer_fd: c_int,
+    pub transfer_hint: c_int,
     pub buf: *mut c_void,
+    pub transfer_step_size: u64,
 }
 
 /// The entry points FRT uses, resolved once per process.
 pub(super) struct Api {
     pub connect: unsafe extern "C" fn(*const c_char) -> c_int,
     pub get_device_by_bdf: unsafe extern "C" fn(c_int, *const c_char, *mut u32) -> c_int,
-    pub design_write_file: unsafe extern "C" fn(c_int, u32, *const c_char) -> c_int,
+    pub design_write_file: unsafe extern "C" fn(c_int, u32, *const c_char, u8) -> c_int,
     pub clock_get_rate: unsafe extern "C" fn(c_int, u32, u32, *mut u32) -> c_int,
-    pub clock_set_rate: unsafe extern "C" fn(c_int, u32, u32, u32, *mut u32) -> c_int,
+    pub clock_set_rate_round_down: unsafe extern "C" fn(c_int, u32, u32, u32, *mut u32) -> c_int,
     pub open_bar_file: unsafe extern "C" fn(c_int, u32, u8, *mut BarFile) -> c_int,
     pub close_bar_file: unsafe extern "C" fn(*mut BarFile),
     pub buffer_open:
-        unsafe extern "C" fn(c_int, u32, u32, u32, u64, u64, *mut *mut VrtdBuffer) -> c_int,
+        unsafe extern "C" fn(c_int, u32, u32, u32, u64, u64, c_int, *mut *mut VrtdBuffer) -> c_int,
     pub buffer_close: unsafe extern "C" fn(*mut VrtdBuffer) -> c_int,
     pub buffer_sync_to_device: unsafe extern "C" fn(*mut VrtdBuffer, u64, u64) -> c_int,
     pub buffer_sync_from_device: unsafe extern "C" fn(*mut VrtdBuffer, u64, u64) -> c_int,
 }
-
-// SAFETY: these are immutable function pointers into a library intentionally
-// kept loaded for the process lifetime. libvrtd serializes independent calls
-// on each connection; VrtDevice itself is only accessed exclusively.
-unsafe impl Send for Api {}
-// SAFETY: as above; Api has no interior mutability.
-unsafe impl Sync for Api {}
 
 const LIBRARY: &str = "libvrtd.so";
 const SONAME: &str = "libvrtd.so.1";
@@ -115,7 +111,7 @@ fn load() -> std::result::Result<Api, String> {
         get_device_by_bdf: dl_sym!(library, "libvrtd", "vrtd_get_device_by_bdf"),
         design_write_file: dl_sym!(library, "libvrtd", "vrtd_design_write_file"),
         clock_get_rate: dl_sym!(library, "libvrtd", "vrtd_clock_get_rate"),
-        clock_set_rate: dl_sym!(library, "libvrtd", "vrtd_clock_set_rate"),
+        clock_set_rate_round_down: dl_sym!(library, "libvrtd", "vrtd_clock_set_rate_round_down"),
         open_bar_file: dl_sym!(library, "libvrtd", "vrtd_open_bar_file"),
         close_bar_file: dl_sym!(library, "libvrtd", "vrtd_close_bar_file"),
         buffer_open: dl_sym!(library, "libvrtd", "vrtd_buffer_open"),
@@ -147,17 +143,20 @@ mod tests {
     #[test]
     #[cfg(target_pointer_width = "64")]
     fn ffi_structs_match_the_pinned_64_bit_layouts() {
-        assert_eq!(std::mem::size_of::<BarFile>(), 32);
+        assert_eq!(std::mem::size_of::<BarFile>(), 24);
         assert_eq!(std::mem::offset_of!(BarFile, len), 8);
         assert_eq!(std::mem::offset_of!(BarFile, fd), 16);
-        assert_eq!(std::mem::offset_of!(BarFile, mock), 20);
-        assert_eq!(std::mem::offset_of!(BarFile, mock_path), 24);
+        assert_eq!(std::mem::offset_of!(BarFile, transport), 20);
 
-        assert_eq!(std::mem::size_of::<VrtdBuffer>(), 56);
+        assert_eq!(std::mem::size_of::<VrtdBuffer>(), 72);
         assert_eq!(std::mem::offset_of!(VrtdBuffer, alloc_arg), 16);
         assert_eq!(std::mem::offset_of!(VrtdBuffer, size), 24);
         assert_eq!(std::mem::offset_of!(VrtdBuffer, phys_addr), 32);
         assert_eq!(std::mem::offset_of!(VrtdBuffer, qpair_fd), 40);
-        assert_eq!(std::mem::offset_of!(VrtdBuffer, buf), 48);
+        assert_eq!(std::mem::offset_of!(VrtdBuffer, qpair_count), 44);
+        assert_eq!(std::mem::offset_of!(VrtdBuffer, buffer_fd), 48);
+        assert_eq!(std::mem::offset_of!(VrtdBuffer, transfer_hint), 52);
+        assert_eq!(std::mem::offset_of!(VrtdBuffer, buf), 56);
+        assert_eq!(std::mem::offset_of!(VrtdBuffer, transfer_step_size), 64);
     }
 }
