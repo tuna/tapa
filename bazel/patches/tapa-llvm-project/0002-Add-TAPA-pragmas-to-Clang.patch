@@ -180,7 +180,7 @@ index 8ee45a338..e85f1ea95 100644
  
  unsigned AttributeCommonInfo::calculateAttributeSpellingListIndex() const {
 diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
-index 1b272b541..2d4b704cf 100644
+index 1b272b541..f5af7ae31 100644
 --- a/clang/lib/Sema/SemaDeclAttr.cpp
 +++ b/clang/lib/Sema/SemaDeclAttr.cpp
 @@ -165,6 +165,200 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
@@ -429,6 +429,22 @@ index 1b272b541..2d4b704cf 100644
    }
  }
  
+@@ -8712,6 +8944,15 @@ void Sema::checkUnusedDeclAttributes(Declarator &D) {
+ }
+ 
+ void Sema::DiagnoseUnknownAttribute(const ParsedAttr &AL) {
++  // TAPA: an unknown attribute in the `tapa` namespace is misspelled or
++  // retired; ignoring it would silently drop what the user asked for.
++  if (AL.getNormalizedScopeName() == "tapa") {
++    Diag(AL.getLoc(), getDiagnostics().getCustomDiagID(
++                          DiagnosticsEngine::Error,
++                          "unknown TAPA attribute '[[tapa::%0]]'"))
++        << AL.getAttrName()->getName();
++    return;
++  }
+   SourceRange NR = AL.getNormalizedRange();
+   StringRef ScopeName = AL.getNormalizedScopeName();
+   std::optional<StringRef> CorrectedScopeName =
 diff --git a/clang/lib/Sema/SemaStmtAttr.cpp b/clang/lib/Sema/SemaStmtAttr.cpp
 index 3e9dc9c5e..3ec1b7ccd 100644
 --- a/clang/lib/Sema/SemaStmtAttr.cpp

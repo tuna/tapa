@@ -427,6 +427,28 @@ TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   }
 }
 
+// A misspelled or retired TAPA attribute is an error even through a macro,
+// whose body the leaked-attribute scan leaves alone.
+TEST(Rewrite, UnknownTapaAttributeIsAnError) {
+  constexpr char kRetired[] = R"cpp(
+#define FRAME [[tapa::aie_frame(4)]]
+    void Copy(FRAME tapa::istream<float>& in, tapa::ostream<float>& out) {
+      out.write(in.read());
+    }
+    void CopyTop(tapa::istream<float>& in, tapa::ostream<float>& out) {
+      tapa::task().invoke(Copy, in, out);
+    }
+  )cpp";
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/retired.cpp", kRetired}}, "CopyTop",
+      TempRoot("rewrite", "retired"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_FALSE(run.diags.empty());
+  EXPECT_TRUE(Contains(run.diags.front(),
+                       "unknown TAPA attribute '[[tapa::aie_frame]]'"))
+      << run.diags.front();
+}
+
 // A comment or string literal QUOTING an attribute spelling is not a leaked
 // attribute: the guard would otherwise fail a kernel for prose.
 TEST(Rewrite, AttrSpellingInCommentIsNotALeak) {
