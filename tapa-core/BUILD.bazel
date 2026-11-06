@@ -185,6 +185,8 @@ pkg_filegroup(
 
 CARGO_TEST_PACKAGES = [
     "-p",
+    "slash-table",
+    "-p",
     "tapa-protocol",
     "-p",
     "tapa-ir",

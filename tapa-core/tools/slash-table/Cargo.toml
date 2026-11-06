@@ -1,0 +1,16 @@
+[package]
+name = "slash-table"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tapa-floorplan = { workspace = true }
+tapa-ir = { workspace = true }
+tapa-xilinx = { workspace = true }
+
+[lints]
+workspace = true
