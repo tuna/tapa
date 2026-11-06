@@ -583,10 +583,10 @@ int Next();
 )tapa");
 }
 
-// `[[tapa::target]]` also survives into the mirror, and is the one spelling
-// that should: it picks the backend, which discovery has already acted on,
-// so there is nothing left to lower and nothing lost. It must sit inside
-// the guarded definition (its pragma-bearing body) and out of the stub.
+// `[[tapa::target]]` picks the backend, which discovery has already acted
+// on, so the mirror drops its text like any consumed attribute, and it is
+// never reported as a leak. Left in place it would precede the
+// `extern "C"` a Vitis top's definition gains, which does not parse.
 constexpr char kTargetAttr[] = R"cpp(
   [[tapa::target("ignore")]] void TargetTask(tapa::mmap<const float> mem,
                                              tapa::ostream<float>& out,
@@ -599,16 +599,11 @@ constexpr char kTargetAttr[] = R"cpp(
   }
 )cpp";
 
-TEST(Rewrite, TargetAttrIsNotReportedAsALeak) {
+TEST(Rewrite, TargetAttrIsDroppedOnceConsumed) {
   const std::string code = Rewrite("target", kTargetAttr, "TargetTop");
-  const size_t guard = code.find("#ifdef TAPA_TASK_DEF_TargetTask");
-  const size_t attr = code.find("[[tapa::target");
-  const size_t stub = code.find("#else", attr);
-  ASSERT_NE(guard, std::string::npos);
-  ASSERT_NE(attr, std::string::npos);
-  ASSERT_NE(stub, std::string::npos);
-  EXPECT_LT(guard, attr) << code;
-  EXPECT_LT(attr, stub) << code;
+  ASSERT_NE(code.find("#ifdef TAPA_TASK_DEF_TargetTask"), std::string::npos)
+      << code;
+  EXPECT_FALSE(Contains(code, "[[tapa::target")) << code;
   EXPECT_FALSE(Contains(code, "[[#ifdef")) << code;
 }
 

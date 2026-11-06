@@ -103,12 +103,15 @@ void LowerFuncAttrPragmas(const clang::FunctionDecl* func,
   }
 }
 
-// Drop a function-level [[tapa::pipeline]] without lowering it: a task's
-// stub branch keeps only its signature, so no body carries the pragma, but
-// the attribute text must not reach the vendor.
+// Drop the function-level attribute text once it has been consumed: a
+// [[tapa::pipeline]] is lowered into the body (a task's stub branch keeps
+// only its signature, so no body carries the pragma there), and a
+// [[tapa::target]] was read by discovery. Neither may reach the vendor; a
+// target left in front of a Vitis top would precede its `extern "C"`.
 void RemoveFuncAttrs(const clang::FunctionDecl* func, EditSink& edits) {
   for (const clang::Attr* attr : func->attrs()) {
-    if (attr->getKind() == clang::attr::TapaPipeline) {
+    if (attr->getKind() == clang::attr::TapaPipeline ||
+        attr->getKind() == clang::attr::TapaTarget) {
       RemoveLoweredAttr(edits, attr->getRange());
     }
   }
