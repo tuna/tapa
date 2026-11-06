@@ -6,5 +6,6 @@
 
 #include "tapa/base/int.h"
 #include "tapa/base/logging.h"
+#include "tapa/base/mmap.h"
 #include "tapa/base/stream.h"
 #include "tapa/base/util.h"

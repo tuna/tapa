@@ -6,14 +6,21 @@
 
 #include <cstdint>
 
+#include <ap_int.h>
+
+#include "tapa/base/mmap.h"
 #include "tapa/xilinx/hls/stream.h"
 
 namespace tapa {
 namespace internal {
 
+// An address channel of an async_mmap: each request is `{count, byte
+// address}`, which the bridge expands into one element address per cycle.
 template <typename addr_t, typename T>
 class addr_ostream {
  public:
+  using req_t = ap_uint<96>;
+
   bool full() const {
 #pragma HLS inline
     return _.full();
@@ -21,15 +28,31 @@ class addr_ostream {
 
   bool try_write(const addr_t& value) {
 #pragma HLS inline
-    return _.write_nb(offset + value * sizeof(T));
+    return _.write_nb(request(value, 1));
+  }
+
+  bool try_write(const burst& value) {
+#pragma HLS inline
+    return _.write_nb(request(value.offset, value.n));
   }
 
   void write(const addr_t& value) {
 #pragma HLS inline
-    _.write(offset + value * sizeof(T));
+    _.write(request(value, 1));
+  }
+
+  void write(const burst& value) {
+#pragma HLS inline
+    _.write(request(value.offset, value.n));
   }
 
   addr_ostream& operator<<(const addr_t& value) {
+#pragma HLS inline
+    write(value);
+    return *this;
+  }
+
+  addr_ostream& operator<<(const burst& value) {
 #pragma HLS inline
     write(value);
     return *this;
@@ -39,8 +62,17 @@ class addr_ostream {
 
   void close() {}
 
-  hls::stream<addr_t> _;
+  hls::stream<req_t> _;
   const addr_t offset;
+
+ private:
+  req_t request(addr_t index, int64_t n) const {
+#pragma HLS inline
+    req_t req;
+    req.range(63, 0) = offset + index * sizeof(T);
+    req.range(95, 64) = n;
+    return req;
+  }
 };
 
 }  // namespace internal

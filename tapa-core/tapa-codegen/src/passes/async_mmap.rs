@@ -40,12 +40,12 @@ fn tag_suffixes(tag: &str) -> &'static [&'static str] {
     }
 }
 
-fn tag_data_width(tag: &str, suffix: &str, data_width: u32) -> u32 {
+fn tag_data_width(tag: &str, suffix: &str, data_width: u32, request_width: u32) -> u32 {
     if !STREAM_DATA_SUFFIXES.contains(&suffix) {
         return 1;
     }
     match (tag, suffix) {
-        (READ_ADDR | WRITE_ADDR, _) => AXI_ADDR_WIDTH,
+        (READ_ADDR | WRITE_ADDR, _) => request_width,
         (WRITE_RESP, _) => 8,
         // `tapa::ostream<T>` carries EoT in the MSB. The AXI bridge consumes
         // only T, but the child-facing wire must retain the complete port.
@@ -79,6 +79,22 @@ pub fn active_tags(child_rtl: &VerilogModule, child_port: &str) -> BTreeSet<&'st
             }) || child_rtl.find_port_by_affixes(&prefix, "_offset").is_some()
         })
         .collect()
+}
+
+/// Bits of one address request of a FIFO-style async mmap: an element
+/// address, or `{count, address}` when the task's TAPA headers issue bursts.
+/// Read from the child's own ports, so RTL built before bursts keeps
+/// one-address requests.
+pub fn request_width(child_rtl: &VerilogModule, child_port: &str) -> u32 {
+    [READ_ADDR, WRITE_ADDR]
+        .iter()
+        .filter_map(|tag| {
+            child_rtl
+                .find_port_by_affixes(&format!("{child_port}_{tag}"), "_din")
+                .and_then(tapa_rtl::port::Port::bit_width)
+        })
+        .max()
+        .unwrap_or(AXI_ADDR_WIDTH)
 }
 
 /// Conservatively determine which AXI halves a FIFO-style async mmap uses.
@@ -204,11 +220,12 @@ pub fn add_bridge_signals(
     bridge_base: &str,
     active_tags: &BTreeSet<&'static str>,
     data_width: u32,
+    request_width: u32,
 ) {
     for &tag in active_tags {
         for &suffix in tag_suffixes(tag) {
             let name = signal_name(bridge_base, tag, suffix);
-            let width = tag_data_width(tag, suffix, data_width);
+            let width = tag_data_width(tag, suffix, data_width, request_width);
             let _ = module.add_signal(super::width_wire(&name, width));
         }
     }
@@ -226,6 +243,7 @@ pub fn build_bridge_instance(
     active_tags: &BTreeSet<&'static str>,
     enabled: EnabledAxiDirections,
     data_width: u32,
+    request_width: u32,
     connect_optional_axi_ports: bool,
     reset: Expr,
 ) -> ModuleInstance {
@@ -235,7 +253,7 @@ pub fn build_bridge_instance(
         .checked_div(data_width)
         .unwrap_or(0)
         .saturating_sub(1);
-    let params = vec![
+    let mut params = vec![
         ParamArg::new("DataWidth", Expr::int(u64::from(data_width))),
         ParamArg::new("DataWidthBytesLog", Expr::int(u64::from(bytes_log))),
         ParamArg::new("AddrWidth", Expr::int(u64::from(AXI_ADDR_WIDTH))),
@@ -252,6 +270,12 @@ pub fn build_bridge_instance(
             Expr::int(u64::from(u8::from(enabled.write))),
         ),
     ];
+    if request_width > AXI_ADDR_WIDTH {
+        params.push(ParamArg::new(
+            "ReqLenWidth",
+            Expr::int(u64::from(request_width - AXI_ADDR_WIDTH)),
+        ));
+    }
 
     let mut ports = vec![
         PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
@@ -478,6 +502,36 @@ mod tests {
     }
 
     #[test]
+    fn a_burst_request_port_expands_in_the_bridge() {
+        let module = VerilogModule::parse(
+            "module child(\n\
+             output wire [95:0] mem_read_addr_s_din,\n\
+             input wire [512:0] mem_read_data_s_dout\n\
+             ); endmodule",
+        )
+        .unwrap();
+        let width = request_width(&module, "mem");
+        assert_eq!(width, 96);
+        let tags = active_tags(&module, "mem");
+        let inst = build_bridge_instance(
+            "chan",
+            "chan__m_axi",
+            "m_axi_chan",
+            "m_axi_chan",
+            &tags,
+            EnabledAxiDirections {
+                read: true,
+                write: false,
+            },
+            512,
+            width,
+            true,
+            Expr::ident("bridge_reset"),
+        );
+        assert!(inst.to_string().contains("ReqLenWidth(32)"), "got:\n{inst}");
+    }
+
+    #[test]
     fn add_bridge_signals_creates_wires() {
         let module = VerilogModule::parse("module top(); endmodule").unwrap();
         let mut mm = tapa_rtl::mutation::MutableModule::from_parsed(module);
@@ -485,7 +539,7 @@ mod tests {
         tags.insert(READ_ADDR);
         tags.insert(READ_DATA);
         tags.insert(WRITE_DATA);
-        add_bridge_signals(&mut mm, "chan", &tags, 64);
+        add_bridge_signals(&mut mm, "chan", &tags, 64, AXI_ADDR_WIDTH);
         let emitted = mm.emit();
         assert!(emitted.contains("chan_read_addr__din"), "got:\n{emitted}");
         assert!(emitted.contains("chan_read_data__dout"), "got:\n{emitted}");
@@ -511,11 +565,13 @@ mod tests {
                 write: false,
             },
             512,
+            AXI_ADDR_WIDTH,
             true,
             Expr::ident("bridge_reset"),
         );
         let text = inst.to_string();
         assert!(text.contains("async_mmap"), "got:\n{text}");
+        assert!(!text.contains("ReqLenWidth"), "got:\n{text}");
         assert!(text.contains("DataWidth(512)"), "got:\n{text}");
         assert!(text.contains("BurstLenWidth(8)"), "got:\n{text}");
         assert!(text.contains("EnableReadChannel(1)"), "got:\n{text}");

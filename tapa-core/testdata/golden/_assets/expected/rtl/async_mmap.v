@@ -9,6 +9,9 @@ module async_mmap #(
   parameter DataWidthBytesLog = 6,  // must equal log2(DataWidth/8)
   parameter WaitTimeWidth     = 4,
   parameter BurstLenWidth     = 8,
+  // bits of the element count in an address request ({count, address});
+  // 0: an address request is one element's address
+  parameter ReqLenWidth       = 0,
   // implement the FIFOs for the read channel
   // if set to 0: disconnect the data link
   parameter EnableReadChannel = 1,
@@ -77,7 +80,7 @@ module async_mmap #(
 
   // push read addr here
   // pragma RS handshake valid=read_addr_write ready=read_addr_full_n data=read_addr_din
-  input  wire [AddrWidth-1:0] read_addr_din,
+  input  wire [ReqLenWidth+AddrWidth-1:0] read_addr_din,
   input  wire                 read_addr_write,
   output wire                 read_addr_full_n,
 
@@ -90,7 +93,7 @@ module async_mmap #(
   // push write addr and data here
   // pragma RS handshake valid=write_addr_write ready=write_addr_full_n data=write_addr_din
   // pragma RS handshake valid=write_data_write ready=write_data_full_n data=write_data_din
-  input  wire [AddrWidth-1:0] write_addr_din,
+  input  wire [ReqLenWidth+AddrWidth-1:0] write_addr_din,
   input  wire                 write_addr_write,
   output wire                 write_addr_full_n,
   input  wire [DataWidth-1:0] write_data_din,
@@ -105,12 +108,15 @@ module async_mmap #(
 );
 
   // write addr buffer, from user to burst detector
-  wire [AddrWidth-1:0] write_addr_dout;
-  wire                 write_addr_empty_n;
-  wire                 write_addr_read;
+  wire [ReqLenWidth+AddrWidth-1:0] write_addr_req_dout;
+  wire                             write_addr_req_empty_n;
+  wire                             write_addr_req_read;
+  wire [AddrWidth-1:0]             write_addr_dout;
+  wire                             write_addr_empty_n;
+  wire                             write_addr_read;
 
   relay_station #(
-    .DATA_WIDTH(AddrWidth),
+    .DATA_WIDTH(ReqLenWidth + AddrWidth),
     .ADDR_WIDTH(BufferSizeLog),
     .DEPTH     (BufferSize),
     .LEVEL     (1),
@@ -126,11 +132,34 @@ module async_mmap #(
     .if_din     (write_addr_din),
 
     // to burst detector
-    .if_empty_n(write_addr_empty_n),
+    .if_empty_n(write_addr_req_empty_n),
     .if_read_ce(1'b1),
-    .if_read   (write_addr_read),
-    .if_dout   (write_addr_dout)
+    .if_read   (write_addr_req_read),
+    .if_dout   (write_addr_req_dout)
   );
+
+  generate
+    if (ReqLenWidth == 0) begin : write_addr_elem
+      assign write_addr_dout     = write_addr_req_dout;
+      assign write_addr_empty_n  = write_addr_req_empty_n;
+      assign write_addr_req_read = write_addr_read;
+    end else begin : write_addr_burst
+      burst_expand #(
+        .AddrWidth        (AddrWidth),
+        .LenWidth         (ReqLenWidth),
+        .DataWidthBytesLog(DataWidthBytesLog)
+      ) expand (
+        .clk         (clk),
+        .rst         (rst),
+        .req_dout    (write_addr_req_dout),
+        .req_empty_n (write_addr_req_empty_n),
+        .req_read    (write_addr_req_read),
+        .addr_dout   (write_addr_dout),
+        .addr_empty_n(write_addr_empty_n),
+        .addr_read   (write_addr_read)
+      );
+    end
+  endgenerate
 
   // burst write addr buffer, from burst detector to axi
   wire [BurstLenWidth+AddrWidth-1:0] burst_write_addr_din;
@@ -383,12 +412,15 @@ module async_mmap #(
   assign write_req_read = write_resp_full_n && m_axi_BVALID;
 
   // read addr buffer, from user to burst detector
-  wire [AddrWidth-1:0] read_addr_dout;
-  wire                 read_addr_empty_n;
-  wire                 read_addr_read;
+  wire [ReqLenWidth+AddrWidth-1:0] read_addr_req_dout;
+  wire                             read_addr_req_empty_n;
+  wire                             read_addr_req_read;
+  wire [AddrWidth-1:0]             read_addr_dout;
+  wire                             read_addr_empty_n;
+  wire                             read_addr_read;
 
   relay_station #(
-    .DATA_WIDTH(AddrWidth),
+    .DATA_WIDTH(ReqLenWidth + AddrWidth),
     .ADDR_WIDTH(BufferSizeLog),
     .DEPTH     (BufferSize),
     .LEVEL     (1),
@@ -403,12 +435,35 @@ module async_mmap #(
     .if_write   (read_addr_write),
     .if_din     (read_addr_din),
 
-    // to axi
-    .if_empty_n(read_addr_empty_n),
+    // to burst detector
+    .if_empty_n(read_addr_req_empty_n),
     .if_read_ce(1'b1),
-    .if_read   (read_addr_read),
-    .if_dout   (read_addr_dout)
+    .if_read   (read_addr_req_read),
+    .if_dout   (read_addr_req_dout)
   );
+
+  generate
+    if (ReqLenWidth == 0) begin : read_addr_elem
+      assign read_addr_dout     = read_addr_req_dout;
+      assign read_addr_empty_n  = read_addr_req_empty_n;
+      assign read_addr_req_read = read_addr_read;
+    end else begin : read_addr_burst
+      burst_expand #(
+        .AddrWidth        (AddrWidth),
+        .LenWidth         (ReqLenWidth),
+        .DataWidthBytesLog(DataWidthBytesLog)
+      ) expand (
+        .clk         (clk),
+        .rst         (rst),
+        .req_dout    (read_addr_req_dout),
+        .req_empty_n (read_addr_req_empty_n),
+        .req_read    (read_addr_req_read),
+        .addr_dout   (read_addr_dout),
+        .addr_empty_n(read_addr_empty_n),
+        .addr_read   (read_addr_read)
+      );
+    end
+  endgenerate
 
   wire [BurstLenWidth+AddrWidth-1:0] burst_read_addr_din;
   wire                               burst_read_addr_full_n;

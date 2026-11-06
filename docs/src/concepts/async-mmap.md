@@ -30,9 +30,9 @@ struct async_mmap {
   using addr_t = int64_t;
   using resp_t = uint8_t;
 
-  tapa::ostream<addr_t> read_addr;   // issue read addresses
+  /* request */          read_addr;   // issue read requests
   tapa::istream<T>      read_data;   // receive read data
-  tapa::ostream<addr_t> write_addr;  // issue write addresses
+  /* request */          write_addr;  // issue write requests
   tapa::ostream<T>      write_data;  // send write data
   tapa::istream<resp_t> write_resp;  // receive write acknowledgments
 };
@@ -40,8 +40,12 @@ struct async_mmap {
 
 ![async_mmap diagram](../figures/tapa-async-mmap.drawio.svg)
 
+A request on `read_addr` or `write_addr` is an element index (`i`, one
+element) or a `tapa::burst` (`{offset, n}`, `n` consecutive elements from
+`offset`). Data moves on `read_data` and `write_data` in request order.
+
 The key insight is that `read_addr` and `read_data` are decoupled: you can
-issue many addresses into `read_addr` before any data arrives on `read_data`,
+issue many requests into `read_addr` before any data arrives on `read_data`,
 hiding latency by keeping multiple requests in flight simultaneously.
 
 ---
@@ -113,10 +117,23 @@ response can acknowledge a whole coalesced burst, hence
 
 ## Sequential accesses and bursts
 
-TAPA can coalesce eligible sequential element addresses into AXI bursts.
-You issue element indices; adjacent requests are merged when AXI constraints
-allow it. This provides burst efficiency for sequential patterns without
-explicit burst programming in your kernel code.
+A burst request names a whole range at once, so the loop issues one request
+per range instead of one per element:
+
+```cpp
+mem.read_addr.try_write({i_req, len});  // len elements from i_req
+```
+
+Data for a burst arrives one element per cycle, the same rate as element
+requests. TAPA coalesces sequential element addresses into AXI bursts either
+way: adjacent addresses are merged when AXI constraints allow it, so you get
+burst efficiency for sequential patterns without burst requests. A burst holds
+fewer than 2^32 elements.
+
+Write responses count elements whichever way you request them: each one
+acknowledges `ack + 1` element writes, at most 256, so a long burst can be
+acknowledged by several responses and one response can cover parts of
+several bursts. Count acknowledged elements, not responses.
 
 ---
 
@@ -133,7 +150,8 @@ explicit burst programming in your kernel code.
   `try_write` on the five channels so a stall on one channel does not prevent
   progress on another.
 - Drain `write_resp` while writes are in flight. Its value encodes
-  `burst_length - 1`, so one response can complete multiple writes.
+  `burst_length - 1`, so one response can complete multiple writes, and a
+  long burst request can take several responses.
 
 ```admonish warning
 A blocking operation on an `async_mmap` channel inside a pipelined loop can

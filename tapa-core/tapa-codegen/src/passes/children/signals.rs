@@ -519,9 +519,16 @@ fn add_async_mmap_bridges(
             .mmap_conns
             .get(parent)
             .map_or(64, |c| c.geometry.data_width());
+        let request_width = async_mmap::request_width(child_rtl, child_port);
         let connect_optional_axi_ports = !matches!(binding, ChildMmapBinding::Crossbar { .. });
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
-            async_mmap::add_bridge_signals(mm, &bridge_base, &active_tags, data_width);
+            async_mmap::add_bridge_signals(
+                mm,
+                &bridge_base,
+                &active_tags,
+                data_width,
+                request_width,
+            );
             mm.add_instance(async_mmap::build_bridge_instance(
                 &bridge_base,
                 &tapa_ir::async_mmap_bridge_instance_name(parent),
@@ -530,6 +537,7 @@ fn add_async_mmap_bridges(
                 &active_tags,
                 enabled,
                 data_width,
+                request_width,
                 connect_optional_axi_ports,
                 bridge_reset.clone(),
             ));

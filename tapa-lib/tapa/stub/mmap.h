@@ -6,6 +6,7 @@
 
 #include <cstddef>
 
+#include "tapa/base/mmap.h"
 #include "tapa/stub/stream.h"
 #include "tapa/stub/vec.h"
 
@@ -48,15 +49,31 @@ class ommap : public mmap<T> {
   using mmap<T>::mmap;
 };
 
+namespace internal {
+
+// An address channel of an async_mmap: an element index or a burst.
+class request_ostream {
+ public:
+  bool full() const;
+  bool try_write(int64_t index);
+  bool try_write(const burst& value);
+  void write(int64_t index);
+  void write(const burst& value);
+  request_ostream& operator<<(int64_t index);
+  request_ostream& operator<<(const burst& value);
+};
+
+}  // namespace internal
+
 template <typename T>
 struct async_mmap : public mmap<T> {
  public:
   using addr_t = int64_t;
   using resp_t = uint8_t;
 
-  ostream<addr_t> read_addr;
+  internal::request_ostream read_addr;
   istream<T> read_data;
-  ostream<addr_t> write_addr;
+  internal::request_ostream write_addr;
   ostream<T> write_data;
   istream<resp_t> write_resp;
 

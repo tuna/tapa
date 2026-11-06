@@ -249,11 +249,13 @@ tapa::invoke(MyKernel, bitstream, tapa::read_only_mmap<float>(buf), n);
 
 | Channel | Type | Direction | Description |
 |---------|------|-----------|-------------|
-| `read_addr` | `ostream<int64_t>` | kernel → memory | Write an element index (not a byte address) to request a read. |
+| `read_addr` | request | kernel → memory | Write an element index (not a byte address) to request one element, or a `tapa::burst` `{offset, n}` to request `n` consecutive elements. |
 | `read_data` | `istream<T>` | memory → kernel | Read the data returned by a previously issued read request. |
-| `write_addr` | `ostream<int64_t>` | kernel → memory | Write an element index to request a write. |
-| `write_data` | `ostream<T>` | kernel → memory | Write the data to be written at the requested address. |
-| `write_resp` | `istream<uint8_t>` | memory → kernel | Drain write-completion acknowledgements. Each response value encodes `burst_length - 1` (i.e., a value of 0 means one write completed, 255 means 256 writes completed). |
+| `write_addr` | request | kernel → memory | Write an element index, or a `tapa::burst` `{offset, n}`, to request writes. |
+| `write_data` | `ostream<T>` | kernel → memory | Write the data to be written at the requested addresses, in request order. |
+| `write_resp` | `istream<uint8_t>` | memory → kernel | Drain write-completion acknowledgements. Each response value encodes `burst_length - 1` (i.e., a value of 0 means one write completed, 255 means 256 writes completed), however the requests were made: a long burst can take several responses. |
+
+A request channel has `full()`, `try_write` and `write` for either kind of request. `tapa::burst` holds two `int64_t`, `offset` and `n`; a burst holds fewer than 2^32 elements.
 
 ```admonish warning
 The kernel must drain `write_resp` to avoid deadlock. If the response channel fills up, the memory subsystem stops issuing further write completions and the kernel stalls.

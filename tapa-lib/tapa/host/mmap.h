@@ -7,10 +7,12 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <ostream>
 
 #include <type_traits>
 #include <vector>
 
+#include "tapa/base/mmap.h"
 #include "tapa/host/coroutine.h"
 #include "tapa/host/frt/instance.h"
 #include "tapa/host/stream.h"
@@ -135,6 +137,46 @@ class ommap : public mmap<T> {
   using mmap<T>::mmap;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const burst& value) {
+  return os << value.offset << "+" << value.n;
+}
+
+namespace internal {
+
+// An address channel of an async_mmap. It queues bursts; an element index
+// is a burst of one.
+class request_ostream : public ostream<burst> {
+ public:
+  explicit request_ostream(const ostream<burst>& channel)
+      : basic_stream<burst>(channel), ostream<burst>(channel) {}
+
+  bool try_write(const burst& value) {
+    return ostream<burst>::try_write(checked(value));
+  }
+  void write(const burst& value) { ostream<burst>::write(checked(value)); }
+  bool try_write(int64_t index) { return try_write(burst{index, 1}); }
+  void write(int64_t index) { write(burst{index, 1}); }
+  request_ostream& operator<<(const burst& value) {
+    write(value);
+    return *this;
+  }
+  request_ostream& operator<<(int64_t index) {
+    write(index);
+    return *this;
+  }
+
+ private:
+  // The hardware request carries a 32-bit count.
+  static const burst& checked(const burst& value) {
+    CHECK_GE(value.n, 0) << "a burst cannot request " << value.n << " elements";
+    CHECK_LT(value.n, int64_t{1} << 32)
+        << "a burst holds fewer than 2^32 elements, got " << value.n;
+    return value;
+  }
+};
+
+}  // namespace internal
+
 /// Asynchronous random-access memory view backed by AXI-like channels.
 template <typename T>
 class async_mmap : public mmap<T> {
@@ -145,11 +187,19 @@ class async_mmap : public mmap<T> {
  private:
   using super = mmap<T>;
 
-  stream<addr_t, 64> read_addr_q_{"read_addr"};
+  stream<burst, 64> read_addr_q_{"read_addr"};
   stream<T, 64> read_data_q_{"read_data"};
-  stream<addr_t, 64> write_addr_q_{"write_addr"};
+  stream<burst, 64> write_addr_q_{"write_addr"};
   stream<T, 64> write_data_q_{"write_data"};
   stream<resp_t, 64> write_resp_q_{"write_resp"};
+
+  int64_t checked(int64_t index) const {
+    CHECK_GE(index, 0);
+    if (index != 0) {
+      CHECK_LT(index, this->size_);
+    }
+    return index;
+  }
 
   // Only constructible via schedule().
   async_mmap(const super& mem)
@@ -170,37 +220,42 @@ class async_mmap : public mmap<T> {
   async_mmap operator--(int) = delete;
 
  public:
-  /// Read address channel: write an address to trigger an async read.
-  ostream<addr_t> read_addr;
+  /// Read address channel: write an element index, or a `burst` of
+  /// consecutive elements, to trigger an async read.
+  internal::request_ostream read_addr;
   /// Read data channel: read the data returned by a prior read request.
   istream<T> read_data;
-  /// Write address channel: write an address to trigger an async write.
-  ostream<addr_t> write_addr;
+  /// Write address channel: write an element index, or a `burst` of
+  /// consecutive elements, to trigger an async write.
+  internal::request_ostream write_addr;
   /// Write data channel: write data to supply to the pending write request.
   ostream<T> write_data;
   /// Write response channel: read to consume a write-completion
   /// acknowledgement.
   istream<resp_t> write_resp;
 
+  // Serves each request element by element, in order; a write response
+  // acknowledges up to 256 element writes, as the hardware bridge does.
   void operator()() {
     int16_t write_count = 0;
+    burst read{0, 0};     // what is left of the read request being served
+    burst written{0, 0};  // what is left of the write request being served
     for (;;) {
-      if (!read_addr_q_.empty() && !read_data_q_.full()) {
-        const auto addr = read_addr_q_.read();
-        CHECK_GE(addr, 0);
-        if (addr != 0) {
-          CHECK_LT(addr, this->size_);
-        }
-        read_data_q_.write(this->ptr_[addr]);
+      if (read.n <= 0 && !read_addr_q_.empty()) {
+        read = read_addr_q_.read();
       }
-      if (write_count != 256 && !write_addr_q_.empty() &&
-          !write_data_q_.empty()) {
-        const auto addr = write_addr_q_.read();
-        CHECK_GE(addr, 0);
-        if (addr != 0) {
-          CHECK_LT(addr, this->size_);
-        }
-        this->ptr_[addr] = write_data_q_.read();
+      if (read.n > 0 && !read_data_q_.full()) {
+        read_data_q_.write(this->ptr_[checked(read.offset)]);
+        ++read.offset;
+        --read.n;
+      }
+      if (written.n <= 0 && !write_addr_q_.empty()) {
+        written = write_addr_q_.read();
+      }
+      if (write_count != 256 && written.n > 0 && !write_data_q_.empty()) {
+        this->ptr_[checked(written.offset)] = write_data_q_.read();
+        ++written.offset;
+        --written.n;
         ++write_count;
       } else if (write_count > 0 &&
                  this->write_resp_q_.try_write(resp_t(write_count - 1))) {

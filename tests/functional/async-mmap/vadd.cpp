@@ -6,13 +6,19 @@
 
 #include <tapa.h>
 
+// Bursts of kBurst elements: neither a power of two nor aligned to the
+// bridge's own bursts, so requests split and join across them.
+constexpr uint64_t kBurst = 300;
+
+// Requests bursts ahead of the data, which arrives in request order.
 template <typename T, typename R>
 inline void async_read(tapa::async_mmap<T>& mem, tapa::ostream<T>& strm, R n) {
   [[tapa::tripcount(1, 800)]] [[tapa::pipeline(1)]]
   for (R i_req = 0, i_resp = 0; i_resp < n;) {
     if ((i_req < n) && !mem.read_addr.full()) {
-      mem.read_addr.try_write(i_req);
-      ++i_req;
+      const R len = n - i_req < kBurst ? n - i_req : R(kBurst);
+      mem.read_addr.try_write({i_req, len});
+      i_req += len;
     }
     if (!strm.full() && !mem.read_data.empty()) {
       T tmp;
@@ -23,17 +29,22 @@ inline void async_read(tapa::async_mmap<T>& mem, tapa::ostream<T>& strm, R n) {
   }
 }
 
+// Requests a burst, then supplies its data; each response acknowledges
+// `value + 1` element writes, however the bursts were split.
 template <typename T, typename R>
 inline void async_write(tapa::async_mmap<T>& mem, tapa::istream<T>& strm, R n) {
   [[tapa::tripcount(1, 800)]] [[tapa::pipeline(1)]]
-  for (R i_req = 0, i_resp = 0; i_resp < n;) {
-    if ((i_req < n) && !strm.empty() && !mem.write_addr.full() &&
-        !mem.write_data.full()) {
-      mem.write_addr.try_write(i_req);
+  for (R i_req = 0, i_data = 0, i_resp = 0; i_resp < n;) {
+    if ((i_req < n) && !mem.write_addr.full()) {
+      const R len = n - i_req < kBurst ? n - i_req : R(kBurst);
+      mem.write_addr.try_write({i_req, len});
+      i_req += len;
+    }
+    if ((i_data < i_req) && !strm.empty() && !mem.write_data.full()) {
       T tmp;
       strm.try_read(tmp);
       mem.write_data.try_write(tmp);
-      ++i_req;
+      ++i_data;
     }
     uint8_t n_resp;
     if (mem.write_resp.try_read(n_resp)) {

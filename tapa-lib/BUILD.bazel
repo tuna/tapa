@@ -31,6 +31,7 @@ _PUBLIC_HEADERS = [
     "tapa/base/logging.h",
     "tapa/base/logging_dummy.h",
     "tapa/base/int.h",
+    "tapa/base/mmap.h",
     "tapa/base/stream.h",
     "tapa/base/tapa.h",
     "tapa/base/task.h",
