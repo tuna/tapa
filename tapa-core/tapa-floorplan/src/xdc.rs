@@ -858,7 +858,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
     #[test]
     fn v80_assigns_hierarchies_to_slrs_without_slot_pblocks() {
         let result = FloorplanResult {
-            device: "v80".to_string(),
+            device: "v80_service".to_string(),
             grid: (1, 3),
             regions: Map::from([("Worker_0".to_string(), "SLOT_X0Y2_TO_SLOT_X0Y2".to_string())]),
             routes: Vec::new(),
@@ -885,7 +885,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
     #[test]
     fn v80_crossing_pipeline_stages_keep_slr_and_sll_constraints() {
         let result = FloorplanResult {
-            device: "v80".to_string(),
+            device: "v80_service".to_string(),
             grid: (1, 3),
             regions: Map::new(),
             routes: vec![PipelineRoute {
@@ -931,7 +931,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
     #[test]
     fn v80_rejects_a_task_region_that_spans_slrs() {
         let result = FloorplanResult {
-            device: "v80".to_string(),
+            device: "v80_service".to_string(),
             grid: (1, 3),
             regions: Map::from([("Worker_0".to_string(), "SLOT_X0Y1_TO_SLOT_X0Y2".to_string())]),
             routes: Vec::new(),

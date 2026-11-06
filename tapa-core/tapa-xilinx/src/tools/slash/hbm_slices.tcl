@@ -3,14 +3,18 @@
 set selected [list @TAPA_HBM_INDICES@]
 set hbm_clock [get_bd_ports static_region_clk]
 if {[llength $hbm_clock] != 1} {error "HBM clock port missing"}
-if {[get_property CONFIG.FREQ_HZ $hbm_clock] != 400000000} {
-  error "TAPA V80 requires the pinned 400 MHz HBM clock"
+set hbm_frequency [get_property CONFIG.FREQ_HZ $hbm_clock]
+if {![string is integer -strict $hbm_frequency] || $hbm_frequency <= 0} {
+  error "HBM clock frequency missing or invalid"
 }
 set first [format hbm_sc_%02d [lindex $selected 0]]
 set clock_net [get_bd_nets -of_objects [get_bd_pins $first/aclk1]]
 set reset_net [get_bd_nets -of_objects [get_bd_pins $first/aresetn]]
 if {[llength $clock_net] != 1 || [llength $reset_net] != 1} {
   error "ambiguous HBM clock/reset connection"
+}
+if {$clock_net ne [get_bd_nets -of_objects $hbm_clock]} {
+  error "HBM bridge clock is not connected to static_region_clk"
 }
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 tapa_hbm_reset
 set_property -dict [list CONFIG.C_EXT_RESET_HIGH 0 CONFIG.C_AUX_RESET_HIGH 1] [get_bd_cells tapa_hbm_reset]
@@ -25,17 +29,20 @@ connect_bd_net [get_bd_pins tapa_hbm_zero/dout] [get_bd_pins tapa_hbm_reset/aux_
 foreach index $selected {
   set bridge [format hbm_sc_%02d $index]
   set name [format tapa_hbm_slice_%02d $index]
-  set mi [get_bd_intf_pins $bridge/M00_AXI]
-  set net [get_bd_intf_nets -of_objects $mi]
-  set external [get_bd_intf_ports -of_objects $net]
-  if {[llength $mi] != 1 || [llength $net] != 1 || [llength $external] != 1 || [get_property NAME $external] ne [format HBM_AXI_%02d $index]} {
+  # Newer SLASH builds put width converters/slices after the CDC bridge.
+  # Insert at the actual shell boundary, whose AXI contract stays 256-bit.
+  set external [get_bd_intf_ports [format HBM_AXI_%02d $index]]
+  set net [get_bd_intf_nets -of_objects $external]
+  set mi [get_bd_intf_pins -of_objects $net -filter {MODE == Master}]
+  if {[llength $mi] != 1 || [llength $net] != 1 || [llength $external] != 1 || [get_property CONFIG.DATA_WIDTH $mi] != 256} {
     error "unexpected HBM$index interface topology"
   }
   if {[get_bd_nets -of_objects [get_bd_pins $bridge/aclk1]] ne $clock_net || [get_bd_nets -of_objects [get_bd_pins $bridge/aresetn]] ne $reset_net} {
     error "HBM$index is in a different clock/reset domain"
   }
   create_bd_cell -type ip -vlnv xilinx.com:ip:axi_register_slice:2.1 $name
-  set_property -dict [list CONFIG.PROTOCOL AXI4 CONFIG.DATA_WIDTH 256 CONFIG.ADDR_WIDTH 64 CONFIG.ID_WIDTH 0 CONFIG.REG_AW 1 CONFIG.REG_W 1 CONFIG.REG_B 1 CONFIG.REG_AR 1 CONFIG.REG_R 1] [get_bd_cells $name]
+  # Propagate ID/USER widths from the endpoint, including merged HBM paths.
+  set_property -dict [list CONFIG.PROTOCOL AXI4 CONFIG.DATA_WIDTH 256 CONFIG.ADDR_WIDTH 64 CONFIG.REG_AW 1 CONFIG.REG_W 1 CONFIG.REG_B 1 CONFIG.REG_AR 1 CONFIG.REG_R 1] [get_bd_cells $name]
   disconnect_bd_intf_net $net $mi
   connect_bd_intf_net $mi [get_bd_intf_pins $name/S_AXI]
   connect_bd_intf_net $external [get_bd_intf_pins $name/M_AXI]

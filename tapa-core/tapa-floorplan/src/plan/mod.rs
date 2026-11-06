@@ -98,11 +98,8 @@ pub fn plan_with_inputs(
 /// [`Device::usage_ceiling`](crate::device::Device::usage_ceiling) overrides
 /// the caller-derived cap (see that field for V80's rationale).
 fn table_retry_ceiling(state: &WorkState, options: &PlanOptions) -> f64 {
-    state
-        .flow
-        .part_num
-        .as_deref()
-        .and_then(|part| select_device(part).ok())
+    device_for_state(state)
+        .ok()
         .and_then(|device| device.usage_ceiling)
         .unwrap_or_else(|| options.usage_limit.max(MAX_USAGE_LIMIT))
 }
@@ -328,12 +325,22 @@ fn finish_plan(
     })
 }
 
+fn device_for_state(state: &WorkState) -> Result<crate::device::Device, PlanError> {
+    let part = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
+    let shell = state
+        .flow
+        .platform
+        .as_deref()
+        .filter(|platform| platform.starts_with("slash_"))
+        .map(|platform| platform.strip_prefix("slash_v80_").unwrap_or(platform));
+    Ok(crate::device::select_device_with_shell(part, shell)?)
+}
+
 fn prepare_plan(
     state: &WorkState,
     inputs: &PlanInputs,
 ) -> Result<(crate::device::model::Device, FloorGraph), PlanError> {
-    let part_num = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
-    let device = select_device(part_num)?;
+    let device = device_for_state(state)?;
     validate_memory_platform(state, &device, !inputs.memory.is_empty())?;
     let mut validated_banks = std::collections::BTreeSet::new();
     for bank in inputs.memory.iter().map(|interface| interface.bank) {

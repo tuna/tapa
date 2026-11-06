@@ -17,16 +17,35 @@ pub struct SlashPlatform {
     /// Default kernel clock period in decimal nanoseconds, the form the
     /// vendor tools and `DeviceInfo::clock_period` speak.
     pub default_clock_period: &'static str,
+    /// SLASH's `[connectivity] shell=` value.
+    pub shell: &'static str,
+    /// Supported dedicated memory interfaces, checked before invoking SLASH.
+    pub hbm_ports: u32,
+    pub ddr_ports: u32,
 }
 
 /// The built-in SLASH shells.
-pub const SLASH_PLATFORMS: &[SlashPlatform] = &[SlashPlatform {
-    name: "slash_v80_service",
-    part_num: "xcv80-lsva4737-2MHP-e-S",
-    // 3.33 ns (300 MHz): the measured vadd default on xcv80, WNS
-    // +0.214 ns out of context in Vivado 2025.2.
-    default_clock_period: "3.33",
-}];
+pub const SLASH_PLATFORMS: &[SlashPlatform] = &[
+    SlashPlatform {
+        name: "slash_v80_service",
+        part_num: "xcv80-lsva4737-2MHP-e-S",
+        // 3.33 ns (300 MHz): the measured vadd default on xcv80, WNS
+        // +0.214 ns out of context in Vivado 2025.2.
+        default_clock_period: "3.33",
+        shell: "service",
+        hbm_ports: 64,
+        ddr_ports: 4,
+    },
+    SlashPlatform {
+        name: "slash_v80_compute",
+        part_num: "xcv80-lsva4737-2MHP-e-S",
+        // Target 300 MHz, matching the service shell default.
+        default_clock_period: "3.33",
+        shell: "compute",
+        hbm_ports: 64,
+        ddr_ports: 12,
+    },
+];
 
 /// Look up a built-in SLASH shell by its `--platform` spelling.
 #[must_use]
@@ -41,10 +60,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn v80_service_shell_is_in_the_table() {
-        let shell = find_slash_platform("slash_v80_service").expect("known shell");
-        assert_eq!(shell.part_num, "xcv80-lsva4737-2MHP-e-S");
-        assert_eq!(shell.default_clock_period, "3.33");
+    fn v80_shells_share_the_part_and_default_clock() {
+        for name in ["slash_v80_service", "slash_v80_compute"] {
+            let shell = find_slash_platform(name).expect("known shell");
+            assert_eq!(shell.part_num, "xcv80-lsva4737-2MHP-e-S");
+            assert_eq!(shell.default_clock_period, "3.33");
+        }
     }
 
     #[test]
