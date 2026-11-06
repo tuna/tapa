@@ -21,7 +21,9 @@ void AieBackend::RewriteTaskFunc(const TaskModel& task, bool /*is_top*/,
   // chess keeps a large body out of line, and the kernel wrapper then hands
   // it references to its port objects, so every stream or frame access
   // reloads their state from memory. Inlined, that state stays in registers.
-  edits.InsertTextBefore(task.def->getTypeSpecStartLoc(), "TAPA_AIE_INLINE ");
+  // With nothing spelled before the return type, the task's guard opens at
+  // the same offset; appending keeps the marker inside the guard.
+  edits.InsertTextAfter(task.def->getTypeSpecStartLoc(), "TAPA_AIE_INLINE ");
   // The signature stub was captured before this runs, so the frame type
   // lands in the task's own variant only; every other variant keeps the
   // portable `tapa::istream<T>&` spelling.

@@ -232,6 +232,13 @@ TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {
       {{"Add", SynthTarget::kAie}});
   ASSERT_TRUE(aie.ok);
   EXPECT_EQ(nlohmann::json::parse(aie.json)["tasks"]["Add"]["synth"], "aie");
+  // With no attribute before `void`, the guard and the inline marker share
+  // an offset; the marker must stay inside the guard, or every PL task's
+  // HLS compile of this file meets an undefined `TAPA_AIE_INLINE`.
+  const std::string& mapped = aie.files.at("map_aie.cpp");
+  EXPECT_LT(mapped.find("#ifdef TAPA_TASK_DEF_Add"),
+            mapped.find("TAPA_AIE_INLINE"))
+      << mapped;
 
   const TreePipelineRun typo =
       Analyze("map_typo", Design(add), {{"Ad", SynthTarget::kAie}});
