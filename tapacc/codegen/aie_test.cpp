@@ -244,9 +244,8 @@ TEST(AieTest, AnUpperTaskPutsItsSubtreeOnTheAiEngine) {
   EXPECT_EQ(tasks["Inc"]["synth"], "aie");
   EXPECT_EQ(tasks["Load"]["synth"], "hls");
 
-  const TreePipelineRun conflict =
-      Analyze("upper_conflict",
-              Design("[[tapa::target(\"xilinx_hls\")]]" + leaves + upper));
+  const TreePipelineRun conflict = Analyze(
+      "upper_conflict", Design("[[tapa::target(\"hls\")]]" + leaves + upper));
   EXPECT_FALSE(conflict.ok);
   EXPECT_TRUE(AnyDiagContains(conflict, "marked for another target"));
 }

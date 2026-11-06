@@ -83,7 +83,6 @@ TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
                              tapa::ostream<tapa::i<17>>& narrow) {
                      out.write(in.read());
                    }
-                   [[tapa::target("xilinx_vitis")]]
                    void Top(tapa::istream<Word>& in, tapa::ostream<Word>& out,
                             tapa::ostream<tapa::i<17>>& narrow) {
                      tapa::task().invoke(Copy, in, out, narrow);
@@ -104,7 +103,8 @@ TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
           using Word = tapa::u<544>;
           void Top(tapa::istream<Word>& in, tapa::ostream<Word>& out,
                    tapa::ostream<tapa::i<17>>& narrow);
-        )cpp"}});
+        )cpp"}},
+      {{"Top", SynthTarget::kXilinxVitis}});
   ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
   const auto& code = run.files.at("stream.cpp");
   const auto& header = run.files.at("stream.h");
@@ -427,6 +427,36 @@ TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   }
 }
 
+// `[[tapa::target]]` takes the values `--target TASK:TARGET` does; `hls` builds
+// the task in the design's flow, and a retired flow value is an error.
+TEST(Rewrite, TargetTakesTheCliMappingValues) {
+  constexpr char kHls[] = R"cpp(
+    [[tapa::target("hls")]] void Copy(tapa::istream<float>& in,
+                                      tapa::ostream<float>& out) {
+      out.write(in.read());
+    }
+    void CopyTop(tapa::istream<float>& in, tapa::ostream<float>& out) {
+      tapa::task().invoke(Copy, in, out);
+    }
+  )cpp";
+  const TreePipelineRun hls = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/hls.cpp", kHls}}, "CopyTop",
+      TempRoot("rewrite", "target_hls"), {"-std=c++17"});
+  EXPECT_TRUE(hls.ok) << (hls.diags.empty() ? hls.json : hls.diags.front());
+
+  const std::string retired = std::string(kHls).replace(
+      std::string(kHls).find("\"hls\""), 5, "\"xilinx_vitis\"");
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/retired_target.cpp", retired}}, "CopyTop",
+      TempRoot("rewrite", "target_retired"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_FALSE(run.diags.empty());
+  EXPECT_TRUE(Contains(run.diags.front(),
+                       "unknown TAPA target 'xilinx_vitis'; use hls, aie or "
+                       "ignore"))
+      << run.diags.front();
+}
+
 // A misspelled or retired TAPA attribute is an error even through a macro,
 // whose body the leaked-attribute scan leaves alone.
 TEST(Rewrite, UnknownTapaAttributeIsAnError) {
@@ -505,7 +535,6 @@ TEST(Rewrite, ForwardDeclaredHelperGetsOneStreamPragma) {
 TEST(Rewrite, VitisDeclarationOnlyTuClosesExternCAtSemicolon) {
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/def.cpp",
-                 "[[tapa::target(\"xilinx_vitis\")]]\n"
                  "void Top(tapa::mmap<const float> mem) { tapa::task(); }\n"},
        VirtualTu{"/proj/src/adjacent.cpp",
                  "void Top(tapa::mmap<const float> mem);\n"
@@ -513,7 +542,8 @@ TEST(Rewrite, VitisDeclarationOnlyTuClosesExternCAtSemicolon) {
        VirtualTu{"/proj/src/blank.cpp",
                  "void Top(tapa::mmap<const float> mem);\n\n"
                  "int Next();\n"}},
-      "Top", TempRoot("rewrite", "decl_only_extern_c"), {"-std=c++17"});
+      "Top", TempRoot("rewrite", "decl_only_extern_c"), {"-std=c++17"}, {},
+      {{"Top", SynthTarget::kXilinxVitis}});
   ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
   const auto suffix = [](const std::string& code) {
     const size_t begin = code.find("extern \"C\" {");

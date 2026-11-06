@@ -158,6 +158,7 @@ portable form.
 [[tapa::frame(256)]]                      // stream port moving 256-element frames
 
 // On a function
+[[tapa::target("hls")]]                   // build the task with HLS (the default)
 [[tapa::target("ignore")]]                // mark task for custom RTL replacement
 [[tapa::target("aie")]]                   // run the task on the AI Engine array
 ```

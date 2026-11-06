@@ -90,19 +90,18 @@ SynthTarget ResolveTarget(const clang::FunctionDecl* func,
                           SynthTarget default_target) {
   const auto* attr = func->getAttr<clang::TapaTargetAttr>();
   if (attr == nullptr) return default_target;
+  // `hls` builds the task in the design's flow, as a `--target TASK:hls`
+  // mapping does; the flow itself is chosen once, on the command line.
   using TT = clang::TapaTargetAttr::TargetType;
   switch (attr->getTarget()) {
-    case TT::XilinxHLS:
-      return SynthTarget::kXilinxHls;
-    case TT::XilinxVitis:
-      return SynthTarget::kXilinxVitis;
+    case TT::HLS:
+      return default_target;
     case TT::Ignore:
       return SynthTarget::kIgnore;
     case TT::Aie:
       return SynthTarget::kAie;
-    default:
-      return default_target;
   }
+  return default_target;
 }
 
 }  // namespace tapa::cc

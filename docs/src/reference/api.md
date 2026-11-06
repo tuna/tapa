@@ -460,6 +460,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 
 | Attribute | Description |
 |-----------|-------------|
+| `[[tapa::target("hls")]]` | Build the task with HLS in the design's flow. This is the default; write it to keep a task off the AI Engine, which inside an AI Engine upper task is an error. |
 | `[[tapa::target("ignore")]]` | Mark a task for custom RTL replacement. TAPA generates a port-signature template but does not synthesize the task body. |
 | `[[tapa::target("aie")]]` | Run the task, or an upper task's whole subtree, on the Versal AI Engine array. See [AI Engine Tasks](../howto/aie.md). |
 
