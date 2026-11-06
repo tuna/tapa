@@ -75,12 +75,6 @@ TAPA writes one log file per named stream. Unnamed streams are not logged. The f
   little-endian host.
 - **Non-primitive types with `operator<<` defined** are logged using that operator, producing human-readable text.
 
-Next to each `<name>.txt`, TAPA writes `<name>.words` with every element's raw
-32-bit words in host byte order, one element per line, as unsigned decimals.
-End-of-transmission tokens and elements whose size is not a multiple of 32
-bits are left out. These files are the stimulus `tapa aiesim` replays into an
-AI Engine graph (see [AI Engine Tasks](aie.md)).
-
 ## What software simulation does—and does not—model
 
 Vitis HLS C simulation executes dataflow functions sequentially rather than

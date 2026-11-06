@@ -134,7 +134,9 @@ fn open_instance(path: &str, sim: Option<&str>) -> Result<Box<dyn Device>, Strin
     // reject an unknown one; a stray -cosim_simulator flag must not break
     // a bitstream run.
     let simulator = match ExecutionMode::of(path).map_err(|e| e.to_string())? {
-        ExecutionMode::Hardware | ExecutionMode::Vrt => Simulator::Xsim { legacy: false },
+        ExecutionMode::Hardware | ExecutionMode::Vrt | ExecutionMode::AieSim => {
+            Simulator::Xsim { legacy: false }
+        }
         ExecutionMode::Cosim => parse_simulator(sim)?,
     };
     open(path, &simulator).map_err(|e| e.to_string())
@@ -329,6 +331,19 @@ pub extern "C" fn frt_instance_host_stream(
         unsafe { *kernel_reads = c_int::from(stream.kernel_reads) };
     }
     c_int::try_from(stream.index).unwrap_or(-1)
+}
+
+/// 1 when the instance runs only the design's AI Engine graph, so the host
+/// runs every other task in software and closes each stream the instance
+/// reads once its software producer returns; 0 otherwise; -1 on an invalid
+/// handle.
+#[no_mangle]
+pub extern "C" fn frt_instance_simulates_aie(handle: *const std::ffi::c_void) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    c_int::from(h.device.simulates_aie())
 }
 
 #[no_mangle]

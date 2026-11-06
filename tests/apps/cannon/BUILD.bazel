@@ -5,8 +5,7 @@
 # RapidStream Contributor License Agreement.
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
-load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:test_rules.bzl", "tapa_app_test")
+load("//bazel:test_rules.bzl", "aie_sim_test", "tapa_app_test")
 
 exports_files(
     [
@@ -47,31 +46,16 @@ cc_binary(
     ],
 )
 
-# The PEs on the AI Engine, on x86sim, replaying the software-simulation
-# streams. Developer-run (needs Vitis with aiecompiler): not part of
-# `bazel test //...`.
-sh_test(
+# The PEs on the AI Engine, on x86sim, the PL tasks in software.
+# Developer-run (needs Vitis with aiecompiler): not part of `bazel test //...`.
+aie_sim_test(
     name = "cannon-aie-x86sim",
-    size = "medium",
-    srcs = ["//bazel:v++_env.sh"],
-    args = [
-        "$(rootpath //bazel:run_aiesim.sh)",
-        "$(rootpath //tapa-core:tapa)",
-        "$(rootpath :cannon-aie-host)",
-        "$(rootpath cannon.cpp)",
-        "Cannon",
+    compile_flags = [
         "--target=ProcElem:aie",
         "--cflags=-DTAPA_CANNON_B=32",
         "--cflags=-DTAPA_CANNON_LANES=8",
-        "--",
-        "--part-num=xcvc1902-vsva2197-2MP-e-S",
     ],
-    data = [
-        "cannon.cpp",
-        "cannon.h",
-        ":cannon-aie-host",
-        "//bazel:run_aiesim.sh",
-        "//tapa-core:tapa",
-    ],
-    tags = ["manual"],
+    host = ":cannon-aie-host",
+    kernel = "cannon",
+    top_name = "Cannon",
 )

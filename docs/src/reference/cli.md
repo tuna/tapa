@@ -64,6 +64,7 @@ documented for those three stages.
 | `--target {xilinx-vitis,xilinx-slash,xilinx-hls}` | Output target (default: `xilinx-vitis`). Also takes `TASK:TARGET` mappings, see `analyze`. |
 | `-j N` / `--jobs N` | Number of parallel HLS jobs. |
 | `--custom-rtl PATH` | Custom RTL file or directory to include in the output archive. Repeatable. |
+| `--aie-sim {x86sim,aiesim}` | Build only the AI Engine graph, as a package for `x86simulator` or the cycle-approximate `aiesimulator` at `--output`, with no HLS run. The host program runs it with `--bitstream=<package>`, its PL tasks in software. See [AI Engine Tasks](../howto/aie.md). |
 
 ### Example
 
@@ -357,39 +358,6 @@ only.
 ```bash
 tapa --work-dir work.out link --package vadd.zip \
   --connectivity v80.cfg -o vadd.vbin
-```
-
----
-
-## tapa aiesim
-
-Run the AI Engine tasks of an analyzed design in `x86simulator`, or in the
-cycle-approximate `aiesimulator`, against the boundary streams a software
-simulation recorded, and compare what the graph writes back. See
-[AI Engine Tasks](../howto/aie.md).
-
-### Required flags
-
-| Flag | Description |
-|------|-------------|
-| `--stimulus DIR` | Directory of `<stream>.words` files from a software simulation run with `TAPA_STREAM_LOG_DIR=DIR`. |
-
-### Optional flags
-
-| Flag | Description |
-|------|-------------|
-| `--arg NAME=VALUE` | Value of a top-task scalar the AI Engine tasks read. Repeatable. |
-| `--cycle-accurate` | Compile for hardware and run `aiesimulator`, reporting when each output stream's beats arrive; when every output matches, that timing is also folded into the `aie.aiesim` section of the existing `report.json`/`report.yaml` (no report is created when `tapa synth` has not run). Needs the AI Engine compiler licence. |
-| `--platform PLATFORM` / `-p PLATFORM` | Vitis platform; defaults to the one `tapa synth` used. |
-| `--part-num PART` | Part number, when no platform is known. |
-| `--cycles N` | AI Engine cycles a never-returning graph runs before it is ended (default 100000). |
-
-### Example
-
-```bash
-TAPA_STREAM_LOG_DIR=logs ./vadd-host 256
-tapa --work-dir work.out aiesim --stimulus logs --arg n=256 \
-  --part-num xcvc1902-vsva2197-2MP-e-S
 ```
 
 ---

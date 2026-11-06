@@ -1,6 +1,7 @@
-//! Shared AI Engine build inputs for `tapa synth` and `tapa aiesim`: where
-//! each kernel's task is defined in the rewritten tree, the kernel include
-//! paths and definitions, and the device `aiecompiler` targets.
+//! Shared AI Engine build inputs for `tapa synth` and `tapa compile
+//! --aie-sim`: where each kernel's task is defined in the rewritten tree,
+//! the kernel include paths and definitions, and the device `aiecompiler`
+//! targets.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -81,22 +82,29 @@ fn kernel_sources(
     Ok(sources)
 }
 
-/// Each top scalar argument's index among the PL kernel's arguments, as
-/// `kernel.xml` numbers them: the runtime finds a runtime parameter's value
-/// by that index.
-fn rtp_args(graph: &Graph, partition: &AiePartition) -> Result<BTreeMap<String, u32>> {
+/// Each port of the PL kernel's top with the index of its first argument,
+/// as `kernel.xml` numbers them; a PLIO's AXIS port comes after the top's
+/// own arguments.
+pub fn kernel_args(graph: &Graph, partition: &AiePartition) -> Result<Vec<(u32, tapa_ir::Port)>> {
     let pl = partition.pl_projection(graph)?;
-    let top = &pl.tasks[&pl.top];
-    let mut ids = BTreeMap::new();
+    let mut args = Vec::new();
     let mut next = 0u32;
-    for port in &top.ports {
+    for port in &pl.tasks[&pl.top].ports {
         let names = port.kernel_arg_names(tapa_ir::Target::XilinxVitis);
-        if port.cat.is_scalar() {
-            ids.insert(port.name.clone(), next);
-        }
+        args.push((next, port.clone()));
         next += u32::try_from(names.len()).unwrap_or(u32::MAX);
     }
-    Ok(ids)
+    Ok(args)
+}
+
+/// Each top scalar argument's index among the PL kernel's arguments: the
+/// runtime finds a runtime parameter's value by that index.
+fn rtp_args(graph: &Graph, partition: &AiePartition) -> Result<BTreeMap<String, u32>> {
+    Ok(kernel_args(graph, partition)?
+        .into_iter()
+        .filter(|(_, port)| port.cat.is_scalar())
+        .map(|(index, port)| (port.name, index))
+        .collect())
 }
 
 /// One graph build: where, for which target and device, at which PL clock,

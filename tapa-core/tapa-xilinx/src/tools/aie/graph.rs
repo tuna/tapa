@@ -37,13 +37,33 @@ pub struct KernelSource {
     pub defines: Vec<String>,
 }
 
-/// The simulator entry point of a graph built for x86sim or aiesim.
+/// The simulator entry point of a graph built for x86sim or aiesim. It
+/// reads the runtime parameters from `rtp.txt` in the directory the
+/// simulator runs in: one line per [`runtime_parameters`] entry, in order,
+/// holding the value's bits as a decimal 64-bit integer.
 #[derive(Debug, Clone, Default)]
 pub struct SimMain {
-    /// Top scalar argument → its value, as a C++ literal.
-    pub args: BTreeMap<String, String>,
     /// Cycles a run-forever graph runs before the host ends it.
     pub cycles: u64,
+}
+
+/// The top scalar argument behind each runtime parameter, in the order a
+/// simulation entry point reads them.
+#[must_use]
+pub fn runtime_parameters(partition: &AiePartition) -> Vec<String> {
+    let mut args = Vec::new();
+    for kernel in &partition.kernels {
+        for port in &kernel.ports {
+            if let AiePortKind::Scalar {
+                value: ScalarBinding::Runtime(arg),
+                ..
+            } = &port.kind
+            {
+                args.push(arg.clone());
+            }
+        }
+    }
+    args
 }
 
 /// Inputs of [`render_graph`] beyond the partition.
@@ -445,7 +465,7 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
             let _ = write!(
                 out,
                 "\n#if defined(__AIESIM__) || defined(__X86SIM__)\n\
-                 // `tapa aiesim` builds the graph with its own entry point.\n\
+                 // A simulation package builds the graph with its own entry point.\n\
                  int main() {{\n  {graph}.init();\n  {graph}.end();\n  \
                  return 0;\n}}\n#endif\n"
             );
@@ -457,8 +477,9 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
 fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> Result<String> {
     let graph = graph_instance(partition.run_forever);
     let mut out = format!(
-        "\n#if defined(__AIESIM__) || defined(__X86SIM__)\nint main() {{\n  \
-         {graph}.init();\n"
+        "\n#if defined(__AIESIM__) || defined(__X86SIM__)\n#include <cstdint>\n\
+         #include <cstring>\n#include <fstream>\n\nint main() {{\n  {graph}.init();\n  \
+         std::ifstream rtp(\"rtp.txt\");\n"
     );
     for kernel in &partition.kernels {
         for port in &kernel.ports {
@@ -468,22 +489,17 @@ fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> 
                 value: ScalarBinding::Runtime(arg),
             } = &port.kind
             {
-                let value = sim.args.get(arg).ok_or_else(|| {
-                    XilinxError::AieGraph(format!(
-                        "the AI Engine kernel `{}` reads the top argument `{arg}`; give its \
-                         value",
-                        kernel.name
-                    ))
-                })?;
                 let _ = writeln!(
                     out,
-                    "  {graph}.update({graph}.{}, static_cast<{}>({value}));",
+                    "  {{\n    uint64_t bits = 0;\n    rtp >> bits;\n    {} value;\n    \
+                     std::memcpy(&value, &bits, sizeof value);\n    \
+                     {graph}.update({graph}.{}, value);\n  }}",
+                    rtp_type(ctype, *width)?,
                     rtp_name(
                         rtp_arg(options, &kernel.name, arg)?,
                         &kernel.name,
                         &port.name
                     ),
-                    rtp_type(ctype, *width)?
                 );
             }
         }
@@ -697,16 +713,15 @@ mod tests {
     }
 
     #[test]
-    fn simulator_main_writes_every_runtime_parameter() {
-        let sim = SimMain {
-            args: BTreeMap::from([("n".into(), "1000".into())]),
-            cycles: 0,
-        };
-        let graph = &render(Some(sim))["graph.cpp"];
+    fn simulator_main_reads_every_runtime_parameter_at_run_time() {
+        let graph = &render(Some(SimMain { cycles: 0 }))["graph.cpp"];
         assert!(graph.contains(
-            "  tapa_aie.update(tapa_aie.rtp_3_Join_0_n, static_cast<uint64>(1000));\n  \
+            "  std::ifstream rtp(\"rtp.txt\");\n  {\n    uint64_t bits = 0;\n    \
+             rtp >> bits;\n    uint64 value;\n    std::memcpy(&value, &bits, sizeof value);\n    \
+             tapa_aie.update(tapa_aie.rtp_3_Join_0_n, value);\n  }\n  \
              tapa_aie.run(1);\n  tapa_aie.end();"
         ));
+        assert_eq!(runtime_parameters(&partition()), ["n"]);
         let err = render_graph(
             &partition(),
             &GraphOptions {

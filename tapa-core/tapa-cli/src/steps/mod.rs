@@ -26,7 +26,6 @@
 //! - **Packaging** lives in `pack/{vitis_packaging,kernel_xml_ports}`.
 //! - The vendor toolchain itself is the `tapa-xilinx` crate.
 
-pub mod aiesim;
 pub mod analyze;
 pub mod floorplan;
 pub mod gcc;

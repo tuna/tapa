@@ -34,6 +34,8 @@ pub enum FrtError {
     Xrt(String),
     #[error("simulator exited with status {0}")]
     SimFailed(std::process::ExitStatus),
+    #[error("AI Engine simulation: {0}")]
+    AieSim(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),
     #[error("cosim error: {0}")]

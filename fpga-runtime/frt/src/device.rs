@@ -60,6 +60,12 @@ pub trait Device: Send {
     fn host_streams(&self) -> Vec<HostStream> {
         Vec::new()
     }
+    /// Whether the device runs only a design's AI Engine graph, so the
+    /// host runs every other task in software and closes each stream the
+    /// device reads once its software producer returns.
+    fn simulates_aie(&self) -> bool {
+        false
+    }
     fn set_scalar_arg(&mut self, index: u32, value: &[u8]) -> Result<()>;
     fn set_buffer_arg(
         &mut self,

@@ -1,3 +1,4 @@
+use crate::aiesim::AieSimDevice;
 use crate::cosim::CosimDevice;
 use crate::device::Device;
 use crate::error::{FrtError, Result};
@@ -23,10 +24,16 @@ pub enum ExecutionMode {
     Hardware,
     /// An `.xo`/`.zip` package driven by a simulator.
     Cosim,
+    /// A design's AI Engine graph in a simulator, from the package directory
+    /// `tapa compile --aie-sim` builds.
+    AieSim,
 }
 
 impl ExecutionMode {
     pub fn of(path: &Path) -> Result<Self> {
+        if AieSimDevice::is_package(path) {
+            return Ok(Self::AieSim);
+        }
         match path.extension().and_then(|e| e.to_str()) {
             Some("vbin") => Ok(Self::Vrt),
             Some("xclbin") => Ok(Self::Hardware),
@@ -46,6 +53,7 @@ pub fn open(path: impl AsRef<Path>, sim: &Simulator) -> Result<Box<dyn Device>> 
         ExecutionMode::Vrt => crate::vrt::open(path),
         ExecutionMode::Hardware => Ok(Box::new(XrtDevice::open(path)?)),
         ExecutionMode::Cosim => Ok(Box::new(CosimDevice::open(path, sim)?)),
+        ExecutionMode::AieSim => Ok(Box::new(AieSimDevice::open(path)?)),
     }
 }
 

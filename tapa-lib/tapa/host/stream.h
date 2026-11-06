@@ -51,11 +51,6 @@ struct accessor;
 
 struct stream_access;
 
-template <typename T>
-struct is_elem : std::false_type {};
-template <typename T>
-struct is_elem<elem_t<T>> : std::true_type {};
-
 class type_erased_queue {
  public:
   virtual ~type_erased_queue() = default;
@@ -87,9 +82,6 @@ class type_erased_queue {
   struct LogContext {
     static std::unique_ptr<LogContext> New(std::string_view name);
     std::ofstream ofs;
-    // The same elements as raw 32-bit words, the form AI Engine PLIO
-    // stimulus takes (`tapa aiesim --stimulus`).
-    std::ofstream words;
     std::mutex mtx;
   };
 
@@ -101,29 +93,11 @@ class type_erased_queue {
 
   void check_leftover();
 
-  // Log one element as its raw 32-bit words (host byte order), one element
-  // per line. End-of-transmission tokens and elements that are not a whole
-  // number of words have no AI Engine form and are skipped.
-  template <typename T>
-  static void log_words(std::ostream& os, const T& elem) {
-    if constexpr (is_elem<T>::value) {
-      if (!elem.eot) log_words(os, elem.val);
-    } else if constexpr (sizeof(T) % sizeof(uint32_t) == 0) {
-      const auto words =
-          bit_cast<std::array<uint32_t, sizeof(T) / sizeof(uint32_t)>>(elem);
-      for (size_t i = 0; i < words.size(); ++i) {
-        os << (i == 0 ? "" : " ") << words[i];
-      }
-      os << std::endl;
-    }
-  }
-
   template <typename T>
   void maybe_log(const T& elem) {
     if (this->log != nullptr) {
       std::unique_lock<std::mutex> lock(this->log->mtx);
       this->log->ofs << elem << std::endl;
-      log_words(this->log->words, elem);
     }
   }
 };
@@ -890,7 +864,8 @@ struct accessor<ostreams<T, L>, Arg> {
 // to write and sets `forward` to the task that moves its elements into the
 // stream with the end-of-transmission bit cleared, until the kernel is done
 // and the queue drained: a stream into the AI Engine asserts TLAST on every
-// beat, which the cosimulation reads as EoT.
+// beat, which the cosimulation reads as EoT. `close` ends the stream with
+// an EoT token, which tells an AI Engine simulator its input is complete.
 struct stream_use {
   const void* queue;
   std::string name;
@@ -899,13 +874,16 @@ struct stream_use {
   std::function<std::string(std::function<void()>& forward,
                             std::function<bool()> kernel_done)>
       frt_path_dropping_eot;
+  std::function<void()> close;
 };
 
 struct stream_access {
   template <typename T>
   static stream_use use(const basic_stream<T>& stream, bool task_reads) {
     const std::string name = stream.get_queue().get_name();
-    return {&stream.get_queue(), name, task_reads,
+    return {&stream.get_queue(),
+            name,
+            task_reads,
             [stream] { return stream.get_queue().get_frt_stream().path(); },
             [stream, name](std::function<void()>& forward,
                            std::function<bool()> kernel_done) {
@@ -927,6 +905,10 @@ struct stream_access {
                 }
               };
               return path;
+            },
+            [stream, name] {
+              while (stream.get_queue().full()) yield(name, "full");
+              stream.get_queue().push({T{}, true});
             }};
   }
   static constexpr int64_t kHybridForwardDepth = 64;

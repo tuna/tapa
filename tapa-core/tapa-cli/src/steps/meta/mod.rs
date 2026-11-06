@@ -3,6 +3,8 @@
 //! `tapa compile` materializes the union of its constituent commands'
 //! flag surfaces by flattening the underlying `Args` structs.
 
+pub mod aie_sim;
+
 use clap::Parser;
 
 use crate::chain::{run_pipeline_step, PipelineStep};
@@ -28,9 +30,24 @@ pub struct CompileArgs {
     pub synth: synth::SynthArgs,
     #[command(flatten)]
     pub pack: pack::PackArgs,
+    /// Build only the AI Engine graph, as a package at `--output` for this
+    /// simulator: the host program runs it with `--bitstream=<package>`,
+    /// running its PL tasks in software beside it.
+    #[arg(long = "aie-sim", value_enum, value_name = "SIMULATOR")]
+    pub aie_sim: Option<aie_sim::AieSim>,
 }
 
 pub fn run_compile_composite(args: &CompileArgs, ctx: &mut CliContext) -> Result<()> {
+    if let Some(sim) = args.aie_sim {
+        run_pipeline_step(PipelineStep::Analyze(&args.analyze), ctx)?;
+        return aie_sim::package(
+            sim,
+            args.synth.platform.as_deref(),
+            args.synth.part_num.as_deref(),
+            args.pack.output.as_deref(),
+            ctx,
+        );
+    }
     for step in [
         PipelineStep::Analyze(&args.analyze),
         PipelineStep::Synth(&args.synth),

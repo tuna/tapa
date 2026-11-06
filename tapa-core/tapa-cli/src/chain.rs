@@ -18,7 +18,7 @@ use tapa_ir::WorkState;
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
-use crate::steps::{aiesim, analyze, floorplan, gcc, link, meta, pack, synth, version};
+use crate::steps::{analyze, floorplan, gcc, link, meta, pack, synth, version};
 use crate::tapacc::find_clang_binary;
 use crate::update;
 
@@ -133,13 +133,6 @@ pub enum Step {
     Pack {
         #[command(flatten)]
         args: pack::PackArgs,
-        #[command(flatten)]
-        chain_tail: ChainTail,
-    },
-    /// Simulate the AI Engine tasks against recorded stream data.
-    Aiesim {
-        #[command(flatten)]
-        args: aiesim::AiesimArgs,
         #[command(flatten)]
         chain_tail: ChainTail,
     },
@@ -264,7 +257,6 @@ impl Step {
             | Self::Synth { chain_tail, .. }
             | Self::Floorplan { chain_tail, .. }
             | Self::Pack { chain_tail, .. }
-            | Self::Aiesim { chain_tail, .. }
             | Self::Compile { chain_tail, .. }
             | Self::Version { chain_tail, .. }
             | Self::Update { chain_tail, .. }
@@ -283,7 +275,6 @@ impl Step {
             Self::Synth { args, .. } => run_pipeline_step(PipelineStep::Synth(&args), ctx),
             Self::Floorplan { args, .. } => run_pipeline_step(PipelineStep::Floorplan(&args), ctx),
             Self::Pack { args, .. } => run_pipeline_step(PipelineStep::Pack(&args), ctx),
-            Self::Aiesim { args, .. } => aiesim::run(&args, ctx),
             Self::Compile { args, .. } => meta::run_compile_composite(&args, ctx),
             Self::Gpp { args } => gcc::run(&args, ctx),
             Self::Version { args, .. } => version::run(&args, ctx),

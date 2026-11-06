@@ -49,9 +49,9 @@ through a PLIO channel, and `tapa analyze` lists each crossing. An upper task
 whose tasks run on both is dissolved into its parent when the design is
 built: its streams become the parent's, named `<instance>__<stream>` (such as
 `Stage_0__mid`), so it must be invoked joined or detached and must invoke its
-own tasks joined or detached. Hybrid cosimulation and `tapa aiesim` run in
-software or replay only the AI Engine tasks the top task invokes, so they
-need every crossing to be a stream the top declares.
+own tasks joined or detached. Hybrid cosimulation and a simulator package
+split the host's run at the top task's invocations, so they need every
+crossing to be a stream the top declares.
 
 A hybrid top must also keep at least one
 scalar or memory (`mmap`) argument: a top with only stream ports packages as
@@ -158,58 +158,30 @@ time while multiplying on PL.
 
 ## Simulating the AI Engine tasks
 
-Software simulation runs AI Engine tasks as ordinary tasks. To check the AI
-Engine build of those tasks, record the streams a software simulation moves
-and replay the ones that cross into the AI Engine:
+Software simulation runs AI Engine tasks as ordinary tasks. To check their AI
+Engine build, compile the graph as a simulator package and run the unchanged
+host program against it:
 
 ```bash
-mkdir logs
-TAPA_STREAM_LOG_DIR=logs ./vadd-host 256
-tapa --work-dir work.out analyze -f vadd.cpp -t VecAdd
-tapa --work-dir work.out aiesim --stimulus logs --arg n=256 \
-  --part-num xcvc1902-vsva2197-2MP-e-S
+tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
+  --part-num xcvc1902-vsva2197-2MP-e-S --aie-sim x86sim -o vadd.x86sim
+./vadd-host --bitstream=vadd.x86sim 256
 ```
 
-`tapa aiesim` generates the ADF graph under `work.out/aie/sim/`, compiles it
-for `x86simulator`, feeds each PL-to-AI Engine stream from its
-`<stream>.words` log (zero-padded to a whole frame and PLIO beat), and compares
-every AI Engine-to-PL stream with its log. Only zero padding is ignored;
-surplus or nonzero output is an error.
-A boundary stream is found by its variable name, so name the stream after its
-variable: `tapa::stream<vec4f> a_q("a_q")`. Pass every top-task scalar the AI
-Engine tasks read with `--arg`.
+`--aie-sim x86sim` builds the ADF graph for `x86simulator` into the package
+directory and nothing else: there is no HLS run. Given the package, the host
+program runs every PL task in software, starts the simulator, and relays each
+PL↔AI Engine stream between them as the data flows, so a stream cycle through
+the PL runs as on hardware. The scalars the AI Engine tasks read come from
+the host's arguments. Software simulation remains the run without a
+bitstream. Running a package needs the simulators on `PATH`: source the
+Vitis `settings64.sh`.
 
-`--cycle-accurate` builds for hardware and runs `aiesimulator` instead, and
-prints when the first and last beat of each output stream arrived and the mean
-spacing between beats:
-
-```text
-c_q: 1024 of 1024 words, beats at 230.4..1862.4 ns (6.40 ns apart)
-AI Engine simulation matches software simulation
-```
-
-When the work directory holds the `report.json` / `report.yaml` a previous
-`tapa synth` wrote, a run in which every output stream matches also folds
-that timing into their `aie` block under `aiesim`, preserving the rest of
-the report:
-
-```yaml
-aie:
-  aiesim:
-    streams:
-      c_q:
-        beats: 256
-        first_beat_ns: 230.4
-        last_beat_ns: 1862.4
-        mean_beat_spacing_ns: 6.4
-```
-
-A stream with a single beat reports no `mean_beat_spacing_ns`, since it has
-no interval to average. `tapa aiesim` also works on a work directory that
-has only been analyzed, which has no report yet; then no report is created
-and the timing stays on the console. Reports from before a later `analyze`
-or a failed synth are stale and are not updated. A run with any output
-mismatch leaves both files untouched.
+The host binds each PL↔AI Engine stream by name, so name it after its
+variable: `tapa::stream<vec4f> a_q("a_q")`. A stream into the AI Engine ends
+when the PL task writing it returns; it is then zero-padded to a whole frame
+and PLIO beat. A final partial output frame arrives zero-padded, as on
+hardware, and its padding is left unread in the stream.
 
 On an AI Engine 1 device, a kernel reads about 32 bits from its input streams
 per AI Engine cycle in total, however many stream ports it reads. That is one
@@ -233,8 +205,8 @@ tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
 The kernel leaves one AXIS stream per AI Engine stream to the host. TAPA runs
 the top task's body, binds each of those streams by name, and runs in
 software the invocations on the AI Engine side of them. The PL invocations run
-in the kernel, as in any `.xo` cosimulation. As with `tapa aiesim`, name each
-boundary stream after its variable.
+in the kernel, as in any `.xo` cosimulation. As with a simulator package,
+name each boundary stream after its variable.
 
 ## Building and linking
 
@@ -301,8 +273,7 @@ preserved rather than replaced with zero or missing measurements.
 
 If valid synthesized PL state and current `report.json` / `report.yaml` files
 exist, AIE-only refreshes them from those preserved metrics and the new hardware
-mapping. The rewrite removes `aie.aiesim`: run `tapa aiesim --cycle-accurate`
-again to measure the new graph. Without valid synthesized PL state, AIE-only
+mapping. Without valid synthesized PL state, AIE-only
 does not invent a PL report or refresh stale reports; it also does not create
 root reports when none exist. The compiler output and console remain available
 until a later full PL synth writes the root report.

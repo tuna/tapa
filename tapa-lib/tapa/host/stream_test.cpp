@@ -116,28 +116,6 @@ TEST_F(StreamLogTest, LoggingEotSucceeds) {
   EXPECT_EQ(GetLogContent(data_q.get_name()), "233\n\n2333\n");
 }
 
-// The `.words` log holds each element's raw 32-bit words (AI Engine PLIO
-// stimulus); EoT tokens and elements that are not whole words are skipped.
-struct FloatPair {
-  float x, y;
-};
-TEST_F(StreamLogTest, LoggingRawWordsSkipsEotAndPartialWords) {
-  tapa::stream<FloatPair> vec_q("vec");
-  vec_q.write(FloatPair{1.f, -2.f});
-  vec_q.read();
-  vec_q.close();
-  vec_q.open();
-  tapa::stream<short> short_q("short");
-  short_q.write(7);
-  short_q.read();
-
-  std::ifstream vec_words(temp_dir_ / "vec.words");
-  EXPECT_EQ(std::string(std::istreambuf_iterator<char>(vec_words), {}),
-            "1065353216 3221225472\n");
-  std::ifstream short_words(temp_dir_ / "short.words");
-  EXPECT_EQ(std::string(std::istreambuf_iterator<char>(short_words), {}), "");
-}
-
 TEST_F(StreamLogTest, LoggingToNonexistentDirFails) {
   ASSERT_EQ(setenv(kEnvVarName, "/nonexistent", /*replace=*/1), 0)
       << std::strerror(errno);

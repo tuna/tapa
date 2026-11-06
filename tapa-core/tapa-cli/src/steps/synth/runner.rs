@@ -222,10 +222,7 @@ fn run_aie_only(
             &args.override_report_schema_version,
             Some((&aie_report, partition)),
         )?;
-        log::info!(
-            "refreshed the root report with the new AI Engine mapping; rerun \
-             `tapa aiesim --cycle-accurate` to measure its timing"
-        );
+        log::info!("refreshed the root report with the new AI Engine mapping");
     }
     Ok(())
 }
@@ -570,11 +567,6 @@ mod tests {
         state.flow.skip_aie = true;
         prepare_aie_work(work, &state);
         write_current_report(work, &state, 1);
-        super::super::report::fold_aiesim_timing(
-            work,
-            &super::super::report::AiesimSection::default(),
-        )
-        .expect("add stale aiesim timing");
         let runner = mock_aie_compile(work, 4096);
 
         run_native(&aie_only_args(AIE_PART, "3.33"), &ctx_at(work), &runner)
@@ -595,10 +587,6 @@ mod tests {
         assert_eq!(
             report["aie"]["per_kernel"]["tapa_aie_Add_0"]["program_bytes"],
             4096
-        );
-        assert!(
-            report["aie"].get("aiesim").is_none(),
-            "old timing is invalidated"
         );
         assert_eq!(report["performance"]["clock_period"], "2");
         assert_eq!(report["area"]["total"]["LUT"], 7);

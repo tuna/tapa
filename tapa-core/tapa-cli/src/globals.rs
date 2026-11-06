@@ -79,7 +79,6 @@ Subcommands (chainable, processed left-to-right):
   synth                         Synthesize the analyzed program into RTL.
   floorplan                     Coarse-grained floorplan the synthesized design.
   pack                          Pack the generated RTL into an `.xo` or `.zip` package.
-  aiesim                        Simulate the AI Engine tasks against recorded stream data.
   compile                       analyze + synth + pack in one invocation.
   link                          Link a packaged TAPA kernel for its persisted Vitis or SLASH target.
   g++                           Invoke g++ with TAPA include / link flags.

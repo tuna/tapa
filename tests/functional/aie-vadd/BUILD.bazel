@@ -2,7 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:test_rules.bzl", "aiesim_test")
+load("//bazel:test_rules.bzl", "aie_sim_test")
 
 exports_files(
     [
@@ -50,24 +50,22 @@ sh_test(
     data = [":aie-vadd-host"],
 )
 
-# The AI Engine graph on x86sim, replaying the software-simulation streams.
-aiesim_test(
+# The AI Engine graph on x86sim, the PL tasks in software.
+aie_sim_test(
     name = "aie-vadd-x86sim",
     host = ":aie-vadd-host",
     kernel = "vadd",
-    n = 1024,
     top_name = "VecAdd",
 )
 
 # Partial-frame padding: 1024 elements do not fill the last 3-element frame.
 # The same host and analysis shape as above, with frame ports on every AIE
 # boundary.
-aiesim_test(
+aie_sim_test(
     name = "aie-frame-x86sim",
-    analyze_flags = ["--cflags=-DTAPA_AIE_TEST_FRAME_SIZE=3"],
+    compile_flags = ["--cflags=-DTAPA_AIE_TEST_FRAME_SIZE=3"],
     host = ":aie-vadd-host",
     kernel = "vadd",
-    n = 1024,
     top_name = "VecAdd",
 )
 

@@ -2,7 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
-load("//bazel:test_rules.bzl", "aiesim_test")
+load("//bazel:test_rules.bzl", "aie_sim_test")
 
 cc_binary(
     name = "aie-roundtrip-host",
@@ -24,12 +24,11 @@ sh_test(
     data = [":aie-roundtrip-host"],
 )
 
-# The AI Engine graph on x86sim, replaying the software-simulation streams.
-aiesim_test(
+# The AI Engine graph on x86sim, the PL tasks in software.
+aie_sim_test(
     name = "aie-roundtrip-x86sim",
     host = ":aie-roundtrip-host",
     kernel = "roundtrip",
-    n = 64,
     top_name = "RoundTrip",
 )
 
@@ -58,13 +57,12 @@ sh_test(
 )
 
 # Cycle-accurate AI Engine simulation of the same two-kernel graph.
-aiesim_test(
+aie_sim_test(
     name = "aie-roundtrip-aiesim",
     size = "enormous",
-    aiesim_flags = ["--cycle-accurate"],
     host = ":aie-roundtrip-host",
     kernel = "roundtrip",
-    n = 64,
+    simulator = "aiesim",
     top_name = "RoundTrip",
 )
 

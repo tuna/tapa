@@ -80,6 +80,12 @@ std::vector<HostStream> Instance::HostStreams() const {
   return streams;
 }
 
+bool Instance::SimulatesAie() const {
+  const int simulates = frt_instance_simulates_aie(impl_->handle);
+  LOG_IF(FATAL, simulates < 0) << "simulates_aie failed: " << LastErr();
+  return simulates != 0;
+}
+
 void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,
                             BufferAccess access) {
   // The FRT C ABI takes a mutable pointer. Read-only mmaps expose a const

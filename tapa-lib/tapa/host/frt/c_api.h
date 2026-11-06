@@ -70,6 +70,12 @@ int frt_instance_host_stream(const void *handle,
                              uintptr_t name_len,
                              int *kernel_reads);
 
+/// 1 when the instance runs only the design's AI Engine graph, so the host
+/// runs every other task in software and closes each stream the instance
+/// reads once its software producer returns; 0 otherwise; -1 on an invalid
+/// handle.
+int frt_instance_simulates_aie(const void *handle);
+
 int frt_instance_write_to_device(void *handle);
 
 int frt_instance_read_from_device(void *handle);

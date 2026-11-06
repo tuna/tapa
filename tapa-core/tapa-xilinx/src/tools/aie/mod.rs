@@ -1,10 +1,9 @@
-//! AI Engine orchestration: render the ADF graph of an AI Engine partition,
-//! compile it with `aiecompiler`, and run it in `x86simulator` or
-//! `aiesimulator` against PLIO stimulus.
+//! AI Engine orchestration: render the ADF graph of an AI Engine partition
+//! and compile it with `aiecompiler`. The runtime runs a graph built for a
+//! simulator (`frt`'s AI Engine simulation backend).
 
 pub mod graph;
 pub mod pl_control;
-pub mod plio;
 pub mod report;
 
 use camino::{Utf8Path, Utf8PathBuf};
@@ -89,28 +88,6 @@ pub fn compile(runner: &dyn ToolRunner, job: &AieCompileJob) -> Result<()> {
     }
     inv = inv.arg("graph.cpp");
     run_in(runner, inv, &job.graph_dir, "aiecompiler")
-}
-
-/// Run the compiled graph in `x86simulator` (after an [`AieTarget::X86sim`]
-/// compile) or `aiesimulator` (after [`AieTarget::Hw`]). PLIO inputs are
-/// read from, and outputs written under, the graph directory's `data/`.
-pub fn simulate(runner: &dyn ToolRunner, graph_dir: &Utf8Path, target: AieTarget) -> Result<()> {
-    let program = match target {
-        AieTarget::X86sim => "x86simulator",
-        AieTarget::Hw => "aiesimulator",
-    };
-    let inv = ToolInvocation::new(program).arg("--pkg-dir=Work");
-    run_in(runner, inv, graph_dir, program)
-}
-
-/// Where the simulator wrote PLIO `name`'s output.
-#[must_use]
-pub fn simulator_output(graph_dir: &Utf8Path, target: AieTarget, name: &str) -> Utf8PathBuf {
-    let dir = match target {
-        AieTarget::X86sim => "x86simulator_output",
-        AieTarget::Hw => "aiesimulator_output",
-    };
-    graph_dir.join(dir).join("data").join(format!("{name}.txt"))
 }
 
 fn run_in(

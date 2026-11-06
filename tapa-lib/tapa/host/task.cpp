@@ -238,46 +238,72 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   current_recorder = nullptr;
   std::vector<recorded_invoke>& invokes = recorder.invokes_;
 
-  // An invoke on the far side of a kernel stream runs in software, and so
-  // does everything it reaches through a stream the kernel does not own.
-  std::vector<bool> software(invokes.size(), false);
-  for (size_t i = 0; i < invokes.size(); ++i) {
-    for (const stream_use& use : invokes[i].uses) {
-      const auto port = ports.find(KernelArgName(use.name));
-      if (port != ports.end() && use.task_reads != port->second.kernel_reads) {
-        software[i] = true;
-      }
-    }
-  }
-  for (bool changed = true; changed;) {
-    changed = false;
-    std::set<const void*> reached;
+  // Each side of the kernel streams: an invoke binding one from the far
+  // side, or from the kernel's own (near) side, and everything it reaches
+  // through streams the kernel does not own. A PL kernel runs every invoke
+  // not on the far side, so only the far side runs in software; an AI
+  // Engine simulator runs only its near side, so everything else does.
+  const bool aie_device = instance.SimulatesAie();
+  const auto side = [&](bool far) {
+    std::vector<bool> marked(invokes.size(), false);
     for (size_t i = 0; i < invokes.size(); ++i) {
-      if (!software[i]) continue;
       for (const stream_use& use : invokes[i].uses) {
-        if (ports.count(KernelArgName(use.name)) == 0)
-          reached.insert(use.queue);
-      }
-    }
-    for (size_t i = 0; i < invokes.size(); ++i) {
-      if (software[i]) continue;
-      for (const stream_use& use : invokes[i].uses) {
-        if (reached.count(use.queue) != 0) {
-          software[i] = true;
-          changed = true;
+        const auto port = ports.find(KernelArgName(use.name));
+        if (port != ports.end() &&
+            (use.task_reads != port->second.kernel_reads) == far) {
+          marked[i] = true;
         }
       }
     }
+    for (bool changed = true; changed;) {
+      changed = false;
+      std::set<const void*> reached;
+      for (size_t i = 0; i < invokes.size(); ++i) {
+        if (!marked[i]) continue;
+        for (const stream_use& use : invokes[i].uses) {
+          if (ports.count(KernelArgName(use.name)) == 0)
+            reached.insert(use.queue);
+        }
+      }
+      for (size_t i = 0; i < invokes.size(); ++i) {
+        if (marked[i]) continue;
+        for (const stream_use& use : invokes[i].uses) {
+          if (reached.count(use.queue) != 0) {
+            marked[i] = true;
+            changed = true;
+          }
+        }
+      }
+    }
+    return marked;
+  };
+  std::vector<bool> software = side(/*far=*/true);
+  if (aie_device) {
+    const std::vector<bool> near = side(/*far=*/false);
+    for (size_t i = 0; i < invokes.size(); ++i) {
+      LOG_IF(FATAL, near[i] && software[i])
+          << "an invoke of the top task binds AI Engine streams from both "
+          << "sides; the top must invoke its AI Engine and PL tasks "
+          << "separately to run against an AI Engine simulator";
+      software[i] = !near[i];
+    }
   }
+  // An AI Engine simulator learns that an input is complete when its
+  // software producer returns and the host closes it.
+  std::vector<std::vector<std::function<void()>>> closes(invokes.size());
 
   auto kernel_done = std::make_shared<std::atomic<bool>>(false);
   std::vector<std::function<void()>> forwards;
   for (const auto& [name, port] : ports) {
     const stream_use* bound = nullptr;
+    size_t producer = 0;
     for (size_t i = 0; i < invokes.size() && bound == nullptr; ++i) {
       if (!software[i]) continue;
       for (const stream_use& use : invokes[i].uses) {
-        if (KernelArgName(use.name) == name) bound = &use;
+        if (KernelArgName(use.name) == name) {
+          bound = &use;
+          producer = i;
+        }
       }
     }
     LOG_IF(FATAL, bound == nullptr)
@@ -288,6 +314,7 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
         << name << "\")";
     if (port.kernel_reads) {
       instance.SetStreamArg(port.index, bound->frt_path());
+      if (aie_device) closes[producer].push_back(bound->close);
     } else {
       forwards.emplace_back();
       instance.SetStreamArg(
@@ -299,16 +326,31 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   }
 
   size_t count = 0;
-  for (bool on_aie : software) count += on_aie ? 1 : 0;
-  LOG(INFO) << "hybrid cosimulation: " << count << " AI Engine task(s) run "
-            << "in software against the kernel's " << ports.size()
-            << " AI Engine stream(s)";
+  for (bool in_software : software) count += in_software ? 1 : 0;
+  if (aie_device) {
+    LOG(INFO) << "AI Engine simulation: " << count << " PL task(s) run in "
+              << "software against the simulator's " << ports.size()
+              << " PLIO stream(s)";
+  } else {
+    LOG(INFO) << "hybrid cosimulation: " << count << " AI Engine task(s) run "
+              << "in software against the kernel's " << ports.size()
+              << " AI Engine stream(s)";
+  }
   task scope;
   for (const std::function<void()>& forward : forwards) {
     schedule(/*detach=*/false, forward);
   }
   for (size_t i = 0; i < invokes.size(); ++i) {
-    if (software[i]) schedule(invokes[i].detach, invokes[i].functor);
+    if (!software[i]) continue;
+    if (closes[i].empty()) {
+      schedule(invokes[i].detach, invokes[i].functor);
+      continue;
+    }
+    schedule(invokes[i].detach,
+             [functor = invokes[i].functor, closes = std::move(closes[i])] {
+               functor();
+               for (const std::function<void()>& close : closes) close();
+             });
   }
   schedule_frt_instance(&instance, [kernel_done] {
     kernel_done->store(true, std::memory_order_release);

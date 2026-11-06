@@ -279,54 +279,48 @@ def tapa_functional_test(
         top_name = top_name,
     )
 
-def aiesim_test(
+def aie_sim_test(
         name,
         host,
         kernel,
         top_name,
-        n,
+        simulator = "x86sim",
         size = "medium",
-        analyze_flags = [],
-        aiesim_flags = []):
-    """Declares a manual run_aiesim.sh sh_test for an AIE functional test.
+        compile_flags = []):
+    """Declares a manual run_aie_sim.sh sh_test for an AIE functional test.
 
-    The test replays the boundary streams of a software-simulation run into
-    the AI Engine graph and checks what it writes back. Developer-run (needs
-    Vitis with aiecompiler): `manual`, so not part of `bazel test //...`.
+    The test builds the AI Engine graph as a simulator package and runs the
+    host program against it, the PL tasks in software. Developer-run (needs
+    Vitis with aiecompiler, and the AIE licence for `aiesim`): `manual`, so
+    not part of `bazel test //...`.
 
     Args:
         name: Test target name.
-        host: Label of the host cc_binary producing the stream log.
+        host: Label of the host cc_binary.
         kernel: Basename of the kernel translation unit; `<kernel>.cpp` and
             `<kernel>.h` must exist in the package.
         top_name: Kernel top function name.
-        n: Stream length, passed to aiesim as `--arg=n=<n>`.
+        simulator: `x86sim`, or `aiesim` for the cycle-approximate one.
         size: sh_test size.
-        analyze_flags: Extra `tapa analyze` flags, inserted before the `--`
-            separator.
-        aiesim_flags: Extra `tapa aiesim` flags, appended after the part
-            number.
+        compile_flags: Extra `tapa compile` flags.
     """
     sh_test(
         name = name,
         size = size,
         srcs = ["//bazel:v++_env.sh"],
         args = [
-            "$(rootpath //bazel:run_aiesim.sh)",
+            "$(rootpath //bazel:run_aie_sim.sh)",
             "$(rootpath //tapa-core:tapa)",
             "$(rootpath %s)" % host,
             "$(rootpath %s.cpp)" % kernel,
             top_name,
-        ] + analyze_flags + [
-            "--",
-            "--arg=n=%d" % n,
-            "--part-num=xcvc1902-vsva2197-2MP-e-S",
-        ] + aiesim_flags,
+            simulator,
+        ] + compile_flags,
         data = [
             "%s.cpp" % kernel,
             "%s.h" % kernel,
             host,
-            "//bazel:run_aiesim.sh",
+            "//bazel:run_aie_sim.sh",
             "//tapa-core:tapa",
         ],
         tags = ["manual"],

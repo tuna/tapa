@@ -41,6 +41,10 @@ class Instance {
   // The stream arguments the host binds, in argument order; none on
   // hardware.
   std::vector<HostStream> HostStreams() const;
+  // Whether the instance runs only the design's AI Engine graph, so the
+  // host runs every other task in software and closes each stream the
+  // instance reads once its software producer returns.
+  bool SimulatesAie() const;
 
   void WriteToDevice();
   void ReadFromDevice();
