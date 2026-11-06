@@ -28,6 +28,20 @@ struct InlinedTask {
   std::string name;    // its name once inlined, which prefixes its streams
 };
 
+// An AI Engine task's async_mmap port whose channels the instance leaves to
+// the host: the invoke, as an InlinedTask places it, the parameter, and the
+// stream of each channel, empty when the body does not use it (see
+// `hybrid_run`).
+struct MemoryCrossing {
+  std::string parent;  // the inlined instance that invokes it; empty: the top
+  int position;        // where it sits among the parent's invokes
+  int param;           // the parameter's index
+  std::string read_requests;
+  std::string read_data;
+  std::string write_requests;  // each followed by its data
+  std::string write_responses;
+};
+
 // How an instance that runs only the design's AI Engine graph meets the
 // host's software tasks (see `hybrid_run`).
 enum class AieSimulation {
@@ -60,6 +74,9 @@ class Instance {
   // The upper task instances the instance was built with inlined, each
   // after its parent; none on hardware.
   std::vector<InlinedTask> InlinedTasks() const;
+  // The AI Engine tasks' async_mmap ports the host serves; none on
+  // hardware.
+  std::vector<MemoryCrossing> MemoryCrossings() const;
   // How the instance meets the host's software tasks if it runs only the
   // design's AI Engine graph. Live, the host runs every task off the
   // graph's side in software and closes each stream the instance reads

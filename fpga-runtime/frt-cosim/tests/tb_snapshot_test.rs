@@ -16,6 +16,7 @@ fn hls_spec() -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "a".into(),
@@ -54,6 +55,7 @@ fn vitis_spec() -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("a".into(), 0x10u32), ("n".into(), 0x1cu32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "a".into(),
@@ -92,6 +94,7 @@ fn vitis_stream_out_spec() -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x10u32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),
@@ -131,6 +134,7 @@ fn two_stream_out_spec(mode: Mode) -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x10u32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),
@@ -171,6 +175,7 @@ fn banked_hls_spec() -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "chan[0]".into(),
@@ -199,6 +204,7 @@ fn hls_stream_out_spec() -> KernelSpec {
         xci_files: vec![],
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
+        memories: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),

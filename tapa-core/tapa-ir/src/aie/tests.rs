@@ -653,6 +653,19 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
         ]
     );
 
+    assert_eq!(
+        memory_crossings(&g).expect("crossings"),
+        [MemoryCrossing {
+            parent: String::new(),
+            position: 0,
+            param: 0,
+            read_requests: Some("Scale_0__mem_read_addr".into()),
+            read_data: Some("Scale_0__mem_read_data".into()),
+            write_requests: Some("Scale_0__mem_write".into()),
+            write_responses: Some("Scale_0__mem_write_resp".into()),
+        }]
+    );
+
     let g = memory_graph(true);
     let partition = AiePartition::derive(&g).expect("derive").expect("aie");
     let err = partition

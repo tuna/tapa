@@ -629,6 +629,9 @@ impl Device for CosimDevice {
     fn inlined_instances(&self) -> Vec<tapa_ir::InlinedInstance> {
         self.spec.inlined.clone()
     }
+    fn memory_crossings(&self) -> Vec<tapa_ir::MemoryCrossing> {
+        self.spec.memories.clone()
+    }
 
     fn host_streams(&self) -> Vec<crate::device::HostStream> {
         self.spec
@@ -825,6 +828,7 @@ mod tests {
             xci_files: vec![],
             scalar_register_map: HashMap::new(),
             inlined: Vec::new(),
+            memories: Vec::new(),
         };
         let arg_names = HashMap::new();
         let stream_arg_names = HashMap::new();

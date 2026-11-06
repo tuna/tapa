@@ -169,7 +169,8 @@ runs as a PL task too.
   share one stream port, since a kernel has only two output stream ports.
 - Reading `write_resp` is optional. The PL task waits for every write to be
   acknowledged before the PL kernel finishes, so a body that only needs its
-  writes done by then can leave the acknowledgements alone.
+  writes done by then can leave the acknowledgements alone. A body that
+  reads them reads every one before it returns, as on PL.
 - Reads cost two PLIO channels (requests, data) and the kernel an output and
   an input stream port; writes cost one channel and an output port, plus an
   input port and a channel when the body reads `write_resp`. Together with
@@ -177,7 +178,9 @@ runs as a PL task too.
 - No PL task may bind the same memory: nothing orders its accesses against
   the AI Engine task's.
 - Software simulation serves the port from host memory, as for a PL task.
-  The AI Engine simulators and hybrid cosimulation do not yet serve it.
+  The AI Engine simulators and hybrid cosimulation serve it too (see below),
+  for a task the top or a dissolved upper task invokes; an AI Engine upper
+  task that hands its `async_mmap` to its tasks builds, but is not simulated.
 
 ## Knobs
 
@@ -222,7 +225,9 @@ bitstream. Running a package needs the simulators on `PATH`: source the
 Vitis `settings64.sh`.
 
 The host binds each PL↔AI Engine stream by name, so name it after its
-variable: `tapa::stream<vec4f> a_q("a_q")`. A stream into the AI Engine ends
+variable: `tapa::stream<vec4f> a_q("a_q")`. An `async_mmap` port needs no
+name: the host runs its PL movers in software, on the memory the host
+program passed, against the simulator. A stream into the AI Engine ends
 when the PL task writing it returns; it is then zero-padded to a whole frame
 and PLIO beat. A final partial output frame arrives zero-padded, as on
 hardware, and its padding is left unread in the stream.
@@ -231,7 +236,9 @@ hardware, and its padding is left unread in the stream.
 instead. It reads each input in full when it starts, so it cannot be fed as
 the data flows: the host program runs the whole design in software, keeping
 a copy of each PL↔AI Engine stream, and then the simulator replays the copies
-of the inputs. Each output it writes must match what software simulation
+of the inputs. An `async_mmap` port's channels are copied too: the requests
+and writes the kernel makes must match those of software simulation, which
+hands it the data that software simulation read. Each output it writes must match what software simulation
 wrote to that stream, padding aside, or the run fails at the first differing
 word. Each output is printed with the simulated time of its beats:
 
@@ -268,7 +275,8 @@ the top task's body, and the body of every upper task dissolved into it,
 binds each of those streams by name, and runs in software the invocations on
 the AI Engine side of them. The PL invocations run in the kernel, as in any
 `.xo` cosimulation. As with a simulator package, name each boundary stream
-after its variable.
+after its variable. An AI Engine task's `async_mmap` runs in software too,
+its requests carried over the kernel's streams to the PL movers in the RTL.
 
 ## Building and linking
 

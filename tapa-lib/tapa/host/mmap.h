@@ -5,8 +5,11 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
+#include <memory>
 #include <ostream>
 
 #include <type_traits>
@@ -236,11 +239,14 @@ class async_mmap : public mmap<T> {
 
   // Serves each request element by element, in order; a write response
   // acknowledges up to 256 element writes, as the hardware bridge does.
-  void operator()() {
+  void operator()() { run(nullptr); }
+
+  // The same, until `stop` is set, when it is not null.
+  void run(const std::atomic<bool>* stop) {
     int16_t write_count = 0;
     burst read{0, 0};     // what is left of the read request being served
     burst written{0, 0};  // what is left of the write request being served
-    for (;;) {
+    while (stop == nullptr || !stop->load(std::memory_order_acquire)) {
       if (read.n <= 0 && !read_addr_q_.empty()) {
         read = read_addr_q_.read();
       }
@@ -267,8 +273,87 @@ class async_mmap : public mmap<T> {
 
   static async_mmap schedule(super mem) {
     async_mmap async_mem(mem);
-    internal::schedule(/*detach=*/true, async_mem);
+    async_mem.serve();
     return async_mem;
+  }
+
+  // While a hybrid run records invokes, an async_mmap waits for it to choose
+  // who serves its channels: this host memory (`serve`), or an AI Engine
+  // task's PLIOs (`bridge_reads` / `bridge_writes`).
+  static async_mmap unscheduled(super mem) { return async_mmap(mem); }
+
+  // Serves the channels from host memory.
+  void serve() { internal::schedule(/*detach=*/true, *this); }
+
+  // Serves `use(*this)` from host memory, for as long as it runs; whatever
+  // it requested is complete when it returns.
+  template <typename Use>
+  void serve_while(Use&& use) {
+    auto stop = std::make_shared<std::atomic<bool>>(false);
+    internal::schedule(/*detach=*/true, [server = *this, stop]() mutable {
+      server.run(stop.get());
+    });
+    use(*this);
+    stop->store(true, std::memory_order_release);
+  }
+
+  // What an AI Engine task's async_mmap does with its reads, in software:
+  // each request goes out on `requests`, its data comes back on `data`, and
+  // once `returned()` the end request follows (see tapa/aie/mmap.h). Returns
+  // when the data of every request is in.
+  void bridge_reads(ostream<burst>& requests, istream<T>& data,
+                    const std::function<bool()>& returned) {
+    int64_t requested = 0;
+    int64_t delivered = 0;
+    bool ended = false;
+    for (;;) {
+      if (!read_addr_q_.empty() && !requests.full()) {
+        const burst request = read_addr_q_.read();
+        requests.write(request);
+        requested += request.n;
+      } else if (!ended && returned() && read_addr_q_.empty()) {
+        requests.write(internal::end_of_requests());
+        ended = true;
+      }
+      if (!data.empty() && !read_data_q_.full()) {
+        read_data_q_.write(data.read());
+        ++delivered;
+      }
+      if (ended && delivered == requested) return;
+    }
+  }
+
+  // The same for writes: each request goes out on `requests` as the elements
+  // it occupies, its data behind it, and acknowledgements come back on
+  // `responses` when the body reads them (null otherwise). Returns once the
+  // end request is out.
+  void bridge_writes(ostream<T>& requests, istream<uint32_t>* responses,
+                     const std::function<bool()>& returned) {
+    static_assert(sizeof(burst) % sizeof(T) == 0,
+                  "an AI Engine memory element is 4, 8 or 16 bytes");
+    using parts_t = std::array<T, sizeof(burst) / sizeof(T)>;
+    const auto send = [&](const burst& request) {
+      for (const T& part : bit_cast<parts_t>(request)) requests.write(part);
+    };
+    int64_t left = 0;  // elements of data still to go for the last request
+    bool ended = false;
+    while (!ended) {
+      if (left == 0 && !write_addr_q_.empty()) {
+        const burst request = write_addr_q_.read();
+        send(request);
+        left = request.n;
+      } else if (left > 0 && !write_data_q_.empty() && !requests.full()) {
+        requests.write(write_data_q_.read());
+        --left;
+      } else if (left == 0 && returned() && write_addr_q_.empty()) {
+        send(internal::end_of_requests());
+        ended = true;
+      }
+      if (responses != nullptr && !responses->empty() &&
+          !write_resp_q_.full()) {
+        write_resp_q_.write(static_cast<resp_t>(responses->read()));
+      }
+    }
   }
 };
 
@@ -417,10 +502,15 @@ TAPA_DEFINE_MMAPS(read_write);
 
 namespace internal {
 
+// Whether a hybrid run is recording invokes (see `hybrid_run`), which then
+// chooses who serves each async_mmap.
+bool recording_invokes();
+
 template <typename T>
 struct accessor<async_mmap<T>&, mmap<T>&> {
   static async_mmap<T> access(mmap<T>& arg, bool) {
-    return async_mmap<T>::schedule(arg);
+    return recording_invokes() ? async_mmap<T>::unscheduled(arg)
+                               : async_mmap<T>::schedule(arg);
   }
 };
 
@@ -432,7 +522,8 @@ struct accessor<mmap<T>, mmaps<T, S>&> {
 template <typename T, uint64_t S>
 struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   static async_mmap<T> access(mmaps<T, S>& arg, bool) {
-    return async_mmap<T>::schedule(arg.access());
+    return recording_invokes() ? async_mmap<T>::unscheduled(arg.access())
+                               : async_mmap<T>::schedule(arg.access());
   }
 };
 

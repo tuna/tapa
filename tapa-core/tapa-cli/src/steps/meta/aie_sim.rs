@@ -50,6 +50,9 @@ struct Manifest {
     /// The upper task instances the graph is built with inlined, whose
     /// bodies the host runs itself to bind the streams inside them.
     inlined: Vec<tapa_ir::InlinedInstance>,
+    /// The AI Engine tasks' `async_mmap` ports, whose PLIOs the host serves
+    /// from its own memory.
+    memories: Vec<tapa_ir::MemoryCrossing>,
 }
 
 #[derive(Serialize)]
@@ -170,6 +173,7 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
         runtime_parameters: runtime_parameters(partition),
         plios,
         inlined: tapa_ir::inlined_instances(graph)?,
+        memories: tapa_ir::memory_crossings(graph)?,
     })
 }
 

@@ -9,17 +9,23 @@
 #include "tapa/host/coroutine.h"
 #include "tapa/host/logging.h"
 
+#include <atomic>
 #include <chrono>
 #include <csignal>
 #include <functional>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
 #include "tapa/host/frt/instance.h"
+#include "tapa/host/mmap.h"
 #include "tapa/host/stream.h"
+
+// After the stream and memory types it is written against.
+#include "tapa/base/mover.h"
 
 namespace tapa {
 
@@ -70,11 +76,148 @@ void schedule_frt_instance(InstancePtr instance,
   });
 }
 
+struct memory_use;
+
 // One invoke of a hybrid run's top body, recorded instead of run.
 struct recorded_invoke {
   bool detach;
   std::function<void()> functor;
   std::vector<stream_use> uses;
+  std::vector<memory_use> memories;
+  // Where it is made: the inlined instance whose body makes it (empty: the
+  // top), and its index among that body's invokes (see `flatten`).
+  std::string scope;
+  int position = -1;
+};
+
+// Which end of an AI Engine task's async_mmap runs in software.
+enum class memory_side {
+  kMemory,  // the movers, serving the channels from host memory
+  kTask,    // the bridge, carrying the task's own requests over them
+  kBoth,
+};
+
+// One async_mmap argument of a recorded invoke.
+struct memory_use {
+  size_t param;  // the parameter's index
+  // Serves it from host memory, as outside a hybrid run.
+  std::function<void()> serve;
+  // Adds the software tasks of `side` for the AI Engine port `crossing` to
+  // `out`, their channels named after the kernel's streams; the result
+  // tells them the task has returned.
+  std::function<std::function<void()>(const frt::MemoryCrossing& crossing,
+                                      memory_side side,
+                                      std::vector<recorded_invoke>& out)>
+      cross;
+};
+
+// The async_mmap arguments of an invoke; none for any other argument.
+template <typename V>
+struct memory_uses {
+  static void collect(size_t, const V&, std::vector<memory_use>&) {}
+};
+template <typename T>
+struct memory_uses<async_mmap<T>> {
+  template <typename U>
+  static std::shared_ptr<stream<U, 64>> channel(const std::string& name) {
+    auto queue = std::make_shared<stream<U, 64>>();
+    queue->set_name(name);
+    return queue;
+  }
+
+  static void add(std::vector<recorded_invoke>& out,
+                  std::function<void()> functor, std::vector<stream_use> uses) {
+    recorded_invoke invoke;
+    invoke.detach = false;
+    invoke.functor = std::move(functor);
+    invoke.uses = std::move(uses);
+    out.push_back(std::move(invoke));
+  }
+
+  static void collect(size_t param, const async_mmap<T>& arg,
+                      std::vector<memory_use>& out) {
+    async_mmap<T> mem = arg;  // a copy shares the channels, and is not const
+    memory_use use;
+    use.param = param;
+    use.serve = [mem]() mutable { mem.serve(); };
+    // Only an element a 128-bit request lines up with crosses to the AI
+    // Engine; tapacc rejects any other there, so only a PL task has one.
+    if constexpr (sizeof(burst) % sizeof(T) == 0) use.cross = cross(mem);
+    out.push_back(std::move(use));
+  }
+
+  static auto cross(async_mmap<T> mem) {
+    return [mem](const frt::MemoryCrossing& crossing, memory_side side,
+                 std::vector<recorded_invoke>& invokes) mutable {
+      auto returned = std::make_shared<std::atomic<bool>>(false);
+      const std::function<bool()> task_returned = [returned] {
+        return returned->load(std::memory_order_acquire);
+      };
+      const bool task = side != memory_side::kMemory;
+      const bool memory = side != memory_side::kTask;
+      if (!crossing.read_requests.empty()) {
+        auto requests = channel<burst>(crossing.read_requests);
+        auto data = channel<T>(crossing.read_data);
+        if (task) {
+          add(invokes,
+              [mem, requests, data, task_returned]() mutable {
+                mem.bridge_reads(*requests, *data, task_returned);
+              },
+              {stream_access::use(*requests, /*task_reads=*/false),
+               stream_access::use(*data, /*task_reads=*/true)});
+        }
+        if (memory) {
+          add(invokes,
+              [mem, requests, data] {
+                auto server = async_mmap<T>::unscheduled(mem);
+                server.serve_while([&](async_mmap<T>& memory) {
+                  serve_reads(memory, *requests, *data);
+                });
+              },
+              {stream_access::use(*requests, /*task_reads=*/true),
+               stream_access::use(*data, /*task_reads=*/false)});
+        }
+      }
+      if (!crossing.write_requests.empty()) {
+        auto requests = channel<T>(crossing.write_requests);
+        std::shared_ptr<stream<uint32_t, 64>> responses;
+        std::vector<stream_use> task_uses{
+            stream_access::use(*requests, /*task_reads=*/false)};
+        std::vector<stream_use> memory_uses{
+            stream_access::use(*requests, /*task_reads=*/true)};
+        if (!crossing.write_responses.empty()) {
+          responses = channel<uint32_t>(crossing.write_responses);
+          task_uses.push_back(stream_access::use(*responses, true));
+          memory_uses.push_back(stream_access::use(*responses, false));
+        }
+        if (task) {
+          add(
+              invokes,
+              [mem, requests, responses, task_returned]() mutable {
+                mem.bridge_writes(*requests, responses.get(), task_returned);
+              },
+              std::move(task_uses));
+        }
+        if (memory) {
+          add(
+              invokes,
+              [mem, requests, responses] {
+                auto server = async_mmap<T>::unscheduled(mem);
+                server.serve_while([&](async_mmap<T>& memory) {
+                  if (responses != nullptr) {
+                    serve_writes(memory, *requests, *responses);
+                  } else {
+                    serve_writes(memory, *requests);
+                  }
+                });
+              },
+              std::move(memory_uses));
+        }
+      }
+      return std::function<void()>(
+          [returned] { returned->store(true, std::memory_order_release); });
+    };
+  }
 };
 
 // Collects the invokes of an upper task's body that a hybrid run runs to
@@ -103,8 +246,12 @@ class hybrid_recorder {
 // everything runs in software and the simulator replays the streams (see
 // `frt::AieSimulation`). An invoke of an upper task the kernel was built
 // with inlined, because its tasks are on both sides, is replaced by the
-// invokes its body records. Returns false, doing nothing, when the kernel
-// leaves no stream to the host past the `bound_args` the caller set.
+// invokes its body records. An AI Engine task's async_mmap meets the
+// kernel's streams through software tasks (see `memory_side`): the PL
+// movers on host memory against an AI Engine simulator, a bridge of the
+// task's requests against a PL kernel. Returns false, doing nothing, when
+// the kernel leaves no stream to the host past the `bound_args` the caller
+// set.
 bool hybrid_run(frt::Instance& instance, int bound_args,
                 const std::function<void()>& top_body);
 
@@ -238,6 +385,9 @@ struct invoker {
     invoke.detach = mode == InvokeMode::kDetach;
     (stream_uses<std::decay_t<std::tuple_element_t<Is, Params>>>::collect(
          std::get<Is>(values), invoke.uses),
+     ...);
+    (memory_uses<std::decay_t<std::tuple_element_t<Is, Params>>>::collect(
+         Is, std::get<Is>(values), invoke.memories),
      ...);
     invoke.functor = [func = FuncType(func), values]() mutable {
       std::apply(func, values);

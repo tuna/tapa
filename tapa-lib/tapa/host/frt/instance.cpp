@@ -95,6 +95,23 @@ std::vector<InlinedTask> Instance::InlinedTasks() const {
   return tasks;
 }
 
+std::vector<MemoryCrossing> Instance::MemoryCrossings() const {
+  std::vector<MemoryCrossing> memories;
+  const int count = frt_instance_memory_count(impl_->handle);
+  LOG_IF(FATAL, count < 0) << "memory_count failed: " << LastErr();
+  constexpr size_t kName = 1024;
+  for (int i = 0; i < count; ++i) {
+    char names[5][kName];
+    int param = -1;
+    const int position =
+        frt_instance_memory(impl_->handle, i, &param, &names[0][0], kName);
+    LOG_IF(FATAL, position < 0) << "memory failed: " << LastErr();
+    memories.push_back(
+        {names[0], position, param, names[1], names[2], names[3], names[4]});
+  }
+  return memories;
+}
+
 AieSimulation Instance::SimulatesAie() const {
   const int mode = frt_instance_aie_simulation(impl_->handle);
   LOG_IF(FATAL, mode < 0 || mode > 2) << "aie_simulation failed: " << LastErr();

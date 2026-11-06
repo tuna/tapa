@@ -185,6 +185,7 @@ mod tests {
             xci_files: vec![],
             scalar_register_map: HashMap::new(),
             inlined: Vec::new(),
+            memories: Vec::new(),
             args: vec![
                 ArgSpec {
                     name: "a".into(),

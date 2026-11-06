@@ -17,5 +17,6 @@ pub fn parse_kernel_xml(xml: &str) -> Result<KernelSpec> {
         xci_files: vec![],
         scalar_register_map: HashMap::new(),
         inlined: Vec::new(),
+        memories: Vec::new(),
     })
 }

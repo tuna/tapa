@@ -88,6 +88,26 @@ int frt_instance_inlined(const void *handle,
                          char *name_out,
                          uintptr_t name_len);
 
+/// The number of AI Engine `async_mmap` ports whose channels the instance
+/// leaves to the host, which [`frt_instance_memory`] enumerates; -1 on an
+/// invalid handle.
+int frt_instance_memory_count(const void *handle);
+
+/// The `nth` AI Engine `async_mmap` port whose channels the instance leaves
+/// to the host, as the position of its invoke among its parent's invokes.
+///
+/// The parameter's index goes to `param_out`. `names_out` holds five
+/// NUL-terminated names of `name_len` bytes each, in order: the inlined
+/// instance that makes the invoke (empty for the top), then the channels of
+/// read requests, read data, write requests and write responses (empty when
+/// the body does not use one), each truncated to `name_len`. Returns -1
+/// when `nth` is out of range or the handle is invalid.
+int frt_instance_memory(const void *handle,
+                        uint32_t nth,
+                        int *param_out,
+                        char *names_out,
+                        uintptr_t name_len);
+
 /// How the instance meets the host's software tasks when it runs only the
 /// design's AI Engine graph: 1 relays every stream live, so the host runs
 /// only the tasks off the graph's side and closes each stream the instance

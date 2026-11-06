@@ -377,6 +377,68 @@ pub extern "C" fn frt_instance_inlined(
     c_int::try_from(instance.position).unwrap_or(-1)
 }
 
+/// The number of AI Engine `async_mmap` ports whose channels the instance
+/// leaves to the host, which [`frt_instance_memory`] enumerates; -1 on an
+/// invalid handle.
+#[no_mangle]
+pub extern "C" fn frt_instance_memory_count(handle: *const std::ffi::c_void) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    c_int::try_from(h.device.memory_crossings().len()).unwrap_or(-1)
+}
+
+/// The `nth` AI Engine `async_mmap` port whose channels the instance leaves
+/// to the host, as the position of its invoke among its parent's invokes.
+///
+/// The parameter's index goes to `param_out`. `names_out` holds five
+/// NUL-terminated names of `name_len` bytes each, in order: the inlined
+/// instance that makes the invoke (empty for the top), then the channels of
+/// read requests, read data, write requests and write responses (empty when
+/// the body does not use one), each truncated to `name_len`. Returns -1
+/// when `nth` is out of range or the handle is invalid.
+#[no_mangle]
+pub extern "C" fn frt_instance_memory(
+    handle: *const std::ffi::c_void,
+    nth: u32,
+    param_out: *mut c_int,
+    names_out: *mut c_char,
+    name_len: usize,
+) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    let memories = h.device.memory_crossings();
+    let Some(memory) = memories.get(nth as usize) else {
+        set_last_error(format!(
+            "memory port {nth} out of range ({} declared)",
+            memories.len()
+        ));
+        return -1;
+    };
+    if !param_out.is_null() {
+        // SAFETY: the caller provides a writable `c_int`.
+        unsafe { *param_out = c_int::try_from(memory.param).unwrap_or(-1) };
+    }
+    let names = [
+        Some(&memory.parent),
+        memory.read_requests.as_ref(),
+        memory.read_data.as_ref(),
+        memory.write_requests.as_ref(),
+        memory.write_responses.as_ref(),
+    ];
+    if !names_out.is_null() {
+        for (index, name) in names.into_iter().enumerate() {
+            // SAFETY: the caller provides five buffers of `name_len` bytes.
+            let out = unsafe { names_out.add(index * name_len) };
+            write_c_string(out, name_len, name.map_or("", String::as_str));
+        }
+    }
+    c_int::try_from(memory.position).unwrap_or(-1)
+}
+
 /// How the instance meets the host's software tasks when it runs only the
 /// design's AI Engine graph: 1 relays every stream live, so the host runs
 /// only the tasks off the graph's side and closes each stream the instance

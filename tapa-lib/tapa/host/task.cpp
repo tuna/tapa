@@ -260,6 +260,8 @@ std::vector<recorded_invoke> flatten(
           return task.parent == scope && task.position == static_cast<int>(i);
         });
     if (task == inlined.end()) {
+      invokes[i].scope = scope;
+      invokes[i].position = static_cast<int>(i);
       flat.push_back(std::move(invokes[i]));
       continue;
     }
@@ -290,6 +292,62 @@ std::vector<recorded_invoke> flatten(
         << "the kernel from this source";
   }
   return flat;
+}
+
+// Adds the software tasks of every AI Engine async_mmap port in `crossings`
+// to `invokes`, `side` of each; the invoke a port belongs to tells them when
+// it returns. Returns which of the original invokes have such a port; their
+// async_mmap is no longer served from host memory (see `serve_memories`).
+std::vector<bool> cross_memories(
+    std::vector<recorded_invoke>& invokes,
+    const std::vector<frt::MemoryCrossing>& crossings, memory_side side) {
+  const size_t original = invokes.size();
+  std::vector<bool> crossing(original, false);
+  std::vector<std::vector<std::function<void()>>> returned(original);
+  std::vector<recorded_invoke> added;
+  for (const frt::MemoryCrossing& memory : crossings) {
+    const std::string invoke =
+        "invoke " + std::to_string(memory.position) + " of " +
+        (memory.parent.empty() ? "the top" : memory.parent);
+    size_t i = 0;
+    while (i < original && (invokes[i].scope != memory.parent ||
+                            invokes[i].position != memory.position)) {
+      ++i;
+    }
+    LOG_IF(FATAL, i == original)
+        << "the kernel serves the memory of " << invoke << ", which this "
+        << "program does not make; rebuild the kernel from this source";
+    auto use =
+        std::find_if(invokes[i].memories.begin(), invokes[i].memories.end(),
+                     [&](const memory_use& use) {
+                       return use.param == static_cast<size_t>(memory.param);
+                     });
+    LOG_IF(FATAL, use == invokes[i].memories.end() || !use->cross)
+        << "the kernel serves parameter " << memory.param << " of " << invoke
+        << " as an AI Engine async_mmap, which it is not here; rebuild the "
+        << "kernel from this source";
+    returned[i].push_back(use->cross(memory, side, added));
+    use->serve = nullptr;  // its channels, not host memory, serve it
+    crossing[i] = true;
+  }
+  for (size_t i = 0; i < original; ++i) {
+    if (returned[i].empty()) continue;
+    invokes[i].functor = [functor = std::move(invokes[i].functor),
+                          returned = std::move(returned[i])] {
+      functor();
+      for (const std::function<void()>& done : returned) done();
+    };
+  }
+  for (recorded_invoke& invoke : added) invokes.push_back(std::move(invoke));
+  return crossing;
+}
+
+// Serves from host memory every async_mmap of `invoke` that no AI Engine
+// port takes over (see `cross_memories`).
+void serve_memories(const recorded_invoke& invoke) {
+  for (const memory_use& use : invoke.memories) {
+    if (use.serve) use.serve();
+  }
 }
 
 // An AI Engine simulator that replays: every invoke runs in software, each
@@ -341,6 +399,8 @@ void replay(frt::Instance& instance,
 
 hybrid_recorder* hybrid_recorder::current() { return current_recorder; }
 
+bool recording_invokes() { return current_recorder != nullptr; }
+
 std::vector<recorded_invoke> hybrid_recorder::run(
     const std::function<void()>& body) {
   hybrid_recorder* const outer = current_recorder;
@@ -359,11 +419,19 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   if (ports.empty()) return false;
 
   hybrid_recorder recorder;
-  const std::vector<recorded_invoke> invokes =
+  std::vector<recorded_invoke> invokes =
       flatten(recorder.run(top_body), "", instance.InlinedTasks());
+  const std::vector<frt::MemoryCrossing> memories = instance.MemoryCrossings();
 
+  // An AI Engine task's async_mmap meets its channels through software
+  // tasks: replaying, both ends of each run, joined by the streams the
+  // simulator replays; live, the movers serve the simulator from host
+  // memory; in hybrid cosimulation, a bridge carries the software task's
+  // requests to the kernel's movers.
   const frt::AieSimulation aie = instance.SimulatesAie();
   if (aie == frt::AieSimulation::kReplay) {
+    cross_memories(invokes, memories, memory_side::kBoth);
+    for (const recorded_invoke& invoke : invokes) serve_memories(invoke);
     replay(instance, ports, invokes);
     return true;
   }
@@ -374,6 +442,9 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   // not on the far side, so only the far side runs in software; a live AI
   // Engine simulator runs only its near side, so everything else does.
   const bool aie_device = aie == frt::AieSimulation::kLive;
+  const std::vector<bool> crossing =
+      cross_memories(invokes, memories,
+                     aie_device ? memory_side::kMemory : memory_side::kTask);
   const auto side = [&](bool far) {
     std::vector<bool> marked(invokes.size(), false);
     for (size_t i = 0; i < invokes.size(); ++i) {
@@ -408,8 +479,16 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
     return marked;
   };
   std::vector<bool> software = side(/*far=*/true);
+  // A task whose async_mmap the kernel serves is an AI Engine task, though
+  // it may bind no stream of the kernel's.
+  for (size_t i = 0; i < crossing.size(); ++i) {
+    if (crossing[i] && !aie_device) software[i] = true;
+  }
   if (aie_device) {
-    const std::vector<bool> near = side(/*far=*/false);
+    std::vector<bool> near = side(/*far=*/false);
+    for (size_t i = 0; i < crossing.size(); ++i) {
+      if (crossing[i]) near[i] = true;
+    }
     for (size_t i = 0; i < invokes.size(); ++i) {
       LOG_IF(FATAL, near[i] && software[i])
           << "a task binds AI Engine streams from both sides, which only an "
@@ -456,6 +535,7 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   }
   for (size_t i = 0; i < invokes.size(); ++i) {
     if (!software[i]) continue;
+    serve_memories(invokes[i]);
     if (closes[i].empty()) {
       schedule(invokes[i].detach, invokes[i].functor);
       continue;

@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aie_sim_test")
 
 cc_binary(
     name = "aie-mmap-host",
@@ -25,4 +26,49 @@ sh_test(
     srcs = ["//bazel:sim_env.sh"],
     args = ["$(rootpath :aie-mmap-host)"],
     data = [":aie-mmap-host"],
+)
+
+# The AI Engine graph on x86sim; the host serves its memory through the PL
+# movers, run in software.
+aie_sim_test(
+    name = "aie-mmap-x86sim",
+    host = ":aie-mmap-host",
+    kernel = "scale",
+    top_name = "Top",
+)
+
+# Cycle-approximate: aiesimulator replays the memory channels of a software
+# run and checks the kernel's requests and writes against them.
+aie_sim_test(
+    name = "aie-mmap-aiesim",
+    size = "enormous",
+    host = ":aie-mmap-host",
+    kernel = "scale",
+    simulator = "aiesim",
+    top_name = "Top",
+)
+
+# Hybrid cosimulation: the movers in the PL kernel's RTL, `Scale` in
+# software. Developer-run (needs Vitis and the VCK190 base platform).
+sh_test(
+    name = "aie-mmap-hybrid",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //tests/functional/aie-vadd:run_hybrid.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-mmap-host)",
+        "$(rootpath scale.cpp)",
+        "xilinx_vck190_base_202520_1",
+        "Top",
+    ],
+    data = [
+        "scale.cpp",
+        "scale.h",
+        ":aie-mmap-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+        "//tests/functional/aie-vadd:run_hybrid.sh",
+    ],
+    tags = ["manual"],
 )

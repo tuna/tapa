@@ -577,6 +577,99 @@ pub fn inlined_instances(graph: &TaskGraph) -> Result<Vec<InlinedInstance>, AieE
     Ok(inlined)
 }
 
+/// An `async_mmap` port of an AI Engine task as the host program reaches it.
+///
+/// The invoke is named by its parent and position as in
+/// [`InlinedInstance`]; the channels are the PLIOs of each direction the
+/// body uses.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct MemoryCrossing {
+    /// The inlined instance whose body makes the invoke, or empty for the top.
+    pub parent: String,
+    /// The invoke's position in that body.
+    pub position: u32,
+    /// The parameter's index in the task's parameters.
+    pub param: u32,
+    /// The read requests, from the AI Engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_requests: Option<String>,
+    /// The read data, to the AI Engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_data: Option<String>,
+    /// The write requests with their data, from the AI Engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_requests: Option<String>,
+    /// The write acknowledgements, to the AI Engine, when the body reads them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub write_responses: Option<String>,
+}
+
+/// Every `async_mmap` port of an AI Engine task the host program invokes
+/// from the top or from an upper task the partition inlines.
+///
+/// # Errors
+///
+/// No valid partition, or an `async_mmap` an AI Engine upper task hands on
+/// to its tasks: a host program cannot tell which of them a request is for.
+pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieError> {
+    let Some(partition) = AiePartition::derive(graph)? else {
+        return Ok(Vec::new());
+    };
+    // Kernel name -> where the host invokes it, walking the bodies the host
+    // records: the top's and every inlined upper task's.
+    let mixed = mixed_uppers(graph);
+    let mut sites = BTreeMap::new();
+    let mut scopes = vec![(String::new(), graph.top.as_str())];
+    while let Some((scope, task_name)) = scopes.pop() {
+        let def = task(graph, task_name)?;
+        for (child, instances) in &def.tasks {
+            for (index, instance) in instances.iter().enumerate() {
+                let local = instance.canonical_name(child, index);
+                let name = if scope.is_empty() {
+                    local.into_owned()
+                } else {
+                    format!("{scope}__{local}")
+                };
+                if mixed.contains(child.as_str()) {
+                    scopes.push((name, child.as_str()));
+                } else if task(graph, child)?.synth == SynthTarget::Aie {
+                    sites.insert(
+                        sanitize_identifier_name(&name),
+                        (scope.clone(), instance.position),
+                    );
+                }
+            }
+        }
+    }
+    let name = |index: usize| partition.streams[index].name.clone();
+    let mut crossings = Vec::new();
+    for kernel in &partition.kernels {
+        for (param, port) in kernel.ports.iter().enumerate() {
+            let AiePortKind::Memory(memory) = &port.kind else {
+                continue;
+            };
+            let Some((parent, position)) = sites.get(&kernel.name) else {
+                return Err(AieError(format!(
+                    "the AI Engine kernel `{}` takes its memory `{}` from an AI Engine upper \
+                     task, which the host program cannot serve in simulation; invoke the \
+                     task that takes the async_mmap from a PL task or the top",
+                    kernel.name, port.name
+                )));
+            };
+            crossings.push(MemoryCrossing {
+                parent: parent.clone(),
+                position: *position,
+                param: u32::try_from(param).unwrap_or(u32::MAX),
+                read_requests: memory.reads.as_ref().map(|r| name(r.requests)),
+                read_data: memory.reads.as_ref().map(|r| name(r.data)),
+                write_requests: memory.writes.as_ref().map(|w| name(w.requests)),
+                write_responses: memory.writes.as_ref().and_then(|w| w.responses).map(name),
+            });
+        }
+    }
+    Ok(crossings)
+}
+
 /// The upper tasks below the top whose leaves are not all on their own
 /// fabric.
 fn mixed_uppers(graph: &TaskGraph) -> BTreeSet<&str> {

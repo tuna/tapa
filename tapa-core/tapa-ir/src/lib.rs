@@ -26,9 +26,9 @@ pub mod work_state;
 mod error;
 
 pub use aie::{
-    inlined_instances, AieError, AieKernel, AieKernelPort, AieMemoryPort, AieMemoryReads,
-    AieMemoryWrites, AiePartition, AiePortKind, AieStream, AieStreamKind, InlinedInstance,
-    ScalarBinding,
+    inlined_instances, memory_crossings, AieError, AieKernel, AieKernelPort, AieMemoryPort,
+    AieMemoryReads, AieMemoryWrites, AiePartition, AiePortKind, AieStream, AieStreamKind,
+    InlinedInstance, MemoryCrossing, ScalarBinding,
 };
 pub use bindings::{FifoEndpoint, PortBinding};
 pub use clock::ClockPeriod;

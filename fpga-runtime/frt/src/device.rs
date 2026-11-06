@@ -80,6 +80,11 @@ pub trait Device: Send {
     fn inlined_instances(&self) -> Vec<tapa_ir::InlinedInstance> {
         Vec::new()
     }
+    /// The AI Engine tasks' `async_mmap` ports whose channels are host
+    /// streams; none for a device without host streams.
+    fn memory_crossings(&self) -> Vec<tapa_ir::MemoryCrossing> {
+        Vec::new()
+    }
     /// How the device meets the host's software tasks when it runs only a
     /// design's AI Engine graph; `None` for any other device.
     fn aie_simulation(&self) -> Option<AieSimulation> {

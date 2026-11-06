@@ -55,6 +55,9 @@ struct Manifest {
     plios: Vec<Plio>,
     /// The upper task instances the graph was built with inlined.
     inlined: Vec<tapa_ir::InlinedInstance>,
+    /// The AI Engine tasks' `async_mmap` ports, served over PLIOs.
+    #[serde(default)]
+    memories: Vec<tapa_ir::MemoryCrossing>,
 }
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -398,6 +401,9 @@ impl Device for AieSimDevice {
 
     fn inlined_instances(&self) -> Vec<tapa_ir::InlinedInstance> {
         self.manifest.inlined.clone()
+    }
+    fn memory_crossings(&self) -> Vec<tapa_ir::MemoryCrossing> {
+        self.manifest.memories.clone()
     }
 
     fn aie_simulation(&self) -> Option<AieSimulation> {

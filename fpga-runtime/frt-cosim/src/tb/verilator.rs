@@ -130,6 +130,7 @@ mod tests {
             xci_files: vec![],
             scalar_register_map: HashMap::from([("value".to_owned(), 0x100)]),
             inlined: Vec::new(),
+            memories: Vec::new(),
         };
         let base_addresses = HashMap::new();
         let buffer_sizes = HashMap::new();

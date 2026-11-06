@@ -576,6 +576,7 @@ mod tests {
             xci_files: vec![],
             scalar_register_map: register_map,
             inlined: Vec::new(),
+            memories: Vec::new(),
         }
     }
 
