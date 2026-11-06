@@ -104,8 +104,7 @@ class mmap {
   T* get() const { return ptr_; }
   uint64_t size() const { return size_; }
 
-  /// Reinterprets as @c mmap<vec_t<T,N>>. Size must be a multiple of @c N,
-  /// and the data aligned like @c vec_t<T,N>.
+  /// Reinterprets as @c mmap<vec_t<T,N>>. Size must be a multiple of @c N.
   template <uint64_t N>
   mmap<vec_t<T, N>> vectorized() const {
     return reinterpret<vec_t<T, N>>();
@@ -259,7 +258,7 @@ class mmaps {
   }
 
   /// Reinterprets each element as @c vec_t<T,N>. Each size must be a multiple
-  /// of @c N, and the data aligned like @c vec_t<T,N>.
+  /// of @c N.
   template <uint64_t N>
   mmaps<vec_t<T, N>, S> vectorized() const {
     return reinterpret<vec_t<T, N>>();

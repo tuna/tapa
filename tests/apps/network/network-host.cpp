@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
 
   uint64_t n = 1ULL << 15;
 
-  vector<pkt_t, tapa::aligned_allocator<pkt_t>> input(n);
+  vector<pkt_t> input(n);
   std::mt19937 gen;
   std::uniform_int_distribution<uint64_t> dist(0, 1ULL << 32);
   for (uint64_t i = 0; i < n; ++i) {
@@ -31,7 +31,7 @@ int main(int argc, char* argv[]) {
   }
   std::shuffle(input.begin(), input.end(), gen);
 
-  vector<pkt_t, tapa::aligned_allocator<pkt_t>> output(n);
+  vector<pkt_t> output(n);
 
   int64_t kernel_time_ns = tapa::invoke(
       Network, FLAGS_bitstream,

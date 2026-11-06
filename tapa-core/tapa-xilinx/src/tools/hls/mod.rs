@@ -462,7 +462,7 @@ mod tests {
             "open_solution \"k\"",
             "create_clock -period 3.33",
             "config_compile -name_max_length 253",
-            "config_interface -m_axi_addr64",
+            "config_interface -m_axi_addr64 -m_axi_alignment_byte_size 64",
             "config_rtl -reset_level low -module_auto_prefix",
             "csynth_design",
         ] {

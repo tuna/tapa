@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cmath>
-#include <cstddef>
 
 #include <algorithm>
 #include <array>
@@ -62,22 +61,10 @@ inline bool materialize(const bit_ref<W, S>& proxy) {
   return static_cast<bool>(proxy);
 }
 
-// A vector whose size is a power of two is aligned to that size, up to one
-// 64-byte (512-bit) memory beat, so it never straddles a beat when it is a
-// memory element. HLS otherwise reads it through a realignment shifter and
-// multiplexer per access. Other sizes keep the element's alignment.
-template <typename T, int N>
-constexpr size_t vec_alignment() {
-  constexpr size_t size = sizeof(T) * N;
-  constexpr size_t own = (size & (size - 1)) == 0 ? (size < 64 ? size : 64) : 1;
-  return own > alignof(T) ? own : alignof(T);
-}
-
 }  // namespace internal
 
 template <typename T, int N>
-struct alignas(internal::vec_alignment<T, N>()) vec_t
-    : protected std::array<T, N> {
+struct vec_t : protected std::array<T, N> {
  private:
   using base_type = std::array<T, N>;
 

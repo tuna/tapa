@@ -159,6 +159,11 @@ void VecAdd(tapa::mmaps<float, M> a, tapa::mmaps<float, M> b,
   local variable to allocate.
 - Host wrappers describe the kernel's buffer access and select the required
   host/device transfers; they do not change the kernel parameter types.
+- The kernel assumes each `mmap` starts on a 64-byte boundary, so HLS reads
+  a wide element, such as a 512-bit `tapa::vec_t<float, 16>`, as one bus word
+  without realigning it. The TAPA runtime, XRT and the cosimulators place
+  every buffer on such a boundary; a system that programs a kernel's
+  addresses itself must do the same.
 
 ---
 

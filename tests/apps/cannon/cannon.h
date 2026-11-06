@@ -26,7 +26,7 @@ constexpr int p = TAPA_CANNON_P;
 constexpr int kN = p * TAPA_CANNON_B;
 
 // The matrices move to and from memory in 512-bit beats, as wide as a memory
-// port; a 64-byte vec_t is aligned to its size, so each is one bus word.
+// port; every memory starts on a 64-byte boundary, so each is one bus word.
 using beat_t = tapa::vec_t<float, 16>;
 constexpr int kBeatFloats = sizeof(beat_t) / sizeof(float);
 static_assert((kN / p) * (kN / p) % kBeatFloats == 0,

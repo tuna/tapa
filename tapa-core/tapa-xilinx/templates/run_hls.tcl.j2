@@ -10,7 +10,9 @@ open_solution "{{ solution }}"
 set_part {{ part }}
 create_clock -period {{ clock }} -name default
 config_compile -name_max_length 253
-config_interface -m_axi_addr64
+# Every buffer a kernel is given starts on a 64-byte boundary (XRT pages,
+# cosimulation), so an element is read without realigning it.
+config_interface -m_axi_addr64 -m_axi_alignment_byte_size 64
 {% if !other.is_empty() %}{{ other }}{% endif %}
 set_param hls.enable_hidden_option_error false
 config_rtl -reset_level low -module_auto_prefix
