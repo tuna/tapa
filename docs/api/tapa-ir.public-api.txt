@@ -2481,6 +2481,10 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::Task where T: for<'d
 pub mod tapa_ir::transforms
 pub enum tapa_ir::transforms::TransformError
 pub tapa_ir::transforms::TransformError::FifoNameCollision(alloc::string::String)
+pub tapa_ir::transforms::TransformError::Inline
+pub tapa_ir::transforms::TransformError::Inline::parent: alloc::string::String
+pub tapa_ir::transforms::TransformError::Inline::reason: alloc::string::String
+pub tapa_ir::transforms::TransformError::Inline::task: alloc::string::String
 pub tapa_ir::transforms::TransformError::MissingTop(alloc::string::String)
 pub tapa_ir::transforms::TransformError::TopIsLeaf(alloc::string::String)
 impl core::error::Error for tapa_ir::transforms::TransformError
@@ -3611,6 +3615,10 @@ pub fn tapa_ir::task::TaskLevel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::TaskLevel where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::TransformError
 pub tapa_ir::TransformError::FifoNameCollision(alloc::string::String)
+pub tapa_ir::TransformError::Inline
+pub tapa_ir::TransformError::Inline::parent: alloc::string::String
+pub tapa_ir::TransformError::Inline::reason: alloc::string::String
+pub tapa_ir::TransformError::Inline::task: alloc::string::String
 pub tapa_ir::TransformError::MissingTop(alloc::string::String)
 pub tapa_ir::TransformError::TopIsLeaf(alloc::string::String)
 impl core::error::Error for tapa_ir::transforms::TransformError

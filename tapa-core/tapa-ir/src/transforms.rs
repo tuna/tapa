@@ -4,6 +4,8 @@
 //!   top task while preserving FIFO connectivity and global names.
 //! - [`flatten_with_origins`] also retains original instance ownership as
 //!   typed references for control lowering, without copying invocation policy.
+//! - [`inline_uppers`] dissolves only the upper tasks a predicate selects,
+//!   one level at a time, keeping the rest of the hierarchy.
 
 #[cfg(test)]
 mod tests;
@@ -121,6 +123,15 @@ pub enum TransformError {
     /// Distinct FIFO declarations collapse to one name after flattening.
     #[error("multiple FIFO declarations flatten to `{0}`")]
     FifoNameCollision(String),
+
+    /// Inlining would change when a task runs: a sequential invoke orders
+    /// its task against its siblings, which the parent's scope cannot keep.
+    #[error("cannot inline the upper task `{task}` into `{parent}`: {reason}")]
+    Inline {
+        parent: String,
+        task: String,
+        reason: String,
+    },
 }
 
 /// Build a fresh [`TaskGraph`] with all leaf-task instances re-parented
@@ -202,6 +213,147 @@ pub fn flatten_with_origins(graph: &TaskGraph) -> Result<FlatProjection, Transfo
         },
         occurrences: collected.occurrences,
     })
+}
+
+/// Replace every instance of each upper task `inline` selects with that
+/// task's children, invoked by the instance's parent under the instance's
+/// bindings, until no selected upper task is invoked. A FIFO the inlined
+/// instance declares becomes `<instance>__<fifo>` in the parent, and an
+/// inlined child is named `<instance>__<child instance>`. A detached
+/// instance's children are detached; a sequential invoke on either level
+/// is an error. Tasks no longer invoked are dropped; the top always stays.
+pub(crate) fn inline_uppers(
+    graph: &TaskGraph,
+    inline: impl Fn(&str) -> bool,
+) -> Result<TaskGraph, TransformError> {
+    let mut out = graph.clone();
+    while let Some((parent, child)) = out.tasks.iter().find_map(|(parent, def)| {
+        def.tasks
+            .keys()
+            .find(|child| {
+                inline(child)
+                    && out
+                        .tasks
+                        .get(*child)
+                        .is_some_and(|task| task.level == TaskLevel::Upper)
+            })
+            .map(|child| (parent.clone(), child.clone()))
+    }) {
+        inline_into(&mut out, &parent, &child)?;
+    }
+    let mut invoked = std::collections::BTreeSet::from([out.top.clone()]);
+    let mut work = vec![out.top.clone()];
+    while let Some(name) = work.pop() {
+        for child in out
+            .tasks
+            .get(&name)
+            .into_iter()
+            .flat_map(|t| t.tasks.keys())
+        {
+            if invoked.insert(child.clone()) {
+                work.push(child.clone());
+            }
+        }
+    }
+    out.tasks.retain(|name, _| invoked.contains(name));
+    Ok(out)
+}
+
+/// Inlines every instance of `child` that `parent` invokes.
+fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), TransformError> {
+    let def = graph.tasks[child].clone();
+    let owner = graph
+        .tasks
+        .get_mut(parent)
+        .expect("the parent was found in this graph");
+    let refuse = |reason: String| TransformError::Inline {
+        parent: parent.to_string(),
+        task: child.to_string(),
+        reason,
+    };
+    for (index, instance) in owner
+        .tasks
+        .remove(child)
+        .unwrap_or_default()
+        .iter()
+        .enumerate()
+    {
+        if instance.step > 0 {
+            return Err(refuse(format!(
+                "it is invoked sequentially (step {})",
+                instance.step
+            )));
+        }
+        let scope = instance.canonical_name(child, index).into_owned();
+        let fifos: BTreeMap<String, String> = def
+            .fifos
+            .iter()
+            .filter(|(_, fifo)| fifo.depth.is_some())
+            .map(|(name, _)| (name.clone(), format!("{scope}__{name}")))
+            .collect();
+        let bindings: BTreeMap<String, ArgSource> = instance
+            .args
+            .iter()
+            .map(|(port, arg)| (port.clone(), arg.arg.clone()))
+            .collect();
+        for (grandchild, inner) in &def.tasks {
+            for (inner_index, inner_instance) in inner.iter().enumerate() {
+                if inner_instance.step > 0 {
+                    return Err(refuse(format!(
+                        "it invokes `{grandchild}` sequentially (step {})",
+                        inner_instance.step
+                    )));
+                }
+                let args = inner_instance
+                    .args
+                    .iter()
+                    .map(|(port, arg)| {
+                        let source = match &arg.arg {
+                            ArgSource::Literal(value) => ArgSource::Literal(*value),
+                            ArgSource::Name(name) => resolve_scoped_arg(name, &fifos, &bindings),
+                        };
+                        (
+                            port.clone(),
+                            Arg {
+                                arg: source,
+                                cat: arg.cat,
+                            },
+                        )
+                    })
+                    .collect();
+                let name = inner_instance.canonical_name(grandchild, inner_index);
+                owner
+                    .tasks
+                    .entry(grandchild.clone())
+                    .or_default()
+                    .push(TaskInstance {
+                        name: Some(format!("{scope}__{name}")),
+                        args,
+                        step: if instance.step < 0 {
+                            -1
+                        } else {
+                            inner_instance.step
+                        },
+                    });
+            }
+        }
+        for (local, global) in fifos {
+            if owner.fifos.contains_key(&global) {
+                return Err(TransformError::FifoNameCollision(global));
+            }
+            owner.fifos.insert(global, def.fifos[&local].clone());
+        }
+    }
+    let instances = owner.tasks.clone();
+    for (name, fifo) in &mut owner.fifos {
+        if fifo.produced_by.is_some() {
+            fifo.produced_by = find_endpoint(&instances, name, EndpointRole::Producer);
+        }
+        if fifo.consumed_by.is_some() {
+            fifo.consumed_by = find_endpoint(&instances, name, EndpointRole::Consumer);
+        }
+    }
+    Ok(())
 }
 
 /// Recursive hierarchy-flattening helper. Walks from `task_name`

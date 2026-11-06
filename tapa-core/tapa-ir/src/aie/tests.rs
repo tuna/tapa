@@ -247,33 +247,163 @@ fn unsupported_shapes_are_rejected_with_the_reason() {
     );
     let err = AiePartition::derive(&vadd(&wide, 256)).expect_err("256-bit boundary");
     assert!(err.0.contains("at most 128 bits"), "{err}");
+}
 
-    let mut nested = vadd(
-        &leaf(
-            &json!([
-                stream("istream", "a", 32),
-                stream("ostream", "c", 32),
-                scalar("n")
-            ]),
-            "aie",
-        ),
-        32,
+/// `vadd` with its whole body moved into the PL upper task `Mid`.
+fn vadd_below(step: i64) -> TaskGraph {
+    let add = leaf(
+        &json!([
+            stream("istream", "a", 32),
+            stream("ostream", "c", 32),
+            scalar("n")
+        ]),
+        "aie",
     );
-    let top = nested.tasks.remove("Top").expect("top");
-    nested.tasks.insert("Mid".into(), top.clone());
-    let mut new_top = top;
-    new_top.tasks = BTreeMap::from([(
+    let mut g = vadd(&add, 32);
+    let mut mid = g.tasks.remove("Top").expect("top");
+    mid.synth = SynthTarget::Hls;
+    let mut top = mid.clone();
+    top.tasks = BTreeMap::from([(
         "Mid".into(),
-        vec![crate::TaskInstance {
-            name: None,
-            args: BTreeMap::new(),
-            step: 0,
-        }],
+        vec![
+            serde_json::from_value(json!({"step": step, "args": {"n": arg("n", "scalar")}}))
+                .expect("Mid instance"),
+        ],
     )]);
-    new_top.fifos = BTreeMap::new();
-    nested.tasks.insert("Top".into(), new_top);
-    let err = AiePartition::derive(&nested).expect_err("AIE below a PL upper");
-    assert!(err.0.contains("must be invoked by the top task"), "{err}");
+    top.fifos = BTreeMap::new();
+    g.tasks.insert("Mid".into(), mid);
+    g.tasks.insert("Top".into(), top);
+    g
+}
+
+/// An AI Engine leaf below a PL upper task: the upper task mixes the
+/// fabrics, so it is inlined and its FIFOs become PLIOs the top declares.
+#[test]
+fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
+    let g = vadd_below(0);
+    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    assert_eq!(
+        partition
+            .kernels
+            .iter()
+            .map(|k| k.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Mid_0__Add_0"]
+    );
+    assert_eq!(
+        partition
+            .streams
+            .iter()
+            .map(|s| (s.name.as_str(), s.kind))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "Mid_0__a_q",
+                AieStreamKind::Plio {
+                    input: true,
+                    width: 32
+                }
+            ),
+            (
+                "Mid_0__c_q",
+                AieStreamKind::Plio {
+                    input: false,
+                    width: 32
+                }
+            ),
+        ]
+    );
+    let pl = partition.pl_projection(&g).expect("project");
+    assert!(!pl.tasks.contains_key("Mid"), "the inlined task is gone");
+    let top = &pl.tasks["Top"];
+    assert_eq!(
+        top.tasks.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["Load", "Store"]
+    );
+    assert_eq!(
+        top.fifos["Mid_0__a_q"].produced_by,
+        Some(crate::EndpointRef("Load".into(), 0))
+    );
+    assert_eq!(
+        top.ports
+            .iter()
+            .filter_map(|p| p.aie_plio.map(|_| p.name.as_str()))
+            .collect::<Vec<_>>(),
+        ["Mid_0__a_q", "Mid_0__c_q"]
+    );
+
+    let err = AiePartition::derive(&vadd_below(1)).expect_err("sequential mixed upper");
+    assert!(err.0.contains("invoked sequentially (step 1)"), "{err}");
+}
+
+/// A PL leaf inside an AI Engine upper task runs on the PL: the upper's tag
+/// is only the default its leaves inherit.
+#[test]
+fn a_pl_leaf_in_an_aie_upper_task_runs_on_the_pl() {
+    let g = graph(json!({
+        "Top": {"level": "upper", "synth": "hls", "ports": [scalar("n")],
+            "tasks": {
+                "Load": [{"args": {"out": arg("a_q", "ostream")}}],
+                "Pipe": [{"args": {"a": arg("a_q", "istream"), "c": arg("c_q", "ostream")}}],
+                "Store": [{"args": {"in": arg("c_q", "istream")}}]},
+            "fifos": {
+                "a_q": {"depth": 2, "produced_by": ["Load", 0], "consumed_by": ["Pipe", 0]},
+                "c_q": {"depth": 2, "produced_by": ["Pipe", 0], "consumed_by": ["Store", 0]}}},
+        "Load": leaf(&json!([stream("ostream", "out", 32)]), "hls"),
+        "Store": leaf(&json!([stream("istream", "in", 32)]), "hls"),
+        "Pipe": {"level": "upper", "synth": "aie",
+            "ports": [stream("istream", "a", 32), stream("ostream", "c", 32)],
+            "tasks": {
+                "Inc": [{"args": {"in": arg("a", "istream"), "out": arg("mid", "ostream")}}],
+                "Dbl": [{"args": {"in": arg("mid", "istream"), "out": arg("c", "ostream")}}]},
+            "fifos": {"mid": {"depth": 8, "produced_by": ["Inc", 0],
+                              "consumed_by": ["Dbl", 0]}}},
+        "Inc": leaf(&json!([stream("istream", "in", 32), stream("ostream", "out", 64)]), "aie"),
+        "Dbl": leaf(&json!([stream("istream", "in", 64), stream("ostream", "out", 32)]), "hls"),
+    }));
+    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    assert_eq!(
+        partition
+            .kernels
+            .iter()
+            .map(|k| k.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Pipe_0__Inc_0"]
+    );
+    assert_eq!(
+        partition
+            .streams
+            .iter()
+            .map(|s| (s.name.as_str(), s.kind))
+            .collect::<Vec<_>>(),
+        [
+            (
+                "a_q",
+                AieStreamKind::Plio {
+                    input: true,
+                    width: 32
+                }
+            ),
+            (
+                "Pipe_0__mid",
+                AieStreamKind::Plio {
+                    input: false,
+                    width: 64
+                }
+            ),
+        ]
+    );
+    let pl = partition.pl_projection(&g).expect("project");
+    let top = &pl.tasks["Top"];
+    assert_eq!(
+        top.tasks["Dbl"][0].name.as_deref(),
+        Some("Pipe_0__Dbl_0"),
+        "the PL leaf joins the PL kernel"
+    );
+    assert_eq!(
+        top.fifos["c_q"].produced_by,
+        Some(crate::EndpointRef("Dbl".into(), 0))
+    );
 }
 
 #[test]

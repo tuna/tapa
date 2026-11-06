@@ -236,6 +236,37 @@ pub fn warn_narrow_boundaries(partition: &AiePartition) {
     }
 }
 
+/// Logs every stream that crosses between the PL and the AI Engine: each
+/// one costs a PLIO channel of the array's interface.
+pub fn report_crossings(partition: &AiePartition) {
+    for (index, stream) in partition.streams.iter().enumerate() {
+        let tapa_ir::AieStreamKind::Plio { input, width } = stream.kind else {
+            continue;
+        };
+        let kernels: Vec<&str> = partition
+            .kernels
+            .iter()
+            .filter(|kernel| {
+                kernel.ports.iter().any(|port| {
+                    matches!(&port.kind, tapa_ir::AiePortKind::Streams { streams, .. }
+                        if streams.contains(&index))
+                })
+            })
+            .map(|kernel| kernel.name.as_str())
+            .collect();
+        let (direction, verb) = if input {
+            ("PL -> AI Engine", "feeds")
+        } else {
+            ("AI Engine -> PL", "drains")
+        };
+        log::info!(
+            "{direction}: stream `{}` {verb} kernel {} through a {width}-bit PLIO",
+            stream.fifo,
+            kernels.join(", ")
+        );
+    }
+}
+
 /// The `v++ --link` connectivity of the PLIOs: each PL kernel AXIS port is
 /// wired to the PLIO of the same name. The compute unit is named after the
 /// top task, matching the `--connectivity.nk` naming `tapa link` uses.

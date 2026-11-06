@@ -246,7 +246,7 @@ TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {
   EXPECT_TRUE(AnyDiagContains(typo, "--target maps 'Ad'"));
 }
 
-TEST(AieTest, AnUpperTaskPutsItsSubtreeOnTheAiEngine) {
+TEST(AieTest, AnUpperTaskTargetIsItsSubtreesDefault) {
   const std::string leaves = R"cpp(
     void Inc(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
       for (int i = 0; i < n; ++i) c.write(a.read() + 1);
@@ -266,10 +266,51 @@ TEST(AieTest, AnUpperTaskPutsItsSubtreeOnTheAiEngine) {
   EXPECT_EQ(tasks["Inc"]["synth"], "aie");
   EXPECT_EQ(tasks["Load"]["synth"], "hls");
 
-  const TreePipelineRun conflict = Analyze(
-      "upper_conflict", Design("[[tapa::target(\"hls\")]]" + leaves + upper));
-  EXPECT_FALSE(conflict.ok);
-  EXPECT_TRUE(AnyDiagContains(conflict, "marked for another target"));
+  // An explicit target wins over the inherited one.
+  const TreePipelineRun pl_leaf = Analyze(
+      "upper_pl_leaf", Design("[[tapa::target(\"hls\")]]" + leaves + upper));
+  ASSERT_TRUE(pl_leaf.ok) << (pl_leaf.diags.empty() ? ""
+                                                    : pl_leaf.diags.front());
+  EXPECT_EQ(nlohmann::json::parse(pl_leaf.json)["tasks"]["Inc"]["synth"],
+            "hls");
+
+  // Inheriting the AI Engine through one invoker and the PL through
+  // another leaves no single fabric to run on.
+  const TreePipelineRun both = Analyze("upper_both", leaves + upper + R"cpp(
+    void Top(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+      tapa::stream<float> mid;
+      tapa::task().invoke(Add, a, mid, n).invoke(Inc, mid, c, n);
+    }
+  )cpp");
+  EXPECT_FALSE(both.ok);
+  EXPECT_TRUE(AnyDiagContains(both, "inherits the AI Engine from 'Add'"));
+
+  // An AI Engine top sets the default and stays the PL kernel itself.
+  const TreePipelineRun aie_top = Analyze("aie_top", leaves + R"cpp(
+    [[tapa::target("hls")]]
+    void Load(tapa::mmap<const float> mem, int n, tapa::ostream<float>& out) {
+      for (int i = 0; i < n; ++i) out.write(mem[i]);
+    }
+    [[tapa::target("hls")]]
+    void Store(tapa::istream<float>& in, tapa::mmap<float> mem, int n) {
+      for (int i = 0; i < n; ++i) mem[i] = in.read();
+    }
+    [[tapa::target("aie")]]
+    void Top(tapa::mmap<const float> a, tapa::mmap<float> c, int n) {
+      tapa::stream<float> a_q;
+      tapa::stream<float> c_q;
+      tapa::task()
+          .invoke(Load, a, n, a_q)
+          .invoke(Inc, a_q, c_q, n)
+          .invoke(Store, c_q, c, n);
+    }
+  )cpp");
+  ASSERT_TRUE(aie_top.ok) << (aie_top.diags.empty() ? ""
+                                                    : aie_top.diags.front());
+  const nlohmann::json top_tasks = nlohmann::json::parse(aie_top.json)["tasks"];
+  EXPECT_EQ(top_tasks["Top"]["synth"], "hls");
+  EXPECT_EQ(top_tasks["Inc"]["synth"], "aie");
+  EXPECT_EQ(top_tasks["Load"]["synth"], "hls");
 }
 
 TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
@@ -318,7 +359,8 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
     }
   )cpp");
   EXPECT_FALSE(top.ok);
-  EXPECT_TRUE(AnyDiagContains(top, "cannot be an AI Engine task"));
+  EXPECT_TRUE(
+      AnyDiagContains(top, "is a leaf and cannot run on the AI Engine"));
 }
 
 TEST(AieTest, BulkReadsBlockWhereNonBlockingReadsAreRejected) {

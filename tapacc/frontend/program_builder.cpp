@@ -457,7 +457,7 @@ bool ProgramBuilder::ApplyTaskTargets() {
   return true;
 }
 
-bool ProgramBuilder::PropagateAie() {
+bool ProgramBuilder::PropagateAie(const std::string& top_key, bool aie_top) {
   // Recursive invocations are not a task tree. Diagnose them before target
   // propagation or recursive AIE flattening can loop forever.
   std::map<std::string, int> state;
@@ -479,32 +479,50 @@ bool ProgramBuilder::PropagateAie() {
     }
   }
 
-  // An AI Engine upper task puts its whole subtree on the AI Engine. A
-  // descendant explicitly marked for another target contradicts that.
+  // An upper task's target is the default for its subtree: a descendant
+  // with no target of its own inherits the AI Engine from the nearest AI
+  // Engine ancestor, and one with an explicit target keeps it and hands it
+  // down instead. An AI Engine top only sets that default; the top itself
+  // stays the PL kernel, which owns the control interface.
+  auto aie_scope = [&](const std::string& key) {
+    return (key == top_key && aie_top) ||
+           (tasks_.at(key).model.target == SynthTarget::kAie &&
+            tasks_.at(key).model.level == TaskLevel::kUpper);
+  };
   std::queue<std::string> work;
   for (const auto& [key, task] : tasks_) {
-    if (task.model.target == SynthTarget::kAie &&
-        task.model.level == TaskLevel::kUpper) {
-      work.push(key);
-    }
+    if (aie_scope(key)) work.push(key);
   }
+  std::map<std::string, std::string> inherited_from;
   while (!work.empty()) {
     const std::string key = work.front();
     work.pop();
     for (auto [it, end] = edges_.equal_range(key); it != end; ++it) {
-      MergedTask& child = tasks_.at(it->second.callee_key);
-      const DefSighting& facts = FirstSighting(it->second.callee_key);
-      if (facts.explicit_target && facts.target != SynthTarget::kAie) {
-        Fail("task '" + child.model.name + "' is invoked by the AI Engine " +
-             "task '" + tasks_.at(key).model.name + "' at " + it->second.loc +
-             " but is marked for another target; an AI Engine upper task "
-             "puts its whole subtree on the AI Engine");
-        return false;
+      const std::string& callee = it->second.callee_key;
+      MergedTask& child = tasks_.at(callee);
+      if (FirstSighting(callee).explicit_target ||
+          child.model.target == SynthTarget::kAie) {
+        continue;
       }
       child.model.target = SynthTarget::kAie;
-      if (child.model.level == TaskLevel::kUpper)
-        work.push(it->second.callee_key);
+      inherited_from.emplace(callee, tasks_.at(key).model.name);
+      if (child.model.level == TaskLevel::kUpper) work.push(callee);
     }
+  }
+  // One task runs on one fabric: inheriting the AI Engine from one invoker
+  // while a PL task also invokes it leaves no answer.
+  for (const auto& [caller, edge] : edges_) {
+    const auto inherited = inherited_from.find(edge.callee_key);
+    if (inherited == inherited_from.end() ||
+        tasks_.find(caller) == tasks_.end() || aie_scope(caller)) {
+      continue;
+    }
+    Fail("task '" + tasks_.at(edge.callee_key).model.name +
+         "' inherits the AI Engine from '" + inherited->second +
+         "' but is also invoked by the PL task '" + edge.caller_name + "' at " +
+         edge.loc + "; give it a target with [[tapa::target]] " +
+         "or --target so it runs on one fabric");
+    return false;
   }
   return true;
 }
@@ -618,10 +636,14 @@ bool ProgramBuilder::MergeAndDiscover() {
          top_candidates[0]->loc + ")");
     return false;
   }
-  if (top_candidates[0]->target == SynthTarget::kAie) {
+  // An AI Engine top is the default for the tasks it invokes; the top
+  // itself is the PL kernel (see PropagateAie). A leaf top has nothing to
+  // hand the default to, and the PL kernel owns the control interface.
+  const bool aie_top = top_candidates[0]->target == SynthTarget::kAie;
+  if (aie_top && top_candidates[0]->level != TaskLevel::kUpper) {
     Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +
-         ") cannot be an AI Engine task: the PL kernel owns the control "
-         "interface, so mark the tasks it invokes instead");
+         ") is a leaf and cannot run on the AI Engine: the PL kernel owns the "
+         "control interface, so invoke the AI Engine work from an upper top");
     return false;
   }
 
@@ -643,6 +665,7 @@ bool ProgramBuilder::MergeAndDiscover() {
     work.push(sighting.key);
   };
   discover(*top_candidates[0], std::nullopt);
+  if (aie_top) tasks_.at(top_key).model.target = default_target_;
   while (!work.empty()) {
     const std::string key = work.front();
     work.pop();
@@ -687,7 +710,7 @@ bool ProgramBuilder::MergeAndDiscover() {
                callee.is_spec ? std::optional<std::string>(key) : std::nullopt);
     }
   }
-  if (!PropagateAie()) return false;
+  if (!PropagateAie(top_key, aie_top)) return false;
 
   // Rule 2, site half: the mirror writes one file per source path, so a
   // task sighted at two distinct sites would need two different rewrites of

@@ -12,7 +12,8 @@ stage, covering PL → AIE → PL → AIE → PL data movement.
 
 ## Marking a task
 
-Mark a leaf task, or an upper task to put its whole subtree on the AI Engine:
+Mark a leaf task, or an upper task to make the AI Engine the default for the
+tasks below it:
 
 ```cpp
 using vec4f = tapa::vec_t<float, 4>;
@@ -33,9 +34,26 @@ tapa analyze ... --target xilinx-vitis --target Add:aie
 ```
 
 `TASK:TARGET` takes `aie`, `hls` or `ignore`; an unknown task name is an
-error. Inside an AI Engine upper task, a descendant explicitly marked for
-another target is an error. The top task cannot be an AI Engine task: the PL
-kernel owns the control interface. A hybrid top must also keep at least one
+error. An upper task's target is only a default: a task below it with a
+target of its own, from the attribute or the command line, keeps that target
+and hands it down instead. An AI Engine upper task may therefore invoke
+`[[tapa::target("hls")]]` tasks, and a PL upper task may invoke AI Engine
+tasks. A task that would inherit the AI Engine through one invoker but is
+also invoked by a PL task is an error; give it a target. Marking the top task
+makes the AI Engine the default for the tasks it invokes, while the top
+itself stays the PL kernel, which owns the control interface; a leaf top
+cannot be marked.
+
+Every stream between a PL task and an AI Engine task crosses into the array
+through a PLIO channel, and `tapa analyze` lists each crossing. An upper task
+whose tasks run on both is dissolved into its parent when the design is
+built: its streams become the parent's, named `<instance>__<stream>` (such as
+`Stage_0__mid`), so it must be invoked joined or detached and must invoke its
+own tasks joined or detached. Hybrid cosimulation and `tapa aiesim` run in
+software or replay only the AI Engine tasks the top task invokes, so they
+need every crossing to be a stream the top declares.
+
+A hybrid top must also keep at least one
 scalar or memory (`mmap`) argument: a top with only stream ports packages as
 `ap_ctrl_none`, a free-running kernel XRT can neither start nor wait on, so
 `tapa synth` rejects it. (A PL-only design may still be a stream top; it just

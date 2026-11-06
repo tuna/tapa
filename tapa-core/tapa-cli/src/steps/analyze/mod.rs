@@ -284,6 +284,9 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     })?;
     aie_pins::apply(&mut graph, &args.aie_locations, &args.aie_plios)?;
     graph.validate()?;
+    if let Some(partition) = tapa_ir::AiePartition::derive(&graph)? {
+        crate::aie::report_crossings(&partition);
+    }
 
     if is_top_leaf(&graph, &args.top) && flow == AnalyzeTarget::XilinxVitis {
         return Err(CliError::InvalidArg(

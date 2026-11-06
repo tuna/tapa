@@ -281,9 +281,11 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
       }
     }
     LOG_IF(FATAL, bound == nullptr)
-        << "kernel stream '" << name << "' connects to no task of the top "
-        << "task; name the stream after its variable, e.g. "
-        << "tapa::stream<T> " << name << "(\"" << name << "\")";
+        << "kernel stream '" << name << "' connects to no task the top task "
+        << "invokes; hybrid cosimulation runs in software only AI Engine "
+        << "tasks the top invokes, and binds each stream by its name, so "
+        << "name it after its variable, e.g. tapa::stream<T> " << name << "(\""
+        << name << "\")";
     if (port.kernel_reads) {
       instance.SetStreamArg(port.index, bound->frt_path());
     } else {

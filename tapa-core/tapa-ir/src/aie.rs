@@ -2,12 +2,15 @@
 //!
 //! Tasks tagged `synth: aie` form one ADF graph. tapacc has already resolved
 //! the attributes, the `--target TASK:aie` mappings and the propagation down
-//! an AI Engine upper task; [`AiePartition::derive`] flattens those tasks into
-//! kernels and classifies every stream they touch: a FIFO between two AI
+//! an upper task, so each leaf's tag says where it runs. An upper task whose
+//! subtree mixes PL and AI Engine leaves is first inlined into its parent
+//! (see [`by_fabric`]), which leaves every PL↔AI Engine stream a FIFO the
+//! top declares. [`AiePartition::derive`] then flattens the AI Engine tasks
+//! into kernels and classifies every stream they touch: a FIFO between two AI
 //! Engine tasks is an AI Engine net, and a FIFO between a PL task and an AI
-//! Engine task is a PLIO. In this version AI Engine tasks are invoked by the
-//! top task, so every PLIO is a FIFO the top declares.
+//! Engine task is a PLIO.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::instance::{ArgSource, WireValue};
@@ -144,23 +147,8 @@ impl AiePartition {
         {
             return Ok(None);
         }
+        let graph = &*by_fabric(graph)?;
         let top = task(graph, &graph.top)?;
-        for (name, upper) in &graph.tasks {
-            if name == &graph.top || upper.synth == SynthTarget::Aie {
-                continue;
-            }
-            if let Some(child) = upper
-                .tasks
-                .keys()
-                .find(|child| graph.tasks.get(*child).map(|t| t.synth) == Some(SynthTarget::Aie))
-            {
-                return Err(AieError(format!(
-                    "the PL task `{name}` invokes the AI Engine task `{child}`; AI Engine \
-                     tasks must be invoked by the top task `{}`",
-                    graph.top
-                )));
-            }
-        }
         let mut builder = Builder {
             graph,
             partition: Self {
@@ -198,6 +186,7 @@ impl AiePartition {
     /// carry the `s_axi_control` interface, and a stream-only top packages
     /// as `ap_ctrl_none`, which XRT can neither start nor wait on.
     pub fn pl_projection(&self, graph: &TaskGraph) -> Result<TaskGraph, AieError> {
+        let graph = &*by_fabric(graph)?;
         let mut pl = graph.clone();
         pl.tasks.retain(|_, task| task.synth != SynthTarget::Aie);
         let pl_tasks: BTreeSet<String> = pl.tasks.keys().cloned().collect();
@@ -325,6 +314,63 @@ impl AiePartition {
             kernel.ordered = reaches_itself(&edges, &Node::Kernel(index));
         }
     }
+}
+
+/// `graph` with every non-top upper task whose leaves are not all on its own
+/// fabric inlined into its parent, so each remaining upper task below the
+/// top is purely PL or purely AI Engine. An upper task's tag is only the
+/// default its leaves inherit; the leaves decide where the work runs.
+fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
+    let mut leaves = BTreeMap::new();
+    let mixed: BTreeSet<&str> = graph
+        .tasks
+        .iter()
+        .filter(|(name, def)| *name != &graph.top && def.level == TaskLevel::Upper)
+        .filter(|(name, def)| {
+            let aie = def.synth == SynthTarget::Aie;
+            leaf_fabrics(graph, name, &mut leaves)
+                .iter()
+                .any(|&leaf| leaf != aie)
+        })
+        .map(|(name, _)| name.as_str())
+        .collect();
+    if mixed.is_empty() {
+        return Ok(Cow::Borrowed(graph));
+    }
+    crate::transforms::inline_uppers(graph, |name| mixed.contains(name))
+        .map(Cow::Owned)
+        .map_err(|error| {
+            AieError(format!(
+                "{error}; an upper task whose subtree mixes PL and AI Engine tasks is inlined \
+                 into its parent, so it and its children must be invoked joined or detached"
+            ))
+        })
+}
+
+/// Whether each leaf below `name` (or `name` itself, for a leaf) is on the
+/// AI Engine; memoized in `memo`.
+fn leaf_fabrics(
+    graph: &TaskGraph,
+    name: &str,
+    memo: &mut BTreeMap<String, BTreeSet<bool>>,
+) -> BTreeSet<bool> {
+    if let Some(known) = memo.get(name) {
+        return known.clone();
+    }
+    let Some(def) = graph.tasks.get(name) else {
+        return BTreeSet::new();
+    };
+    let fabrics = if def.level == TaskLevel::Lower {
+        BTreeSet::from([def.synth == SynthTarget::Aie])
+    } else {
+        let mut all = BTreeSet::new();
+        for child in def.tasks.keys() {
+            all.extend(leaf_fabrics(graph, child, memo));
+        }
+        all
+    };
+    memo.insert(name.to_string(), fabrics.clone());
+    fabrics
 }
 
 fn reaches_itself(edges: &BTreeMap<Node, BTreeSet<Node>>, start: &Node) -> bool {

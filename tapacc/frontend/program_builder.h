@@ -216,7 +216,7 @@ class ProgramBuilder {
   int TuOf(const std::string& file) const;
   void Fail(std::string message);
   bool ApplyTaskTargets();
-  bool PropagateAie();
+  bool PropagateAie(const std::string& top_key, bool aie_top);
   std::string ScannedTus() const;
   const DefSighting& FirstSighting(const std::string& key) const;
 
