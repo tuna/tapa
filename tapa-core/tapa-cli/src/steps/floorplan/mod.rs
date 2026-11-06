@@ -910,6 +910,7 @@ mod tests {
                 name: None,
                 args: BTreeMap::new(),
                 step: -1,
+                position: 0,
             }],
         )]);
         top.fifos.clear();

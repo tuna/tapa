@@ -172,6 +172,7 @@ nlohmann::json PortJson(const Port& port) {
 nlohmann::json InstanceJson(const Instance& inst) {
   nlohmann::json j;
   j[kFieldStep] = inst.step;
+  j[kFieldPosition] = inst.position;
   if (inst.name) j[kFieldName] = *inst.name;
   j[kFieldArgs] = nlohmann::json::object();
   for (const auto& [port, arg] : inst.args) {

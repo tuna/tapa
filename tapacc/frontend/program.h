@@ -65,6 +65,9 @@ struct Instance {
   int64_t step = 0;                 // join=0, detach=-1, sequential>=1
   std::optional<std::string> name;  // explicit invoke("name", ...)
   std::map<std::string, Arg> args;  // child-port name -> binding
+  // Where the invoke sits in the parent's chain of invokes, counting each
+  // lane of a vectorized invoke: the order the host program makes them in.
+  uint32_t position = 0;
 };
 
 // A producer/consumer reference: the child instance that drives or drains a

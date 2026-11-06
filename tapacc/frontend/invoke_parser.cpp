@@ -308,6 +308,7 @@ void ParseInvocations(
   std::map<std::string, int> ostreams_pos;
   std::map<std::string, int> mmaps_pos;
   std::map<const clang::Expr*, int> seq_pos;
+  uint32_t position = 0;
 
   for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
     const InvokeMode mode = GetInvokeMode(invoke);
@@ -380,7 +381,7 @@ void ParseInvocations(
             if (callee == nullptr) break;  // not a task reference
             task_name = TaskName(*mangler, callee);
             uc.task.instances[task_name].push_back(
-                Instance{mode.step, std::nullopt, {}});
+                Instance{mode.step, std::nullopt, {}, position++});
             continue;
           }
           if (callee == nullptr) continue;

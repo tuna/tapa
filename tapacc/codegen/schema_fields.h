@@ -52,6 +52,7 @@ inline constexpr const char* kFieldAieStackBytes = "aie_stack_bytes";
 
 // ── Instance ────────────────────────────────────────────────────────
 inline constexpr const char* kFieldStep = "step";
+inline constexpr const char* kFieldPosition = "position";
 inline constexpr const char* kFieldArgs = "args";
 inline constexpr const char* kFieldArg = "arg";
 inline constexpr const char* kFieldValue = "value";

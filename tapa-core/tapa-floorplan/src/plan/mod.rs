@@ -691,6 +691,7 @@ mod tests {
                     name: None,
                     args: std::collections::BTreeMap::new(),
                     step,
+                    position: 0,
                 })
                 .to_vec(),
         )]);

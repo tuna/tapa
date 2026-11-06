@@ -334,6 +334,7 @@ fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), T
                         } else {
                             inner_instance.step
                         },
+                        position: instance.position,
                     });
             }
         }
@@ -445,6 +446,7 @@ fn collect_leaves_recursive(
                     }),
                     args: resolved_args,
                     step: inst.step,
+                    position: inst.position,
                 };
                 collected.push_leaf(owner, source, instance);
             } else {

@@ -1773,6 +1773,7 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::instance::Arg where T: for
 pub struct tapa_ir::instance::TaskInstance
 pub tapa_ir::instance::TaskInstance::args: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::instance::Arg>
 pub tapa_ir::instance::TaskInstance::name: core::option::Option<alloc::string::String>
+pub tapa_ir::instance::TaskInstance::position: u32
 pub tapa_ir::instance::TaskInstance::step: i64
 impl tapa_ir::instance::TaskInstance
 pub fn tapa_ir::instance::TaskInstance::canonical_name(&self, &str, usize) -> alloc::borrow::Cow<'_, str>
@@ -5209,6 +5210,7 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: 
 pub struct tapa_ir::TaskInstance
 pub tapa_ir::TaskInstance::args: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::instance::Arg>
 pub tapa_ir::TaskInstance::name: core::option::Option<alloc::string::String>
+pub tapa_ir::TaskInstance::position: u32
 pub tapa_ir::TaskInstance::step: i64
 impl tapa_ir::instance::TaskInstance
 pub fn tapa_ir::instance::TaskInstance::canonical_name(&self, &str, usize) -> alloc::borrow::Cow<'_, str>

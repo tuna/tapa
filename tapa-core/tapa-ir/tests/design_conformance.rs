@@ -102,7 +102,7 @@ fn canonical_design_json() -> &'static str {
         r#""total_area": {"lut": 414, "ff": 0, "bram_18k": 0, "dsp": 0, "uram": 0}}, "#,
         r#""VecAdd": {"level": "upper", "srcs": ["VecAdd.cpp"], "include_dirs": [], "defines": [], "#,
         r#""readable_name": "VecAdd", "synth": "hls", "ports": [], "#,
-        r#""tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0}]}, "#,
+        r#""tasks": {"Add": [{"args": {"a": {"arg": "a_q", "cat": "istream"}}, "step": 0, "position": 0}]}, "#,
         r#""fifos": {"a_q": {"depth": 2, "consumed_by": ["Add", 0], "#,
         r#""produced_by": ["Mmap2Stream", 0]}}}}}"#,
     )

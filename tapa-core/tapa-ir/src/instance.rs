@@ -98,6 +98,12 @@ pub struct TaskInstance {
     /// Bulk-synchronous step (can be negative for autorun tasks).
     #[serde(default)]
     pub step: i64,
+    /// Where the invoke sits in its parent's chain of invokes, counting
+    /// each lane of a vectorized invoke: the order a host program makes
+    /// them in. An instance a transform creates takes the position of the
+    /// invoke it comes from.
+    #[serde(default)]
+    pub position: u32,
 }
 
 impl TaskInstance {

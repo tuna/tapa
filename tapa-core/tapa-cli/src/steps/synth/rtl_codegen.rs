@@ -320,6 +320,7 @@ mod tests {
                     tapa_ir::Arg::named("1".to_string(), ArgCategory::Scalar),
                 )]),
                 step: 0,
+                position: 0,
             }],
         )]);
 

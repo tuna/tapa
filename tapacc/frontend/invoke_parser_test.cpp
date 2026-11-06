@@ -160,6 +160,26 @@ TEST(InvokeParser, ReplicatedExplicitNameIsUniquePerLane) {
   EXPECT_EQ(instances[2].name, "worker_2");
 }
 
+// A host program running an upper task's body finds each invoke by where
+// it sits in the chain, so positions follow the source across task names
+// and count every lane of a vectorized invoke.
+TEST(InvokeParser, PositionsFollowTheInvokeChain) {
+  constexpr char kCode[] = R"cpp(
+    void Worker(int value) {}
+    void Other() {}
+    void Top() { tapa::task().invoke(Other).invoke<0, 2>(Worker, 1).invoke(Other); }
+  )cpp";
+  auto p = ParseCode(kCode, "Top");
+  const auto& others = p.Task("Top").instances.at("Other");
+  const auto& workers = p.Task("Top").instances.at("Worker");
+  ASSERT_EQ(others.size(), 2u);
+  ASSERT_EQ(workers.size(), 2u);
+  EXPECT_EQ(others[0].position, 0u);
+  EXPECT_EQ(workers[0].position, 1u);
+  EXPECT_EQ(workers[1].position, 2u);
+  EXPECT_EQ(others[1].position, 3u);
+}
+
 TEST(InvokeParser, NameOnlyInvokeNamesOneInstance) {
   // The name-only overload specializes as [Func, name_size] with an empty
   // Args pack; reading template arguments positionally would misread the

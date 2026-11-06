@@ -24,6 +24,7 @@ pub fn instances(count: usize) -> Vec<TaskInstance> {
             name: None,
             args: BTreeMap::new(),
             step: 0,
+            position: 0,
         };
         count
     ]
