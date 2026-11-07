@@ -182,11 +182,24 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
     return true;
   }
 
+  // The AI Engine compiler inlines what the body calls, so the locals of
+  // every function it reaches share the kernel's stack: each counts once.
+  bool VisitCallExpr(clang::CallExpr* call) {
+    const clang::FunctionDecl* callee = call->getDirectCallee();
+    const clang::FunctionDecl* def = nullptr;
+    if (callee != nullptr && callee->hasBody(def) &&
+        visited_.insert(def).second) {
+      TraverseStmt(def->getBody());
+    }
+    return true;
+  }
+
   uint64_t bytes() const { return bytes_; }
 
  private:
   const clang::ASTContext& ctx_;
   uint64_t bytes_ = 0;
+  std::set<const clang::FunctionDecl*> visited_;
 };
 
 }  // namespace

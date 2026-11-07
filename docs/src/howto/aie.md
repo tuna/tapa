@@ -72,7 +72,7 @@ cannot be run through XRT.)
 | `async_mmap` | Yes, served from the PL; see [Memory](#memory). Elements must be 32, 64 or 128 bits. |
 | `mmap`, `mmaps`, `hmap` | No. Use an `async_mmap`, or read memory in a PL task and stream the data in. |
 | Scalars | Yes. |
-| Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body declares. The stack must fit in the tile's 32 KB data memory. |
+| Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body and the functions it calls declare. The stack must fit in the tile's 32 KB data memory. |
 | `[[tapa::pipeline]]` on a loop | Lowered to `chess_prepare_for_pipelining`. Every loop nested in it is fully unrolled, as HLS does when it pipelines a loop; `[[tapa::unroll(k)]]` on a nested loop unrolls it `k` times instead. On a function it is ignored with a remark: put it on the loop. |
 | `[[tapa::unroll]]` | Lowered to `chess_flatten_loop`, the AI Engine compiler's full unroll, when full and `chess_unroll_loop(k)` with a factor. |
 | `tapa::wait()`, `tapa::reg()` | Accepted. As in software simulation, `wait` does nothing and `reg` returns its argument: the core has no PL clock cycle to yield. |

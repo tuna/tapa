@@ -33,8 +33,9 @@ MemoryUse UsedDirections(const clang::FunctionDecl* def,
                          const clang::ParmVarDecl* param);
 
 // The bytes of a leaf body's local variables (every non-static local of a
-// known size, whatever its scope): an AI Engine kernel keeps them on its
-// stack, which the graph sizes from this.
+// known size, whatever its scope), and those of every function it calls,
+// directly or not, each once: an AI Engine kernel keeps them on its stack,
+// which the graph sizes from this.
 uint32_t LocalBytes(const clang::ASTContext& ctx,
                     const clang::FunctionDecl* def);
 

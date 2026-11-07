@@ -69,20 +69,25 @@ std::string Design(const std::string& add, const std::string& load = R"cpp(
 TEST(AieTest, LeafFrameReachesTheGraphAndItsOwnVariant) {
   const TreePipelineRun run =
       Analyze("leaf", Design(R"cpp(
+                inline float Scale(float x) {
+                  float k[4] = {};
+                  return x * k[0];
+                }
                 [[tapa::target("aie")]]
                 void Add([[tapa::frame(64)]] tapa::istream<float>& a,
                          tapa::ostream<float>& c, int n) {
                   float bias[8] = {};
                   [[tapa::pipeline]] for (int i = 0; i < n; ++i)
-                    c.write(a.read() + bias[i % 8]);
+                    c.write(Scale(Scale(a.read())) + bias[i % 8]);
                 }
               )cpp"));
   ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
   const nlohmann::json add = nlohmann::json::parse(run.json)["tasks"]["Add"];
   EXPECT_EQ(add["synth"], "aie");
   EXPECT_EQ(add["ports"][0]["frame"], 64);
-  // The kernel's stack holds `bias` and the loop counter.
-  EXPECT_EQ(add["aie_stack_bytes"], 8 * 4 + 4);
+  // The kernel's stack holds `bias`, the loop counter, and `k` of the
+  // inlined `Scale`, once however often it is called.
+  EXPECT_EQ(add["aie_stack_bytes"], 8 * 4 + 4 + 4 * 4);
 
   // The full definition takes the frame type and the chess keyword; the
   // stub every other variant sees keeps the portable signature.
