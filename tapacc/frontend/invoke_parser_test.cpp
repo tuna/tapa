@@ -449,6 +449,30 @@ TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
   EXPECT_GE(CountUpperTaskErrors(kCode, "Top"), 1u);
 }
 
+TEST(InvokeParser, AnAsyncMmapGoesToOneTask) {
+  // Software simulation would share one set of channels between the two
+  // tasks; hardware gives each its own. A tapa::mmap may go to both.
+  constexpr char kCode[] = R"cpp(
+    void Worker(tapa::async_mmap<float>& mem) {}
+    void Twice(tapa::async_mmap<float>& mem) {
+      tapa::task().invoke(Worker, mem).invoke(Worker, mem);
+    }
+    void Shared(tapa::mmap<float> mem) {
+      tapa::task().invoke(Worker, mem).invoke(Worker, mem);
+    }
+    void Top(tapa::mmap<float> a, tapa::mmap<float> b) {
+      tapa::task().invoke(Twice, a).invoke(Shared, b);
+    }
+  )cpp";
+  const auto run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/handed_on.cpp", kCode}}, "Top",
+      testing::TempDir() + "/handed_on", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 1u);
+  EXPECT_NE(run.diags.front().find("'mem' is handed to more than one task"),
+            std::string::npos)
+      << run.diags.front();
+}
+
 TEST(InvokeParser, MultiDeclaratorStreamDeclCollectsEveryDeclarator) {
   // `tapa::stream<float> a("a"), b("b");` is user-exercised (see
   // tests/functional/multi-file); every declarator must be collected — a

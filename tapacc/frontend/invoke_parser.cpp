@@ -3,6 +3,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 
 #include "clang/AST/Expr.h"
@@ -216,6 +217,22 @@ struct UpperTaskContext {
     }
     it->second.produced_by = Endpoint{task_name, inst_index};
   }
+
+  // Record that the task hands its own async_mmap parameter `a` to a task,
+  // reporting a second hand-off at `loc`: tasks sharing one async_mmap would
+  // share its channels in software simulation, but each gets its own on
+  // hardware.
+  void MarkHandedOn(const std::string& a, clang::SourceLocation loc) {
+    if (handed_on.insert(a).second) return;
+    ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, loc,
+                     "tapa::async_mmap '%0' is handed to more than one task; "
+                     "take a tapa::mmap<T> instead, which each task takes "
+                     "as its own async_mmap")
+        .AddString(a);
+  }
+
+ private:
+  std::set<std::string> handed_on;
 };
 
 // Recursively reject stream declarations below the top level of the task
@@ -416,6 +433,11 @@ void ParseInvocations(
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
               pk == TapaKind::kOmmap || pk == TapaKind::kAsyncMmap) {
+            if (decl_ref != nullptr &&
+                llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) &&
+                ClassifyTapaType(decl_ref->getType()) == TapaKind::kAsyncMmap) {
+              uc.MarkHandedOn(arg_name, arg->getBeginLoc());
+            }
             set_arg(ArrayElement(arg_name, mmaps_pos[arg_name]++, decl_ref),
                     port, pk);
           } else if (pk == TapaKind::kIStream || pk == TapaKind::kIFrames) {

@@ -142,8 +142,12 @@ several bursts. Count acknowledged elements, not responses.
 - `async_mmap<T>` must be passed **by reference** (`async_mmap<T>&`). Passing
   by value is a compile error.
 - Channel operations (`try_read`/`try_write` on the five streams) are
-  **leaf-task only**. An upper-level task may accept and forward an
-  `async_mmap<T>&` parameter to a child leaf task without operating on it.
+  **leaf-task only**. An upper-level task may accept an `async_mmap<T>&`
+  parameter and hand it to **one** child task without operating on it. To
+  give several tasks the memory, take an `mmap<T>` and hand that on: each
+  task takes it as its own `async_mmap`. (Tasks sharing one `async_mmap`
+  would share its channels in software simulation but each get their own on
+  hardware, so `tapa analyze` rejects it.)
 - An `mmap<T>` argument can be passed to an `async_mmap<T>&` parameter — mmap
   is automatically promoted.
 - In the two-counter pipelined pattern, use non-blocking `try_read` and
