@@ -5,6 +5,15 @@ module CornerTurn_fsm (
   output wire ap_done,
   output wire ap_ready,
   output wire ap_idle,
+  output wire Drain_0__ap_start,
+  input wire Drain_0__ap_ready,
+  input wire Drain_0__ap_done,
+  input wire Drain_0__ap_idle,
+  output wire Drain_0__is_done,
+  input wire [63:0] Drain_0__dst_offset_in,
+  output wire [63:0] Drain_0__dst_offset,
+  input wire [31:0] Drain_0__n_in,
+  output wire [31:0] Drain_0__n,
   output wire Load_0__ap_start,
   input wire Load_0__ap_ready,
   input wire Load_0__ap_done,
@@ -14,15 +23,6 @@ module CornerTurn_fsm (
   output wire [31:0] Load_0__n,
   input wire [63:0] Load_0__src_offset_in,
   output wire [63:0] Load_0__src_offset,
-  output wire Store_0__ap_start,
-  input wire Store_0__ap_ready,
-  input wire Store_0__ap_done,
-  input wire Store_0__ap_idle,
-  output wire Store_0__is_done,
-  input wire [63:0] Store_0__dst_offset_in,
-  output wire [63:0] Store_0__dst_offset,
-  input wire [31:0] Store_0__n_in,
-  output wire [31:0] Store_0__n,
   output wire Turn_0__ap_start,
   input wire Turn_0__ap_ready,
   input wire Turn_0__ap_done,
@@ -30,13 +30,6 @@ module CornerTurn_fsm (
   output wire Turn_0__is_done,
   input wire [31:0] Turn_0__n_in,
   output wire [31:0] Turn_0__n,
-  output wire TurnIn_0__ap_start,
-  input wire TurnIn_0__ap_ready,
-  input wire TurnIn_0__ap_done,
-  input wire TurnIn_0__ap_idle,
-  output wire TurnIn_0__is_done,
-  input wire [31:0] TurnIn_0__n_in,
-  output wire [31:0] TurnIn_0__n,
   output wire TurnOut_0__ap_start,
   input wire TurnOut_0__ap_ready,
   input wire TurnOut_0__ap_done,
@@ -46,16 +39,14 @@ module CornerTurn_fsm (
   output wire [31:0] TurnOut_0__n
 );
 
+reg [1:0] Drain_0__state;
+reg [63:0] Drain_0__dst_offset_reg;
+reg [31:0] Drain_0__n_reg;
 reg [1:0] Load_0__state;
 reg [31:0] Load_0__n_reg;
 reg [63:0] Load_0__src_offset_reg;
-reg [1:0] Store_0__state;
-reg [63:0] Store_0__dst_offset_reg;
-reg [31:0] Store_0__n_reg;
 reg [1:0] Turn_0__state;
 reg [31:0] Turn_0__n_reg;
-reg [1:0] TurnIn_0__state;
-reg [31:0] TurnIn_0__n_reg;
 reg [1:0] TurnOut_0__state;
 reg [31:0] TurnOut_0__n_reg;
 reg [1:0] __tapa_state;
@@ -63,20 +54,17 @@ wire ap_rst;
 wire __tapa_start_q;
 wire __tapa_done_q;
 
+assign Drain_0__ap_start = (Drain_0__state == 2'b01);
+assign Drain_0__is_done = (Drain_0__state == 2'b10);
+assign Drain_0__dst_offset = Drain_0__dst_offset_reg;
+assign Drain_0__n = Drain_0__n_reg;
 assign Load_0__ap_start = (Load_0__state == 2'b01);
 assign Load_0__is_done = (Load_0__state == 2'b10);
 assign Load_0__n = Load_0__n_reg;
 assign Load_0__src_offset = Load_0__src_offset_reg;
-assign Store_0__ap_start = (Store_0__state == 2'b01);
-assign Store_0__is_done = (Store_0__state == 2'b10);
-assign Store_0__dst_offset = Store_0__dst_offset_reg;
-assign Store_0__n = Store_0__n_reg;
 assign Turn_0__ap_start = (Turn_0__state == 2'b01);
 assign Turn_0__is_done = (Turn_0__state == 2'b10);
 assign Turn_0__n = Turn_0__n_reg;
-assign TurnIn_0__ap_start = (TurnIn_0__state == 2'b01);
-assign TurnIn_0__is_done = (TurnIn_0__state == 2'b10);
-assign TurnIn_0__n = TurnIn_0__n_reg;
 assign TurnOut_0__ap_start = (TurnOut_0__state == 2'b01);
 assign TurnOut_0__is_done = (TurnOut_0__state == 2'b10);
 assign TurnOut_0__n = TurnOut_0__n_reg;
@@ -86,6 +74,50 @@ assign ap_idle = (__tapa_state == 2'b00);
 assign __tapa_done_q = (__tapa_state == 2'b10);
 assign ap_done = __tapa_done_q;
 assign ap_ready = __tapa_done_q;
+always @(posedge ap_clk) begin
+  if (ap_rst) begin
+    Drain_0__state <= 2'b00;
+  end else begin
+    case (Drain_0__state)
+      2'b00: begin
+        if (__tapa_start_q) begin
+          Drain_0__state <= 2'b01;
+        end
+      end
+      2'b01: begin
+        if ((Drain_0__ap_ready && Drain_0__ap_done)) begin
+          Drain_0__state <= 2'b10;
+        end else begin
+          if (Drain_0__ap_ready) begin
+            Drain_0__state <= 2'b11;
+          end
+        end
+      end
+      2'b11: begin
+        if (Drain_0__ap_done) begin
+          Drain_0__state <= 2'b10;
+        end
+      end
+      2'b10: begin
+        if (__tapa_done_q) begin
+          Drain_0__state <= 2'b00;
+        end
+      end
+      default: begin
+        Drain_0__state <= 2'b00;
+      end
+    endcase
+  end
+end
+
+always @(posedge ap_clk) begin
+  Drain_0__dst_offset_reg <= Drain_0__dst_offset_in;
+end
+
+always @(posedge ap_clk) begin
+  Drain_0__n_reg <= Drain_0__n_in;
+end
+
 always @(posedge ap_clk) begin
   if (ap_rst) begin
     Load_0__state <= 2'b00;
@@ -132,50 +164,6 @@ end
 
 always @(posedge ap_clk) begin
   if (ap_rst) begin
-    Store_0__state <= 2'b00;
-  end else begin
-    case (Store_0__state)
-      2'b00: begin
-        if (__tapa_start_q) begin
-          Store_0__state <= 2'b01;
-        end
-      end
-      2'b01: begin
-        if ((Store_0__ap_ready && Store_0__ap_done)) begin
-          Store_0__state <= 2'b10;
-        end else begin
-          if (Store_0__ap_ready) begin
-            Store_0__state <= 2'b11;
-          end
-        end
-      end
-      2'b11: begin
-        if (Store_0__ap_done) begin
-          Store_0__state <= 2'b10;
-        end
-      end
-      2'b10: begin
-        if (__tapa_done_q) begin
-          Store_0__state <= 2'b00;
-        end
-      end
-      default: begin
-        Store_0__state <= 2'b00;
-      end
-    endcase
-  end
-end
-
-always @(posedge ap_clk) begin
-  Store_0__dst_offset_reg <= Store_0__dst_offset_in;
-end
-
-always @(posedge ap_clk) begin
-  Store_0__n_reg <= Store_0__n_in;
-end
-
-always @(posedge ap_clk) begin
-  if (ap_rst) begin
     Turn_0__state <= 2'b00;
   end else begin
     case (Turn_0__state)
@@ -212,46 +200,6 @@ end
 
 always @(posedge ap_clk) begin
   Turn_0__n_reg <= Turn_0__n_in;
-end
-
-always @(posedge ap_clk) begin
-  if (ap_rst) begin
-    TurnIn_0__state <= 2'b00;
-  end else begin
-    case (TurnIn_0__state)
-      2'b00: begin
-        if (__tapa_start_q) begin
-          TurnIn_0__state <= 2'b01;
-        end
-      end
-      2'b01: begin
-        if ((TurnIn_0__ap_ready && TurnIn_0__ap_done)) begin
-          TurnIn_0__state <= 2'b10;
-        end else begin
-          if (TurnIn_0__ap_ready) begin
-            TurnIn_0__state <= 2'b11;
-          end
-        end
-      end
-      2'b11: begin
-        if (TurnIn_0__ap_done) begin
-          TurnIn_0__state <= 2'b10;
-        end
-      end
-      2'b10: begin
-        if (__tapa_done_q) begin
-          TurnIn_0__state <= 2'b00;
-        end
-      end
-      default: begin
-        TurnIn_0__state <= 2'b00;
-      end
-    endcase
-  end
-end
-
-always @(posedge ap_clk) begin
-  TurnIn_0__n_reg <= TurnIn_0__n_in;
 end
 
 always @(posedge ap_clk) begin
@@ -305,7 +253,7 @@ always @(posedge ap_clk) begin
         end
       end
       2'b01: begin
-        if (((((Load_0__is_done && Store_0__is_done) && Turn_0__is_done) && TurnIn_0__is_done) && TurnOut_0__is_done)) begin
+        if ((((Drain_0__is_done && Load_0__is_done) && Turn_0__is_done) && TurnOut_0__is_done)) begin
           __tapa_state <= 2'b10;
         end
       end

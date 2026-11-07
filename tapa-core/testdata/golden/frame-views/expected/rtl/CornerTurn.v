@@ -102,6 +102,14 @@ module CornerTurn #(
 );
 
 wire ap_rst;
+reg [1:0] Drain_0__state;
+wire Drain_0__ap_start;
+wire Drain_0__ap_done;
+wire Drain_0__is_done;
+wire Drain_0__ap_idle;
+wire Drain_0__ap_ready;
+wire [63:0] Drain_0__dst_offset;
+wire [31:0] Drain_0__n;
 reg [1:0] Load_0__state;
 wire Load_0__ap_start;
 wire Load_0__ap_done;
@@ -110,14 +118,6 @@ wire Load_0__ap_idle;
 wire Load_0__ap_ready;
 wire [31:0] Load_0__n;
 wire [63:0] Load_0__src_offset;
-reg [1:0] Store_0__state;
-wire Store_0__ap_start;
-wire Store_0__ap_done;
-wire Store_0__is_done;
-wire Store_0__ap_idle;
-wire Store_0__ap_ready;
-wire [63:0] Store_0__dst_offset;
-wire [31:0] Store_0__n;
 reg [1:0] Turn_0__state;
 wire Turn_0__ap_start;
 wire Turn_0__ap_done;
@@ -125,13 +125,6 @@ wire Turn_0__is_done;
 wire Turn_0__ap_idle;
 wire Turn_0__ap_ready;
 wire [31:0] Turn_0__n;
-reg [1:0] TurnIn_0__state;
-wire TurnIn_0__ap_start;
-wire TurnIn_0__ap_done;
-wire TurnIn_0__is_done;
-wire TurnIn_0__ap_idle;
-wire TurnIn_0__ap_ready;
-wire [31:0] TurnIn_0__n;
 reg [1:0] TurnOut_0__state;
 wire TurnOut_0__ap_start;
 wire TurnOut_0__ap_done;
@@ -139,19 +132,6 @@ wire TurnOut_0__is_done;
 wire TurnOut_0__ap_idle;
 wire TurnOut_0__ap_ready;
 wire [31:0] TurnOut_0__n;
-wire [17:0] cols_w_buf_address0;
-wire cols_w_buf_ce0;
-wire cols_w_buf_we0;
-wire [31:0] cols_w_buf_d0;
-wire [7:0] cols_w_acquire_dout;
-wire cols_w_acquire_empty_n;
-wire cols_w_acquire_read;
-wire cols_w_release_din;
-wire cols_w_release_full_n;
-wire cols_w_release_write;
-wire [32:0] cols_dout;
-wire cols_empty_n;
-wire cols_read;
 wire [17:0] once_w_buf_address0;
 wire once_w_buf_ce0;
 wire once_w_buf_we0;
@@ -192,6 +172,51 @@ wire twice_write;
 wire [63:0] src_offset;
 wire [63:0] dst_offset;
 wire [31:0] n;
+
+Drain Drain_0 (
+  .ap_clk(ap_clk),
+  .ap_rst_n(ap_rst_n),
+  .ap_start(Drain_0__ap_start),
+  .ap_done(Drain_0__ap_done),
+  .ap_idle(Drain_0__ap_idle),
+  .ap_ready(Drain_0__ap_ready),
+  .dst_offset(Drain_0__dst_offset),
+  .m_axi_dst_ARADDR(m_axi_dst_ARADDR),
+  .m_axi_dst_ARBURST(m_axi_dst_ARBURST),
+  .m_axi_dst_ARID(m_axi_dst_ARID),
+  .m_axi_dst_ARLEN(m_axi_dst_ARLEN),
+  .m_axi_dst_ARREADY(m_axi_dst_ARREADY),
+  .m_axi_dst_ARSIZE(m_axi_dst_ARSIZE),
+  .m_axi_dst_ARVALID(m_axi_dst_ARVALID),
+  .m_axi_dst_AWADDR(m_axi_dst_AWADDR),
+  .m_axi_dst_AWBURST(m_axi_dst_AWBURST),
+  .m_axi_dst_AWID(m_axi_dst_AWID),
+  .m_axi_dst_AWLEN(m_axi_dst_AWLEN),
+  .m_axi_dst_AWREADY(m_axi_dst_AWREADY),
+  .m_axi_dst_AWSIZE(m_axi_dst_AWSIZE),
+  .m_axi_dst_AWVALID(m_axi_dst_AWVALID),
+  .m_axi_dst_BID(m_axi_dst_BID),
+  .m_axi_dst_BREADY(m_axi_dst_BREADY),
+  .m_axi_dst_BRESP(m_axi_dst_BRESP),
+  .m_axi_dst_BVALID(m_axi_dst_BVALID),
+  .m_axi_dst_RDATA(m_axi_dst_RDATA),
+  .m_axi_dst_RID(m_axi_dst_RID),
+  .m_axi_dst_RLAST(m_axi_dst_RLAST),
+  .m_axi_dst_RREADY(m_axi_dst_RREADY),
+  .m_axi_dst_RRESP(m_axi_dst_RRESP),
+  .m_axi_dst_RVALID(m_axi_dst_RVALID),
+  .m_axi_dst_WDATA(m_axi_dst_WDATA),
+  .m_axi_dst_WLAST(m_axi_dst_WLAST),
+  .m_axi_dst_WREADY(m_axi_dst_WREADY),
+  .m_axi_dst_WSTRB(m_axi_dst_WSTRB),
+  .m_axi_dst_WVALID(m_axi_dst_WVALID),
+  .n(Drain_0__n),
+  .turned_s_dout(twice_dout),
+  .turned_peek_dout(twice_dout),
+  .turned_s_empty_n(twice_empty_n),
+  .turned_peek_empty_n(twice_empty_n),
+  .turned_s_read(twice_read)
+);
 
 Load Load_0 (
   .ap_clk(ap_clk),
@@ -237,51 +262,6 @@ Load Load_0 (
   .m_axi_src_WVALID(m_axi_src_WVALID)
 );
 
-Store Store_0 (
-  .ap_clk(ap_clk),
-  .ap_rst_n(ap_rst_n),
-  .ap_start(Store_0__ap_start),
-  .ap_done(Store_0__ap_done),
-  .ap_idle(Store_0__ap_idle),
-  .ap_ready(Store_0__ap_ready),
-  .dst_r(Store_0__dst_offset),
-  .m_axi_dst_ARADDR(m_axi_dst_ARADDR),
-  .m_axi_dst_ARBURST(m_axi_dst_ARBURST),
-  .m_axi_dst_ARID(m_axi_dst_ARID),
-  .m_axi_dst_ARLEN(m_axi_dst_ARLEN),
-  .m_axi_dst_ARREADY(m_axi_dst_ARREADY),
-  .m_axi_dst_ARSIZE(m_axi_dst_ARSIZE),
-  .m_axi_dst_ARVALID(m_axi_dst_ARVALID),
-  .m_axi_dst_AWADDR(m_axi_dst_AWADDR),
-  .m_axi_dst_AWBURST(m_axi_dst_AWBURST),
-  .m_axi_dst_AWID(m_axi_dst_AWID),
-  .m_axi_dst_AWLEN(m_axi_dst_AWLEN),
-  .m_axi_dst_AWREADY(m_axi_dst_AWREADY),
-  .m_axi_dst_AWSIZE(m_axi_dst_AWSIZE),
-  .m_axi_dst_AWVALID(m_axi_dst_AWVALID),
-  .m_axi_dst_BID(m_axi_dst_BID),
-  .m_axi_dst_BREADY(m_axi_dst_BREADY),
-  .m_axi_dst_BRESP(m_axi_dst_BRESP),
-  .m_axi_dst_BVALID(m_axi_dst_BVALID),
-  .m_axi_dst_RDATA(m_axi_dst_RDATA),
-  .m_axi_dst_RID(m_axi_dst_RID),
-  .m_axi_dst_RLAST(m_axi_dst_RLAST),
-  .m_axi_dst_RREADY(m_axi_dst_RREADY),
-  .m_axi_dst_RRESP(m_axi_dst_RRESP),
-  .m_axi_dst_RVALID(m_axi_dst_RVALID),
-  .m_axi_dst_WDATA(m_axi_dst_WDATA),
-  .m_axi_dst_WLAST(m_axi_dst_WLAST),
-  .m_axi_dst_WREADY(m_axi_dst_WREADY),
-  .m_axi_dst_WSTRB(m_axi_dst_WSTRB),
-  .m_axi_dst_WVALID(m_axi_dst_WVALID),
-  .in_s_dout(cols_dout),
-  .in_peek_dout(cols_dout),
-  .in_s_empty_n(cols_empty_n),
-  .in_peek_empty_n(cols_empty_n),
-  .in_s_read(cols_read),
-  .n(Store_0__n)
-);
-
 Turn Turn_0 (
   .ap_clk(ap_clk),
   .ap_rst_n(ap_rst_n),
@@ -309,31 +289,6 @@ Turn Turn_0 (
   .out_release_din(once_w_release_din),
   .out_release_full_n(once_w_release_full_n),
   .out_release_write(once_w_release_write)
-);
-
-TurnIn TurnIn_0 (
-  .ap_clk(ap_clk),
-  .ap_rst_n(ap_rst_n),
-  .ap_start(TurnIn_0__ap_start),
-  .ap_done(TurnIn_0__ap_done),
-  .ap_idle(TurnIn_0__ap_idle),
-  .ap_ready(TurnIn_0__ap_ready),
-  .in_s_dout(twice_dout),
-  .in_peek_dout(twice_dout),
-  .in_s_empty_n(twice_empty_n),
-  .in_peek_empty_n(twice_empty_n),
-  .in_s_read(twice_read),
-  .n(TurnIn_0__n),
-  .out_buf_address0(cols_w_buf_address0),
-  .out_buf_ce0(cols_w_buf_ce0),
-  .out_buf_we0(cols_w_buf_we0),
-  .out_buf_d0(cols_w_buf_d0),
-  .out_acquire_dout(cols_w_acquire_dout),
-  .out_acquire_empty_n(cols_w_acquire_empty_n),
-  .out_acquire_read(cols_w_acquire_read),
-  .out_release_din(cols_w_release_din),
-  .out_release_full_n(cols_w_release_full_n),
-  .out_release_write(cols_w_release_write)
 );
 
 TurnOut TurnOut_0 (
@@ -366,6 +321,15 @@ CornerTurn_fsm __tapa_fsm_unit (
   .ap_done(ap_done),
   .ap_idle(ap_idle),
   .ap_ready(ap_ready),
+  .Drain_0__ap_start(Drain_0__ap_start),
+  .Drain_0__ap_ready(Drain_0__ap_ready),
+  .Drain_0__ap_done(Drain_0__ap_done),
+  .Drain_0__ap_idle(Drain_0__ap_idle),
+  .Drain_0__is_done(Drain_0__is_done),
+  .Drain_0__dst_offset_in(dst_offset),
+  .Drain_0__dst_offset(Drain_0__dst_offset),
+  .Drain_0__n_in(n),
+  .Drain_0__n(Drain_0__n),
   .Load_0__ap_start(Load_0__ap_start),
   .Load_0__ap_ready(Load_0__ap_ready),
   .Load_0__ap_done(Load_0__ap_done),
@@ -375,15 +339,6 @@ CornerTurn_fsm __tapa_fsm_unit (
   .Load_0__n(Load_0__n),
   .Load_0__src_offset_in(src_offset),
   .Load_0__src_offset(Load_0__src_offset),
-  .Store_0__ap_start(Store_0__ap_start),
-  .Store_0__ap_ready(Store_0__ap_ready),
-  .Store_0__ap_done(Store_0__ap_done),
-  .Store_0__ap_idle(Store_0__ap_idle),
-  .Store_0__is_done(Store_0__is_done),
-  .Store_0__dst_offset_in(dst_offset),
-  .Store_0__dst_offset(Store_0__dst_offset),
-  .Store_0__n_in(n),
-  .Store_0__n(Store_0__n),
   .Turn_0__ap_start(Turn_0__ap_start),
   .Turn_0__ap_ready(Turn_0__ap_ready),
   .Turn_0__ap_done(Turn_0__ap_done),
@@ -391,13 +346,6 @@ CornerTurn_fsm __tapa_fsm_unit (
   .Turn_0__is_done(Turn_0__is_done),
   .Turn_0__n_in(n),
   .Turn_0__n(Turn_0__n),
-  .TurnIn_0__ap_start(TurnIn_0__ap_start),
-  .TurnIn_0__ap_ready(TurnIn_0__ap_ready),
-  .TurnIn_0__ap_done(TurnIn_0__ap_done),
-  .TurnIn_0__ap_idle(TurnIn_0__ap_idle),
-  .TurnIn_0__is_done(TurnIn_0__is_done),
-  .TurnIn_0__n_in(n),
-  .TurnIn_0__n(TurnIn_0__n),
   .TurnOut_0__ap_start(TurnOut_0__ap_start),
   .TurnOut_0__ap_ready(TurnOut_0__ap_ready),
   .TurnOut_0__ap_done(TurnOut_0__ap_done),
@@ -405,37 +353,6 @@ CornerTurn_fsm __tapa_fsm_unit (
   .TurnOut_0__is_done(TurnOut_0__is_done),
   .TurnOut_0__n_in(n),
   .TurnOut_0__n(TurnOut_0__n)
-);
-
-frame_channel #(
-  .DATA_WIDTH(32),
-  .FRAME(1024),
-  .BANKS(2),
-  .ADDR_WIDTH(18),
-  .BANK_WIDTH(8),
-  .W_VIEW(1),
-  .R_VIEW(0)
-) cols_fifo (
-  .clk(ap_clk),
-  .reset(ap_rst),
-  .w_buf_address0(cols_w_buf_address0),
-  .w_buf_ce0(cols_w_buf_ce0),
-  .w_buf_we0(cols_w_buf_we0),
-  .w_buf_d0(cols_w_buf_d0),
-  .w_acquire_dout(cols_w_acquire_dout),
-  .w_acquire_empty_n(cols_w_acquire_empty_n),
-  .w_acquire_read(cols_w_acquire_read),
-  .w_release_full_n(cols_w_release_full_n),
-  .w_release_write(cols_w_release_write),
-  .if_din('d0),
-  .if_write('d0),
-  .r_buf_address0('d0),
-  .r_buf_ce0('d0),
-  .r_acquire_read('d0),
-  .r_release_write('d0),
-  .if_dout(cols_dout),
-  .if_empty_n(cols_empty_n),
-  .if_read(cols_read)
 );
 
 frame_channel #(

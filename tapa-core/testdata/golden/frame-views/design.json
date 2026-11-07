@@ -40,6 +40,26 @@
                 }
             ],
             "tasks": {
+                "Drain": [
+                    {
+                        "args": {
+                            "dst": {
+                                "arg": "dst",
+                                "cat": "mmap"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "turned": {
+                                "arg": "twice",
+                                "cat": "istream"
+                            }
+                        },
+                        "step": 0,
+                        "position": 3
+                    }
+                ],
                 "Load": [
                     {
                         "args": {
@@ -60,26 +80,6 @@
                         "position": 0
                     }
                 ],
-                "Store": [
-                    {
-                        "args": {
-                            "dst": {
-                                "arg": "dst",
-                                "cat": "mmap"
-                            },
-                            "in": {
-                                "arg": "cols",
-                                "cat": "istream"
-                            },
-                            "n": {
-                                "arg": "n",
-                                "cat": "scalar"
-                            }
-                        },
-                        "step": 0,
-                        "position": 4
-                    }
-                ],
                 "Turn": [
                     {
                         "args": {
@@ -98,26 +98,6 @@
                         },
                         "step": 0,
                         "position": 1
-                    }
-                ],
-                "TurnIn": [
-                    {
-                        "args": {
-                            "in": {
-                                "arg": "twice",
-                                "cat": "istream"
-                            },
-                            "n": {
-                                "arg": "n",
-                                "cat": "scalar"
-                            },
-                            "out": {
-                                "arg": "cols",
-                                "cat": "oframes"
-                            }
-                        },
-                        "step": 0,
-                        "position": 3
                     }
                 ],
                 "TurnOut": [
@@ -142,17 +122,6 @@
                 ]
             },
             "fifos": {
-                "cols": {
-                    "depth": 2048,
-                    "consumed_by": [
-                        "Store",
-                        0
-                    ],
-                    "produced_by": [
-                        "TurnIn",
-                        0
-                    ]
-                },
                 "once": {
                     "depth": 2048,
                     "consumed_by": [
@@ -178,7 +147,7 @@
                 "twice": {
                     "depth": 2,
                     "consumed_by": [
-                        "TurnIn",
+                        "Drain",
                         0
                     ],
                     "produced_by": [
@@ -191,6 +160,103 @@
             "self_area": {
                 "lut": 360,
                 "ff": 214,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "Drain": {
+            "level": "upper",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_Drain"
+            ],
+            "readable_name": "Drain",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "turned",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "dst",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {
+                "Store": [
+                    {
+                        "args": {
+                            "dst": {
+                                "arg": "dst",
+                                "cat": "mmap"
+                            },
+                            "in": {
+                                "arg": "cols",
+                                "cat": "istream"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            }
+                        },
+                        "step": 0,
+                        "position": 1
+                    }
+                ],
+                "TurnIn": [
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "turned",
+                                "cat": "istream"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "cols",
+                                "cat": "oframes"
+                            }
+                        },
+                        "step": 0,
+                        "position": 0
+                    }
+                ]
+            },
+            "fifos": {
+                "cols": {
+                    "depth": 2048,
+                    "consumed_by": [
+                        "Store",
+                        0
+                    ],
+                    "produced_by": [
+                        "TurnIn",
+                        0
+                    ]
+                }
+            },
+            "clock_period": 1215,
+            "self_area": {
+                "lut": 27,
+                "ff": 2,
                 "bram_18k": 0,
                 "dsp": 0,
                 "uram": 0

@@ -2,7 +2,8 @@
 
 // Three turns in a row: the first between two frame ports, fed by an
 // element stream; the second from a frame port to an element stream; the
-// third from an element stream into a frame port, read as elements again.
+// third from an element stream into a frame port, read as elements again
+// inside an upper task, which declares that frame channel itself.
 
 void Load(tapa::mmap<const float> src, tapa::ostream<float>& out, int n) {
   [[tapa::pipeline(1)]] for (int i = 0; i < n * kFrame; ++i) {
@@ -53,15 +54,18 @@ void Store(tapa::istream<float>& in, tapa::mmap<float> dst, int n) {
   }
 }
 
+void Drain(tapa::istream<float>& turned, tapa::mmap<float> dst, int n) {
+  tapa::stream<float, 2 * kFrame> cols("cols");
+  tapa::task().invoke(TurnIn, turned, cols, n).invoke(Store, cols, dst, n);
+}
+
 void CornerTurn(tapa::mmap<const float> src, tapa::mmap<float> dst, int n) {
   tapa::stream<float, 2 * kFrame> rows("rows");
   tapa::stream<float, 2 * kFrame> once("once");
   tapa::stream<float, 2> twice("twice");
-  tapa::stream<float, 2 * kFrame> cols("cols");
   tapa::task()
       .invoke(Load, src, rows, n)
       .invoke(Turn, rows, once, n)
       .invoke(TurnOut, once, twice, n)
-      .invoke(TurnIn, twice, cols, n)
-      .invoke(Store, cols, dst, n);
+      .invoke(Drain, twice, dst, n);
 }

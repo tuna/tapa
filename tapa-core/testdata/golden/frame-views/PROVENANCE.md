@@ -8,9 +8,9 @@ tapacc and Vitis HLS 2025.2 (`--part-num xcu250-figd2104-2L-e`, the Bazel
 `tapa_xo` default): top `CornerTurn` with mmaps `src` and `dst`; `Load`
 writes the element stream `rows` into `Turn`'s frame port; `Turn` writes
 frames of 1024 to `TurnOut` through `once`; `TurnOut` reads them and writes
-the element stream `twice` (an ordinary FIFO); `TurnIn` writes frames from
-it into `cols`, which `Store` reads as elements. The frame channels are two
-banks deep (depth 2048).
+the element stream `twice` (an ordinary FIFO); the upper task `Drain` declares
+`cols`, into which `TurnIn` writes frames from it and from which `Store`
+reads elements. The frame channels are two banks deep (depth 2048).
 
 ## HLS inputs
 
@@ -28,5 +28,6 @@ these tasks). `Turn.v` shows a frame port's interface: an `ap_memory` port
 Same rules as the other cases. This case exercises the `frame_channel`
 instances for every pairing of ends: an element stream into a frame port
 (`rows`), two frame ports (`once`), and a frame port into an element
-stream (`cols`), with their bank count, widths and wiring, next to a FIFO
-(`twice`) between two tasks that also have frame ports.
+stream (`cols`, inside the upper task `Drain`), with their bank count,
+widths and wiring, next to a FIFO (`twice`) between two tasks that also
+have frame ports.
