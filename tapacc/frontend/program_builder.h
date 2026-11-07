@@ -94,8 +94,10 @@ class ProgramBuilder {
   // TU's recorded expanded-token stream (null when this run recorded none);
   // rewrite edits anchored inside macro expansions compose into its
   // invocation splices.
+  // `skipped` lists the ranges the preprocessor skipped in this TU.
   void RewriteTreeTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
-                     const clang::syntax::TokenBuffer* tokens);
+                     const clang::syntax::TokenBuffer* tokens,
+                     const std::vector<clang::SourceRange>& skipped);
 
   // The per-TU Program view of the merged task set: `file_funcs` /
   // `local_funcs` of the TU's mirrored files, plus one TaskModel per merged

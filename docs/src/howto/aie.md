@@ -199,8 +199,9 @@ Where the two targets want different code, guard the AI Engine side with
 `#if defined(TAPA_TARGET_AIE_)`. The AI Engine compile defines it, on x86sim
 as on hardware; software simulation, tapacc and HLS compile the other branch.
 tapacc therefore neither checks nor lowers the guarded code, so it should use
-only ports and locals the other branch also uses, and loop attributes such as
-`[[tapa::pipeline]]` take no effect there. `tests/apps/cannon` guards where its
+only ports and locals the other branch also uses, and a TAPA attribute such
+as `[[tapa::pipeline]]` takes no effect there: tapacc removes it, with a
+remark, as it does in any code the preprocessor skips. `tests/apps/cannon` guards where its
 PEs send their blocks: whole before multiplying on the AI Engine, a chunk at a
 time while multiplying on PL.
 

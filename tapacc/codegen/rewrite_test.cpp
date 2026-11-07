@@ -499,6 +499,32 @@ TEST(Rewrite, AttrSpellingInCommentIsNotALeak) {
   EXPECT_TRUE(Contains(code, "[[tapa::pipeline")) << code;
 }
 
+// tapacc never parses a branch the preprocessor skips, so it cannot lower an
+// attribute there; it removes it rather than hand it to a vendor that
+// compiles the branch (chess defines TAPA_TARGET_AIE_, tapacc does not).
+TEST(Rewrite, AttrInSkippedCodeIsRemoved) {
+  constexpr char kGuarded[] = R"cpp(
+    void GuardedTask(tapa::mmap<const float> mem, tapa::ostream<float>& out,
+                     unsigned long long n) {
+#if defined(TAPA_TARGET_AIE_)
+      [[tapa::pipeline(1)]] for (unsigned long long i = 0; i < n; ++i)
+        out.write(mem[i] * 2);  // keeps [[tapa::unroll]] in a comment
+#else
+      [[tapa::pipeline(1)]] for (unsigned long long i = 0; i < n; ++i)
+        out.write(mem[i]);
+#endif
+    }
+    void GuardedTop(tapa::mmap<const float> mem, tapa::ostream<float>& out,
+                    unsigned long long n) {
+      tapa::task().invoke(GuardedTask, mem, out, n);
+    }
+  )cpp";
+  const std::string code = Rewrite("guarded", kGuarded, "GuardedTop");
+  EXPECT_TRUE(Contains(code, "HLS pipeline II = 1")) << code;
+  EXPECT_FALSE(Contains(code, "[[tapa::pipeline")) << code;
+  EXPECT_TRUE(Contains(code, "keeps [[tapa::unroll]] in a comment")) << code;
+}
+
 // A forward declaration shares the definition's body through the
 // redeclaration chain, so rewriting it too would insert every stream
 // pragma a second time at the same point.

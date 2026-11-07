@@ -929,9 +929,10 @@ void ProgramBuilder::AddMovers(int tu, TaskModel& model, Program& view,
   }
 }
 
-void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
-                                   std::vector<IncludeDirective> log,
-                                   const clang::syntax::TokenBuffer* tokens) {
+void ProgramBuilder::RewriteTreeTu(
+    clang::ASTContext& ctx, std::vector<IncludeDirective> log,
+    const clang::syntax::TokenBuffer* tokens,
+    const std::vector<clang::SourceRange>& skipped) {
   const int tu = TuOf(MainFilePath(ctx));
   Program view = TuView(ctx, log);
   FillOwnedTasks(tu, view, ctx);
@@ -943,6 +944,7 @@ void ProgramBuilder::RewriteTreeTu(clang::ASTContext& ctx,
   TreeSession session(ctx, log, tree_config_.main_files, tokens);
   RewriteTreeFiles(view, default_target_, Backends{hls, vitis, ignore, aie},
                    ctx, session);
+  StripSkippedAttrs(skipped, TreeFiles(ctx, log), ctx, session.edits());
   session.FlushMacroSplices();
 
   std::string error;

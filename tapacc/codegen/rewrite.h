@@ -3,8 +3,10 @@
 
 #include <set>
 #include <string>
+#include <vector>
 
 #include "clang/AST/ASTContext.h"
+#include "clang/Basic/SourceLocation.h"
 #include "llvm/ADT/StringRef.h"
 
 #include "backend.h"
@@ -12,6 +14,7 @@
 
 namespace tapa::cc {
 
+class EditSink;
 class TreeSession;
 
 // One backend per synthesis target.
@@ -30,6 +33,15 @@ struct Backends {
 void RewriteTreeFiles(const Program& program, SynthTarget default_target,
                       const Backends& backends, clang::ASTContext& ctx,
                       TreeSession& session);
+
+// Removes each `[[tapa::...]]` from code the preprocessor skipped, with a
+// remark that it takes no effect there. tapacc never parses that code, so it
+// cannot lower it, and a vendor compiling with other macros (chess defines
+// TAPA_TARGET_AIE_, which tapacc does not) would otherwise get it verbatim.
+// Only the `mirrored` files are edited.
+void StripSkippedAttrs(const std::vector<clang::SourceRange>& skipped,
+                       const std::set<clang::FileID>& mirrored,
+                       clang::ASTContext& ctx, EditSink& edits);
 
 // Reports any lowered attribute text left in one final emitted file. The
 // same file renders in every TU that sights it, so the same leak reaches

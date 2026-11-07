@@ -455,7 +455,7 @@ End-of-transaction macros simplify consuming a stream until a sentinel marker is
 
 These C++ attributes are recognised by TAPA and lowered to vendor pragmas during synthesis. They have no effect in software simulation, and they are how a TAPA program expresses synthesis directives without naming a vendor: write these instead of `#pragma HLS ...`.
 
-**On a statement.** Written on a loop, the attribute applies to *that* loop. `pipeline` and `unroll` must be written on the loop itself (or, for `pipeline`, on the function); the region attributes — `tripcount`, `flatten`, `latency`, `dependence`, `balance` — may also be written on an `if` (with braces, no `else`) or a bare block, applying to that region, which is what a bare pragma in the same position would have meant. A TAPA attribute on a subject it cannot lower to is a hard error, not a silent ignore.
+**On a statement.** Written on a loop, the attribute applies to *that* loop. `pipeline` and `unroll` must be written on the loop itself (or, for `pipeline`, on the function); the region attributes — `tripcount`, `flatten`, `latency`, `dependence`, `balance` — may also be written on an `if` (with braces, no `else`) or a bare block, applying to that region, which is what a bare pragma in the same position would have meant. A TAPA attribute on a subject it cannot lower to is a hard error, not a silent ignore. In code the preprocessor skips, which tapacc never parses, an attribute is removed with a remark instead: it takes no effect, whatever macros a vendor compiles the code with.
 
 | Attribute | Lowers to | Description |
 |-----------|-----------|-------------|

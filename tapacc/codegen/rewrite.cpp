@@ -1,5 +1,6 @@
 #include "rewrite.h"
 
+#include <cctype>
 #include <functional>
 #include <map>
 #include <optional>
@@ -365,6 +366,47 @@ std::string BlankCommentsAndStrings(llvm::StringRef code) {
 }
 
 }  // namespace
+
+void StripSkippedAttrs(const std::vector<clang::SourceRange>& skipped,
+                       const std::set<clang::FileID>& mirrored,
+                       clang::ASTContext& ctx, EditSink& edits) {
+  const clang::SourceManager& sm = ctx.getSourceManager();
+  for (const clang::SourceRange& range : skipped) {
+    const clang::SourceLocation begin = range.getBegin();
+    if (!begin.isFileID() || mirrored.count(sm.getFileID(begin)) == 0) {
+      continue;
+    }
+    bool invalid = false;
+    const char* data = sm.getCharacterData(begin, &invalid);
+    if (invalid) continue;
+    const std::string text = BlankCommentsAndStrings(llvm::StringRef(
+        data, sm.getFileOffset(range.getEnd()) - sm.getFileOffset(begin)));
+    for (size_t pos = text.find("[["); pos != std::string::npos;
+         pos = text.find("[[", pos + 2)) {
+      const size_t name = text.find_first_not_of(" \t\n", pos + 2);
+      if (name == std::string::npos || text.compare(name, 6, "tapa::") != 0) {
+        continue;
+      }
+      // The group runs to the `]]` that closes it.
+      int depth = 0;
+      size_t end = pos;
+      for (; end < text.size(); ++end) {
+        if (text[end] == '[' || text[end] == '(') ++depth;
+        if ((text[end] == ']' || text[end] == ')') && --depth == 0) break;
+      }
+      if (end == text.size()) break;  // unclosed: the leak scan reports it
+      const llvm::StringRef spelling = llvm::StringRef(text).substr(name + 6);
+      const clang::SourceLocation at = begin.getLocWithOffset(pos);
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Remark, at,
+                       "[[tapa::%0]] is in code the preprocessor skips and "
+                       "takes no effect")
+          << spelling.take_while(
+                 [](char c) { return std::isalnum(c) != 0 || c == '_'; });
+      edits.RemoveText(at, static_cast<unsigned>(end + 1 - pos));
+      pos = end;
+    }
+  }
+}
 
 void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
                        clang::ASTContext& ctx,

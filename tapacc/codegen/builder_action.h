@@ -45,6 +45,8 @@ class BuilderAction : public clang::ASTFrontendAction {
         ci.getSourceManager(), &include_log_));
     if (!index_pass_) {
       recorder_ = std::make_unique<TokenRecorder>(ci.getPreprocessor());
+      ci.getPreprocessor().addPPCallbacks(
+          std::make_unique<SkippedRangeRecorder>(&skipped_));
     }
     return true;
   }
@@ -65,7 +67,7 @@ class BuilderAction : public clang::ASTFrontendAction {
           owner_.builder_.IndexTu(ctx, owner_.include_log_);
         } else {
           owner_.builder_.RewriteTreeTu(ctx, std::move(owner_.include_log_),
-                                        tokens);
+                                        tokens, owner_.skipped_);
         }
       }
 
@@ -82,6 +84,7 @@ class BuilderAction : public clang::ASTFrontendAction {
   clang::DiagnosticConsumer* diags_;
   std::vector<IncludeDirective> include_log_;
   std::unique_ptr<TokenRecorder> recorder_;
+  std::vector<clang::SourceRange> skipped_;  // the rewrite pass only
 };
 
 }  // namespace tapa::cc

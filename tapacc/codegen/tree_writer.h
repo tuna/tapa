@@ -76,6 +76,22 @@ class IncludeRecorder : public clang::PPCallbacks {
   std::vector<IncludeDirective>* log_;
 };
 
+// Records every source range the preprocessor skips (the inactive branches of
+// `#if`), whose code tapacc never parses.
+class SkippedRangeRecorder : public clang::PPCallbacks {
+ public:
+  explicit SkippedRangeRecorder(std::vector<clang::SourceRange>* ranges)
+      : ranges_(ranges) {}
+
+  void SourceRangeSkipped(clang::SourceRange range,
+                          clang::SourceLocation /*endif_loc*/) override {
+    ranges_->push_back(range);
+  }
+
+ private:
+  std::vector<clang::SourceRange>* ranges_;
+};
+
 // Where each mirrored file lands in the tree. In-root files mirror their
 // src-root-relative path (quoted includes keep resolving); out-of-root
 // files land in an `_external/<digest8>/<basename>` bucket, one bucket per
