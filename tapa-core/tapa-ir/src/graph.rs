@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
-use crate::synth_target::SynthTarget;
+use crate::port::ArgCategory;
 use crate::target::Target;
 use crate::task::Task;
 
@@ -81,12 +81,22 @@ impl TaskGraph {
     }
 
     /// Both ends of a stream agree on the frame where both move frames, and a
-    /// frame port's stream is declared by the task that invokes it. On PL
-    /// that stream is a frame channel, which joins two PL tasks: it has no
-    /// PLIO form. (An AI Engine frame port's buffers fill from a PLIO like a
-    /// `[[tapa::frame(N)]]` port's.)
+    /// frame port's stream reaches a frame channel: one its invoker declares,
+    /// or one of the invoker's stream ports, which the channel is behind. A
+    /// leaf top has no invoker to hold the channel.
     fn validate_frame_channels(&self) -> Result<(), ParseError> {
         let mut memo = BTreeMap::new();
+        if let Some(top) = self.tasks.get(&self.top) {
+            if let Some(port) = top.ports.iter().find(|port| port.cat.is_frames()) {
+                return Err(ParseError::FrameChannel {
+                    task: self.top.clone(),
+                    stream: port.name.clone(),
+                    problem: "a top task's frame port has no task to hold its frame \
+                              channel; invoke the leaf from an upper top task"
+                        .to_string(),
+                });
+            }
+        }
         for (task_name, task) in &self.tasks {
             let error = |stream: &str, problem: String| ParseError::FrameChannel {
                 task: task_name.clone(),
@@ -101,11 +111,13 @@ impl TaskGraph {
                     .fifos
                     .get(stream)
                     .is_some_and(|fifo| fifo.depth.is_some());
-                if binding.argument.cat.is_frames() && !declared {
+                let passed_on = task.port(stream).is_some_and(|port| port.cat.is_stream());
+                if binding.argument.cat.is_frames() && !declared && !passed_on {
                     return Err(error(
                         stream,
                         format!(
-                            "frame port `{}` must bind a stream the task declares",
+                            "frame port `{}` must bind a stream the task declares or one of \
+                             its stream ports",
                             binding.port_name
                         ),
                     ));
@@ -131,33 +143,34 @@ impl TaskGraph {
                         ));
                     }
                 }
-                let pl_view = |end: &Option<crate::FifoEndpoint<'_>>| {
-                    end.as_ref().is_some_and(|end| {
-                        end.binding.is_some_and(|b| b.argument.cat.is_frames())
-                            && end.task.is_some_and(|t| t.synth != SynthTarget::Aie)
-                    })
-                };
-                let aie = |end: &Option<crate::FifoEndpoint<'_>>| {
-                    end.as_ref()
-                        .and_then(|end| end.task)
-                        .is_some_and(|t| t.synth == SynthTarget::Aie)
-                };
-                let crosses =
-                    (pl_view(&ends[0]) && aie(&ends[1])) || (pl_view(&ends[1]) && aie(&ends[0]));
-                let one_sided =
-                    (pl_view(&ends[0]) || pl_view(&ends[1])) && ends.iter().any(Option::is_none);
-                if crosses || one_sided {
-                    return Err(error(
-                        stream,
-                        "a PL frame port's stream must join two PL tasks; read \
-                         or write it with tapa::istream / tapa::ostream at a \
-                         kernel or AI Engine boundary"
-                            .to_string(),
-                    ));
-                }
             }
         }
         Ok(())
+    }
+
+    /// The frame size of the port `port` of `task` when the port moves
+    /// frames by view: a leaf's `iframes` / `oframes`, or an upper task's
+    /// stream port bound to one below it, which then carries the view's
+    /// signals through the upper task.
+    #[must_use]
+    pub fn view_frame(&self, task: &str, port: &str) -> Option<u32> {
+        let def = self.tasks.get(task)?;
+        let own = def.port(port)?;
+        if own.cat.is_frames() {
+            return own.frame;
+        }
+        if def.level != crate::task::TaskLevel::Upper
+            || !matches!(own.cat, ArgCategory::Istream | ArgCategory::Ostream)
+        {
+            return None;
+        }
+        def.tasks.iter().find_map(|(child, instances)| {
+            instances
+                .iter()
+                .flat_map(|instance| &instance.args)
+                .find(|(_, arg)| arg.arg.name() == Some(port))
+                .and_then(|(child_port, _)| self.view_frame(child, child_port))
+        })
     }
 
     /// A stream that carries `[[tapa::frame(N)]]` frames holds at least one
@@ -555,7 +568,7 @@ mod tests {
     }
 
     #[test]
-    fn a_frame_channel_joins_two_tasks_of_one_fabric_that_agree_on_the_frame() {
+    fn a_frame_port_reaches_a_frame_channel_whose_ends_agree_on_the_frame() {
         // A port spec is `cat` or `cat:frame`.
         let port = |name: &str, spec: &str| {
             let (cat, frame) = spec.split_once(':').unwrap_or((spec, ""));
@@ -617,19 +630,18 @@ mod tests {
             "stream `q` of task `T` cannot be a frame channel: its producer moves frames of 8 \
              elements and its consumer frames of 4",
         );
-        rejects(
-            pair("oframes:8", "istream", "aie"),
-            "a PL frame port's stream must join two PL tasks",
-        );
+        // A PL frame port at a PLIO gets its channel in the PL kernel's top.
+        TaskGraph::from_json(&pair("oframes:8", "istream", "aie")).expect("PL view into a PLIO");
 
-        // `Dst` is an upper task handing its own port to the frame port.
-        let q = r#""q": {"depth": 16, "produced_by": ["Src", 0], "consumed_by": ["Dst", 0]}"#;
-        let tasks = format!(
-            "{}, {}",
-            bind("Src", "out", "q", "ostream"),
-            bind("Dst", "in", "q", "istream")
-        );
-        rejects(
+        // `Dst` is an upper task handing its own port `in` to `View`'s frame
+        // port `in`, or `z`, which it neither declares nor takes.
+        let through = |arg: &str| {
+            let q = r#""q": {"depth": 16, "produced_by": ["Src", 0], "consumed_by": ["Dst", 0]}"#;
+            let tasks = format!(
+                "{}, {}",
+                bind("Src", "out", "q", "ostream"),
+                bind("Dst", "in", "q", "istream")
+            );
             graph(&[
                 ("T", task("upper", "hls", "", &tasks, q)),
                 ("Src", task("lower", "hls", &port("out", "ostream"), "", "")),
@@ -639,7 +651,7 @@ mod tests {
                         "upper",
                         "hls",
                         &port("in", "istream"),
-                        &bind("View", "in", "in", "iframes"),
+                        &bind("View", "in", arg, "iframes"),
                         "",
                     ),
                 ),
@@ -647,9 +659,21 @@ mod tests {
                     "View",
                     task("lower", "hls", &port("in", "iframes:8"), "", ""),
                 ),
-            ]),
-            "stream `in` of task `Dst` cannot be a frame channel: frame port `in` must bind a \
-             stream the task declares",
+            ])
+        };
+        let g = TaskGraph::from_json(&through("in")).expect("a view through an upper task");
+        assert_eq!(g.view_frame("Dst", "in"), Some(8));
+        assert_eq!(g.view_frame("Src", "out"), None);
+        rejects(
+            through("z"),
+            "stream `z` of task `Dst` cannot be a frame channel: frame port `in` must bind a \
+             stream the task declares or one of its stream ports",
+        );
+
+        // A leaf top has no task to hold a frame channel.
+        rejects(
+            graph(&[("T", task("lower", "hls", &port("in", "iframes:8"), "", ""))]),
+            "a top task's frame port has no task to hold its frame channel",
         );
     }
 }

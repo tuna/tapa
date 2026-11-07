@@ -177,14 +177,17 @@ pub(super) fn build_child_instance_with_reset(
                 }
             }
             ArgCategory::Iframes | ArgCategory::Oframes => {
-                // Graph validation binds a frame port only to a frame channel
-                // declared in this parent.
+                // Graph validation binds a frame port to a frame channel in
+                // this parent or to the parent's own port, which carries the
+                // view's signals from a channel further up.
                 let base = sanitize_array_name(child_port);
                 for &(suffix, _, _) in frame_signals(arg.cat.is_output_stream()) {
-                    port_args.push(PortArg::new(
-                        format!("{base}{suffix}"),
-                        Expr::ident(frame_wire(parent, arg.cat, suffix)),
-                    ));
+                    let signal = if parent_fifos.contains(parent) {
+                        frame_wire(parent, arg.cat, suffix)
+                    } else {
+                        format!("{}{suffix}", sanitize_array_name(parent))
+                    };
+                    port_args.push(PortArg::new(format!("{base}{suffix}"), Expr::ident(signal)));
                 }
             }
             ArgCategory::Ostream | ArgCategory::Ostreams => {

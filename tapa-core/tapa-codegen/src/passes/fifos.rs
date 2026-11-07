@@ -6,7 +6,9 @@ use crate::state::views::{DesignView, ModuleTable};
 use tapa_ir::floorplanned_fifo_storage_depth;
 
 use super::floorplans::stream_crossing_body_level;
-use super::frames::{build_frame_channel_instance, declare_frame_channel_wires, frame_channel};
+use super::frames::{
+    build_frame_channel_instance, declare_frame_channel_wires, frame_channel, join_outer_side,
+};
 use tapa_protocol::{
     stream_port_direction, PortDir, FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK,
     HANDSHAKE_RST, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
@@ -329,11 +331,13 @@ pub fn connect_fifos(
         let producer = design_data.fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
         let sanitized_fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
-        if let Some(channel) = frame_channel(design_data, modules, task, fifo_name, fifo)? {
+        let channel = frame_channel(design_data, modules, task, fifo_name, fifo)?;
+        if let Some(channel) = &channel {
             if let Some(mm) = modules.get_mut(task_name) {
-                declare_frame_channel_wires(mm, fifo_name, &channel);
+                declare_frame_channel_wires(mm, fifo_name, channel);
             }
-        } else if fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
+        }
+        if channel.is_none() && fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
             // Internal FIFO: declare wires for both read and write sides.
             // A produced+consumed internal FIFO always has a producer endpoint.
             let producer = producer
@@ -455,6 +459,13 @@ pub fn connect_fifos(
                             Expr::lit(format!("{keep_width}'b{}", "1".repeat(keep_width as usize))),
                         ));
                     }
+                }
+            }
+
+            // A frame port bound to the port: its channel's element side.
+            if channel.is_some() {
+                if let Some(mm) = modules.get_mut(task_name) {
+                    join_outer_side(mm, fifo_name);
                 }
             }
         }

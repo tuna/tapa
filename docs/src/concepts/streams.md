@@ -207,13 +207,19 @@ void Corner(tapa::iframes<float, 1024>& in, tapa::oframes<float, 1024>& out,
 
 The other end of the stream may be a frame port or an ordinary `istream` /
 `ostream`, which sees the frames' elements in order. The stream is still a
-`tapa::stream<T, Depth>` declared by the task that invokes both ends.
+`tapa::stream<T, Depth>`, or a stream port the invoking upper task takes and
+hands on, up to the stream's declaration or the kernel's own stream
+argument.
 
 - **On PL** the stream becomes a frame channel: `max(2, Depth / N)` banks of
   `N` elements in one memory, handed between the two ends in turn. A frame
   port reaches its task as a memory port of the current bank, so a frame is
   read or written in place without a copy, and the producer fills one bank
-  while the consumer works on another.
+  while the consumer works on another. The channel sits where the stream is
+  declared; an upper task in between carries the frame port's signals in
+  place of the stream's. A kernel's own stream argument, or a stream to the
+  AI Engine, gets a channel of two banks in the PL kernel's top, filled from
+  or drained to that argument element by element.
 - **On the AI Engine** a frame port is the kernel's buffer port, filled or
   drained by DMA. Between two AI Engine frame ports the graph connects the
   buffers directly, so neighbouring kernels share tile memory.
@@ -231,9 +237,8 @@ Rules:
   `acquire()` is not pipelined; pipeline the loops inside it.
 - Both ends of a stream that move frames agree on `N`, and its depth holds
   at least one frame (`tapa analyze` checks both).
-- On PL the stream joins two PL leaves: a frame port cannot be a kernel's
-  own stream argument, an upper task's port, or a stream to the AI Engine
-  (an AI Engine frame port can be fed from PL by an ordinary `ostream`).
+- A top task that is itself a leaf cannot take a frame port: nothing would
+  hold its channel. Invoke the leaf from an upper top task.
   `tapa floorplan` does not place a design with a frame channel yet.
 
 ---

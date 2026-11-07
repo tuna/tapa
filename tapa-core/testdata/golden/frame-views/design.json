@@ -60,6 +60,26 @@
                         "position": 3
                     }
                 ],
+                "Emit": [
+                    {
+                        "args": {
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "once": {
+                                "arg": "once",
+                                "cat": "istream"
+                            },
+                            "twice": {
+                                "arg": "twice",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0,
+                        "position": 2
+                    }
+                ],
                 "Load": [
                     {
                         "args": {
@@ -99,33 +119,13 @@
                         "step": 0,
                         "position": 1
                     }
-                ],
-                "TurnOut": [
-                    {
-                        "args": {
-                            "in": {
-                                "arg": "once",
-                                "cat": "iframes"
-                            },
-                            "n": {
-                                "arg": "n",
-                                "cat": "scalar"
-                            },
-                            "out": {
-                                "arg": "twice",
-                                "cat": "ostream"
-                            }
-                        },
-                        "step": 0,
-                        "position": 2
-                    }
                 ]
             },
             "fifos": {
                 "once": {
                     "depth": 2048,
                     "consumed_by": [
-                        "TurnOut",
+                        "Emit",
                         0
                     ],
                     "produced_by": [
@@ -151,7 +151,7 @@
                         0
                     ],
                     "produced_by": [
-                        "TurnOut",
+                        "Emit",
                         0
                     ]
                 }
@@ -256,6 +256,71 @@
             "clock_period": 1215,
             "self_area": {
                 "lut": 27,
+                "ff": 2,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "Emit": {
+            "level": "upper",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_Emit"
+            ],
+            "readable_name": "Emit",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "once",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "twice",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {
+                "TurnOut": [
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "once",
+                                "cat": "iframes"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "twice",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0,
+                        "position": 0
+                    }
+                ]
+            },
+            "fifos": {},
+            "clock_period": 1215,
+            "self_area": {
+                "lut": 36,
                 "ff": 2,
                 "bram_18k": 0,
                 "dsp": 0,

@@ -10,8 +10,9 @@ host="$2"
 kernel="$3"
 platform="$4"
 top="${5:-VecAdd}"
+shift $(($# < 5 ? $# : 5))  # the rest are extra `tapa compile` flags
 
 work="$(mktemp -d "${TEST_TMPDIR:-/tmp}/aie-hybrid.XXXXXX")"
 "${tapa}" --work-dir "${work}/work" compile -f "${kernel}" -t "${top}" \
-  --platform "${platform}" --skip-aie -o "${work}/aie.xo"
+  --platform "${platform}" --skip-aie -o "${work}/aie.xo" "$@"
 "${host}" --bitstream="${work}/aie.xo" 64

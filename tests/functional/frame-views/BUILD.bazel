@@ -1,5 +1,7 @@
 """Frame ports: corner turns through frame channels."""
 
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:test_rules.bzl", "aie_sim_test", "tapa_functional_test")
 
 tapa_functional_test(
@@ -42,4 +44,64 @@ aie_sim_test(
     kernel = "corner",
     simulator = "aiesim",
     top_name = "CornerTurn",
+)
+
+# TurnStream: frame channels on the top's own stream arguments.
+tapa_xo(
+    name = "frame-views-stream-xo",
+    srcs = ["corner.cpp"],
+    hdrs = ["corner.h"],
+    top_name = "TurnStream",
+)
+
+sh_test(
+    name = "frame-views-stream-xosim",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath frame-views-host)",
+        "--bitstream=$(rootpath frame-views-stream-xo)",
+        "--stream_top",
+        "8",
+    ],
+    data = [
+        ":frame-views-host",
+        ":frame-views-stream-xo",
+        "//fpga-runtime:cargo_release_artifacts",
+    ],
+    tags = ["cpu:2"],
+)
+
+# Only Turn on the AI Engine: TurnOut's frame port, inside Emit, takes its
+# frames from a PLIO through a frame channel in the PL kernel's top.
+aie_sim_test(
+    name = "frame-views-plio-x86sim",
+    compile_flags = ["--target=Turn:aie"],
+    host = ":frame-views-host",
+    kernel = "corner",
+    top_name = "CornerTurn",
+)
+
+sh_test(
+    name = "frame-views-plio-hybrid",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //tests/functional/aie-vadd:run_hybrid.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :frame-views-host)",
+        "$(rootpath corner.cpp)",
+        "xilinx_vck190_base_202520_1",
+        "CornerTurn",
+        "--target=Turn:aie",
+    ],
+    data = [
+        "corner.cpp",
+        "corner.h",
+        ":frame-views-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+        "//tests/functional/aie-vadd:run_hybrid.sh",
+    ],
+    tags = ["manual"],
 )

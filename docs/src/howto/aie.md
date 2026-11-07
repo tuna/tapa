@@ -64,7 +64,7 @@ cannot be run through XRT.)
 | Construct | On the AI Engine |
 |---|---|
 | `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits. |
-| `iframes`, `oframes` | Yes: the kernel's buffer ports, filled or drained by DMA; `acquire()` takes the next buffer and its view addresses tile memory directly. Between two AI Engine frame ports the graph connects the buffers, so neighbouring kernels share tile memory and others are joined by DMA. A PL task feeds or drains one through an ordinary `ostream` or `istream`. See [frame ports](../concepts/streams.md#frame-ports). |
+| `iframes`, `oframes` | Yes: the kernel's buffer ports, filled or drained by DMA; `acquire()` takes the next buffer and its view addresses tile memory directly. Between two AI Engine frame ports the graph connects the buffers, so neighbouring kernels share tile memory and others are joined by DMA. A PL task feeds or drains one through an ordinary `ostream` or `istream`, or through a frame port of its own, whose frame channel sits in the PL kernel's top. See [frame ports](../concepts/streams.md#frame-ports). |
 | `read()`, `write()`, `>>`, `<<`, `read(dst, n)`, `write(src, n)` | Yes, blocking. |
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
 | `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |

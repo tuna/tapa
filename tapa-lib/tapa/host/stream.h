@@ -1218,6 +1218,20 @@ TAPA_DEFINE_FRAMES_ACCESSOR(o, )
 TAPA_DEFINE_FRAMES_ACCESSOR(o, &)
 #undef TAPA_DEFINE_FRAMES_ACCESSOR
 
+// param = i/oframes, arg = an upper task's own stream port: a frame port
+// whose stream the upper task takes from its invoker.
+#define TAPA_DEFINE_PORT_FRAMES_ACCESSOR(io)                   \
+  template <typename T, uint64_t F>                            \
+  struct accessor<io##frames<T, F>&, io##stream<T>&> {         \
+    static io##frames<T, F> access(io##stream<T>& arg, bool) { \
+      return io##frames<T, F>(arg);                            \
+    }                                                          \
+  };
+
+TAPA_DEFINE_PORT_FRAMES_ACCESSOR(i)
+TAPA_DEFINE_PORT_FRAMES_ACCESSOR(o)
+#undef TAPA_DEFINE_PORT_FRAMES_ACCESSOR
+
 // Pass-through accessors: underlying mechanism differs per io type.
 
 template <typename T>

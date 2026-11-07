@@ -8,3 +8,4 @@ constexpr int kEdge = 32;
 constexpr int kFrame = kEdge * kEdge;
 
 void CornerTurn(tapa::mmap<const float> src, tapa::mmap<float> dst, int n);
+void TurnStream(tapa::istream<float>& rows, tapa::ostream<float>& cols, int n);

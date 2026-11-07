@@ -3,16 +3,20 @@
 //! A frame port (`tapa::iframes` / `tapa::oframes`) reaches its leaf's RTL
 //! as a one-port memory interface plus acquire and release token FIFOs
 //! (`tapa_protocol::frame_signals`). Its stream becomes a `frame_channel`
-//! instance of `max(2, depth / frame)` banks instead of a FIFO; an end that is
-//! an ordinary stream port connects to the channel's element-stream side.
+//! instance of `max(2, depth / frame)` banks instead of a FIFO, in the task
+//! that declares the stream; an end that is an ordinary stream port connects
+//! to the channel's element-stream side. An upper task between the channel
+//! and the frame port carries the view's signals through its own port in
+//! place of the stream's. A stream the top takes as an argument gets a
+//! channel of two banks in the top, whose element side is that argument.
 
 use tapa_ir::port::ArgCategory;
 use tapa_ir::{FifoEndpoint, InterconnectDefinition, PortBinding, Task, TaskGraph};
 use tapa_protocol::{
-    frame_signal_width, frame_signals, FrameSignal, PortDir, FRAME_BANK_BITS, HANDSHAKE_CLK,
-    HANDSHAKE_RST, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES,
+    frame_signal_width, frame_signals, stream_peek_port_name, FrameSignal, PortDir,
+    FRAME_BANK_BITS, HANDSHAKE_CLK, HANDSHAKE_RST, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES,
 };
-use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
+use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{wide_wire, wire, MutableModule};
 
@@ -45,9 +49,9 @@ pub(super) struct FrameChannel {
 }
 
 /// The frame channel `fifo_name` of `task` is, or `None` for a FIFO: a
-/// stream declared in `task` with a frame port at either end. Graph
-/// validation has checked that such a stream joins two leaves invoked here
-/// whose frames agree; its banks must fit the `FRAME_BANK_BITS` token.
+/// stream of `task` with a frame port at either end, directly or through
+/// an upper task. Graph validation has checked that the ends' frames agree;
+/// the banks must fit the `FRAME_BANK_BITS` token.
 pub(super) fn frame_channel(
     graph: &TaskGraph,
     modules: &ModuleTable<'_>,
@@ -55,30 +59,21 @@ pub(super) fn frame_channel(
     fifo_name: &str,
     fifo: &InterconnectDefinition,
 ) -> Result<Option<FrameChannel>, CodegenError> {
-    let Some(depth) = fifo.depth else {
-        return Ok(None);
-    };
     let ends = [fifo.produced_by.as_ref(), fifo.consumed_by.as_ref()]
         .map(|end| graph.fifo_endpoint(task, fifo_name, end));
-    let [producer, consumer] = [view(ends[0].as_ref()), view(ends[1].as_ref())];
-    let Some(binding) = producer.or(consumer) else {
+    let [producer, consumer] = [view(graph, ends[0].as_ref()), view(graph, ends[1].as_ref())];
+    let Some((binding, frame)) = producer.or(consumer) else {
         return Ok(None);
     };
-    let unresolved = || CodegenError::FrameChannel {
-        fifo: fifo_name.to_owned(),
-        problem: "its frame port has no frame size".to_owned(),
-    };
-    let frame = binding
-        .port
-        .and_then(|port| port.frame)
-        .ok_or_else(unresolved)?;
+    // A stream the task takes rather than declares has no depth.
+    let depth = fifo.depth.unwrap_or(0);
     let width = binding.port.map_or(0, |port| port.width);
     let ports: Vec<FramePort<'_>> = [(producer, &ends[0]), (consumer, &ends[1])]
         .into_iter()
         .filter_map(|(binding, end)| {
             let end = end.as_ref()?;
             Some(FramePort {
-                port: binding?.port_name,
+                port: binding?.0.port_name,
                 module: modules.get(&end.reference.0),
             })
         })
@@ -108,10 +103,13 @@ pub(super) fn frame_channel(
     }))
 }
 
-/// The binding of a frame port at one end of a stream, if that end is one.
-fn view<'a>(end: Option<&FifoEndpoint<'a>>) -> Option<PortBinding<'a>> {
-    end?.binding
-        .filter(|binding| binding.argument.cat.is_frames())
+/// The binding at one end of a stream and its frame, if that end moves
+/// frames by view (see [`TaskGraph::view_frame`]).
+fn view<'a>(graph: &TaskGraph, end: Option<&FifoEndpoint<'a>>) -> Option<(PortBinding<'a>, u32)> {
+    let end = end?;
+    let binding = end.binding?;
+    let frame = graph.view_frame(&end.reference.0, binding.port_name)?;
+    Some((binding, frame))
 }
 
 /// The wire joining one frame-port signal of the channel `fifo`'s producer
@@ -220,6 +218,57 @@ pub(super) fn declare_frame_channel_wires(
                     wire(&wire_name)
                 });
             }
+        }
+    }
+}
+
+/// Join the element side of the channel `name` on the task's own stream
+/// port: the port's FIFO side (`{name}_dout`/`_empty_n`/`_read` in,
+/// `_din`/`_full_n`/`_write` out) and the channel's opposite side move an
+/// element whenever one is there and the other has room.
+pub(super) fn join_outer_side(mm: &mut MutableModule, name: &str) {
+    let base = sanitize_array_name(name);
+    let signal = |suffix: &str| Expr::ident(format!("{base}{suffix}"));
+    let moves = || Expr::logical_and(signal("_empty_n"), signal("_full_n"));
+    mm.add_assign(ContinuousAssign::new(signal("_din"), signal("_dout")));
+    mm.add_assign(ContinuousAssign::new(signal("_write"), moves()));
+    mm.add_assign(ContinuousAssign::new(signal("_read"), moves()));
+}
+
+/// Replace the stream ports of the upper task `task_name` that carry a view
+/// (see [`TaskGraph::view_frame`]) with that view's frame-port signals,
+/// which its tasks bind straight through.
+pub(super) fn thread_views(graph: &TaskGraph, modules: &mut ModuleTable<'_>, task_name: &str) {
+    let (Some(task), Some(mm)) = (graph.tasks.get(task_name), modules.get_mut(task_name)) else {
+        return;
+    };
+    for port in &task.ports {
+        let Some(frame) = graph.view_frame(task_name, &port.name) else {
+            continue;
+        };
+        let (cat, suffixes) = if port.cat.is_input_stream() {
+            (ArgCategory::Iframes, ISTREAM_SUFFIXES)
+        } else {
+            (ArgCategory::Oframes, OSTREAM_SUFFIXES)
+        };
+        let base = sanitize_array_name(&port.name);
+        let mut stale: Vec<String> = suffixes
+            .iter()
+            .filter_map(|suffix| mm.inner.get_port_of(&port.name, suffix))
+            .map(|port| port.name.clone())
+            .collect();
+        stale.extend(
+            ISTREAM_SUFFIXES
+                .iter()
+                .map(|suffix| stream_peek_port_name(&base, suffix)),
+        );
+        for name in stale {
+            mm.remove_port(&name);
+        }
+        let mut ports = Vec::new();
+        crate::template::add_frames_ports(&mut ports, &port.name, cat, port.width, frame);
+        for port in ports {
+            let _ = mm.add_port(port);
         }
     }
 }

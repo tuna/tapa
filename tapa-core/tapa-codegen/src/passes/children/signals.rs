@@ -3,6 +3,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use tapa_ir::port::ArgCategory;
 use tapa_ir::Arg;
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
@@ -564,12 +565,31 @@ fn add_child_instance(
         .cloned()
         .collect();
 
+    // An upper task's stream port carrying a view below it binds like the
+    // view's own frame port.
+    let graph = stage.design.design();
+    let args: BTreeMap<String, Arg> = inst
+        .args
+        .iter()
+        .map(|(port, arg)| {
+            let mut arg = arg.clone();
+            if graph.view_frame(inst.child_name, port).is_some() {
+                arg.cat = if arg.cat.is_input_stream() {
+                    ArgCategory::Iframes
+                } else {
+                    ArgCategory::Oframes
+                };
+            }
+            (port.clone(), arg)
+        })
+        .collect();
+
     // Build and add the actual child module instance to parent
     let child_inst = build_child_instance_with_reset(
         inst.child_name,
         &inst.inst_name,
         &inst.sig,
-        inst.args,
+        &args,
         mmap_bindings,
         &parent_fifos,
         stage.modules.get(stage.task_name).map(|mm| &mm.inner),

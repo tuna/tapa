@@ -76,7 +76,13 @@ fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
     ]);
 }
 
-fn add_frames_ports(ports: &mut Vec<Port>, name: &str, cat: ArgCategory, width: u32, frame: u32) {
+pub fn add_frames_ports(
+    ports: &mut Vec<Port>,
+    name: &str,
+    cat: ArgCategory,
+    width: u32,
+    frame: u32,
+) {
     let name = sanitize_array_name(name);
     for &(suffix, dir, signal) in frame_signals(cat.is_output_stream()) {
         let direction = match dir {

@@ -258,6 +258,9 @@ pub fn cleanup_hls_artifacts(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenErr
         is_top_task,
         control_plan,
     );
+    if !is_top_task {
+        frames::thread_views(ctx.design.design(), &mut ctx.modules, ctx.name);
+    }
     Ok(())
 }
 

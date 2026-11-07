@@ -4,11 +4,12 @@
 
 `design.json` is the post-synthesis graph (`tapa.json`'s `graph`) of
 `tests/functional/frame-views/corner.cpp` as `tapa compile` produced it with
-tapacc and Vitis HLS 2025.2 (`--part-num xcu250-figd2104-2L-e`, the Bazel
-`tapa_xo` default): top `CornerTurn` with mmaps `src` and `dst`; `Load`
-writes the element stream `rows` into `Turn`'s frame port; `Turn` writes
-frames of 1024 to `TurnOut` through `once`; `TurnOut` reads them and writes
-the element stream `twice` (an ordinary FIFO); the upper task `Drain` declares
+tapacc and Vitis HLS 2025.2 (`--part-num xcu55c-fsvh2892-2L-e`, the Bazel
+`tapa_xo` default, `VARS.bzl`): top `CornerTurn` with mmaps `src` and `dst`;
+`Load` writes the element stream `rows` into `Turn`'s frame port; `Turn`
+writes frames of 1024 through `once` to the upper task `Emit`, which hands
+that port to `TurnOut`'s frame port; `TurnOut` reads them and writes the
+element stream `twice` (an ordinary FIFO); the upper task `Drain` declares
 `cols`, into which `TurnIn` writes frames from it and from which `Store`
 reads elements. The frame channels are two banks deep (depth 2048).
 
@@ -27,7 +28,9 @@ these tasks). `Turn.v` shows a frame port's interface: an `ap_memory` port
 
 Same rules as the other cases. This case exercises the `frame_channel`
 instances for every pairing of ends: an element stream into a frame port
-(`rows`), two frame ports (`once`), and a frame port into an element
-stream (`cols`, inside the upper task `Drain`), with their bank count,
-widths and wiring, next to a FIFO (`twice`) between two tasks that also
-have frame ports.
+(`rows`), two frame ports (`once`, one of them through `Emit`), and a frame
+port into an element stream (`cols`, inside the upper task `Drain`), with
+their bank count, widths and wiring, next to a FIFO (`twice`) between two
+tasks that also have frame ports. `Emit.v` shows an upper task carrying a
+view: its `once` port is the frame-port interface in place of the HLS
+stub's stream ports, and `TurnOut` binds it straight through.

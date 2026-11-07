@@ -1863,6 +1863,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -4757,6 +4758,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -5057,6 +5059,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph
@@ -5761,6 +5764,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::clone(&self) -> tapa_ir::graph::TaskGraph
 impl core::cmp::Eq for tapa_ir::graph::TaskGraph

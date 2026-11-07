@@ -152,7 +152,8 @@ Array of `N` read-only or write-only stream views. Always passed by reference in
 Frame ports of a leaf task: the stream moves frames of `N` elements, and the
 task takes each one whole and reads (`iframes`) or writes (`oframes`) its
 elements in any order. Always passed by reference; the argument is a
-`tapa::stream<T, Depth>` declared by the task that invokes the leaf. See
+`tapa::stream<T, Depth>` the invoking task declares, or a stream port it
+takes (an upper task, or the top's own stream argument). See
 [Streams: frame ports](../concepts/streams.md#frame-ports).
 
 | Member | Description |
