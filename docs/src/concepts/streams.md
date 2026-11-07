@@ -183,10 +183,66 @@ void InnerStage(int b, tapa::istreams<pkt_t, kN / 2>& in_q0,
 
 ---
 
+## Frame ports
+
+A stream can also move whole frames. A leaf task takes its end as a frame
+port, `tapa::iframes<T, N>&` or `tapa::oframes<T, N>&`, and works on one
+frame of `N` elements at a time, in any order, through the view `acquire()`
+returns:
+
+```cpp
+void Corner(tapa::iframes<float, 1024>& in, tapa::oframes<float, 1024>& out,
+            int n) {
+  for (int f = 0; f < n; ++f) {
+    auto src = in.acquire();  // the next whole frame, read-only
+    auto dst = out.acquire();  // an empty frame, write-only
+    for (int r = 0; r < 32; ++r) {
+      [[tapa::pipeline(1)]] for (int c = 0; c < 32; ++c) {
+        dst[c * 32 + r] = src[r * 32 + c];
+      }
+    }
+  }  // both released at the end of their scope, or earlier by release()
+}
+```
+
+The other end of the stream may be a frame port or an ordinary `istream` /
+`ostream`, which sees the frames' elements in order. The stream is still a
+`tapa::stream<T, Depth>` declared by the task that invokes both ends.
+
+- **On PL** the stream becomes a frame channel: `max(2, Depth / N)` banks of
+  `N` elements in one memory, handed between the two ends in turn. A frame
+  port reaches its task as a memory port of the current bank, so a frame is
+  read or written in place without a copy, and the producer fills one bank
+  while the consumer works on another.
+- **On the AI Engine** a frame port is the kernel's buffer port, filled or
+  drained by DMA. Between two AI Engine frame ports the graph connects the
+  buffers directly, so neighbouring kernels share tile memory.
+- **In software simulation** `acquire()` copies the frame out of the stream
+  (input) or into a buffer the release writes to the stream (output), so the
+  stream holds up to its depth besides the frame each end holds.
+
+Rules:
+
+- A port holds one view at a time: release the frame before acquiring the
+  next.
+- A frame port's stream carries no end-of-transmission token; loop over a
+  frame count.
+- Frames on one port never overlap in time. In HLS the loop around an
+  `acquire()` is not pipelined; pipeline the loops inside it.
+- Both ends of a stream that move frames agree on `N`, and its depth holds
+  at least one frame (`tapa analyze` checks both).
+- On PL the stream joins two PL leaves: a frame port cannot be a kernel's
+  own stream argument, an upper task's port, or a stream to the AI Engine
+  (an AI Engine frame port can be fed from PL by an ordinary `ostream`).
+  `tapa floorplan` does not place a design with a frame channel yet.
+
+---
+
 ## Rules
 
 - Always pass TAPA task stream ports by reference: `istream<T>&`,
-  `ostream<T>&`. Passing one by value is rejected.
+  `ostream<T>&`, `iframes<T, N>&`, `oframes<T, N>&`. Passing one by value is
+  rejected.
 - A TAPA task port uses `istream<T>&` or `ostream<T>&`, not `stream<T>`.
   `stream` declares a channel; an upper-level task declares inter-task channels
   in its body. A top-level kernel likewise exposes external stream ports as

@@ -261,6 +261,102 @@ class ostreams {
   ostream<T> ports_[S];
 };
 
+// A frame port (`tapa::iframes<T, N>`): the stream arrives as frames of `N`
+// elements in tile memory, the same async buffers a `[[tapa::frame(N)]]`
+// port walks, and the task takes each whole with `acquire()`, reading its
+// elements in any order until the view is released. Between two AI Engine
+// frame ports the graph connects the buffers directly, so neighbouring
+// kernels share tile memory and others are joined by DMA.
+template <typename T, uint64_t N>
+class iframes {
+ public:
+  using buffer = aie::input_frame<int32, N * internal::aie::kWords<T>>;
+
+  class view {
+   public:
+    TAPA_AIE_INLINE T operator[](int i) const {
+      return internal::aie::elem_io<T>::load(data_ +
+                                             i * internal::aie::kWords<T>);
+    }
+    TAPA_AIE_INLINE void release() {
+      if (buf_ != nullptr) {
+        buf_->release();
+        buf_ = nullptr;
+      }
+    }
+    TAPA_AIE_INLINE ~view() { release(); }
+
+   private:
+    friend class iframes;
+    TAPA_AIE_INLINE explicit view(buffer& buf)
+        : buf_(&buf), data_(buf.data()) {}
+    buffer* buf_;
+    const int32* data_;
+  };
+
+  TAPA_AIE_INLINE explicit iframes(buffer& buf) : buf_(buf) {}
+  TAPA_AIE_INLINE view acquire() {
+    buf_.acquire();
+    return view(buf_);
+  }
+
+ private:
+  buffer& buf_;
+};
+
+// A frame port (`tapa::oframes<T, N>`): the task fills each frame of `N`
+// elements in any order through the view `acquire()` returns, and the frame
+// leaves when the view is released.
+template <typename T, uint64_t N>
+class oframes {
+ public:
+  using buffer = aie::output_frame<int32, N * internal::aie::kWords<T>>;
+
+  class view {
+   public:
+    // Element `i` of the frame; it can only be assigned.
+    class slot {
+     public:
+      TAPA_AIE_INLINE slot& operator=(const T& value) {
+        internal::aie::elem_io<T>::store(data_, value);
+        return *this;
+      }
+
+     private:
+      friend class view;
+      TAPA_AIE_INLINE explicit slot(int32* data) : data_(data) {}
+      int32* data_;
+    };
+
+    TAPA_AIE_INLINE slot operator[](int i) {
+      return slot(data_ + i * internal::aie::kWords<T>);
+    }
+    TAPA_AIE_INLINE void release() {
+      if (buf_ != nullptr) {
+        buf_->release();
+        buf_ = nullptr;
+      }
+    }
+    TAPA_AIE_INLINE ~view() { release(); }
+
+   private:
+    friend class oframes;
+    TAPA_AIE_INLINE explicit view(buffer& buf)
+        : buf_(&buf), data_(buf.data()) {}
+    buffer* buf_;
+    int32* data_;
+  };
+
+  TAPA_AIE_INLINE explicit oframes(buffer& buf) : buf_(buf) {}
+  TAPA_AIE_INLINE view acquire() {
+    buf_.acquire();
+    return view(buf_);
+  }
+
+ private:
+  buffer& buf_;
+};
+
 namespace aie {
 
 // A `[[tapa::frame(N)]]` stream port: the stream arrives as frames of
@@ -441,6 +537,18 @@ struct arg<tapa::ostreams<T, S>&> {
       : value(p.template make<tapa::ostreams<T, S>>(
             std::index_sequence_for<Ports...>{})) {}
   TAPA_AIE_INLINE tapa::ostreams<T, S>& get() { return value; }
+};
+template <typename T, uint64_t N>
+struct arg<tapa::iframes<T, N>&> {
+  tapa::iframes<T, N> value;
+  explicit arg(typename tapa::iframes<T, N>::buffer& buf) : value(buf) {}
+  TAPA_AIE_INLINE tapa::iframes<T, N>& get() { return value; }
+};
+template <typename T, uint64_t N>
+struct arg<tapa::oframes<T, N>&> {
+  tapa::oframes<T, N> value;
+  explicit arg(typename tapa::oframes<T, N>::buffer& buf) : value(buf) {}
+  TAPA_AIE_INLINE tapa::oframes<T, N>& get() { return value; }
 };
 template <typename T, int N>
 struct arg<iframe<T, N>&> {

@@ -13,6 +13,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
+use crate::synth_target::SynthTarget;
 use crate::target::Target;
 use crate::task::Task;
 
@@ -75,7 +76,88 @@ impl TaskGraph {
             });
         }
         self.validate_literals()?;
-        self.validate_frame_depths()
+        self.validate_frame_depths()?;
+        self.validate_frame_channels()
+    }
+
+    /// Both ends of a stream agree on the frame where both move frames, and a
+    /// frame port's stream is declared by the task that invokes it. On PL
+    /// that stream is a frame channel, which joins two PL tasks: it has no
+    /// PLIO form. (An AI Engine frame port's buffers fill from a PLIO like a
+    /// `[[tapa::frame(N)]]` port's.)
+    fn validate_frame_channels(&self) -> Result<(), ParseError> {
+        let mut memo = BTreeMap::new();
+        for (task_name, task) in &self.tasks {
+            let error = |stream: &str, problem: String| ParseError::FrameChannel {
+                task: task_name.clone(),
+                stream: stream.to_string(),
+                problem,
+            };
+            for binding in self.bindings(task) {
+                let Some(stream) = binding.argument.name() else {
+                    continue;
+                };
+                let declared = task
+                    .fifos
+                    .get(stream)
+                    .is_some_and(|fifo| fifo.depth.is_some());
+                if binding.argument.cat.is_frames() && !declared {
+                    return Err(error(
+                        stream,
+                        format!(
+                            "frame port `{}` must bind a stream the task declares",
+                            binding.port_name
+                        ),
+                    ));
+                }
+            }
+            for (stream, fifo) in &task.fifos {
+                let ends = [fifo.produced_by.as_ref(), fifo.consumed_by.as_ref()]
+                    .map(|end| self.fifo_endpoint(task, stream, end));
+                let frames = ends.each_ref().map(|end| {
+                    let end = end.as_ref()?;
+                    self.port_frames(&end.reference.0, &mut memo)
+                        .get(end.binding?.port_name)
+                        .copied()
+                });
+                if let [Some(a), Some(b)] = frames {
+                    if a != b {
+                        return Err(error(
+                            stream,
+                            format!(
+                                "its producer moves frames of {a} elements and its \
+                                 consumer frames of {b}"
+                            ),
+                        ));
+                    }
+                }
+                let pl_view = |end: &Option<crate::FifoEndpoint<'_>>| {
+                    end.as_ref().is_some_and(|end| {
+                        end.binding.is_some_and(|b| b.argument.cat.is_frames())
+                            && end.task.is_some_and(|t| t.synth != SynthTarget::Aie)
+                    })
+                };
+                let aie = |end: &Option<crate::FifoEndpoint<'_>>| {
+                    end.as_ref()
+                        .and_then(|end| end.task)
+                        .is_some_and(|t| t.synth == SynthTarget::Aie)
+                };
+                let crosses =
+                    (pl_view(&ends[0]) && aie(&ends[1])) || (pl_view(&ends[1]) && aie(&ends[0]));
+                let one_sided =
+                    (pl_view(&ends[0]) || pl_view(&ends[1])) && ends.iter().any(Option::is_none);
+                if crosses || one_sided {
+                    return Err(error(
+                        stream,
+                        "a PL frame port's stream must join two PL tasks; read \
+                         or write it with tapa::istream / tapa::ostream at a \
+                         kernel or AI Engine boundary"
+                            .to_string(),
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     /// A stream that carries `[[tapa::frame(N)]]` frames holds at least one
@@ -470,5 +552,104 @@ mod tests {
         );
         assert!(message.contains("`Mid.out` moves frames of 8"), "{message}");
         TaskGraph::from_json(&graph(8)).expect("depth 8 holds a frame of 8");
+    }
+
+    #[test]
+    fn a_frame_channel_joins_two_tasks_of_one_fabric_that_agree_on_the_frame() {
+        // A port spec is `cat` or `cat:frame`.
+        let port = |name: &str, spec: &str| {
+            let (cat, frame) = spec.split_once(':').unwrap_or((spec, ""));
+            let frame = if frame.is_empty() {
+                String::new()
+            } else {
+                format!(r#", "frame": {frame}"#)
+            };
+            format!(r#"{{"cat": "{cat}", "name": "{name}", "type": "int", "width": 32{frame}}}"#)
+        };
+        let bind = |child: &str, port: &str, arg: &str, spec: &str| {
+            let cat = spec.split(':').next().unwrap_or(spec);
+            format!(
+                r#""{child}": [{{"step": 0, "args": {{"{port}": {{"arg": "{arg}", "cat": "{cat}"}}}}}}]"#
+            )
+        };
+        let task = |level: &str, synth: &str, ports: &str, tasks: &str, fifos: &str| {
+            format!(
+                r#"{{"level": "{level}", "srcs": [], "include_dirs": [], "defines": [],
+                    "synth": "{synth}", "readable_name": "", "ports": [{ports}],
+                    "tasks": {{{tasks}}}, "fifos": {{{fifos}}}}}"#
+            )
+        };
+        let graph = |tasks: &[(&str, String)]| {
+            let tasks: Vec<String> = tasks
+                .iter()
+                .map(|(n, t)| format!(r#""{n}": {t}"#))
+                .collect();
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{{}}}}}"#,
+                tasks.join(", ")
+            )
+        };
+        // T streams `q` from `Src.out` to `Dst.in`.
+        let pair = |out: &str, input: &str, dst_synth: &str| {
+            let q = r#""q": {"depth": 16, "produced_by": ["Src", 0], "consumed_by": ["Dst", 0]}"#;
+            let tasks = format!(
+                "{}, {}",
+                bind("Src", "out", "q", out),
+                bind("Dst", "in", "q", input)
+            );
+            graph(&[
+                ("T", task("upper", "hls", "", &tasks, q)),
+                ("Src", task("lower", "hls", &port("out", out), "", "")),
+                ("Dst", task("lower", dst_synth, &port("in", input), "", "")),
+            ])
+        };
+        let rejects = |json: String, needle: &str| {
+            let message = TaskGraph::from_json(&json)
+                .expect_err("rejected")
+                .to_string();
+            assert!(message.contains(needle), "{message}");
+        };
+        TaskGraph::from_json(&pair("oframes:8", "istream", "hls")).expect("view to stream");
+        TaskGraph::from_json(&pair("ostream", "iframes:8", "aie")).expect("PLIO into an AIE view");
+        rejects(
+            pair("oframes:8", "iframes:4", "hls"),
+            "stream `q` of task `T` cannot be a frame channel: its producer moves frames of 8 \
+             elements and its consumer frames of 4",
+        );
+        rejects(
+            pair("oframes:8", "istream", "aie"),
+            "a PL frame port's stream must join two PL tasks",
+        );
+
+        // `Dst` is an upper task handing its own port to the frame port.
+        let q = r#""q": {"depth": 16, "produced_by": ["Src", 0], "consumed_by": ["Dst", 0]}"#;
+        let tasks = format!(
+            "{}, {}",
+            bind("Src", "out", "q", "ostream"),
+            bind("Dst", "in", "q", "istream")
+        );
+        rejects(
+            graph(&[
+                ("T", task("upper", "hls", "", &tasks, q)),
+                ("Src", task("lower", "hls", &port("out", "ostream"), "", "")),
+                (
+                    "Dst",
+                    task(
+                        "upper",
+                        "hls",
+                        &port("in", "istream"),
+                        &bind("View", "in", "in", "iframes"),
+                        "",
+                    ),
+                ),
+                (
+                    "View",
+                    task("lower", "hls", &port("in", "iframes:8"), "", ""),
+                ),
+            ]),
+            "stream `in` of task `Dst` cannot be a frame channel: frame port `in` must bind a \
+             stream the task declares",
+        );
     }
 }

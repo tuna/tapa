@@ -147,8 +147,22 @@ Array of `N` streams of type `T`, each with depth `Depth`. Declared in an upper-
 
 Array of `N` read-only or write-only stream views. Always passed by reference in task signatures.
 
+### `tapa::iframes<T, N>` / `tapa::oframes<T, N>`
+
+Frame ports of a leaf task: the stream moves frames of `N` elements, and the
+task takes each one whole and reads (`iframes`) or writes (`oframes`) its
+elements in any order. Always passed by reference; the argument is a
+`tapa::stream<T, Depth>` declared by the task that invokes the leaf. See
+[Streams: frame ports](../concepts/streams.md#frame-ports).
+
+| Member | Description |
+|--------|-------------|
+| `acquire()` | Blocks until a whole frame has arrived (`iframes`) or a frame is free to fill (`oframes`), and returns a view of it. A port holds one view at a time. |
+| `view[i]` | Element `i`, `0 <= i < N`: a value of an `iframes` view; assignable only, `view[i] = x`, on an `oframes` view. A slot of an output frame the task does not write holds an unspecified value. |
+| `view.release()` | Hands the frame on: the input frame is freed, the output frame enters the stream. The end of the view's scope releases it too. |
+
 ```admonish note
-All stream types (`istream`, `ostream`, `istreams`, `ostreams`) must be passed **by reference** in task signatures. Passing by value is a compile error.
+All stream types (`istream`, `ostream`, `istreams`, `ostreams`, `iframes`, `oframes`) must be passed **by reference** in task signatures. Passing by value is a compile error.
 ```
 
 ### `tapa::fence()`
@@ -162,8 +176,9 @@ then deadlocks in hardware, though software simulation completes. In HLS the
 fence is a clock boundary (`ap_wait()`) that port accesses do not cross,
 while arithmetic still may; in a pipelined loop it costs a stage, not
 initiation interval. On the AI Engine it is a scheduler barrier that no
-instruction crosses. In software simulation it is a no-op. See
-[AI Engine Tasks](../howto/aie.md).
+instruction crosses. In software simulation it is a no-op. A frame port's
+view orders its own accesses: in HLS its release waits for every access to
+the frame before it. See [AI Engine Tasks](../howto/aie.md).
 
 ---
 

@@ -42,6 +42,13 @@ pub enum ParseError {
         port: String,
         frame: u32,
     },
+
+    #[error("stream `{stream}` of task `{task}` cannot be a frame channel: {problem}")]
+    FrameChannel {
+        task: String,
+        stream: String,
+        problem: String,
+    },
 }
 
 /// Deserialize one complete JSON document with field-path error

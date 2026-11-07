@@ -67,6 +67,19 @@ void EmitLowerStream(const std::string& name, TapaKind kind, int64_t channels,
   }
 }
 
+// The bank port and token FIFOs of the frame port `name` (see `tapa_frames`
+// in tapa/xilinx/hls/stream.h): one memory port, read for an iframes port and
+// written for an oframes port, of latency 1, which the frame channel serves.
+// The token streams of integers are ap_fifo ports without a pragma.
+void EmitLowerFrames(const std::string& name, CodeSink& out) {
+  out.Pragma({"HLS disaggregate variable =", name});
+  out.Pragma({"HLS interface ap_memory port =", name + "._buf",
+              "storage_type = ram_1p latency = 1"});
+  out.Pragma({"HLS aggregate variable =", name + "._buf", "bit"});
+  out.Line("void(" + name + "._acquire.empty());");
+  out.Line("void(" + name + "._release.full());");
+}
+
 // The five FIFOs of the async_mmap port `name`.
 void EmitLowerAsyncMmap(const std::string& name, CodeSink& out) {
   out.Pragma({"HLS disaggregate variable =", name});
@@ -128,6 +141,10 @@ void XilinxBackend::EmitStreamPort(const PortContext& p, CodeSink& out) const {
   if (lvl == Lvl::kTop) {
     out.Pragma({"HLS interface axis port =", p.param->getNameAsString()});
     EmitDummyStreamRW(p.param, p.kind, out, /*qdma=*/true);
+    return;
+  }
+  if (IsFramesPort(p.kind)) {  // only on a leaf: tapacc rejects the rest
+    EmitLowerFrames(p.param->getNameAsString(), out);
     return;
   }
   const bool plural =

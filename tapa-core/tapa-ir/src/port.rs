@@ -58,6 +58,10 @@ pub enum ArgCategory {
     Ostream,
     Istreams,
     Ostreams,
+    /// A stream read as whole frames through views (`tapa::iframes<T, N>`).
+    Iframes,
+    /// A stream written as whole frames through views (`tapa::oframes<T, N>`).
+    Oframes,
     Scalar,
     Mmap,
     Immap,
@@ -88,13 +92,20 @@ impl ArgCategory {
     /// Whether this is an input (consumer) stream port.
     #[must_use]
     pub const fn is_input_stream(self) -> bool {
-        matches!(self, Self::Istream | Self::Istreams)
+        matches!(self, Self::Istream | Self::Istreams | Self::Iframes)
     }
 
     /// Whether this is an output (producer) stream port.
     #[must_use]
     pub const fn is_output_stream(self) -> bool {
-        matches!(self, Self::Ostream | Self::Ostreams)
+        matches!(self, Self::Ostream | Self::Ostreams | Self::Oframes)
+    }
+
+    /// Whether this is a frame port, whose stream is a channel of banks the
+    /// task acquires and releases.
+    #[must_use]
+    pub const fn is_frames(self) -> bool {
+        matches!(self, Self::Iframes | Self::Oframes)
     }
 
     /// Whether this is any stream port (input or output).
@@ -205,7 +216,8 @@ impl Port {
         use crate::Target::{XilinxHls, XilinxSlash, XilinxVitis};
         let base = sanitize_array_name(&self.name);
         let channels = match (target, self.cat) {
-            (XilinxHls, ArgCategory::Scalar) => None,
+            // A frame port never reaches a kernel boundary (graph validation).
+            (XilinxHls, ArgCategory::Scalar | ArgCategory::Iframes | ArgCategory::Oframes) => None,
             (XilinxHls, ArgCategory::Istream | ArgCategory::Ostream) => {
                 return vec![format!("{base}_s")];
             }
@@ -246,6 +258,8 @@ mod tests {
             ("ostream", ArgCategory::Ostream),
             ("istreams", ArgCategory::Istreams),
             ("ostreams", ArgCategory::Ostreams),
+            ("iframes", ArgCategory::Iframes),
+            ("oframes", ArgCategory::Oframes),
             ("scalar", ArgCategory::Scalar),
             ("mmap", ArgCategory::Mmap),
             ("immap", ArgCategory::Immap),

@@ -9,7 +9,9 @@
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
+#include <type_traits>
 
+#include <hls_fence.h>
 #include <hls_stream.h>
 
 #include "tapa/xilinx/hls/util.h"
@@ -190,6 +192,121 @@ class tapa_stream {
   mutable hls::stream<internal::elem_t<T>> _;
   mutable hls::stream<internal::elem_t<T>> _peek;
 };
+
+namespace internal {
+
+// The bits of a frame port's acquire token, which names the bank of the
+// channel the frame occupies. A leaf is synthesized once whatever the depth
+// of the streams it is given, so its bank port spans as many banks as a
+// channel may have; the channel uses the address bits it needs.
+inline constexpr int kFrameBankBits = 8;
+
+}  // namespace internal
+
+// A frame port. The channel hands out a bank with each acquire token and
+// takes it back, in acquire order, with each release token; the task
+// addresses element `i` of the frame at `bank * N + i`, so a frame acquired
+// while the one before is still being released (as a pipelined loop does)
+// addresses its own bank. tapacc puts `_buf` on an `ap_memory` port of one
+// read (iframes) or write (oframes) port.
+template <typename T, uint64_t N, bool kWrites>
+class tapa_frames {
+  using bank_t = ap_uint<internal::kFrameBankBits>;
+
+  // What the views of both directions share: the bank they address and its
+  // release.
+  class frame {
+   public:
+    // The release waits for every access before it: HLS orders accesses to
+    // different ports only by their data, and would otherwise hand the bank
+    // back while an access to it is still to come.
+    void release() {
+#pragma HLS inline
+      if (live_) {
+        hls::fence({port_._buf}, {port_._release});
+        port_._release.write(1);
+        live_ = false;
+      }
+    }
+
+    ~frame() {
+#pragma HLS inline
+      release();
+    }
+
+   protected:
+    frame(tapa_frames& port, uint64_t base) : port_(port), base_(base) {}
+    tapa_frames& port_;
+    uint64_t base_;
+    bool live_ = true;
+  };
+
+ public:
+  class iview : public frame {
+   public:
+    T operator[](int i) const {
+#pragma HLS inline
+      return this->port_._buf[this->base_ + i];
+    }
+
+   private:
+    friend class tapa_frames;
+    using frame::frame;
+  };
+
+  class oview : public frame {
+   public:
+    // Element `i` of the frame; it can only be assigned.
+    class slot {
+     public:
+      slot& operator=(const T& value) {
+#pragma HLS inline
+        port_._buf[at_] = value;
+        return *this;
+      }
+
+     private:
+      friend class oview;
+      slot(tapa_frames& port, uint64_t at) : port_(port), at_(at) {}
+      tapa_frames& port_;
+      uint64_t at_;
+    };
+
+    slot operator[](int i) {
+#pragma HLS inline
+      return slot(this->port_, this->base_ + i);
+    }
+
+   private:
+    friend class tapa_frames;
+    using frame::frame;
+  };
+
+  using view = std::conditional_t<kWrites, oview, iview>;
+
+  // The acquire polls, which keeps HLS from flattening or pipelining the
+  // loop around it: a port's frames never overlap in time. A pipeline that
+  // overlapped them would stall on the next acquire with the release of the
+  // frame before still in a later stage, and a channel whose two ends both
+  // did so would deadlock.
+  view acquire() {
+#pragma HLS inline
+    bank_t bank;
+    while (!_acquire.read_nb(bank)) {
+    }
+    return view(*this, uint64_t(bank) * N);
+  }
+
+  T _buf[N << internal::kFrameBankBits];
+  hls::stream<bank_t> _acquire;
+  hls::stream<ap_uint<1>> _release;
+};
+
+template <typename T, uint64_t N>
+using iframes = tapa_frames<T, N, false>;
+
+template <typename T, uint64_t N>
+using oframes = tapa_frames<T, N, true>;
 
 template <typename T>
 using istream = tapa_stream<T>;

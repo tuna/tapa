@@ -169,6 +169,13 @@ pub enum GraphError {
     /// An internal FIFO has no placeable task endpoint to own its storage.
     #[error("internal stream `{0}` has no placeable endpoint")]
     UnanchoredFifo(String),
+    /// A stream with a frame port at an end is a frame channel, whose
+    /// fixed-latency memory ports cannot be pipelined between slots.
+    #[error(
+        "stream `{0}` is a frame channel (a tapa::iframes or tapa::oframes port \
+         is bound to it), which tapa floorplan does not place yet"
+    )]
+    FrameChannel(String),
     /// A FIFO names a producer/consumer endpoint that is not a flattened
     /// task instance — malformed IR, not a deliberately one-sided stream.
     #[error(

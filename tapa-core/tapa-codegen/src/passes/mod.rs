@@ -15,6 +15,7 @@ mod cleanup;
 mod distributed_control;
 mod fifos;
 mod floorplans;
+mod frames;
 pub mod m_axi;
 mod s_axi;
 

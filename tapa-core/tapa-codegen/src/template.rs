@@ -3,9 +3,9 @@
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Task;
 use tapa_protocol::{
-    stream_data_wire_width, stream_peek_port_name, stream_port_name, AXI_ADDR_WIDTH, AXI_ID_WIDTH,
-    HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N,
-    HANDSHAKE_START,
+    frame_signal_width, frame_signals, stream_data_wire_width, stream_peek_port_name,
+    stream_port_name, PortDir, AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_DONE,
+    HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST_N, HANDSHAKE_START,
 };
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{simple_port, wide_port};
@@ -74,6 +74,18 @@ fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
             stream_width,
         ),
     ]);
+}
+
+fn add_frames_ports(ports: &mut Vec<Port>, name: &str, cat: ArgCategory, width: u32, frame: u32) {
+    let name = sanitize_array_name(name);
+    for &(suffix, dir, signal) in frame_signals(cat.is_output_stream()) {
+        let direction = match dir {
+            PortDir::Input => Direction::Input,
+            PortDir::Output => Direction::Output,
+        };
+        let width = frame_signal_width(signal, width, frame);
+        ports.push(port_with_width(format!("{name}{suffix}"), direction, width));
+    }
 }
 
 fn add_addr_ostream_ports(ports: &mut Vec<Port>, name: &str) {
@@ -153,6 +165,13 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
                     add_stream_ports(&mut ports, &stream, task_port.width);
                 }
             }
+            ArgCategory::Iframes | ArgCategory::Oframes => add_frames_ports(
+                &mut ports,
+                &task_port.name,
+                task_port.cat,
+                task_port.width,
+                task_port.frame.unwrap_or(1),
+            ),
             ArgCategory::AsyncMmap => {
                 add_async_mmap_ports(&mut ports, &task_port.name, task_port.width);
             }

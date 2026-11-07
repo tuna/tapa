@@ -39,6 +39,49 @@ impl<T> core::clone::CloneToUninit for tapa_protocol::AxiWidth where T: core::cl
 pub unsafe fn tapa_protocol::AxiWidth::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_protocol::AxiWidth
 pub fn tapa_protocol::AxiWidth::from(T) -> T
+pub enum tapa_protocol::FrameSignal
+pub tapa_protocol::FrameSignal::Address
+pub tapa_protocol::FrameSignal::Bank
+pub tapa_protocol::FrameSignal::Bit
+pub tapa_protocol::FrameSignal::Data
+impl core::clone::Clone for tapa_protocol::FrameSignal
+pub fn tapa_protocol::FrameSignal::clone(&self) -> tapa_protocol::FrameSignal
+impl core::cmp::Eq for tapa_protocol::FrameSignal
+impl core::cmp::PartialEq for tapa_protocol::FrameSignal
+pub fn tapa_protocol::FrameSignal::eq(&self, &tapa_protocol::FrameSignal) -> bool
+impl core::fmt::Debug for tapa_protocol::FrameSignal
+pub fn tapa_protocol::FrameSignal::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_protocol::FrameSignal
+impl core::marker::StructuralPartialEq for tapa_protocol::FrameSignal
+impl core::marker::Freeze for tapa_protocol::FrameSignal
+impl core::marker::Send for tapa_protocol::FrameSignal
+impl core::marker::Sync for tapa_protocol::FrameSignal
+impl core::marker::Unpin for tapa_protocol::FrameSignal
+impl core::marker::UnsafeUnpin for tapa_protocol::FrameSignal
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_protocol::FrameSignal
+impl core::panic::unwind_safe::UnwindSafe for tapa_protocol::FrameSignal
+impl<T, U> core::convert::Into<U> for tapa_protocol::FrameSignal where U: core::convert::From<T>
+pub fn tapa_protocol::FrameSignal::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_protocol::FrameSignal where U: core::convert::Into<T>
+pub type tapa_protocol::FrameSignal::Error = core::convert::Infallible
+pub fn tapa_protocol::FrameSignal::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_protocol::FrameSignal where U: core::convert::TryFrom<T>
+pub type tapa_protocol::FrameSignal::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_protocol::FrameSignal::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_protocol::FrameSignal where T: core::clone::Clone
+pub type tapa_protocol::FrameSignal::Owned = T
+pub fn tapa_protocol::FrameSignal::clone_into(&self, &mut T)
+pub fn tapa_protocol::FrameSignal::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_protocol::FrameSignal where T: 'static + ?core::marker::Sized
+pub fn tapa_protocol::FrameSignal::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_protocol::FrameSignal where T: ?core::marker::Sized
+pub fn tapa_protocol::FrameSignal::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_protocol::FrameSignal where T: ?core::marker::Sized
+pub fn tapa_protocol::FrameSignal::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_protocol::FrameSignal where T: core::clone::Clone
+pub unsafe fn tapa_protocol::FrameSignal::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_protocol::FrameSignal
+pub fn tapa_protocol::FrameSignal::from(T) -> T
 pub enum tapa_protocol::PortDir
 pub tapa_protocol::PortDir::Input
 pub tapa_protocol::PortDir::Output
@@ -155,6 +198,7 @@ pub const tapa_protocol::AXI_ADDR_WIDTH: u32
 pub const tapa_protocol::AXI_ID_WIDTH: u32
 pub const tapa_protocol::FIFO_READ_PORTS: &[&str]
 pub const tapa_protocol::FIFO_WRITE_PORTS: &[&str]
+pub const tapa_protocol::FRAME_BANK_BITS: u32
 pub const tapa_protocol::HANDSHAKE_CLK: &str
 pub const tapa_protocol::HANDSHAKE_DONE: &str
 pub const tapa_protocol::HANDSHAKE_IDLE: &str
@@ -177,6 +221,8 @@ pub const tapa_protocol::S_AXI_NAME: &str
 pub fn tapa_protocol::axi_subport_from_suffix(&str) -> &str
 pub fn tapa_protocol::axi_subport_width(&str, u32, u32, u32) -> u32
 pub const fn tapa_protocol::axis_data_width(u32) -> u32
+pub const fn tapa_protocol::frame_signal_width(tapa_protocol::FrameSignal, u32, u32) -> u32
+pub const fn tapa_protocol::frame_signals(bool) -> &'static [(&'static str, tapa_protocol::PortDir, tapa_protocol::FrameSignal)]
 pub fn tapa_protocol::m_axi_channel(&str) -> core::option::Option<&'static tapa_protocol::AxiChannelInfo>
 pub fn tapa_protocol::m_axi_compact_ports() -> impl core::iter::traits::iterator::Iterator<Item = &'static tapa_protocol::AxiPort>
 pub fn tapa_protocol::m_axi_compact_suffixes() -> impl core::iter::traits::iterator::Iterator<Item = &'static str>

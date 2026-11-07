@@ -64,6 +64,7 @@ cannot be run through XRT.)
 | Construct | On the AI Engine |
 |---|---|
 | `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits. |
+| `iframes`, `oframes` | Yes: the kernel's buffer ports, filled or drained by DMA; `acquire()` takes the next buffer and its view addresses tile memory directly. Between two AI Engine frame ports the graph connects the buffers, so neighbouring kernels share tile memory and others are joined by DMA. A PL task feeds or drains one through an ordinary `ostream` or `istream`. See [frame ports](../concepts/streams.md#frame-ports). |
 | `read()`, `write()`, `>>`, `<<`, `read(dst, n)`, `write(src, n)` | Yes, blocking. |
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
 | `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |
@@ -186,8 +187,8 @@ runs as a PL task too.
 
 | Knob | Where | Effect |
 |---|---|---|
-| `[[tapa::frame(N)]]` | `istream`/`ostream` parameter of a leaf task | The port moves whole frames of `N` elements, and its stream must hold at least one: `tapa analyze` rejects a shallower stream on every target, since the AI Engine fills a frame before its reader sees any of it. On the AI Engine the frames arrive in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. On PL the port is an ordinary stream. |
-| `tapa analyze --aie-plio TASK.PORT:W` | `istream`/`ostream` port of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
+| `[[tapa::frame(N)]]` | `istream`/`ostream` parameter of a leaf task | The port moves whole frames of `N` elements, and its stream must hold at least one: `tapa analyze` rejects a shallower stream on every target, since the AI Engine fills a frame before its reader sees any of it. On the AI Engine the frames arrive in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. On PL the port is an ordinary stream. Where both ends of a stream move frames, here or through `tapa::iframes` / `tapa::oframes`, they must agree on `N`. |
+| `tapa analyze --aie-plio TASK.PORT:W` | `istream`, `ostream`, `iframes` or `oframes` port of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
 | `tapa analyze --aie-location TASK:COL,ROW[,INSTANCE]` | AI Engine leaf task | Pins the task to a tile; `INSTANCE` picks one instance of a task invoked several times. |
 
 Placement and PLIO widths depend on the device, so they stay out of the

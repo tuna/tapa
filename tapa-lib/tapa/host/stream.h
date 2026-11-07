@@ -45,6 +45,12 @@ class istreams;
 template <typename T, uint64_t S>
 class ostreams;
 
+template <typename T, uint64_t N>
+class iframes;
+
+template <typename T, uint64_t N>
+class oframes;
+
 namespace internal {
 
 template <typename Param, typename Arg>
@@ -551,6 +557,8 @@ class istream : virtual public internal::basic_stream<T> {
   friend class istreams;
   template <typename U, uint64_t S, uint64_t N, uint64_t SimulationDepth>
   friend class streams;
+  template <typename U, uint64_t N>
+  friend class iframes;
   istream(const internal::basic_stream<T>& base)
       : internal::basic_stream<T>(base) {}
 };
@@ -625,8 +633,158 @@ class ostream : virtual public internal::basic_stream<T> {
   friend class ostreams;
   template <typename U, uint64_t S, uint64_t N, uint64_t SimulationDepth>
   friend class streams;
+  template <typename U, uint64_t N>
+  friend class oframes;
   ostream(const internal::basic_stream<T>& base)
       : internal::basic_stream<T>(base) {}
+};
+
+/// Consumer-side frame port of a @c tapa::stream: the stream arrives as
+/// frames of @p N elements, each read whole and in any order through the
+/// view `acquire()` returns. Use only as a task parameter.
+///
+/// Software simulation copies a frame out of the stream when it is acquired,
+/// so the stream holds up to its depth besides the frame each end holds.
+template <typename T, uint64_t N>
+class iframes : virtual public internal::basic_stream<T> {
+  static_assert(N > 0, "a frame holds at least one element");
+
+ public:
+  /// One frame, read-only, until `release()` or the end of its scope.
+  class view {
+   public:
+    view(view&& other) noexcept
+        : port_(std::exchange(other.port_, nullptr)),
+          data_(std::move(other.data_)) {}
+    view(const view&) = delete;
+    view& operator=(const view&) = delete;
+    view& operator=(view&&) = delete;
+    ~view() { release(); }
+
+    const T& operator[](int i) const {
+      CHECK(port_ != nullptr) << "a released frame of a frame port was read";
+      CHECK(i >= 0 && static_cast<uint64_t>(i) < N)
+          << "frame port '" << port_->get_name() << "' read at " << i
+          << ", outside its frame of " << N;
+      return data_[i];
+    }
+
+    /// Hands the frame back to the stream before the view's scope ends.
+    void release() {
+      if (port_ != nullptr) std::exchange(port_, nullptr)->live_ = false;
+    }
+
+   private:
+    friend class iframes;
+    explicit view(iframes& port) : port_(&port), data_(N) {}
+    iframes* port_;
+    std::vector<T> data_;
+  };
+
+  /// Blocks until a whole frame has arrived and returns it.
+  view acquire() {
+    CHECK(!live_) << "frame port '" << this->get_name()
+                  << "' acquired while a frame of it is still held; release "
+                     "one before acquiring the next";
+    view frame(*this);
+    istream<T> in(*this);
+    for (uint64_t i = 0; i < N; ++i) {
+      bool is_eot = false;
+      while (!in.try_eot(is_eot)) {
+        internal::check_kernel_can_still_serve(
+            this->get_queue(), "empty", &internal::type_erased_queue::empty);
+      }
+      CHECK(!is_eot) << "frame port '" << this->get_name()
+                     << "' received an end-of-transmission token; a frame "
+                        "port's stream carries none";
+      frame.data_[i] = in.read();
+    }
+    live_ = true;
+    return frame;
+  }
+
+ private:
+  template <typename Param, typename Arg>
+  friend struct internal::accessor;
+  iframes(const internal::basic_stream<T>& base)
+      : internal::basic_stream<T>(base) {}
+  bool live_ = false;
+};
+
+/// Producer-side frame port of a @c tapa::stream: the task fills each frame
+/// of @p N elements in any order through the view `acquire()` returns, and
+/// the frame enters the stream when the view is released. Use only as a
+/// task parameter.
+template <typename T, uint64_t N>
+class oframes : virtual public internal::basic_stream<T> {
+  static_assert(N > 0, "a frame holds at least one element");
+
+ public:
+  /// One frame, write-only, until `release()` or the end of its scope. A
+  /// slot the task does not write holds an unspecified value.
+  class view {
+   public:
+    /// Element `i` of the frame; it can only be assigned.
+    class slot {
+     public:
+      slot& operator=(const T& value) {
+        *value_ = value;
+        return *this;
+      }
+
+     private:
+      friend class view;
+      explicit slot(T* value) : value_(value) {}
+      T* value_;
+    };
+
+    view(view&& other) noexcept
+        : port_(std::exchange(other.port_, nullptr)),
+          data_(std::move(other.data_)) {}
+    view(const view&) = delete;
+    view& operator=(const view&) = delete;
+    view& operator=(view&&) = delete;
+    ~view() { release(); }
+
+    slot operator[](int i) {
+      CHECK(port_ != nullptr) << "a released frame of a frame port was written";
+      CHECK(i >= 0 && static_cast<uint64_t>(i) < N)
+          << "frame port '" << port_->get_name() << "' written at " << i
+          << ", outside its frame of " << N;
+      return slot(&data_[i]);
+    }
+
+    /// Puts the frame on the stream before the view's scope ends.
+    void release() {
+      if (port_ == nullptr) return;
+      oframes* port = std::exchange(port_, nullptr);
+      ostream<T> out(*port);
+      for (const T& value : data_) out.write(value);
+      port->live_ = false;
+    }
+
+   private:
+    friend class oframes;
+    explicit view(oframes& port) : port_(&port), data_(N) {}
+    oframes* port_;
+    std::vector<T> data_;
+  };
+
+  /// Returns an empty frame to fill.
+  view acquire() {
+    CHECK(!live_) << "frame port '" << this->get_name()
+                  << "' acquired while a frame of it is still held; release "
+                     "one before acquiring the next";
+    live_ = true;
+    return view(*this);
+  }
+
+ private:
+  template <typename Param, typename Arg>
+  friend struct internal::accessor;
+  oframes(const internal::basic_stream<T>& base)
+      : internal::basic_stream<T>(base) {}
+  bool live_ = false;
 };
 
 /// Communication channel between two task instances.
@@ -999,6 +1157,18 @@ struct stream_uses<ostream<T>> {
     out.push_back(stream_access::use(v, /*task_reads=*/false));
   }
 };
+template <typename T, uint64_t N>
+struct stream_uses<iframes<T, N>> {
+  static void collect(const iframes<T, N>& v, std::vector<stream_use>& out) {
+    out.push_back(stream_access::use(v, /*task_reads=*/true));
+  }
+};
+template <typename T, uint64_t N>
+struct stream_uses<oframes<T, N>> {
+  static void collect(const oframes<T, N>& v, std::vector<stream_use>& out) {
+    out.push_back(stream_access::use(v, /*task_reads=*/false));
+  }
+};
 template <typename T, uint64_t S>
 struct stream_uses<istreams<T, S>> {
   static void collect(const istreams<T, S>& v, std::vector<stream_use>& out) {
@@ -1032,6 +1202,21 @@ TAPA_DEFINE_DEVICE_ACCESSOR(i, &)
 TAPA_DEFINE_DEVICE_ACCESSOR(o, )
 TAPA_DEFINE_DEVICE_ACCESSOR(o, &)
 #undef TAPA_DEFINE_DEVICE_ACCESSOR
+
+// param = i/oframes, arg = stream: a frame port of a leaf task.
+#define TAPA_DEFINE_FRAMES_ACCESSOR(io, arg_ref)                         \
+  template <typename T, uint64_t F, uint64_t D, uint64_t SD>             \
+  struct accessor<io##frames<T, F>&, stream<T, D, SD> arg_ref> {         \
+    static io##frames<T, F> access(stream<T, D, SD> arg_ref arg, bool) { \
+      return io##frames<T, F>(arg);                                      \
+    }                                                                    \
+  };
+
+TAPA_DEFINE_FRAMES_ACCESSOR(i, )
+TAPA_DEFINE_FRAMES_ACCESSOR(i, &)
+TAPA_DEFINE_FRAMES_ACCESSOR(o, )
+TAPA_DEFINE_FRAMES_ACCESSOR(o, &)
+#undef TAPA_DEFINE_FRAMES_ACCESSOR
 
 // Pass-through accessors: underlying mechanism differs per io type.
 

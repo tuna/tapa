@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use tapa_ir::port::ArgCategory;
 use tapa_ir::Arg;
 use tapa_protocol::{
-    stream_peek_port_name, stream_port_name, HANDSHAKE_CLK, HANDSHAKE_RST_N, ISTREAM_SUFFIXES,
-    M_AXI_PREFIX, OSTREAM_SUFFIXES,
+    frame_signals, stream_peek_port_name, stream_port_name, HANDSHAKE_CLK, HANDSHAKE_RST_N,
+    ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -15,6 +15,7 @@ use tapa_rtl::VerilogModule;
 
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
+use crate::passes::frames::frame_wire;
 
 /// Per-instance routing for child mmap arguments; absent entries are direct.
 #[derive(Debug, Default)]
@@ -173,6 +174,17 @@ pub(super) fn build_child_instance_with_reset(
                             ));
                         }
                     }
+                }
+            }
+            ArgCategory::Iframes | ArgCategory::Oframes => {
+                // Graph validation binds a frame port only to a frame channel
+                // declared in this parent.
+                let base = sanitize_array_name(child_port);
+                for &(suffix, _, _) in frame_signals(arg.cat.is_output_stream()) {
+                    port_args.push(PortArg::new(
+                        format!("{base}{suffix}"),
+                        Expr::ident(frame_wire(parent, arg.cat, suffix)),
+                    ));
                 }
             }
             ArgCategory::Ostream | ArgCategory::Ostreams => {

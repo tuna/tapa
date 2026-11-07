@@ -176,3 +176,4 @@ remote machine. See [Remote Execution](remote-execution.md).
 | Planning times out | Increase `--max-seconds`; it applies per solve rather than to the whole step. |
 | Timing still fails within a task | Restructure that task in HLS. Floorplanning addresses placement and routing, not logic depth. |
 | Results differ after floorplanning | Rerun fast cosim. Then check custom RTL and protocol correctness; floorplanning should add latency, not change values. |
+| `stream ... is a frame channel` | A frame port's channel (`tapa::iframes` / `tapa::oframes`) has fixed-latency memory ports and is not placed yet; build that design without a floorplan. |

@@ -27,8 +27,13 @@ pub(super) fn build_kernel_xml_ports(
             | ArgCategory::Immap
             | ArgCategory::Ommap
             | ArgCategory::AsyncMmap => PortCategory::MAxi,
-            ArgCategory::Istream | ArgCategory::Istreams => PortCategory::IStream,
-            ArgCategory::Ostream | ArgCategory::Ostreams => PortCategory::OStream,
+            // A frame port never reaches a kernel boundary (graph validation).
+            ArgCategory::Istream | ArgCategory::Istreams | ArgCategory::Iframes => {
+                PortCategory::IStream
+            }
+            ArgCategory::Ostream | ArgCategory::Ostreams | ArgCategory::Oframes => {
+                PortCategory::OStream
+            }
         };
         for name in projected_port_names(port, m_axi_bases) {
             out.push(KernelXmlPort {

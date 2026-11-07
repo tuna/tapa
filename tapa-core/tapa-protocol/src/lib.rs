@@ -69,6 +69,79 @@ pub fn stream_port_direction(suffix: &str) -> Option<PortDir> {
     }
 }
 
+// ── Frame ports ─────────────────────────────────────────────────────
+
+/// The bits of a frame port's acquire token (`kFrameBankBits` in
+/// `tapa/xilinx/hls/stream.h`): a frame channel has at most
+/// `1 << FRAME_BANK_BITS` banks.
+pub const FRAME_BANK_BITS: u32 = 8;
+
+/// What one signal of a frame port carries, which sets its width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FrameSignal {
+    Address,
+    Data,
+    Bank,
+    Bit,
+}
+
+/// The RTL ports `{port}{suffix}` of a `tapa::iframes` port.
+///
+/// Each comes with the leaf's direction. The frame channel's port for each
+/// is `r{suffix}` (`w{suffix}` for `tapa::oframes`), except `_release_din`,
+/// whose value nothing reads.
+const IFRAMES_SIGNALS: &[(&str, PortDir, FrameSignal)] = &[
+    ("_buf_address0", PortDir::Output, FrameSignal::Address),
+    ("_buf_ce0", PortDir::Output, FrameSignal::Bit),
+    ("_buf_q0", PortDir::Input, FrameSignal::Data),
+    ("_acquire_dout", PortDir::Input, FrameSignal::Bank),
+    ("_acquire_empty_n", PortDir::Input, FrameSignal::Bit),
+    ("_acquire_read", PortDir::Output, FrameSignal::Bit),
+    ("_release_din", PortDir::Output, FrameSignal::Bit),
+    ("_release_full_n", PortDir::Input, FrameSignal::Bit),
+    ("_release_write", PortDir::Output, FrameSignal::Bit),
+];
+
+/// As [`IFRAMES_SIGNALS`], for a `tapa::oframes` port.
+const OFRAMES_SIGNALS: &[(&str, PortDir, FrameSignal)] = &[
+    ("_buf_address0", PortDir::Output, FrameSignal::Address),
+    ("_buf_ce0", PortDir::Output, FrameSignal::Bit),
+    ("_buf_we0", PortDir::Output, FrameSignal::Bit),
+    ("_buf_d0", PortDir::Output, FrameSignal::Data),
+    ("_acquire_dout", PortDir::Input, FrameSignal::Bank),
+    ("_acquire_empty_n", PortDir::Input, FrameSignal::Bit),
+    ("_acquire_read", PortDir::Output, FrameSignal::Bit),
+    ("_release_din", PortDir::Output, FrameSignal::Bit),
+    ("_release_full_n", PortDir::Input, FrameSignal::Bit),
+    ("_release_write", PortDir::Output, FrameSignal::Bit),
+];
+
+/// The signals of a frame port that writes (`tapa::oframes`) or reads.
+#[must_use]
+pub const fn frame_signals(writes: bool) -> &'static [(&'static str, PortDir, FrameSignal)] {
+    if writes {
+        OFRAMES_SIGNALS
+    } else {
+        IFRAMES_SIGNALS
+    }
+}
+
+/// The width of a frame port's `signal` for `data_width`-bit elements in
+/// frames of `frame`: HLS declares the bank port for every bank a channel
+/// may have, so the address spans `frame << FRAME_BANK_BITS` elements.
+#[must_use]
+pub const fn frame_signal_width(signal: FrameSignal, data_width: u32, frame: u32) -> u32 {
+    match signal {
+        FrameSignal::Address => {
+            let elements = (frame as u64) << FRAME_BANK_BITS;
+            64 - (elements - 1).leading_zeros()
+        }
+        FrameSignal::Data => data_width,
+        FrameSignal::Bank => FRAME_BANK_BITS,
+        FrameSignal::Bit => 1,
+    }
+}
+
 // ── FIFO interface ports ────────────────────────────────────────────
 
 pub const FIFO_READ_PORTS: &[&str] = &["if_dout", "if_empty_n", "if_read", "if_read_ce"];

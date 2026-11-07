@@ -53,6 +53,36 @@ class ostream {
   void close();
 };
 
+template <typename T, uint64_t N>
+class iframes {
+  static_assert(sizeof(T) > 0, "a stream element must be a complete type");
+
+ public:
+  class view {
+   public:
+    const T& operator[](int i) const;
+    void release();
+  };
+  view acquire();
+};
+
+template <typename T, uint64_t N>
+class oframes {
+  static_assert(sizeof(T) > 0, "a stream element must be a complete type");
+
+ public:
+  class view {
+   public:
+    class slot {
+     public:
+      slot& operator=(const T& value);
+    };
+    slot operator[](int i);
+    void release();
+  };
+  view acquire();
+};
+
 template <typename T, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class stream : public istream<T>, public ostream<T> {

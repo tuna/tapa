@@ -20,7 +20,8 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 // Reads `[[tapa::frame(N)]]` onto a leaf task's stream ports on every target,
 // from every redeclaration so a forward declaration and its definition agree.
 // Reports an error for a frame on another kind of task or port, or with a
-// non-positive N.
+// non-positive N, and for a frame port (`tapa::iframes`/`oframes`, whose type
+// sets its frame) on an upper task.
 void ReadFrameAttrs(const clang::ASTContext& ctx, TaskModel& task);
 
 }  // namespace tapa::cc

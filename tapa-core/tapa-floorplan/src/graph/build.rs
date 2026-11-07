@@ -121,6 +121,13 @@ impl FloorGraphBuilder {
             let Some(depth) = fifo.depth else {
                 continue; // external passthrough FIFO — not a placed instance
             };
+            let frame_port = [fifo.produced_by.as_ref(), fifo.consumed_by.as_ref()]
+                .into_iter()
+                .filter_map(|end| flat.fifo_endpoint(top, fifo_name, end)?.binding)
+                .any(|binding| binding.argument.cat.is_frames());
+            if frame_port {
+                return Err(GraphError::FrameChannel(fifo_name.clone()));
+            }
             let data_width = resolve_fifo_data_width(&fifo_widths, fifo_name)?;
             let physical_width = data_width
                 .checked_add(2) // valid/write and ready/full_n

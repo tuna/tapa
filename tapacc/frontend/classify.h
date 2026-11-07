@@ -18,6 +18,8 @@ enum class TapaKind {
   kOStream,
   kIStreams,
   kOStreams,
+  kIFrames,  // a stream read as whole frames (`tapa::iframes<T, N>`)
+  kOFrames,  // a stream written as whole frames (`tapa::oframes<T, N>`)
 
   // stream instances (FIFOs declared inside an upper task; not ports)
   kStream,
@@ -47,13 +49,20 @@ inline TapaKind ClassifyTapaType(const clang::ParmVarDecl* param) {
 }
 // --- category predicates (enum checks, no strings) ---
 
-// istream / ostream / istreams / ostreams (any stream *port*).
+// iframes / oframes: a stream port that moves whole frames through views.
+constexpr bool IsFramesPort(TapaKind k) {
+  return k == TapaKind::kIFrames || k == TapaKind::kOFrames;
+}
+// istream / ostream / istreams / ostreams / iframes / oframes (any stream
+// *port*).
 constexpr bool IsStreamInterface(TapaKind k) {
   return k == TapaKind::kIStream || k == TapaKind::kOStream ||
-         k == TapaKind::kIStreams || k == TapaKind::kOStreams;
+         k == TapaKind::kIStreams || k == TapaKind::kOStreams ||
+         IsFramesPort(k);
 }
 constexpr bool IsInputStream(TapaKind k) {
-  return k == TapaKind::kIStream || k == TapaKind::kIStreams;
+  return k == TapaKind::kIStream || k == TapaKind::kIStreams ||
+         k == TapaKind::kIFrames;
 }
 // stream / streams (a FIFO *instance*, declared inside an upper task).
 constexpr bool IsStreamInstance(TapaKind k) {

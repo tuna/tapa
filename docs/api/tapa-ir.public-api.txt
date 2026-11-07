@@ -2306,10 +2306,12 @@ pub fn tapa_ir::memory::MemoryGeometryError::from(T) -> T
 pub mod tapa_ir::port
 pub enum tapa_ir::port::ArgCategory
 pub tapa_ir::port::ArgCategory::AsyncMmap
+pub tapa_ir::port::ArgCategory::Iframes
 pub tapa_ir::port::ArgCategory::Immap
 pub tapa_ir::port::ArgCategory::Istream
 pub tapa_ir::port::ArgCategory::Istreams
 pub tapa_ir::port::ArgCategory::Mmap
+pub tapa_ir::port::ArgCategory::Oframes
 pub tapa_ir::port::ArgCategory::Ommap
 pub tapa_ir::port::ArgCategory::Ostream
 pub tapa_ir::port::ArgCategory::Ostreams
@@ -2317,6 +2319,7 @@ pub tapa_ir::port::ArgCategory::Scalar
 impl tapa_ir::port::ArgCategory
 pub fn tapa_ir::port::ArgCategory::as_str(self) -> &'static str
 pub const fn tapa_ir::port::ArgCategory::is_direct_mmap(self) -> bool
+pub const fn tapa_ir::port::ArgCategory::is_frames(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_input_stream(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_mmap_like(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_output_stream(self) -> bool
@@ -3176,10 +3179,12 @@ impl<T> core::convert::From<T> for tapa_ir::aie::AieStreamKind
 pub fn tapa_ir::aie::AieStreamKind::from(T) -> T
 pub enum tapa_ir::ArgCategory
 pub tapa_ir::ArgCategory::AsyncMmap
+pub tapa_ir::ArgCategory::Iframes
 pub tapa_ir::ArgCategory::Immap
 pub tapa_ir::ArgCategory::Istream
 pub tapa_ir::ArgCategory::Istreams
 pub tapa_ir::ArgCategory::Mmap
+pub tapa_ir::ArgCategory::Oframes
 pub tapa_ir::ArgCategory::Ommap
 pub tapa_ir::ArgCategory::Ostream
 pub tapa_ir::ArgCategory::Ostreams
@@ -3187,6 +3192,7 @@ pub tapa_ir::ArgCategory::Scalar
 impl tapa_ir::port::ArgCategory
 pub fn tapa_ir::port::ArgCategory::as_str(self) -> &'static str
 pub const fn tapa_ir::port::ArgCategory::is_direct_mmap(self) -> bool
+pub const fn tapa_ir::port::ArgCategory::is_frames(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_input_stream(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_mmap_like(self) -> bool
 pub const fn tapa_ir::port::ArgCategory::is_output_stream(self) -> bool
@@ -3485,6 +3491,10 @@ impl<T> core::convert::From<T> for tapa_ir::connectivity::MemoryKind
 pub fn tapa_ir::connectivity::MemoryKind::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::connectivity::MemoryKind where T: for<'de> serde_core::de::Deserialize<'de>
 pub enum tapa_ir::ParseError
+pub tapa_ir::ParseError::FrameChannel
+pub tapa_ir::ParseError::FrameChannel::problem: alloc::string::String
+pub tapa_ir::ParseError::FrameChannel::stream: alloc::string::String
+pub tapa_ir::ParseError::FrameChannel::task: alloc::string::String
 pub tapa_ir::ParseError::FrameDepth
 pub tapa_ir::ParseError::FrameDepth::depth: u32
 pub tapa_ir::ParseError::FrameDepth::frame: u32

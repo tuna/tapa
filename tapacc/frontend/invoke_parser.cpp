@@ -418,16 +418,16 @@ void ParseInvocations(
               pk == TapaKind::kOmmap || pk == TapaKind::kAsyncMmap) {
             set_arg(ArrayElement(arg_name, mmaps_pos[arg_name]++, decl_ref),
                     port, pk);
-          } else if (pk == TapaKind::kIStream) {
+          } else if (pk == TapaKind::kIStream || pk == TapaKind::kIFrames) {
             const std::string a =
                 ArrayElement(arg_name, istreams_pos[arg_name]++, decl_ref);
             uc.MarkConsumer(a, task_name, inst_index, arg->getBeginLoc());
-            set_arg(a, port, TapaKind::kIStream);
-          } else if (pk == TapaKind::kOStream) {
+            set_arg(a, port, pk);
+          } else if (pk == TapaKind::kOStream || pk == TapaKind::kOFrames) {
             const std::string a =
                 ArrayElement(arg_name, ostreams_pos[arg_name]++, decl_ref);
             uc.MarkProducer(a, task_name, inst_index, arg->getBeginLoc());
-            set_arg(a, port, TapaKind::kOStream);
+            set_arg(a, port, pk);
           } else if (pk == TapaKind::kIStreams) {
             const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
             for (int64_t j = 0; j < n; ++j) {

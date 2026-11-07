@@ -34,6 +34,10 @@ const char* KindSpelling(TapaKind k) {
       return "tapa::istreams";
     case TapaKind::kOStreams:
       return "tapa::ostreams";
+    case TapaKind::kIFrames:
+      return "tapa::iframes";
+    case TapaKind::kOFrames:
+      return "tapa::oframes";
     case TapaKind::kAsyncMmap:
       return "tapa::async_mmap";
     case TapaKind::kMmap:
@@ -61,6 +65,8 @@ void CheckParamShape(const clang::ASTContext& ctx,
     case TapaKind::kOStream:
     case TapaKind::kIStreams:
     case TapaKind::kOStreams:
+    case TapaKind::kIFrames:
+    case TapaKind::kOFrames:
     case TapaKind::kAsyncMmap:
       if (!param->getType()->isLValueReferenceType()) {
         auto builder = ReportCustomDiag(
@@ -174,6 +180,14 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
                              std::nullopt});
         break;
 
+      // The frame size is the type's; ReadFrameAttrs checks the rest.
+      case TapaKind::kIFrames:
+      case TapaKind::kOFrames:
+        ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
+                             std::nullopt, IntArg(param, 1), std::nullopt,
+                             std::nullopt});
+        break;
+
       default:
         // Scalar: the parameter's own type and width.
         ports.push_back(
@@ -190,9 +204,17 @@ void ReadFrameAttrs(const clang::ASTContext& ctx, TaskModel& task) {
   const bool leaf = task.level == TaskLevel::kLower;
   for (const clang::FunctionDecl* decl : task.def->redecls()) {
     for (const clang::ParmVarDecl* param : decl->parameters()) {
+      const TapaKind kind = ClassifyTapaType(param);
+      if (IsFramesPort(kind) && decl == task.def && !leaf) {
+        ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                         param->getLocation(),
+                         "%0 parameter '%1' of upper task '%2': a frame port "
+                         "belongs to a leaf task, and its stream to the task "
+                         "that invokes it")
+            << KindSpelling(kind) << param->getNameAsString() << task.name;
+      }
       const auto* frame = param->getAttr<clang::TapaFrameAttr>();
       if (frame == nullptr) continue;
-      const TapaKind kind = ClassifyTapaType(param);
       const bool single_stream =
           kind == TapaKind::kIStream || kind == TapaKind::kOStream;
       if (!leaf || !single_stream || frame->getSize() <= 0) {

@@ -6,6 +6,7 @@ use crate::state::views::{DesignView, ModuleTable};
 use tapa_ir::floorplanned_fifo_storage_depth;
 
 use super::floorplans::stream_crossing_body_level;
+use super::frames::{build_frame_channel_instance, declare_frame_channel_wires, frame_channel};
 use tapa_protocol::{
     stream_port_direction, PortDir, FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK,
     HANDSHAKE_RST, ISTREAM_SUFFIXES, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
@@ -211,7 +212,19 @@ pub fn instantiate_fifos(
         let producer = design
             .design()
             .fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
-        if let Some(depth) = fifo.depth {
+        if let Some(channel) = frame_channel(design.design(), modules, task, fifo_name, fifo)? {
+            // A frame channel's ports have fixed latency: nothing may
+            // pipeline them across slots.
+            if stream_crossing_body_level(design.floorplan(), fifo_name).is_some() {
+                return Err(CodegenError::FrameChannel {
+                    fifo: fifo_name.clone(),
+                    problem: "the floorplan places its ends in different slots".to_owned(),
+                });
+            }
+            if let Some(mm) = modules.get_mut(task_name) {
+                mm.add_instance(build_frame_channel_instance(fifo_name, &channel));
+            }
+        } else if let Some(depth) = fifo.depth {
             // Buffered internal FIFOs must have a producer to size the buffer.
             let producer = producer
                 .as_ref()
@@ -316,7 +329,11 @@ pub fn connect_fifos(
         let producer = design_data.fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
         let sanitized_fifo_name = tapa_rtl::module::sanitize_array_name(fifo_name);
 
-        if fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
+        if let Some(channel) = frame_channel(design_data, modules, task, fifo_name, fifo)? {
+            if let Some(mm) = modules.get_mut(task_name) {
+                declare_frame_channel_wires(mm, fifo_name, &channel);
+            }
+        } else if fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
             // Internal FIFO: declare wires for both read and write sides.
             // A produced+consumed internal FIFO always has a producer endpoint.
             let producer = producer

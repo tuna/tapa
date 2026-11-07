@@ -1,0 +1,330 @@
+{
+    "schema_version": 4,
+    "top": "CornerTurn",
+    "target": "xilinx-vitis",
+    "cflags": [
+        "-std=c++14"
+    ],
+    "tasks": {
+        "CornerTurn": {
+            "level": "upper",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_CornerTurn"
+            ],
+            "readable_name": "CornerTurn",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "src",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "dst",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {
+                "Load": [
+                    {
+                        "args": {
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "rows",
+                                "cat": "ostream"
+                            },
+                            "src": {
+                                "arg": "src",
+                                "cat": "mmap"
+                            }
+                        },
+                        "step": 0,
+                        "position": 0
+                    }
+                ],
+                "Store": [
+                    {
+                        "args": {
+                            "dst": {
+                                "arg": "dst",
+                                "cat": "mmap"
+                            },
+                            "in": {
+                                "arg": "cols",
+                                "cat": "istream"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            }
+                        },
+                        "step": 0,
+                        "position": 4
+                    }
+                ],
+                "Turn": [
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "rows",
+                                "cat": "iframes"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "once",
+                                "cat": "oframes"
+                            }
+                        },
+                        "step": 0,
+                        "position": 1
+                    },
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "once",
+                                "cat": "iframes"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "twice",
+                                "cat": "oframes"
+                            }
+                        },
+                        "step": 0,
+                        "position": 2
+                    },
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "twice",
+                                "cat": "iframes"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "cols",
+                                "cat": "oframes"
+                            }
+                        },
+                        "step": 0,
+                        "position": 3
+                    }
+                ]
+            },
+            "fifos": {
+                "cols": {
+                    "depth": 2048,
+                    "consumed_by": [
+                        "Store",
+                        0
+                    ],
+                    "produced_by": [
+                        "Turn",
+                        2
+                    ]
+                },
+                "once": {
+                    "depth": 2048,
+                    "consumed_by": [
+                        "Turn",
+                        1
+                    ],
+                    "produced_by": [
+                        "Turn",
+                        0
+                    ]
+                },
+                "rows": {
+                    "depth": 2048,
+                    "consumed_by": [
+                        "Turn",
+                        0
+                    ],
+                    "produced_by": [
+                        "Load",
+                        0
+                    ]
+                },
+                "twice": {
+                    "depth": 2048,
+                    "consumed_by": [
+                        "Turn",
+                        2
+                    ],
+                    "produced_by": [
+                        "Turn",
+                        1
+                    ]
+                }
+            },
+            "clock_period": 1000,
+            "self_area": {
+                "lut": 360,
+                "ff": 214,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "Load": {
+            "level": "lower",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_Load"
+            ],
+            "readable_name": "Load",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "mmap",
+                    "name": "src",
+                    "type": "const float*",
+                    "width": 32
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {},
+            "fifos": {},
+            "clock_period": 2431,
+            "self_area": {
+                "lut": 989,
+                "ff": 799,
+                "bram_18k": 1,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "Store": {
+            "level": "lower",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_Store"
+            ],
+            "readable_name": "Store",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "in",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "mmap",
+                    "name": "dst",
+                    "type": "float*",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {},
+            "fifos": {},
+            "clock_period": 2431,
+            "self_area": {
+                "lut": 983,
+                "ff": 713,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "Turn": {
+            "level": "lower",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_Turn"
+            ],
+            "readable_name": "Turn",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "iframes",
+                    "name": "in",
+                    "type": "float",
+                    "width": 32,
+                    "frame": 1024
+                },
+                {
+                    "cat": "oframes",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32,
+                    "frame": 1024
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {},
+            "fifos": {},
+            "clock_period": 2093,
+            "self_area": {
+                "lut": 396,
+                "ff": 149,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        }
+    }
+}

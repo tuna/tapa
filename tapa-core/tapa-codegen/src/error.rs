@@ -28,6 +28,9 @@ pub enum CodegenError {
     )]
     FifoWidthUnresolved(String),
 
+    #[error("cannot build the frame channel `{fifo}`: {problem}")]
+    FrameChannel { fifo: String, problem: String },
+
     #[error("RTL parse error: {0}")]
     RtlParse(#[from] tapa_rtl::ParseError),
 

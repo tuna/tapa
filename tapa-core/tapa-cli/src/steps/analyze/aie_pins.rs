@@ -84,11 +84,17 @@ pub fn apply(graph: &mut Graph, locations: &[AieLocationArg], plios: &[AiePlioAr
             .iter_mut()
             .find(|port| {
                 port.name == plio.port
-                    && matches!(port.cat, ArgCategory::Istream | ArgCategory::Ostream)
+                    && matches!(
+                        port.cat,
+                        ArgCategory::Istream
+                            | ArgCategory::Ostream
+                            | ArgCategory::Iframes
+                            | ArgCategory::Oframes
+                    )
             })
             .ok_or_else(|| {
                 CliError::InvalidArg(format!(
-                    "`{flag}` names no tapa::istream or tapa::ostream port of `{}`",
+                    "`{flag}` names no single stream port of `{}`",
                     plio.task
                 ))
             })?;
@@ -192,11 +198,7 @@ mod tests {
             ("Nope:1,1", None, "names no task `Nope`"),
             ("Load:1,1", None, "not an AI Engine task"),
             ("Mid:1,1", None, "is an upper task"),
-            (
-                "Add:1,1",
-                Some("Add.n:64"),
-                "no tapa::istream or tapa::ostream port",
-            ),
+            ("Add:1,1", Some("Add.n:64"), "names no single stream port"),
         ] {
             let locations = [parse_aie_location(location).expect("tile")];
             let plios: Vec<_> = plio

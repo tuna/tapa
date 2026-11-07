@@ -54,7 +54,8 @@ pub fn load(work_dir: &Path) -> Result<WorkState> {
         | tapa_ir::ParseError::Json(_)
         | tapa_ir::ParseError::UnsupportedSchemaVersion { .. }
         | tapa_ir::ParseError::OutdatedSchemaVersion { .. }
-        | tapa_ir::ParseError::FrameDepth { .. }) => other.into(),
+        | tapa_ir::ParseError::FrameDepth { .. }
+        | tapa_ir::ParseError::FrameChannel { .. }) => other.into(),
     })
 }
 

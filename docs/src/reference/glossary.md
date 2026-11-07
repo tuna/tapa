@@ -61,6 +61,17 @@ Vitis implementation.
 
 ---
 
+**frame port**
+
+A stream port of a leaf task that moves whole frames of `N` elements
+(`tapa::iframes<T, N>&` / `tapa::oframes<T, N>&`): the task acquires each
+frame, reads or writes its elements in any order through a view, and
+releases it. On PL its stream becomes a frame channel of
+`max(2, depth / N)` banks in one memory; on the AI Engine it is a kernel
+buffer port.
+
+---
+
 **floorplan**
 
 The optional `tapa floorplan` step, run between `synth` and `pack`. It places

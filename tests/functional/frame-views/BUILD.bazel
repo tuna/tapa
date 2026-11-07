@@ -1,0 +1,37 @@
+"""Frame ports: corner turns through frame channels."""
+
+load("//bazel:test_rules.bzl", "aie_sim_test", "tapa_functional_test")
+
+tapa_functional_test(
+    name = "frame-views",
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    kernel_hdrs = ["corner.h"],
+    kernel_srcs = ["corner.cpp"],
+    top_name = "CornerTurn",
+)
+
+# The turns on the AI Engine, on x86sim: a PLIO into a frame port's buffers,
+# two AI Engine frame ports joined directly, and a frame port's buffers out
+# to a PLIO.
+aie_sim_test(
+    name = "frame-views-x86sim",
+    compile_flags = ["--target=Turn:aie"],
+    host = ":frame-views-host",
+    kernel = "corner",
+    top_name = "CornerTurn",
+)
+
+# Cycle-approximate: chess compiles the turns, and aiesimulator replays the
+# PLIO streams of a software run and checks the output against it.
+aie_sim_test(
+    name = "frame-views-aiesim",
+    size = "enormous",
+    compile_flags = ["--target=Turn:aie"],
+    host = ":frame-views-host",
+    kernel = "corner",
+    simulator = "aiesim",
+    top_name = "CornerTurn",
+)

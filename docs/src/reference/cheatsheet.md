@@ -66,6 +66,8 @@ int main(int argc, char* argv[]) {
 | `tapa::streams<T, N>` | local variable | array owner |
 | `tapa::istreams<T, N>&` | leaf task parameter | array read |
 | `tapa::ostreams<T, N>&` | leaf task parameter | array write |
+| `tapa::iframes<T, N>&` | leaf task parameter | whole frames of N, read in any order |
+| `tapa::oframes<T, N>&` | leaf task parameter | whole frames of N, written in any order |
 
 ```cpp
 // Read
@@ -84,6 +86,11 @@ bool f = out.full();
 out.close();                   // send EoT marker
 in.open();                     // consume EoT marker
 TAPA_WHILE_NOT_EOT(in) { ... } // loop until EoT
+
+// Frame ports
+auto src = frames_in.acquire();  // blocks for a whole frame
+auto dst = frames_out.acquire(); // blocks for a free frame
+dst[j] = src[i];                 // any order; released at scope end
 ```
 
 Stream depth defaults to 2. Increasing it provides more buffering but uses

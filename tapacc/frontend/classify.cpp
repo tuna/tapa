@@ -19,6 +19,8 @@ TapaKind ClassifyByQualifiedName(std::string_view name) {
       {"tapa::ostream", TapaKind::kOStream},
       {"tapa::istreams", TapaKind::kIStreams},
       {"tapa::ostreams", TapaKind::kOStreams},
+      {"tapa::iframes", TapaKind::kIFrames},
+      {"tapa::oframes", TapaKind::kOFrames},
       {"tapa::stream", TapaKind::kStream},
       {"tapa::streams", TapaKind::kStreams},
       {"tapa::mmap", TapaKind::kMmap},
@@ -64,6 +66,10 @@ const char* TapaKindCat(TapaKind k) {
       return "istreams";
     case TapaKind::kOStreams:
       return "ostreams";
+    case TapaKind::kIFrames:
+      return "iframes";
+    case TapaKind::kOFrames:
+      return "oframes";
     case TapaKind::kMmap:
     case TapaKind::kMmaps:
     case TapaKind::kHmap:
