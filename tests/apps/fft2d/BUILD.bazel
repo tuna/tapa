@@ -1,0 +1,38 @@
+"""2-D FFTs whose column pass reads the row pass's frames in place."""
+
+load("//bazel:test_rules.bzl", "aie_sim_test", "tapa_app_test")
+
+tapa_app_test(
+    name = "fft2d",
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    top_name = "Fft2d",
+)
+
+# The two passes on the AI Engine, on x86sim; Load and Store in software.
+aie_sim_test(
+    name = "fft2d-aie-x86sim",
+    compile_flags = [
+        "--target=RowPass:aie",
+        "--target=ColPass:aie",
+    ],
+    host = ":fft2d-host",
+    kernel = "fft2d",
+    top_name = "Fft2d",
+)
+
+# Cycle-approximate: aiesimulator replays the PLIO streams of a software run.
+aie_sim_test(
+    name = "fft2d-aie-aiesim",
+    size = "enormous",
+    compile_flags = [
+        "--target=RowPass:aie",
+        "--target=ColPass:aie",
+    ],
+    host = ":fft2d-host",
+    kernel = "fft2d",
+    simulator = "aiesim",
+    top_name = "Fft2d",
+)
