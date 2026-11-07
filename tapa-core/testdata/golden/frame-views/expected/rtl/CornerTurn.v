@@ -125,20 +125,20 @@ wire Turn_0__is_done;
 wire Turn_0__ap_idle;
 wire Turn_0__ap_ready;
 wire [31:0] Turn_0__n;
-reg [1:0] Turn_1__state;
-wire Turn_1__ap_start;
-wire Turn_1__ap_done;
-wire Turn_1__is_done;
-wire Turn_1__ap_idle;
-wire Turn_1__ap_ready;
-wire [31:0] Turn_1__n;
-reg [1:0] Turn_2__state;
-wire Turn_2__ap_start;
-wire Turn_2__ap_done;
-wire Turn_2__is_done;
-wire Turn_2__ap_idle;
-wire Turn_2__ap_ready;
-wire [31:0] Turn_2__n;
+reg [1:0] TurnIn_0__state;
+wire TurnIn_0__ap_start;
+wire TurnIn_0__ap_done;
+wire TurnIn_0__is_done;
+wire TurnIn_0__ap_idle;
+wire TurnIn_0__ap_ready;
+wire [31:0] TurnIn_0__n;
+reg [1:0] TurnOut_0__state;
+wire TurnOut_0__ap_start;
+wire TurnOut_0__ap_done;
+wire TurnOut_0__is_done;
+wire TurnOut_0__ap_idle;
+wire TurnOut_0__ap_ready;
+wire [31:0] TurnOut_0__n;
 wire [17:0] cols_w_buf_address0;
 wire cols_w_buf_ce0;
 wire cols_w_buf_we0;
@@ -183,25 +183,12 @@ wire rows_r_acquire_read;
 wire rows_r_release_din;
 wire rows_r_release_full_n;
 wire rows_r_release_write;
-wire [17:0] twice_w_buf_address0;
-wire twice_w_buf_ce0;
-wire twice_w_buf_we0;
-wire [31:0] twice_w_buf_d0;
-wire [7:0] twice_w_acquire_dout;
-wire twice_w_acquire_empty_n;
-wire twice_w_acquire_read;
-wire twice_w_release_din;
-wire twice_w_release_full_n;
-wire twice_w_release_write;
-wire [17:0] twice_r_buf_address0;
-wire twice_r_buf_ce0;
-wire [31:0] twice_r_buf_q0;
-wire [7:0] twice_r_acquire_dout;
-wire twice_r_acquire_empty_n;
-wire twice_r_acquire_read;
-wire twice_r_release_din;
-wire twice_r_release_full_n;
-wire twice_r_release_write;
+wire [32:0] twice_dout;
+wire twice_empty_n;
+wire twice_read;
+wire [32:0] twice_din;
+wire twice_full_n;
+wire twice_write;
 wire [63:0] src_offset;
 wire [63:0] dst_offset;
 wire [31:0] n;
@@ -324,52 +311,19 @@ Turn Turn_0 (
   .out_release_write(once_w_release_write)
 );
 
-Turn Turn_1 (
+TurnIn TurnIn_0 (
   .ap_clk(ap_clk),
   .ap_rst_n(ap_rst_n),
-  .ap_start(Turn_1__ap_start),
-  .ap_done(Turn_1__ap_done),
-  .ap_idle(Turn_1__ap_idle),
-  .ap_ready(Turn_1__ap_ready),
-  .in_buf_address0(once_r_buf_address0),
-  .in_buf_ce0(once_r_buf_ce0),
-  .in_buf_q0(once_r_buf_q0),
-  .in_acquire_dout(once_r_acquire_dout),
-  .in_acquire_empty_n(once_r_acquire_empty_n),
-  .in_acquire_read(once_r_acquire_read),
-  .in_release_din(once_r_release_din),
-  .in_release_full_n(once_r_release_full_n),
-  .in_release_write(once_r_release_write),
-  .n(Turn_1__n),
-  .out_buf_address0(twice_w_buf_address0),
-  .out_buf_ce0(twice_w_buf_ce0),
-  .out_buf_we0(twice_w_buf_we0),
-  .out_buf_d0(twice_w_buf_d0),
-  .out_acquire_dout(twice_w_acquire_dout),
-  .out_acquire_empty_n(twice_w_acquire_empty_n),
-  .out_acquire_read(twice_w_acquire_read),
-  .out_release_din(twice_w_release_din),
-  .out_release_full_n(twice_w_release_full_n),
-  .out_release_write(twice_w_release_write)
-);
-
-Turn Turn_2 (
-  .ap_clk(ap_clk),
-  .ap_rst_n(ap_rst_n),
-  .ap_start(Turn_2__ap_start),
-  .ap_done(Turn_2__ap_done),
-  .ap_idle(Turn_2__ap_idle),
-  .ap_ready(Turn_2__ap_ready),
-  .in_buf_address0(twice_r_buf_address0),
-  .in_buf_ce0(twice_r_buf_ce0),
-  .in_buf_q0(twice_r_buf_q0),
-  .in_acquire_dout(twice_r_acquire_dout),
-  .in_acquire_empty_n(twice_r_acquire_empty_n),
-  .in_acquire_read(twice_r_acquire_read),
-  .in_release_din(twice_r_release_din),
-  .in_release_full_n(twice_r_release_full_n),
-  .in_release_write(twice_r_release_write),
-  .n(Turn_2__n),
+  .ap_start(TurnIn_0__ap_start),
+  .ap_done(TurnIn_0__ap_done),
+  .ap_idle(TurnIn_0__ap_idle),
+  .ap_ready(TurnIn_0__ap_ready),
+  .in_s_dout(twice_dout),
+  .in_peek_dout(twice_dout),
+  .in_s_empty_n(twice_empty_n),
+  .in_peek_empty_n(twice_empty_n),
+  .in_s_read(twice_read),
+  .n(TurnIn_0__n),
   .out_buf_address0(cols_w_buf_address0),
   .out_buf_ce0(cols_w_buf_ce0),
   .out_buf_we0(cols_w_buf_we0),
@@ -380,6 +334,29 @@ Turn Turn_2 (
   .out_release_din(cols_w_release_din),
   .out_release_full_n(cols_w_release_full_n),
   .out_release_write(cols_w_release_write)
+);
+
+TurnOut TurnOut_0 (
+  .ap_clk(ap_clk),
+  .ap_rst_n(ap_rst_n),
+  .ap_start(TurnOut_0__ap_start),
+  .ap_done(TurnOut_0__ap_done),
+  .ap_idle(TurnOut_0__ap_idle),
+  .ap_ready(TurnOut_0__ap_ready),
+  .in_buf_address0(once_r_buf_address0),
+  .in_buf_ce0(once_r_buf_ce0),
+  .in_buf_q0(once_r_buf_q0),
+  .in_acquire_dout(once_r_acquire_dout),
+  .in_acquire_empty_n(once_r_acquire_empty_n),
+  .in_acquire_read(once_r_acquire_read),
+  .in_release_din(once_r_release_din),
+  .in_release_full_n(once_r_release_full_n),
+  .in_release_write(once_r_release_write),
+  .n(TurnOut_0__n),
+  .out_s_din(twice_din),
+  .out_s_full_n(twice_full_n),
+  .out_s_write(twice_write),
+  .out_peek('d0)
 );
 
 CornerTurn_fsm __tapa_fsm_unit (
@@ -414,20 +391,20 @@ CornerTurn_fsm __tapa_fsm_unit (
   .Turn_0__is_done(Turn_0__is_done),
   .Turn_0__n_in(n),
   .Turn_0__n(Turn_0__n),
-  .Turn_1__ap_start(Turn_1__ap_start),
-  .Turn_1__ap_ready(Turn_1__ap_ready),
-  .Turn_1__ap_done(Turn_1__ap_done),
-  .Turn_1__ap_idle(Turn_1__ap_idle),
-  .Turn_1__is_done(Turn_1__is_done),
-  .Turn_1__n_in(n),
-  .Turn_1__n(Turn_1__n),
-  .Turn_2__ap_start(Turn_2__ap_start),
-  .Turn_2__ap_ready(Turn_2__ap_ready),
-  .Turn_2__ap_done(Turn_2__ap_done),
-  .Turn_2__ap_idle(Turn_2__ap_idle),
-  .Turn_2__is_done(Turn_2__is_done),
-  .Turn_2__n_in(n),
-  .Turn_2__n(Turn_2__n)
+  .TurnIn_0__ap_start(TurnIn_0__ap_start),
+  .TurnIn_0__ap_ready(TurnIn_0__ap_ready),
+  .TurnIn_0__ap_done(TurnIn_0__ap_done),
+  .TurnIn_0__ap_idle(TurnIn_0__ap_idle),
+  .TurnIn_0__is_done(TurnIn_0__is_done),
+  .TurnIn_0__n_in(n),
+  .TurnIn_0__n(TurnIn_0__n),
+  .TurnOut_0__ap_start(TurnOut_0__ap_start),
+  .TurnOut_0__ap_ready(TurnOut_0__ap_ready),
+  .TurnOut_0__ap_done(TurnOut_0__ap_done),
+  .TurnOut_0__ap_idle(TurnOut_0__ap_idle),
+  .TurnOut_0__is_done(TurnOut_0__is_done),
+  .TurnOut_0__n_in(n),
+  .TurnOut_0__n(TurnOut_0__n)
 );
 
 frame_channel #(
@@ -525,37 +502,21 @@ frame_channel #(
   .if_read('d0)
 );
 
-frame_channel #(
-  .DATA_WIDTH(32),
-  .FRAME(1024),
-  .BANKS(2),
-  .ADDR_WIDTH(18),
-  .BANK_WIDTH(8),
-  .W_VIEW(1),
-  .R_VIEW(1)
+fifo #(
+  .DATA_WIDTH(33),
+  .ADDR_WIDTH(1),
+  .DEPTH(2)
 ) twice_fifo (
   .clk(ap_clk),
   .reset(ap_rst),
-  .w_buf_address0(twice_w_buf_address0),
-  .w_buf_ce0(twice_w_buf_ce0),
-  .w_buf_we0(twice_w_buf_we0),
-  .w_buf_d0(twice_w_buf_d0),
-  .w_acquire_dout(twice_w_acquire_dout),
-  .w_acquire_empty_n(twice_w_acquire_empty_n),
-  .w_acquire_read(twice_w_acquire_read),
-  .w_release_full_n(twice_w_release_full_n),
-  .w_release_write(twice_w_release_write),
-  .if_din('d0),
-  .if_write('d0),
-  .r_buf_address0(twice_r_buf_address0),
-  .r_buf_ce0(twice_r_buf_ce0),
-  .r_buf_q0(twice_r_buf_q0),
-  .r_acquire_dout(twice_r_acquire_dout),
-  .r_acquire_empty_n(twice_r_acquire_empty_n),
-  .r_acquire_read(twice_r_acquire_read),
-  .r_release_full_n(twice_r_release_full_n),
-  .r_release_write(twice_r_release_write),
-  .if_read('d0)
+  .if_dout(twice_dout),
+  .if_empty_n(twice_empty_n),
+  .if_read(twice_read),
+  .if_read_ce(1'b1),
+  .if_din(twice_din),
+  .if_full_n(twice_full_n),
+  .if_write(twice_write),
+  .if_write_ce(1'b1)
 );
 
 CornerTurn_control_s_axi #(

@@ -212,9 +212,12 @@ inline constexpr int kFrameBankBits = 8;
 template <typename T, uint64_t N, bool kWrites>
 class tapa_frames {
   using bank_t = ap_uint<internal::kFrameBankBits>;
+  using buf_t = T[N << internal::kFrameBankBits];
+  using release_t = hls::stream<ap_uint<1>>;
 
   // What the views of both directions share: the bank they address and its
-  // release.
+  // release. A view refers to the port's members, not to the port: HLS
+  // cannot split a port up that an object outliving a loop refers to.
   class frame {
    public:
     // The release waits for every access before it: HLS orders accesses to
@@ -223,8 +226,8 @@ class tapa_frames {
     void release() {
 #pragma HLS inline
       if (live_) {
-        hls::fence({port_._buf}, {port_._release});
-        port_._release.write(1);
+        hls::fence({buf_}, {release_});
+        release_.write(1);
         live_ = false;
       }
     }
@@ -235,8 +238,10 @@ class tapa_frames {
     }
 
    protected:
-    frame(tapa_frames& port, uint64_t base) : port_(port), base_(base) {}
-    tapa_frames& port_;
+    frame(buf_t& buf, release_t& release, uint64_t base)
+        : buf_(buf), release_(release), base_(base) {}
+    buf_t& buf_;
+    release_t& release_;
     uint64_t base_;
     bool live_ = true;
   };
@@ -246,7 +251,7 @@ class tapa_frames {
    public:
     T operator[](int i) const {
 #pragma HLS inline
-      return this->port_._buf[this->base_ + i];
+      return this->buf_[this->base_ + i];
     }
 
    private:
@@ -261,20 +266,20 @@ class tapa_frames {
      public:
       slot& operator=(const T& value) {
 #pragma HLS inline
-        port_._buf[at_] = value;
+        buf_[at_] = value;
         return *this;
       }
 
      private:
       friend class oview;
-      slot(tapa_frames& port, uint64_t at) : port_(port), at_(at) {}
-      tapa_frames& port_;
+      slot(buf_t& buf, uint64_t at) : buf_(buf), at_(at) {}
+      buf_t& buf_;
       uint64_t at_;
     };
 
     slot operator[](int i) {
 #pragma HLS inline
-      return slot(this->port_, this->base_ + i);
+      return slot(this->buf_, this->base_ + i);
     }
 
    private:
@@ -294,12 +299,12 @@ class tapa_frames {
     bank_t bank;
     while (!_acquire.read_nb(bank)) {
     }
-    return view(*this, uint64_t(bank) * N);
+    return view(_buf, _release, uint64_t(bank) * N);
   }
 
-  T _buf[N << internal::kFrameBankBits];
+  buf_t _buf;
   hls::stream<bank_t> _acquire;
-  hls::stream<ap_uint<1>> _release;
+  release_t _release;
 };
 
 template <typename T, uint64_t N>

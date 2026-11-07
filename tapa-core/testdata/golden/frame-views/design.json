@@ -98,30 +98,14 @@
                         },
                         "step": 0,
                         "position": 1
-                    },
-                    {
-                        "args": {
-                            "in": {
-                                "arg": "once",
-                                "cat": "iframes"
-                            },
-                            "n": {
-                                "arg": "n",
-                                "cat": "scalar"
-                            },
-                            "out": {
-                                "arg": "twice",
-                                "cat": "oframes"
-                            }
-                        },
-                        "step": 0,
-                        "position": 2
-                    },
+                    }
+                ],
+                "TurnIn": [
                     {
                         "args": {
                             "in": {
                                 "arg": "twice",
-                                "cat": "iframes"
+                                "cat": "istream"
                             },
                             "n": {
                                 "arg": "n",
@@ -135,6 +119,26 @@
                         "step": 0,
                         "position": 3
                     }
+                ],
+                "TurnOut": [
+                    {
+                        "args": {
+                            "in": {
+                                "arg": "once",
+                                "cat": "iframes"
+                            },
+                            "n": {
+                                "arg": "n",
+                                "cat": "scalar"
+                            },
+                            "out": {
+                                "arg": "twice",
+                                "cat": "ostream"
+                            }
+                        },
+                        "step": 0,
+                        "position": 2
+                    }
                 ]
             },
             "fifos": {
@@ -145,15 +149,15 @@
                         0
                     ],
                     "produced_by": [
-                        "Turn",
-                        2
+                        "TurnIn",
+                        0
                     ]
                 },
                 "once": {
                     "depth": 2048,
                     "consumed_by": [
-                        "Turn",
-                        1
+                        "TurnOut",
+                        0
                     ],
                     "produced_by": [
                         "Turn",
@@ -172,14 +176,14 @@
                     ]
                 },
                 "twice": {
-                    "depth": 2048,
+                    "depth": 2,
                     "consumed_by": [
-                        "Turn",
-                        2
+                        "TurnIn",
+                        0
                     ],
                     "produced_by": [
-                        "Turn",
-                        1
+                        "TurnOut",
+                        0
                     ]
                 }
             },
@@ -321,6 +325,96 @@
             "self_area": {
                 "lut": 396,
                 "ff": 149,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "TurnIn": {
+            "level": "lower",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_TurnIn"
+            ],
+            "readable_name": "TurnIn",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "istream",
+                    "name": "in",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "oframes",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32,
+                    "frame": 1024
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {},
+            "fifos": {},
+            "clock_period": 2093,
+            "self_area": {
+                "lut": 350,
+                "ff": 117,
+                "bram_18k": 0,
+                "dsp": 0,
+                "uram": 0
+            }
+        },
+        "TurnOut": {
+            "level": "lower",
+            "srcs": [
+                "corner.cpp"
+            ],
+            "include_dirs": [
+                ""
+            ],
+            "defines": [
+                "TAPA_TASK_DEF_TurnOut"
+            ],
+            "readable_name": "TurnOut",
+            "synth": "hls",
+            "ports": [
+                {
+                    "cat": "iframes",
+                    "name": "in",
+                    "type": "float",
+                    "width": 32,
+                    "frame": 1024
+                },
+                {
+                    "cat": "ostream",
+                    "name": "out",
+                    "type": "float",
+                    "width": 32
+                },
+                {
+                    "cat": "scalar",
+                    "name": "n",
+                    "type": "int",
+                    "width": 32
+                }
+            ],
+            "tasks": {},
+            "fifos": {},
+            "clock_period": 2093,
+            "self_area": {
+                "lut": 350,
+                "ff": 117,
                 "bram_18k": 0,
                 "dsp": 0,
                 "uram": 0

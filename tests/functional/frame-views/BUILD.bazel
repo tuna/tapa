@@ -14,11 +14,15 @@ tapa_functional_test(
 )
 
 # The turns on the AI Engine, on x86sim: a PLIO into a frame port's buffers,
-# two AI Engine frame ports joined directly, and a frame port's buffers out
-# to a PLIO.
+# two AI Engine frame ports joined directly, a frame port and a stream port
+# in one kernel, and a frame port's buffers out to a PLIO.
 aie_sim_test(
     name = "frame-views-x86sim",
-    compile_flags = ["--target=Turn:aie"],
+    compile_flags = [
+        "--target=Turn:aie",
+        "--target=TurnOut:aie",
+        "--target=TurnIn:aie",
+    ],
     host = ":frame-views-host",
     kernel = "corner",
     top_name = "CornerTurn",
@@ -29,7 +33,11 @@ aie_sim_test(
 aie_sim_test(
     name = "frame-views-aiesim",
     size = "enormous",
-    compile_flags = ["--target=Turn:aie"],
+    compile_flags = [
+        "--target=Turn:aie",
+        "--target=TurnOut:aie",
+        "--target=TurnIn:aie",
+    ],
     host = ":frame-views-host",
     kernel = "corner",
     simulator = "aiesim",

@@ -30,20 +30,20 @@ module CornerTurn_fsm (
   output wire Turn_0__is_done,
   input wire [31:0] Turn_0__n_in,
   output wire [31:0] Turn_0__n,
-  output wire Turn_1__ap_start,
-  input wire Turn_1__ap_ready,
-  input wire Turn_1__ap_done,
-  input wire Turn_1__ap_idle,
-  output wire Turn_1__is_done,
-  input wire [31:0] Turn_1__n_in,
-  output wire [31:0] Turn_1__n,
-  output wire Turn_2__ap_start,
-  input wire Turn_2__ap_ready,
-  input wire Turn_2__ap_done,
-  input wire Turn_2__ap_idle,
-  output wire Turn_2__is_done,
-  input wire [31:0] Turn_2__n_in,
-  output wire [31:0] Turn_2__n
+  output wire TurnIn_0__ap_start,
+  input wire TurnIn_0__ap_ready,
+  input wire TurnIn_0__ap_done,
+  input wire TurnIn_0__ap_idle,
+  output wire TurnIn_0__is_done,
+  input wire [31:0] TurnIn_0__n_in,
+  output wire [31:0] TurnIn_0__n,
+  output wire TurnOut_0__ap_start,
+  input wire TurnOut_0__ap_ready,
+  input wire TurnOut_0__ap_done,
+  input wire TurnOut_0__ap_idle,
+  output wire TurnOut_0__is_done,
+  input wire [31:0] TurnOut_0__n_in,
+  output wire [31:0] TurnOut_0__n
 );
 
 reg [1:0] Load_0__state;
@@ -54,10 +54,10 @@ reg [63:0] Store_0__dst_offset_reg;
 reg [31:0] Store_0__n_reg;
 reg [1:0] Turn_0__state;
 reg [31:0] Turn_0__n_reg;
-reg [1:0] Turn_1__state;
-reg [31:0] Turn_1__n_reg;
-reg [1:0] Turn_2__state;
-reg [31:0] Turn_2__n_reg;
+reg [1:0] TurnIn_0__state;
+reg [31:0] TurnIn_0__n_reg;
+reg [1:0] TurnOut_0__state;
+reg [31:0] TurnOut_0__n_reg;
 reg [1:0] __tapa_state;
 wire ap_rst;
 wire __tapa_start_q;
@@ -74,12 +74,12 @@ assign Store_0__n = Store_0__n_reg;
 assign Turn_0__ap_start = (Turn_0__state == 2'b01);
 assign Turn_0__is_done = (Turn_0__state == 2'b10);
 assign Turn_0__n = Turn_0__n_reg;
-assign Turn_1__ap_start = (Turn_1__state == 2'b01);
-assign Turn_1__is_done = (Turn_1__state == 2'b10);
-assign Turn_1__n = Turn_1__n_reg;
-assign Turn_2__ap_start = (Turn_2__state == 2'b01);
-assign Turn_2__is_done = (Turn_2__state == 2'b10);
-assign Turn_2__n = Turn_2__n_reg;
+assign TurnIn_0__ap_start = (TurnIn_0__state == 2'b01);
+assign TurnIn_0__is_done = (TurnIn_0__state == 2'b10);
+assign TurnIn_0__n = TurnIn_0__n_reg;
+assign TurnOut_0__ap_start = (TurnOut_0__state == 2'b01);
+assign TurnOut_0__is_done = (TurnOut_0__state == 2'b10);
+assign TurnOut_0__n = TurnOut_0__n_reg;
 assign ap_rst = !ap_rst_n;
 assign __tapa_start_q = ap_start;
 assign ap_idle = (__tapa_state == 2'b00);
@@ -216,82 +216,82 @@ end
 
 always @(posedge ap_clk) begin
   if (ap_rst) begin
-    Turn_1__state <= 2'b00;
+    TurnIn_0__state <= 2'b00;
   end else begin
-    case (Turn_1__state)
+    case (TurnIn_0__state)
       2'b00: begin
         if (__tapa_start_q) begin
-          Turn_1__state <= 2'b01;
+          TurnIn_0__state <= 2'b01;
         end
       end
       2'b01: begin
-        if ((Turn_1__ap_ready && Turn_1__ap_done)) begin
-          Turn_1__state <= 2'b10;
+        if ((TurnIn_0__ap_ready && TurnIn_0__ap_done)) begin
+          TurnIn_0__state <= 2'b10;
         end else begin
-          if (Turn_1__ap_ready) begin
-            Turn_1__state <= 2'b11;
+          if (TurnIn_0__ap_ready) begin
+            TurnIn_0__state <= 2'b11;
           end
         end
       end
       2'b11: begin
-        if (Turn_1__ap_done) begin
-          Turn_1__state <= 2'b10;
+        if (TurnIn_0__ap_done) begin
+          TurnIn_0__state <= 2'b10;
         end
       end
       2'b10: begin
         if (__tapa_done_q) begin
-          Turn_1__state <= 2'b00;
+          TurnIn_0__state <= 2'b00;
         end
       end
       default: begin
-        Turn_1__state <= 2'b00;
+        TurnIn_0__state <= 2'b00;
       end
     endcase
   end
 end
 
 always @(posedge ap_clk) begin
-  Turn_1__n_reg <= Turn_1__n_in;
+  TurnIn_0__n_reg <= TurnIn_0__n_in;
 end
 
 always @(posedge ap_clk) begin
   if (ap_rst) begin
-    Turn_2__state <= 2'b00;
+    TurnOut_0__state <= 2'b00;
   end else begin
-    case (Turn_2__state)
+    case (TurnOut_0__state)
       2'b00: begin
         if (__tapa_start_q) begin
-          Turn_2__state <= 2'b01;
+          TurnOut_0__state <= 2'b01;
         end
       end
       2'b01: begin
-        if ((Turn_2__ap_ready && Turn_2__ap_done)) begin
-          Turn_2__state <= 2'b10;
+        if ((TurnOut_0__ap_ready && TurnOut_0__ap_done)) begin
+          TurnOut_0__state <= 2'b10;
         end else begin
-          if (Turn_2__ap_ready) begin
-            Turn_2__state <= 2'b11;
+          if (TurnOut_0__ap_ready) begin
+            TurnOut_0__state <= 2'b11;
           end
         end
       end
       2'b11: begin
-        if (Turn_2__ap_done) begin
-          Turn_2__state <= 2'b10;
+        if (TurnOut_0__ap_done) begin
+          TurnOut_0__state <= 2'b10;
         end
       end
       2'b10: begin
         if (__tapa_done_q) begin
-          Turn_2__state <= 2'b00;
+          TurnOut_0__state <= 2'b00;
         end
       end
       default: begin
-        Turn_2__state <= 2'b00;
+        TurnOut_0__state <= 2'b00;
       end
     endcase
   end
 end
 
 always @(posedge ap_clk) begin
-  Turn_2__n_reg <= Turn_2__n_in;
+  TurnOut_0__n_reg <= TurnOut_0__n_in;
 end
 
 always @(posedge ap_clk) begin
@@ -305,7 +305,7 @@ always @(posedge ap_clk) begin
         end
       end
       2'b01: begin
-        if (((((Load_0__is_done && Store_0__is_done) && Turn_0__is_done) && Turn_1__is_done) && Turn_2__is_done)) begin
+        if (((((Load_0__is_done && Store_0__is_done) && Turn_0__is_done) && TurnIn_0__is_done) && TurnOut_0__is_done)) begin
           __tapa_state <= 2'b10;
         end
       end
