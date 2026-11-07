@@ -13,6 +13,11 @@ DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
   const uint64_t n = argc > 1 ? atoll(argv[1]) : 16 * kTile;
+  if (n == 0 || n % (4 * kTile) != 0) {
+    std::clog << "n = " << n << " is not a positive multiple of " << 4 * kTile
+              << ": each quarter is whole tiles" << std::endl;
+    return EXIT_FAILURE;
+  }
 
   std::vector<float, tapa::aligned_allocator<float>> src(n);
   std::vector<float, tapa::aligned_allocator<float>> dst(n, -1);

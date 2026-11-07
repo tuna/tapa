@@ -506,12 +506,14 @@ impl AiePartition {
     }
 }
 
-/// An upper task instance dissolved into its parent for running on both
-/// fabrics.
+/// An upper task instance whose body a host program running the design
+/// against one fabric makes invoke by invoke.
 ///
-/// The partition and the PL projection inline it. A host program running
-/// the design against one fabric runs the instance's body itself, so it
-/// has to find the instance among its parent's invokes.
+/// Either the partition and the PL projection dissolve it into its parent
+/// for running on both fabrics, or it is an AI Engine upper task with a
+/// memory port below it, which the host serves where its task is invoked.
+/// The host runs the instance's body itself, so it has to find the
+/// instance among its parent's invokes.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct InlinedInstance {
     /// The inlined instance that invokes it; empty for the top.
@@ -519,18 +521,19 @@ pub struct InlinedInstance {
     /// Where it sits in the parent's chain of invokes.
     pub position: u32,
     /// Its name once inlined, which prefixes the names of its streams.
+    /// (An AI Engine upper task keeps its streams inside the graph.)
     pub name: String,
 }
 
-/// Every instance the partition inlines (see [`InlinedInstance`]), each
-/// after its parent.
+/// Every instance whose body the host makes invoke by invoke (see
+/// [`InlinedInstance`]), each after its parent.
 ///
 /// # Errors
 ///
 /// A parent whose invokes do not have distinct positions: the task graph
 /// is older than invoke positions.
 pub fn inlined_instances(graph: &TaskGraph) -> Result<Vec<InlinedInstance>, AieError> {
-    let mixed = mixed_uppers(graph);
+    let mixed = recorded_uppers(graph);
     let mut inlined = Vec::new();
     let mut scopes = vec![(String::new(), graph.top.as_str())];
     while let Some((scope, task)) = scopes.pop() {
@@ -604,20 +607,20 @@ pub struct MemoryCrossing {
     pub write_responses: Option<String>,
 }
 
-/// Every `async_mmap` port of an AI Engine task the host program invokes
-/// from the top or from an upper task the partition inlines.
+/// Every `async_mmap` port of an AI Engine task, at the invoke the host
+/// program makes: from the top, or from an upper task whose body the host
+/// makes (see [`InlinedInstance`]).
 ///
 /// # Errors
 ///
-/// No valid partition, or an `async_mmap` an AI Engine upper task hands on
-/// to its tasks: a host program cannot tell which of them a request is for.
+/// No valid partition.
 pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieError> {
     let Some(partition) = AiePartition::derive(graph)? else {
         return Ok(Vec::new());
     };
     // Kernel name -> where the host invokes it, walking the bodies the host
     // records: the top's and every inlined upper task's.
-    let mixed = mixed_uppers(graph);
+    let mixed = recorded_uppers(graph);
     let mut sites = BTreeMap::new();
     let mut scopes = vec![(String::new(), graph.top.as_str())];
     while let Some((scope, task_name)) = scopes.pop() {
@@ -650,9 +653,8 @@ pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieErr
             };
             let Some((parent, position)) = sites.get(&kernel.name) else {
                 return Err(AieError(format!(
-                    "the AI Engine kernel `{}` takes its memory `{}` from an AI Engine upper \
-                     task, which the host program cannot serve in simulation; invoke the \
-                     task that takes the async_mmap from a PL task or the top",
+                    "the AI Engine kernel `{}` with the memory `{}` has no invoke the host \
+                     program makes",
                     kernel.name, port.name
                 )));
             };
@@ -668,6 +670,49 @@ pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieErr
         }
     }
     Ok(crossings)
+}
+
+/// The upper tasks below the top whose bodies a host program makes invoke
+/// by invoke (see [`InlinedInstance`]): the mixed ones, and the AI Engine
+/// ones with an `async_mmap` port below them.
+fn recorded_uppers(graph: &TaskGraph) -> BTreeSet<&str> {
+    let mut recorded = mixed_uppers(graph);
+    let mut memo = BTreeMap::new();
+    for (name, def) in &graph.tasks {
+        if name != &graph.top
+            && def.level == TaskLevel::Upper
+            && def.synth == SynthTarget::Aie
+            && holds_memory(graph, name, &mut memo)
+        {
+            recorded.insert(name.as_str());
+        }
+    }
+    recorded
+}
+
+/// Whether the task `name` is, or invokes below it, a leaf with an
+/// `async_mmap` port.
+fn holds_memory<'a>(
+    graph: &'a TaskGraph,
+    name: &'a str,
+    memo: &mut BTreeMap<&'a str, bool>,
+) -> bool {
+    if let Some(&known) = memo.get(name) {
+        return known;
+    }
+    let holds = graph.tasks.get(name).is_some_and(|def| {
+        if def.level == TaskLevel::Lower {
+            def.ports
+                .iter()
+                .any(|port| port.cat == ArgCategory::AsyncMmap)
+        } else {
+            def.tasks
+                .keys()
+                .any(|child| holds_memory(graph, child, memo))
+        }
+    });
+    memo.insert(name, holds);
+    holds
 }
 
 /// The upper tasks below the top whose leaves are not all on their own
@@ -849,8 +894,10 @@ impl Builder<'_> {
                 self.top_streams.insert(name.clone(), index);
                 Ok(Binding::Stream(index))
             }
+            // An upper task's `mmap` reaches each of its tasks as their own
+            // `async_mmap`, as on the PL.
             ArgSource::Name(name)
-                if arg.cat == ArgCategory::AsyncMmap
+                if matches!(arg.cat, ArgCategory::AsyncMmap | ArgCategory::Mmap)
                     && top.port(name).is_some_and(|p| p.cat.is_mmap_like()) =>
             {
                 Ok(Binding::Memory(name.clone()))
@@ -858,7 +905,7 @@ impl Builder<'_> {
             ArgSource::Name(name) => Err(AieError(format!(
                 "port `{port}` of the AI Engine task `{child}` is bound to the memory `{name}`; \
                  an AI Engine task reaches memory only through a `tapa::async_mmap<T>&` port \
-                 bound to a memory argument of the top"
+                 (or an upper task's `tapa::mmap<T>`) bound to a memory argument of the top"
             ))),
         }
     }
@@ -1071,8 +1118,8 @@ impl Builder<'_> {
             } else {
                 return Err(AieError(format!(
                     "the AI Engine task `{task_name}` takes the memory port `{}`; an AI Engine \
-                     task reaches memory only through a `tapa::async_mmap<T>&` port bound to a \
-                     memory argument of the top",
+                     task reaches memory only through a `tapa::async_mmap<T>&` port (or an upper \
+                     task's `tapa::mmap<T>`) bound to a memory argument of the top",
                     port.name
                 )));
             };

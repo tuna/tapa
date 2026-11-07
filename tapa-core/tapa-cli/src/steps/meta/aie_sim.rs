@@ -100,6 +100,8 @@ pub fn package(
     let partition = AiePartition::derive(&state.graph)?.ok_or_else(|| {
         CliError::InvalidArg("`--aie-sim` needs an AI Engine task; the design has none".into())
     })?;
+    // Before the build: it wipes `output` and takes minutes.
+    let manifest = manifest(sim, &state.graph, &partition)?;
     let job = prepare(
         &ctx.work_dir,
         &state.graph,
@@ -121,7 +123,6 @@ pub fn package(
     ctx.with_tool_runner(|runner| -> Result<()> {
         Ok(tapa_xilinx::tools::aie::compile(runner, &job)?)
     })?;
-    let manifest = manifest(sim, &state.graph, &partition)?;
     let text = serde_json::to_string_pretty(&manifest)
         .map_err(|e| CliError::Report(format!("cannot serialize {MANIFEST}: {e}")))?;
     std::fs::write(output.join(MANIFEST), text)?;

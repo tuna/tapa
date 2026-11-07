@@ -143,7 +143,9 @@ An AI Engine task reaches memory through a `tapa::async_mmap<T>&` port bound
 to a memory argument of the top. The AI Engine has no memory interface of its
 own: for each direction the body uses, TAPA adds a PL task to the PL kernel,
 bound to that memory, and joins it to the task over PLIO. The same source
-runs as a PL task too.
+runs as a PL task too. An AI Engine upper task in between hands on either
+its `async_mmap<T>&`, to one task, or a `tapa::mmap<T>`, which each of its
+tasks takes as its own `async_mmap` with its own PL tasks.
 
 ```cpp
 [[tapa::target("aie")]] void Scale(tapa::async_mmap<float>& src,
@@ -180,8 +182,7 @@ runs as a PL task too.
   the AI Engine task's.
 - Software simulation serves the port from host memory, as for a PL task.
   The AI Engine simulators and hybrid cosimulation serve it too (see below),
-  for a task the top or a dissolved upper task invokes; an AI Engine upper
-  task that hands its `async_mmap` to its tasks builds, but is not simulated.
+  wherever the task is invoked.
 
 ## Knobs
 

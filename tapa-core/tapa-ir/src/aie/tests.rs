@@ -673,3 +673,78 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
         .expect_err("shared with a PL task");
     assert!(err.0.contains("nothing orders their accesses"), "{err}");
 }
+
+/// The top's memory `buf` reaches `Scale` twice through AI Engine upper
+/// tasks: `Split` takes it as an `mmap` and invokes `Scale` and `Forward`,
+/// which hands it on as its `async_mmap`.
+#[test]
+fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
+    let mut g = memory_graph(false);
+    let aie_upper = |mem: Value, tasks: Value| {
+        json!({"level": "upper", "synth": "aie", "ports": [mem, scalar("n")],
+            "tasks": tasks, "fifos": {}})
+    };
+    let invoke = |cat: &str, position: u32| {
+        json!([{"args": {"mem": arg("mem", cat), "n": arg("n", "scalar")},
+            "position": position}])
+    };
+    let more = graph(json!({
+        "Top": {"level": "upper", "synth": "hls",
+            "ports": [{"cat": "mmap", "name": "buf", "type": "float*", "width": 32},
+                      scalar("n")],
+            "tasks": {"Split": [{"args": {"mem": arg("buf", "mmap"),
+                "n": arg("n", "scalar")}}]},
+            "fifos": {}},
+        "Split": aie_upper(
+            json!({"cat": "mmap", "name": "mem", "type": "float*", "width": 32}),
+            json!({"Scale": invoke("async_mmap", 0), "Forward": invoke("async_mmap", 1)})),
+        "Forward": aie_upper(
+            json!({"cat": "async_mmap", "name": "mem", "type": "float", "width": 32}),
+            json!({"Scale": invoke("async_mmap", 0)})),
+    }));
+    g.tasks.extend(more.tasks);
+
+    let inlined: Vec<(String, u32, String)> = inlined_instances(&g)
+        .expect("inlined")
+        .into_iter()
+        .map(|i| (i.parent, i.position, i.name))
+        .collect();
+    assert_eq!(
+        inlined,
+        [
+            (String::new(), 0, "Split_0".to_owned()),
+            ("Split_0".to_owned(), 1, "Split_0__Forward_0".to_owned()),
+        ]
+    );
+    let mut sites: Vec<(String, u32, u32, Option<String>)> = memory_crossings(&g)
+        .expect("crossings")
+        .into_iter()
+        .map(|c| (c.parent, c.position, c.param, c.read_data))
+        .collect();
+    sites.sort();
+    assert_eq!(
+        sites,
+        [
+            (
+                "Split_0".to_owned(),
+                0,
+                0,
+                Some("Split_0__Scale_0__mem_read_data".to_owned())
+            ),
+            (
+                "Split_0__Forward_0".to_owned(),
+                0,
+                0,
+                Some("Split_0__Forward_0__Scale_0__mem_read_data".to_owned())
+            ),
+        ]
+    );
+    // Each Scale gets its own movers on the one memory.
+    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let pl = partition.pl_projection(&g).expect("projection");
+    let reads = &pl.tasks["Top"].tasks["Reads"];
+    assert_eq!(reads.len(), 2);
+    assert!(reads
+        .iter()
+        .all(|r| r.args["mem"].arg == ArgSource::Name("buf".into())));
+}

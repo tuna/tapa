@@ -1,4 +1,6 @@
-"""An AI Engine task reading and writing memory through async_mmap."""
+"""AI Engine tasks reading and writing memory through async_mmap, invoked by
+the top and through AI Engine upper tasks that hand on an mmap or an
+async_mmap."""
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")

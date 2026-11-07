@@ -207,13 +207,18 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
 void CheckAieTask(const clang::ASTContext& ctx, const TaskModel& task) {
   for (const clang::ParmVarDecl* param : task.def->parameters()) {
     const TapaKind kind = ClassifyTapaType(param);
-    if (IsMmapInterface(kind) && !IsAsyncMmap(kind)) {
+    // An upper task may also hand on a 'tapa::mmap<T>', which each of its
+    // tasks takes as its own async_mmap, as on the PL.
+    const bool upper_mmap =
+        task.level == TaskLevel::kUpper && kind == TapaKind::kMmap;
+    if (IsMmapInterface(kind) && !IsAsyncMmap(kind) && !upper_mmap) {
       ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
                        param->getLocation(),
                        "AI Engine task '%0' takes the memory port '%1'; an AI "
                        "Engine task reaches memory through a "
                        "'tapa::async_mmap<T>&' port, which TAPA serves from "
-                       "the PL")
+                       "the PL (an upper task may also hand on a "
+                       "'tapa::mmap<T>')")
           << task.name << param->getNameAsString();
       continue;
     }
