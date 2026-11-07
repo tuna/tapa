@@ -189,8 +189,12 @@ impl SimRunner for VerilatorRunner {
                 "Verilator binary in obj_dir".into(),
             ));
         }
+        // HLS loads a ROM's contents with `$readmemh("./<rom>.dat")`, relative
+        // to the simulation's working directory; xsim's project copies the
+        // `.dat` files, here they stay beside the RTL they belong to.
         let mut cmd = Command::new(top);
-        cmd.envs(xilinx_environ())
+        cmd.current_dir(&rtl_dir)
+            .envs(xilinx_environ())
             .env(frt_shm::env::TAPA_DPI_CONFIG, ctx.dpi_config_json());
         configure_sim_command(&mut cmd);
         let child = cmd.spawn()?;
