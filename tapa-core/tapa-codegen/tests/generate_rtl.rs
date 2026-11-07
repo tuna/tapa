@@ -1853,6 +1853,30 @@ fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     );
 }
 
+/// HLS-style RTL of a task `copy` that only reads its `async_mmap` `mem`.
+const ASYNC_COPY_MODULE_SRC: &str = "module copy(\n\
+     input wire ap_clk,\n\
+     input wire ap_rst_n,\n\
+     input wire ap_start,\n\
+     output wire ap_done,\n\
+     output wire ap_idle,\n\
+     output wire ap_ready,\n\
+     output wire [63:0] mem_read_addr_s_din,\n\
+     input wire mem_read_addr_s_full_n,\n\
+     output wire mem_read_addr_s_write,\n\
+     input wire [63:0] mem_read_addr_offset,\n\
+     input wire [512:0] mem_read_data_s_dout,\n\
+     input wire mem_read_data_s_empty_n,\n\
+     output wire mem_read_data_s_read,\n\
+     output wire mem_write_addr_s_write,\n\
+     output wire mem_write_data_s_write,\n\
+     output wire mem_write_resp_s_read\n\
+     );\n\
+     assign mem_write_addr_s_write = 1'b0;\n\
+     assign mem_write_data_s_write = 1'b0;\n\
+     assign mem_write_resp_s_read = 1'b0;\n\
+     endmodule";
+
 #[allow(
     clippy::too_many_lines,
     reason = "fixture covers bridge wiring plus the complete typed floorplan contract"
@@ -1882,33 +1906,7 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
         .attach_module("top", parse_module(&handshake_module_src("top")))
         .unwrap();
     state
-        .attach_module(
-            "copy",
-            parse_module(
-                "module copy(\n\
-                 input wire ap_clk,\n\
-                 input wire ap_rst_n,\n\
-                 input wire ap_start,\n\
-                 output wire ap_done,\n\
-                 output wire ap_idle,\n\
-                 output wire ap_ready,\n\
-                 output wire [63:0] mem_read_addr_s_din,\n\
-                 input wire mem_read_addr_s_full_n,\n\
-                 output wire mem_read_addr_s_write,\n\
-                 input wire [63:0] mem_read_addr_offset,\n\
-                 input wire [512:0] mem_read_data_s_dout,\n\
-                 input wire mem_read_data_s_empty_n,\n\
-                 output wire mem_read_data_s_read,\n\
-                 output wire mem_write_addr_s_write,\n\
-                 output wire mem_write_data_s_write,\n\
-                 output wire mem_write_resp_s_read\n\
-                 );\n\
-                 assign mem_write_addr_s_write = 1'b0;\n\
-                 assign mem_write_data_s_write = 1'b0;\n\
-                 assign mem_write_resp_s_read = 1'b0;\n\
-                 endmodule",
-            ),
-        )
+        .attach_module("copy", parse_module(ASYNC_COPY_MODULE_SRC))
         .unwrap();
 
     if floorplanned {
@@ -2007,6 +2005,36 @@ fn test_generate_rtl_instantiates_async_mmap_bridge() {
         ],
         &[".m_axi_mem_ARADDR"],
     );
+}
+
+#[test]
+fn test_generate_rtl_gives_each_task_sharing_a_memory_its_own_async_mmap_bridge() {
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "Elem*", "width": 512}]);
+        let arg = serde_json::json!({"args": {"mem": {"arg": "mem", "cat": "async_mmap"}}});
+        t["tasks"] = serde_json::json!({"copy": [arg.clone(), arg]});
+    });
+    let copy = task("copy", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "async_mmap", "name": "mem", "type": "Elem*", "width": 512}
+        ]);
+    });
+    let prog = design("top", "xilinx-hls", &[("top", top), ("copy", copy)]);
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            ("top", &handshake_module_src("top")),
+            ("copy", ASYNC_COPY_MODULE_SRC),
+        ],
+    );
+
+    let top_v = rtl_file(&manifest, "top.v");
+    assert_eq!(top_v.matches("async_mmap #(").count(), 2, "{top_v}");
+    for bridge in ["mem_s0__m_axi", "mem_s1__m_axi"] {
+        assert_eq!(top_v.matches(&format!(" {bridge} (")).count(), 1, "{top_v}");
+    }
 }
 
 #[test]

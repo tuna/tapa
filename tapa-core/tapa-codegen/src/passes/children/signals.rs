@@ -520,7 +520,13 @@ fn add_async_mmap_bridges(
             .get(parent)
             .map_or(64, |c| c.geometry.data_width());
         let request_width = async_mmap::request_width(child_rtl, child_port);
-        let connect_optional_axi_ports = !matches!(binding, ChildMmapBinding::Crossbar { .. });
+        let shared = matches!(binding, ChildMmapBinding::Crossbar { .. });
+        let connect_optional_axi_ports = !shared;
+        // A memory several tasks share has a bridge per task, each named
+        // after its crossbar slave; an unshared one keeps the name the
+        // floorplan constrains.
+        let instance_name =
+            tapa_ir::async_mmap_bridge_instance_name(if shared { &bridge_base } else { parent });
         if let Some(mm) = stage.modules.get_mut(stage.task_name) {
             async_mmap::add_bridge_signals(
                 mm,
@@ -531,7 +537,7 @@ fn add_async_mmap_bridges(
             );
             mm.add_instance(async_mmap::build_bridge_instance(
                 &bridge_base,
-                &tapa_ir::async_mmap_bridge_instance_name(parent),
+                &instance_name,
                 &m_axi_wire_prefix,
                 &upstream_m_axi_prefix,
                 &active_tags,
