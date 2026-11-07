@@ -251,6 +251,9 @@ fn num_cpus_str() -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct XilinxFpIpConfig {
     dpi_func: &'static str,
+    /// An `Add_Subtract` IP configured for both: the DPI function for a
+    /// subtract, chosen by bit 0 of its operation port.
+    subtract_func: Option<&'static str>,
     is_double: bool,
     latency: usize,
     operands: usize,
@@ -460,12 +463,12 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         } else if operation_type.contains("multiply") {
             Some(("mul", 2))
         } else if operation_type.contains("add") || operation_type.contains("subtract") {
-            // For Add_Subtract IPs, check add_sub_value to distinguish add vs sub
-            let add_sub = config.get("add_sub_value").map(String::as_str);
-            if add_sub == Some("subtract") || add_sub == Some("sub") {
-                Some(("sub", 2))
-            } else {
-                Some(("add", 2))
+            // add_sub_value tells an adder from a subtractor, or from a unit
+            // that does both, picked per operation (HLS shares one that way).
+            match config.get("add_sub_value").map(String::as_str) {
+                Some("subtract" | "sub") => Some(("sub", 2)),
+                Some("both") => Some(("addsub", 2)),
+                _ => Some(("add", 2)),
             }
         } else {
             None
@@ -478,14 +481,16 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
         return Ok(None);
     };
 
-    let dpi_func = match (is_double, op) {
-        (false, "add") => "fp32_add",
-        (false, "sub") => "fp32_sub",
-        (false, "mul") => "fp32_mul",
-        (false, "madd") => "fp32_unfused_madd",
-        (true, "add") => "fp64_add",
-        (true, "sub") => "fp64_sub",
-        (true, "mul") => "fp64_mul",
+    let (dpi_func, subtract_func) = match (is_double, op) {
+        (false, "add") => ("fp32_add", None),
+        (false, "sub") => ("fp32_sub", None),
+        (false, "addsub") => ("fp32_add", Some("fp32_sub")),
+        (false, "mul") => ("fp32_mul", None),
+        (false, "madd") => ("fp32_unfused_madd", None),
+        (true, "add") => ("fp64_add", None),
+        (true, "sub") => ("fp64_sub", None),
+        (true, "addsub") => ("fp64_add", Some("fp64_sub")),
+        (true, "mul") => ("fp64_mul", None),
         _ => return Ok(None),
     };
     let latency = match config.get("c_latency") {
@@ -503,6 +508,7 @@ fn parse_xilinx_fp_ip_tcl_text(content: &str) -> Result<Option<XilinxFpIpConfig>
 
     Ok(Some(XilinxFpIpConfig {
         dpi_func,
+        subtract_func,
         is_double,
         latency,
         operands,
@@ -600,6 +606,16 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
             format!("{dpi_func}(s_axis_a_tdata, s_axis_b_tdata, s_axis_c_tdata)"),
             "s_axis_a_tvalid & s_axis_b_tvalid & s_axis_c_tvalid",
         )
+    } else if let Some(subtract) = model.subtract_func {
+        (
+            "    input  wire        s_axis_operation_tvalid,\n    input  wire [7:0] s_axis_operation_tdata,\n".to_owned(),
+            format!("input {ret_type} a, input {ret_type} b"),
+            format!(
+                "(s_axis_operation_tdata[0] ? {subtract}(s_axis_a_tdata, s_axis_b_tdata) \
+                 : {dpi_func}(s_axis_a_tdata, s_axis_b_tdata))"
+            ),
+            "s_axis_a_tvalid & s_axis_b_tvalid & s_axis_operation_tvalid",
+        )
     } else {
         (
             String::new(),
@@ -608,6 +624,9 @@ fn generate_xilinx_fp_ip_replacement(ip_module: &str, model: &XilinxFpIpConfig) 
             "s_axis_a_tvalid & s_axis_b_tvalid",
         )
     };
+    let subtract_import = model.subtract_func.map_or_else(String::new, |subtract| {
+        format!("import \"DPI-C\" function {ret_type} {subtract}({dpi_args});\n")
+    });
 
     // Only the body differs between a combinational model and a
     // `latency`-deep pipeline; the shell (ports and the DPI import) is shared.
@@ -659,7 +678,7 @@ module {ip_module} (
 );
 
 import "DPI-C" function {ret_type} {dpi_func}({dpi_args});
-
+{subtract_import}
 {body}
 endmodule
 "#,
@@ -922,6 +941,35 @@ set_property -dict [list CONFIG.a_precision_type Single \
     }
 
     #[test]
+    fn models_an_adder_that_also_subtracts_by_its_operation_port() {
+        // HLS shares one Add_Subtract IP between an add and a subtract.
+        let tcl = r"
+create_ip -name floating_point -version 7.1 -vendor xilinx.com -library ip -module_name RowPass_faddfsub_32ns_32ns_32_7_full_dsp_1_ip
+set_property -dict [list CONFIG.a_precision_type Single \
+                          CONFIG.add_sub_value Both \
+                          CONFIG.c_latency 5 \
+                          CONFIG.operation_type Add_Subtract] -objects [get_ips RowPass_faddfsub_32ns_32ns_32_7_full_dsp_1_ip] -quiet
+";
+        let model = parse_xilinx_fp_ip_tcl_text(tcl)
+            .expect("parse tcl")
+            .expect("fp model");
+        assert_eq!(
+            (model.dpi_func, model.subtract_func),
+            ("fp32_add", Some("fp32_sub"))
+        );
+        let replacement = generate_xilinx_fp_ip_replacement(
+            "RowPass_faddfsub_32ns_32ns_32_7_full_dsp_1_ip",
+            &model,
+        );
+        assert!(replacement.contains("input  wire [7:0] s_axis_operation_tdata"));
+        assert!(replacement.contains("import \"DPI-C\" function int unsigned fp32_sub"));
+        assert!(replacement.contains(
+            "pipe[0] <= (s_axis_operation_tdata[0] ? fp32_sub(s_axis_a_tdata, s_axis_b_tdata) \
+             : fp32_add(s_axis_a_tdata, s_axis_b_tdata));"
+        ));
+    }
+
+    #[test]
     fn parses_braced_unfused_multiply_add_tcl_case_insensitively() {
         let tcl = r"
 create_ip -name floating_point -module_name Fmadd_ip
@@ -969,6 +1017,7 @@ set_property -dict [list CONFIG.dividend_and_quotient_width 32 \
     fn generates_behavioral_replacement_for_floating_point_ip() {
         let model = XilinxFpIpConfig {
             dpi_func: "fp32_mul",
+            subtract_func: None,
             is_double: false,
             latency: 5,
             operands: 2,
