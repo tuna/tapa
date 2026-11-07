@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <utility>
 
 #include "tapa/base/util.h"
 
@@ -293,6 +294,50 @@ TAPA_AIE_INLINE vec_t<T, N> make_vec(T value) {
     vec_t<T, N> result;
     result.set(value);
     return result;
+  }
+}
+
+// The lane shuffles of base/vec.h: one `aie::interleave_zip` /
+// `aie::interleave_unzip` on a native shape, lane moves otherwise.
+template <int kStep, typename T, int N>
+TAPA_AIE_INLINE std::pair<vec_t<T, N>, vec_t<T, N>> interleave_zip(
+    const vec_t<T, N>& a, const vec_t<T, N>& b) {
+  static_assert(kStep > 0 && N % kStep == 0, "a run of lanes divides N");
+  if constexpr (requires {
+                  typename ::aie::detail::native_vector_type_t<T, N>;
+                }) {
+    const auto [lo, hi] = ::aie::interleave_zip(a.v, b.v, kStep);
+    return {vec_t<T, N>(lo), vec_t<T, N>(hi)};
+  } else {
+    std::pair<vec_t<T, N>, vec_t<T, N>> out;
+    for (int i = 0; i < 2 * N; ++i) {
+      const int run = i / kStep;
+      const int from = run / 2 * kStep + i % kStep;
+      (i < N ? out.first : out.second).v[i % N] =
+          run % 2 == 0 ? a.v[from] : b.v[from];
+    }
+    return out;
+  }
+}
+
+template <int kStep, typename T, int N>
+TAPA_AIE_INLINE std::pair<vec_t<T, N>, vec_t<T, N>> interleave_unzip(
+    const vec_t<T, N>& a, const vec_t<T, N>& b) {
+  static_assert(kStep > 0 && N % kStep == 0, "a run of lanes divides N");
+  if constexpr (requires {
+                  typename ::aie::detail::native_vector_type_t<T, N>;
+                }) {
+    const auto [lo, hi] = ::aie::interleave_unzip(a.v, b.v, kStep);
+    return {vec_t<T, N>(lo), vec_t<T, N>(hi)};
+  } else {
+    std::pair<vec_t<T, N>, vec_t<T, N>> out;
+    for (int i = 0; i < 2 * N; ++i) {
+      const int run = i / kStep;
+      const int to = run / 2 * kStep + i % kStep;
+      (run % 2 == 0 ? out.first : out.second).v[to] =
+          i < N ? a.v[i] : b.v[i - N];
+    }
+    return out;
   }
 }
 

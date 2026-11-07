@@ -6,6 +6,7 @@
 #include <array>
 #include <ostream>
 #include <type_traits>
+#include <utility>
 
 #include "tapa/base/util.h"
 
@@ -325,6 +326,45 @@ template <typename T, typename... Args>
 inline auto cat(T arg, Args... args) {
   TAPA_VEC_INLINE;
   return cat(arg, cat(args...));
+}
+
+/// Interleaves `a` and `b` in runs of `kStep` lanes, `{a[0:kStep],
+/// b[0:kStep], a[kStep:2 * kStep], ...}`: lanes [0, N) of the result in
+/// `.first`, [N, 2N) in `.second`. On the AI Engine it is one shuffle of a
+/// native vector, like `aie::interleave_zip`; in HLS it is wiring.
+template <int kStep, typename T, int N>
+inline std::pair<vec_t<T, N>, vec_t<T, N>> interleave_zip(
+    const vec_t<T, N>& a, const vec_t<T, N>& b) {
+  TAPA_VEC_INLINE;
+  static_assert(kStep > 0 && N % kStep == 0, "a run of lanes divides N");
+  std::pair<vec_t<T, N>, vec_t<T, N>> result;
+  for (int i = 0; i < 2 * N; ++i) {
+    TAPA_VEC_UNROLL;
+    const int run = i / kStep;
+    const int from = run / 2 * kStep + i % kStep;
+    (i < N ? result.first : result.second)
+        .set(i % N, run % 2 == 0 ? a[from] : b[from]);
+  }
+  return result;
+}
+
+/// The inverse of `interleave_zip`: of the lanes `{a, b}`, the runs of
+/// `kStep` at even positions go to `.first` and those at odd positions to
+/// `.second`, in order (`aie::interleave_unzip`).
+template <int kStep, typename T, int N>
+inline std::pair<vec_t<T, N>, vec_t<T, N>> interleave_unzip(
+    const vec_t<T, N>& a, const vec_t<T, N>& b) {
+  TAPA_VEC_INLINE;
+  static_assert(kStep > 0 && N % kStep == 0, "a run of lanes divides N");
+  std::pair<vec_t<T, N>, vec_t<T, N>> result;
+  for (int i = 0; i < 2 * N; ++i) {
+    TAPA_VEC_UNROLL;
+    const int run = i / kStep;
+    const int to = run / 2 * kStep + i % kStep;
+    (run % 2 == 0 ? result.first : result.second)
+        .set(to, i < N ? a[i] : b[i - N]);
+  }
+  return result;
 }
 
 namespace internal {

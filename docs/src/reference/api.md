@@ -314,6 +314,14 @@ struct vec_t {
 
 Related free functions: `truncated<begin, end>(vec)`, `cat(v1, v2)`, `make_vec<N>(val)`.
 
+Lane shuffles, on every target including the AI Engine:
+`interleave_zip<step>(a, b)` returns the lanes `{a[0:step], b[0:step],
+a[step:2 * step], ...}` as a pair of vectors, `.first` holding the first `N`;
+`interleave_unzip<step>(a, b)` inverts it, sending the runs of `step` lanes
+of `{a, b}` alternately to `.first` and `.second`. `step` divides `N`. On a
+native AI Engine shape each is one `aie::interleave_zip` /
+`aie::interleave_unzip` shuffle; in HLS it is wiring.
+
 Scalar compound assignments evaluate the scalar once before updating any
 element, including when the scalar refers to the same vector. `shift(val)`
 discards the first element and appends the value of `val` captured before the

@@ -380,6 +380,26 @@ TEST(VecTest, MathFunctionsApplyElementwise) {
   EXPECT_DOUBLE_EQ(log2(v)[1], 0.0);
 }
 
+// The lane orders of aie::interleave_zip / interleave_unzip, which the AI
+// Engine variant calls.
+TEST(VecTest, InterleaveZipsRunsOfLanesAndUnzipInvertsIt) {
+  const Vec4 a = MakeVec4(0, 1, 2, 3);
+  const Vec4 b = MakeVec4(10, 11, 12, 13);
+  const auto ones = interleave_zip<1>(a, b);
+  EXPECT_TRUE(Equals(ones.first, 0, 10, 1, 11));
+  EXPECT_TRUE(Equals(ones.second, 2, 12, 3, 13));
+  const auto twos = interleave_zip<2>(a, b);
+  EXPECT_TRUE(Equals(twos.first, 0, 1, 10, 11));
+  EXPECT_TRUE(Equals(twos.second, 2, 3, 12, 13));
+
+  const auto back = interleave_unzip<1>(ones.first, ones.second);
+  EXPECT_TRUE(Equals(back.first, 0, 1, 2, 3));
+  EXPECT_TRUE(Equals(back.second, 10, 11, 12, 13));
+  const auto halves = interleave_unzip<2>(a, b);
+  EXPECT_TRUE(Equals(halves.first, 0, 1, 10, 11));
+  EXPECT_TRUE(Equals(halves.second, 2, 3, 12, 13));
+}
+
 TEST(VecTest, StreamingPrintsIndexedElements) {
   std::ostringstream os;
   os << MakeVec4(1, 2, 3, 4);
