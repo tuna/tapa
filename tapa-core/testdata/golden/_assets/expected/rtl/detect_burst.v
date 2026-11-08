@@ -12,6 +12,10 @@ module detect_burst #(
 
   input wire [WaitTimeWidth-1:0] max_wait_time,
   input wire [BurstLenWidth-1:0] max_burst_len,  // 0 disables detection
+  // While hold is high an open burst waits for its next address past
+  // max_wait_time: the address is late only because its user is blocked
+  // on something that frees itself.
+  input wire                     hold,
 
   input  wire [AddrWidth-1:0] addr_dout,
   input  wire                 addr_empty_n,
@@ -119,6 +123,8 @@ module detect_burst #(
           base_valid_next = base_valid;
         end
       end
+    end else if (base_valid && hold) begin
+      // keep the open burst, and its wait time
     end else if (base_valid) begin
       if (wait_time < max_wait_time) begin
         wait_time_next = wait_time + 1;

@@ -107,6 +107,14 @@ module async_mmap #(
   output wire       write_resp_empty_n
 );
 
+  // A user that pushes each write address with its data stops pushing
+  // addresses when the write data buffer is full. The buffer holds a whole
+  // burst besides its own depth, so it fills only behind data of bursts
+  // already sent to the AXI write channel; the burst detector waits while
+  // it is full and that data has a beat to send, instead of closing a short
+  // burst on its timeout.
+  localparam WriteDataDepth = BufferSize + MaxBurstLen + 1;
+
   // write addr buffer, from user to burst detector
   wire [ReqLenWidth+AddrWidth-1:0] write_addr_req_dout;
   wire                             write_addr_req_empty_n;
@@ -201,6 +209,7 @@ module async_mmap #(
 
     .max_wait_time(MaxWaitTime[WaitTimeWidth-1:0]),
     .max_burst_len(MaxBurstLen[BurstLenWidth-1:0]),
+    .hold         (!write_data_full_n && burst_write_last_empty_n),
 
     // input: individual addresses
     .addr_dout   (write_addr_dout),
@@ -314,8 +323,8 @@ module async_mmap #(
   wire                 write_data_empty_n;
   relay_station #(
     .DATA_WIDTH(DataWidth),
-    .ADDR_WIDTH(BufferSizeLog),
-    .DEPTH     (BufferSize),
+    .ADDR_WIDTH($clog2(WriteDataDepth)),
+    .DEPTH     (WriteDataDepth),
     .LEVEL     (1),
     .CONNECT   (EnableWriteChannel)
   ) write_data (
@@ -507,6 +516,7 @@ module async_mmap #(
 
     .max_wait_time(MaxWaitTime[WaitTimeWidth-1:0]),
     .max_burst_len(MaxBurstLen[BurstLenWidth-1:0]),
+    .hold         (1'b0),
 
     // input: individual addresses
     .addr_dout   (read_addr_dout),
