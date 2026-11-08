@@ -17,6 +17,28 @@ use crate::port::ArgCategory;
 use crate::target::Target;
 use crate::task::Task;
 
+/// The PL storage of a stream with an end that moves frames by view: one
+/// memory of `banks` frames, handed between the ends in order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FrameChannel {
+    /// Elements in a frame.
+    pub frame: u32,
+    /// Frames the channel holds: as many as the stream's depth, and at
+    /// least two, so one end fills a frame while the other drains one.
+    pub banks: u32,
+    /// The producer writes frames in place.
+    pub producer_view: bool,
+    /// The consumer reads frames in place.
+    pub consumer_view: bool,
+}
+
+impl FrameChannel {
+    /// Depth of the element stream that copies frames between the two
+    /// halves of a channel whose ends the floorplan puts in different
+    /// slots; the halves hold the frames.
+    pub const COPY_DEPTH: u32 = 2;
+}
+
 /// Root of the unified task graph.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -170,6 +192,29 @@ impl TaskGraph {
                 .flat_map(|instance| &instance.args)
                 .find(|(_, arg)| arg.arg.name() == Some(port))
                 .and_then(|(child_port, _)| self.view_frame(child, child_port))
+        })
+    }
+
+    /// The frame channel the stream `fifo_name` of `task` becomes on the PL,
+    /// or `None` for a FIFO: a stream with an end that moves frames by view
+    /// (see [`Self::view_frame`]). Graph validation has checked that the
+    /// ends' frames agree.
+    #[must_use]
+    pub fn frame_channel(&self, task: &Task, fifo_name: &str) -> Option<FrameChannel> {
+        let fifo = task.fifos.get(fifo_name)?;
+        let view = |end| {
+            let end = self.fifo_endpoint(task, fifo_name, end)?;
+            self.view_frame(&end.reference.0, end.binding?.port_name)
+        };
+        let producer = view(fifo.produced_by.as_ref());
+        let consumer = view(fifo.consumed_by.as_ref());
+        let frame = producer.or(consumer)?;
+        Some(FrameChannel {
+            frame,
+            // A stream the task takes rather than declares has no depth.
+            banks: (fifo.depth.unwrap_or(0) / frame).max(2),
+            producer_view: producer.is_some(),
+            consumer_view: consumer.is_some(),
         })
     }
 

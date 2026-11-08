@@ -1847,10 +1847,60 @@ pub fn tapa_ir::floorplan::async_mmap_bridge_instance_name(&str) -> alloc::strin
 pub fn tapa_ir::floorplan::axi_pipeline_instance_name(&tapa_ir::floorplan::AxiEndpoint, tapa_ir::floorplan::AxiChannel) -> alloc::string::String
 pub fn tapa_ir::floorplan::control_pipeline_instance_name(&str, tapa_ir::floorplan::ControlChannel) -> alloc::string::String
 pub const fn tapa_ir::floorplan::floorplanned_fifo_storage_depth(u32) -> u32
+pub fn tapa_ir::floorplan::frame_channel_half_instance_names(&str) -> [alloc::string::String; 2]
 pub const fn tapa_ir::floorplan::global_controller_instance_name() -> &'static str
 pub fn tapa_ir::floorplan::local_controller_instance_name(&str) -> alloc::string::String
 pub fn tapa_ir::floorplan::scope_controller_instance_name(&str) -> alloc::string::String
 pub mod tapa_ir::graph
+pub struct tapa_ir::graph::FrameChannel
+pub tapa_ir::graph::FrameChannel::banks: u32
+pub tapa_ir::graph::FrameChannel::consumer_view: bool
+pub tapa_ir::graph::FrameChannel::frame: u32
+pub tapa_ir::graph::FrameChannel::producer_view: bool
+impl tapa_ir::graph::FrameChannel
+pub const tapa_ir::graph::FrameChannel::COPY_DEPTH: u32
+impl core::clone::Clone for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::clone(&self) -> tapa_ir::graph::FrameChannel
+impl core::cmp::Eq for tapa_ir::graph::FrameChannel
+impl core::cmp::PartialEq for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::eq(&self, &tapa_ir::graph::FrameChannel) -> bool
+impl core::fmt::Debug for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::graph::FrameChannel
+impl core::marker::StructuralPartialEq for tapa_ir::graph::FrameChannel
+impl core::marker::Freeze for tapa_ir::graph::FrameChannel
+impl core::marker::Send for tapa_ir::graph::FrameChannel
+impl core::marker::Sync for tapa_ir::graph::FrameChannel
+impl core::marker::Unpin for tapa_ir::graph::FrameChannel
+impl core::marker::UnsafeUnpin for tapa_ir::graph::FrameChannel
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::FrameChannel
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::FrameChannel
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::FrameChannel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::FrameChannel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::FrameChannel where U: core::convert::From<T>
+pub fn tapa_ir::graph::FrameChannel::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::FrameChannel where U: core::convert::Into<T>
+pub type tapa_ir::graph::FrameChannel::Error = core::convert::Infallible
+pub fn tapa_ir::graph::FrameChannel::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::FrameChannel where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::FrameChannel::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::FrameChannel::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::FrameChannel where T: core::clone::Clone
+pub type tapa_ir::graph::FrameChannel::Owned = T
+pub fn tapa_ir::graph::FrameChannel::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::FrameChannel::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::FrameChannel where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::FrameChannel where T: ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::FrameChannel where T: ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::FrameChannel where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::FrameChannel::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::from(T) -> T
 pub struct tapa_ir::graph::TaskGraph
 pub tapa_ir::graph::TaskGraph::cflags: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::graph::TaskGraph::schema_version: u32
@@ -1861,6 +1911,7 @@ impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
@@ -4756,6 +4807,7 @@ impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
@@ -5047,6 +5099,55 @@ pub unsafe fn tapa_ir::work_state::FlowSettings::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::work_state::FlowSettings
 pub fn tapa_ir::work_state::FlowSettings::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::work_state::FlowSettings where T: for<'de> serde_core::de::Deserialize<'de>
+pub struct tapa_ir::FrameChannel
+pub tapa_ir::FrameChannel::banks: u32
+pub tapa_ir::FrameChannel::consumer_view: bool
+pub tapa_ir::FrameChannel::frame: u32
+pub tapa_ir::FrameChannel::producer_view: bool
+impl tapa_ir::graph::FrameChannel
+pub const tapa_ir::graph::FrameChannel::COPY_DEPTH: u32
+impl core::clone::Clone for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::clone(&self) -> tapa_ir::graph::FrameChannel
+impl core::cmp::Eq for tapa_ir::graph::FrameChannel
+impl core::cmp::PartialEq for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::eq(&self, &tapa_ir::graph::FrameChannel) -> bool
+impl core::fmt::Debug for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::graph::FrameChannel
+impl core::marker::StructuralPartialEq for tapa_ir::graph::FrameChannel
+impl core::marker::Freeze for tapa_ir::graph::FrameChannel
+impl core::marker::Send for tapa_ir::graph::FrameChannel
+impl core::marker::Sync for tapa_ir::graph::FrameChannel
+impl core::marker::Unpin for tapa_ir::graph::FrameChannel
+impl core::marker::UnsafeUnpin for tapa_ir::graph::FrameChannel
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::FrameChannel
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::FrameChannel
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::FrameChannel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::FrameChannel where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::FrameChannel where U: core::convert::From<T>
+pub fn tapa_ir::graph::FrameChannel::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::FrameChannel where U: core::convert::Into<T>
+pub type tapa_ir::graph::FrameChannel::Error = core::convert::Infallible
+pub fn tapa_ir::graph::FrameChannel::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::FrameChannel where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::FrameChannel::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::FrameChannel::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::FrameChannel where T: core::clone::Clone
+pub type tapa_ir::graph::FrameChannel::Owned = T
+pub fn tapa_ir::graph::FrameChannel::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::FrameChannel::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::FrameChannel where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::FrameChannel where T: ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::FrameChannel where T: ?core::marker::Sized
+pub fn tapa_ir::graph::FrameChannel::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::FrameChannel where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::FrameChannel::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::FrameChannel
+pub fn tapa_ir::graph::FrameChannel::from(T) -> T
 pub struct tapa_ir::Graph
 pub tapa_ir::Graph::cflags: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Graph::schema_version: u32
@@ -5057,6 +5158,7 @@ impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
@@ -5762,6 +5864,7 @@ impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::bindings<'a>(&'a self, &'a tapa_ir::task::Task) -> impl core::iter::traits::iterator::Iterator<Item = tapa_ir::bindings::PortBinding<'a>>
 pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task::Task, &str, core::option::Option<&'a tapa_ir::interconnect::EndpointRef>) -> core::option::Option<tapa_ir::bindings::FifoEndpoint<'a>>
 impl tapa_ir::graph::TaskGraph
+pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
@@ -5979,6 +6082,7 @@ pub fn tapa_ir::axi_pipeline_instance_name(&tapa_ir::floorplan::AxiEndpoint, tap
 pub fn tapa_ir::control_pipeline_instance_name(&str, tapa_ir::floorplan::ControlChannel) -> alloc::string::String
 pub fn tapa_ir::flatten(&tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::transforms::TransformError>
 pub const fn tapa_ir::floorplanned_fifo_storage_depth(u32) -> u32
+pub fn tapa_ir::frame_channel_half_instance_names(&str) -> [alloc::string::String; 2]
 pub const fn tapa_ir::global_controller_instance_name() -> &'static str
 pub fn tapa_ir::inlined_instances(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::InlinedInstance>, tapa_ir::aie::AieError>
 pub fn tapa_ir::local_controller_instance_name(&str) -> alloc::string::String

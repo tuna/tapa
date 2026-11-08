@@ -219,7 +219,12 @@ argument.
   declared; an upper task in between carries the frame port's signals in
   place of the stream's. A kernel's own stream argument, or a stream to the
   AI Engine, gets a channel of two banks in the PL kernel's top, filled from
-  or drained to that argument element by element.
+  or drained to that argument element by element. When `tapa floorplan`
+  puts the two ends in different slots, the channel is copied, as an AI
+  Engine tile DMA copies a buffer between distant tiles: each frame-port end
+  gets its own channel of the same banks, and the elements cross the slots
+  through the stream's pipeline. A copy costs the extra banks and delays the
+  consumer by a frame; ends in one slot share one channel.
 - **On the AI Engine** a frame port is the kernel's buffer port, filled or
   drained by DMA. Between two AI Engine frame ports the graph connects the
   buffers directly, so neighbouring kernels share tile memory.
@@ -239,7 +244,6 @@ Rules:
   at least one frame (`tapa analyze` checks both).
 - A top task that is itself a leaf cannot take a frame port: nothing would
   hold its channel. Invoke the leaf from an upper top task.
-  `tapa floorplan` does not place a design with a frame channel yet.
 
 ---
 

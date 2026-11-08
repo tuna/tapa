@@ -83,6 +83,11 @@ impl FloorGraph {
                         instance: instance.name.clone(),
                         host: host.clone(),
                     })?;
+            if let Some(other) = instance.apart_from {
+                if regions.get(&self.vertices[other].name) == Some(&region) {
+                    continue; // one channel in one slot: no half
+                }
+            }
             // Build-time name validation should make this unreachable, but
             // never silently overwrite another object's placement.
             if let Some(existing) = regions.get(&instance.name) {

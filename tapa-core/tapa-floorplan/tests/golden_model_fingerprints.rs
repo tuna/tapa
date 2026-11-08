@@ -41,9 +41,9 @@ fn fixture_path() -> PathBuf {
 
 #[test]
 fn golden_models_match_recorded_fingerprints() {
-    let state = common::case_work_state();
+    let state = common::VADD.work_state();
     let options = common::case_plan_options();
-    let inputs = common::case_plan_inputs();
+    let inputs = common::VADD.plan_inputs();
 
     let rendered = match tapa_floorplan::fingerprint_plan_models_json(&state, &options, &inputs) {
         Ok(rendered) => rendered,

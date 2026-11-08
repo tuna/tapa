@@ -1,0 +1,213 @@
+{
+  "device": "u280",
+  "grid": [
+    2,
+    3
+  ],
+  "regions": {
+    "Load_0": "SLOT_X0Y0_TO_SLOT_X0Y0",
+    "Store_0": "SLOT_X1Y0_TO_SLOT_X1Y0",
+    "TurnIn_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "TurnOut_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "Turn_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_control_scope_Drain_0_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_control_scope_Emit_0_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_global_controller": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Drain_0_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Emit_0_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Load_0": "SLOT_X0Y0_TO_SLOT_X0Y0",
+    "__tapa_local_controller_Store_0": "SLOT_X1Y0_TO_SLOT_X1Y0",
+    "__tapa_local_controller_TurnIn_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_TurnOut_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "__tapa_local_controller_Turn_0": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "cols_Drain_0_CornerTurn": "SLOT_X1Y0_TO_SLOT_X1Y0",
+    "cols_Drain_0_CornerTurn_send": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "control_s_axi_U": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "once_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "rows_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "rows_CornerTurn_recv": "SLOT_X1Y1_TO_SLOT_X1Y1",
+    "twice_CornerTurn": "SLOT_X1Y1_TO_SLOT_X1Y1"
+  },
+  "routes": [
+    {
+      "channel": {
+        "kind": "stream",
+        "fifo": "cols_Drain_0_CornerTurn"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X1Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "stream",
+        "fifo": "rows_CornerTurn"
+      },
+      "route": [
+        "SLOT_X0Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X0Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Load_0",
+        "channel": "launch"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Load_0",
+        "channel": "reset"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Load_0",
+        "channel": "completion"
+      },
+      "route": [
+        "SLOT_X0Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X0Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Store_0",
+        "channel": "launch"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Store_0",
+        "channel": "reset"
+      },
+      "route": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y1",
+        "SLOT_X0Y0",
+        "SLOT_X0Y0",
+        "SLOT_X1Y0"
+      ]
+    },
+    {
+      "channel": {
+        "kind": "control",
+        "instance": "Store_0",
+        "channel": "completion"
+      },
+      "route": [
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ],
+      "scheme": "double",
+      "reg_regions": [
+        "SLOT_X1Y0",
+        "SLOT_X1Y1"
+      ]
+    }
+  ],
+  "slot_usage": {
+    "SLOT_X0Y0_TO_SLOT_X0Y0": {
+      "lut": 990,
+      "ff": 1267,
+      "bram_18k": 1,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X0Y1_TO_SLOT_X0Y1": {
+      "lut": 0,
+      "ff": 396,
+      "bram_18k": 0,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X1Y0_TO_SLOT_X1Y0": {
+      "lut": 1062,
+      "ff": 1036,
+      "bram_18k": 0,
+      "dsp": 0,
+      "uram": 0
+    },
+    "SLOT_X1Y1_TO_SLOT_X1Y1": {
+      "lut": 1979,
+      "ff": 933,
+      "bram_18k": 36,
+      "dsp": 0,
+      "uram": 0
+    }
+  }
+}

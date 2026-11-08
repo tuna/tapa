@@ -7,7 +7,7 @@ use tapa_ir::transforms::FlatProjection;
 use tapa_ir::{
     floorplanned_fifo_storage_depth, global_controller_instance_name,
     local_controller_instance_name, scope_controller_instance_name, Area, AxiChannel, AxiEndpoint,
-    ControlChannel, MemoryBank, TaskGraph,
+    ControlChannel, FrameChannel, MemoryBank, TaskGraph,
 };
 
 use crate::graph::floor_graph::{
@@ -102,13 +102,26 @@ impl FloorGraphBuilder {
         Ok(())
     }
 
+    /// Add the storage of the stream `fifo` to the area of vertex `host`.
+    fn charge(&mut self, host: usize, area: Area, fifo: &str) -> Result<(), GraphError> {
+        self.vertices[host].area = self.vertices[host]
+            .area
+            .checked_add(area)
+            .ok_or_else(|| GraphError::ResourceOverflow(fifo.to_owned()))?;
+        Ok(())
+    }
+
     /// Cluster each internal FIFO into its consumer-side host.
     ///
     /// The consumer-side Tail hosts each FIFO (producer fallback for a
     /// one-sided stream), and task endpoints connect directly. This keeps
     /// placement and routing on one logical topology. External passthrough
     /// FIFOs (no depth) are skipped, and every FIFO storage area is charged
-    /// to its host vertex. Returns the directed logical streams in
+    /// to its host vertex. A frame channel's banks are charged to each end
+    /// that is a frame port, where codegen places that end's half of the
+    /// channel when the ends land in different slots (the half's alias
+    /// materializes only then); the stream between the halves is a short
+    /// element FIFO. Returns the directed logical streams in
     /// `top.fifos` order.
     pub(super) fn cluster_internal_fifos(
         &mut self,
@@ -118,15 +131,9 @@ impl FloorGraphBuilder {
         let mut streams = Vec::new();
         let fifo_widths = index_fifo_arg_widths(flat, top);
         for (fifo_name, fifo) in &top.fifos {
-            let Some(depth) = fifo.depth else {
+            let channel = flat.frame_channel(top, fifo_name);
+            if fifo.depth.is_none() && channel.is_none() {
                 continue; // external passthrough FIFO — not a placed instance
-            };
-            let frame_port = [fifo.produced_by.as_ref(), fifo.consumed_by.as_ref()]
-                .into_iter()
-                .filter_map(|end| flat.fifo_endpoint(top, fifo_name, end)?.binding)
-                .any(|binding| binding.argument.cat.is_frames());
-            if frame_port {
-                return Err(GraphError::FrameChannel(fifo_name.clone()));
             }
             let data_width = resolve_fifo_data_width(&fifo_widths, fifo_name)?;
             let physical_width = data_width
@@ -151,16 +158,55 @@ impl FloorGraphBuilder {
                 .or(src)
                 .ok_or_else(|| GraphError::UnanchoredFifo(fifo_name.clone()))?;
 
-            self.vertices[host].area = self.vertices[host]
-                .area
-                .checked_add(fifo_area(
-                    data_width,
-                    floorplanned_fifo_storage_depth(depth),
-                ))
-                .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
+            if let Some(channel) = channel {
+                let banks = channel
+                    .banks
+                    .checked_mul(channel.frame)
+                    .map(|depth| fifo_area(data_width, depth))
+                    .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
+                let ends = [
+                    (channel.producer_view, src, dst),
+                    (channel.consumer_view, dst, src),
+                ];
+                let halves = tapa_ir::frame_channel_half_instance_names(fifo_name);
+                for ((view, end, other), half) in ends.into_iter().zip(halves) {
+                    let Some(end) = end.filter(|_| view) else {
+                        continue;
+                    };
+                    self.charge(end, banks, fifo_name)?;
+                    if let (Some(other), Some(_)) = (other, fifo.depth) {
+                        self.co_located.push(CoLocatedInstance {
+                            name: half,
+                            host: end,
+                            apart_from: Some(other),
+                        });
+                    }
+                }
+            }
+            // A frame channel on the top's own stream has one end, the frame
+            // port it sits with.
+            let Some(depth) = fifo.depth else {
+                self.co_located.push(CoLocatedInstance {
+                    name: fifo_name.clone(),
+                    host,
+                    apart_from: None,
+                });
+                continue;
+            };
+            let depth = if channel.is_some() {
+                FrameChannel::COPY_DEPTH
+            } else {
+                depth
+            };
+            self.charge(
+                host,
+                fifo_area(data_width, floorplanned_fifo_storage_depth(depth)),
+                fifo_name,
+            )?;
             self.co_located.push(CoLocatedInstance {
                 name: fifo_name.clone(),
                 host,
+                apart_from: None,
             });
 
             if let (Some(src), Some(dst)) = (src, dst) {
@@ -244,6 +290,7 @@ impl FloorGraphBuilder {
                 self.co_located.push(CoLocatedInstance {
                     name: bridge.clone(),
                     host: expected_endpoint.task_vertex,
+                    apart_from: None,
                 });
             }
         }
@@ -360,6 +407,7 @@ impl FloorGraphBuilder {
             self.co_located.push(CoLocatedInstance {
                 name: CONTROL_S_AXI_INSTANCE.to_string(),
                 host: global,
+                apart_from: None,
             });
         }
         if let Some(projection) = projection {
@@ -370,8 +418,11 @@ impl FloorGraphBuilder {
                     scope_controller_instance_name(&scope.global_name),
                     local_controller_instance_name(&scope.global_name),
                 ] {
-                    self.co_located
-                        .push(CoLocatedInstance { name, host: global });
+                    self.co_located.push(CoLocatedInstance {
+                        name,
+                        host: global,
+                        apart_from: None,
+                    });
                 }
             }
         }
@@ -386,6 +437,7 @@ impl FloorGraphBuilder {
             self.co_located.push(CoLocatedInstance {
                 name: local_controller_instance_name(&canonical),
                 host: child,
+                apart_from: None,
             });
 
             let launch_width = control_launch_width(task, instance, &canonical)?;
@@ -699,6 +751,88 @@ mod tests {
             ),
             "got {error}"
         );
+    }
+
+    /// A frame channel is a stream of its elements whose banks sit at each
+    /// end that is a frame port: codegen copies it across slots with a half
+    /// there, so the halves get placement aliases at those ends.
+    #[test]
+    fn frame_channel_banks_sit_at_each_frame_port() {
+        let json = r#"{
+            "schema_version": 4,
+            "cflags": [], "top": "Top", "target": "xilinx-hls",
+            "tasks": {
+                "Top": {
+                    "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [], "defines": [], "level": "upper", "synth": "hls",
+                    "ports": [],
+                    "tasks": {
+                        "A": [{"args": {"out": {"arg": "q", "cat": "oframes"}}, "step": 0}],
+                        "B": [{"args": {"in": {"arg": "q", "cat": "iframes"}}, "step": 0}],
+                        "C": [{"args": {"out": {"arg": "r", "cat": "ostream"}}, "step": 0}],
+                        "D": [{"args": {"in": {"arg": "r", "cat": "iframes"}}, "step": 0}]
+                    },
+                    "fifos": {
+                        "q": {"depth": 1536, "consumed_by": ["B", 0], "produced_by": ["A", 0]},
+                        "r": {"depth": 512, "consumed_by": ["D", 0], "produced_by": ["C", 0]}
+                    }
+                },
+                "A": {"readable_name": "A", "srcs": ["A.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "oframes", "name": "out", "type": "uint32", "width": 32, "frame": 512}]},
+                "B": {"readable_name": "B", "srcs": ["B.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "iframes", "name": "in", "type": "uint32", "width": 32, "frame": 512}]},
+                "C": {"readable_name": "C", "srcs": ["C.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "ostream", "name": "out", "type": "uint32", "width": 32}]},
+                "D": {"readable_name": "D", "srcs": ["D.cpp"], "include_dirs": [], "defines": [], "level": "lower", "synth": "hls",
+                    "ports": [{"cat": "iframes", "name": "in", "type": "uint32", "width": 32, "frame": 512}]}
+            }
+        }"#;
+        let flat = tapa_ir::flatten(&TaskGraph::from_json(json).expect("parse")).expect("flatten");
+        let graph = FloorGraph::build(&flat).expect("a frame channel is placed");
+        let area = |name: &str| graph.vertex(graph.index_of(name).expect(name)).area;
+        let copy = fifo_area(
+            33,
+            floorplanned_fifo_storage_depth(FrameChannel::COPY_DEPTH),
+        );
+        let three_banks = fifo_area(33, 3 * 512);
+        let two_banks = fifo_area(33, 2 * 512);
+        assert_eq!(area("A_0"), three_banks);
+        assert_eq!(area("B_0"), three_banks.checked_add(copy).expect("area"));
+        assert_eq!(area("C_0"), Area::default());
+        assert_eq!(area("D_0"), two_banks.checked_add(copy).expect("area"));
+
+        let host = |name: &str| {
+            graph
+                .co_located
+                .iter()
+                .find(|alias| alias.name == name)
+                .map(|alias| graph.vertex(alias.host).name.clone())
+        };
+        assert_eq!(host("q_Top").as_deref(), Some("B_0"));
+        assert_eq!(host("q_Top_send").as_deref(), Some("A_0"));
+        assert_eq!(host("q_Top_recv").as_deref(), Some("B_0"));
+        assert_eq!(host("r_Top_send"), None);
+        assert_eq!(host("r_Top_recv").as_deref(), Some("D_0"));
+
+        // A half exists only where its channel is split: `q` stays in one
+        // slot, `r` crosses.
+        let mut regions = BTreeMap::from(
+            [("A_0", "S0"), ("B_0", "S0"), ("C_0", "S0"), ("D_0", "S1")]
+                .map(|(vertex, region)| (vertex.to_owned(), region.to_owned())),
+        );
+        graph
+            .materialize_co_locations(&mut regions)
+            .expect("aliases");
+        assert_eq!(regions.get("q_Top").map(String::as_str), Some("S0"));
+        assert!(!regions.contains_key("q_Top_send"));
+        assert!(!regions.contains_key("q_Top_recv"));
+        assert_eq!(regions.get("r_Top_recv").map(String::as_str), Some("S1"));
+
+        let streams: Vec<_> = graph
+            .streams()
+            .iter()
+            .map(|stream| (stream.link.as_str(), stream.depth, stream.width))
+            .collect();
+        assert_eq!(streams, [("q_Top", 2, 35), ("r_Top", 2, 35)]);
     }
 
     #[test]

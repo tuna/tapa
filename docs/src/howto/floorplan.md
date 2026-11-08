@@ -99,6 +99,12 @@ sources the staged floorplan, and requests clock-region replication for
 eligible high-fanout fabric controls. Registering the script in `utils_1`
 ensures that the separate `impl_1` process executes it.
 
+A frame channel (a stream with a `tapa::iframes` or `tapa::oframes` end) is
+placed with its ends. When they land in different slots, each frame-port end
+gets its own copy of the channel's banks and only the element stream crosses
+(see [Streams](../concepts/streams.md)); the planner charges the banks to
+every frame-port end.
+
 Pipelining can add latency across SLR boundaries but should not change the
 results. Run fast cosimulation again to check functionality. Fast cosim does
 not measure achieved Fmax; use the implementation timing report or on-board
@@ -176,4 +182,3 @@ remote machine. See [Remote Execution](remote-execution.md).
 | Planning times out | Increase `--max-seconds`; it applies per solve rather than to the whole step. |
 | Timing still fails within a task | Restructure that task in HLS. Floorplanning addresses placement and routing, not logic depth. |
 | Results differ after floorplanning | Rerun fast cosim. Then check custom RTL and protocol correctness; floorplanning should add latency, not change values. |
-| `stream ... is a frame channel` | A frame port's channel (`tapa::iframes` / `tapa::oframes`) has fixed-latency memory ports and is not placed yet; build that design without a floorplan. |

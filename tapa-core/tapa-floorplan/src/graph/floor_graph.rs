@@ -122,6 +122,10 @@ pub struct ControlNet {
 pub(crate) struct CoLocatedInstance {
     pub name: String,
     pub host: usize,
+    /// For the half of a frame channel at `host`, the vertex at the
+    /// channel's other end: codegen copies the channel, and instantiates
+    /// this half, only when that end lands in another slot.
+    pub apart_from: Option<usize>,
 }
 
 /// The transient graph view shared by placement and stream routing.
@@ -169,13 +173,6 @@ pub enum GraphError {
     /// An internal FIFO has no placeable task endpoint to own its storage.
     #[error("internal stream `{0}` has no placeable endpoint")]
     UnanchoredFifo(String),
-    /// A stream with a frame port at an end is a frame channel, whose
-    /// fixed-latency memory ports cannot be pipelined between slots.
-    #[error(
-        "stream `{0}` is a frame channel (a tapa::iframes or tapa::oframes port \
-         is bound to it), which tapa floorplan does not place yet"
-    )]
-    FrameChannel(String),
     /// A FIFO names a producer/consumer endpoint that is not a flattened
     /// task instance — malformed IR, not a deliberately one-sided stream.
     #[error(

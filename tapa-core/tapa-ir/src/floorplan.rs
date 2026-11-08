@@ -401,6 +401,18 @@ pub fn async_mmap_bridge_instance_name(top_port: &str) -> String {
     format!("{}__m_axi", crate::port::sanitize_identifier_name(top_port))
 }
 
+/// Deterministic generated instance names of the two halves of a frame
+/// channel split across floorplan slots.
+///
+/// The half with the producer comes first, then the half with the
+/// consumer. The element stream between them is the stream's own
+/// `{fifo}_fifo` pipeline, routed like any crossing stream.
+#[must_use]
+pub fn frame_channel_half_instance_names(fifo: &str) -> [String; 2] {
+    let base = crate::port::sanitize_array_name(fifo);
+    [format!("{base}_send"), format!("{base}_recv")]
+}
+
 /// Deterministic generated instance name for the global task controller.
 #[must_use]
 pub const fn global_controller_instance_name() -> &'static str {

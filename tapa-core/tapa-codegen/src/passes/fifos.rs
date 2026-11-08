@@ -7,7 +7,7 @@ use tapa_ir::floorplanned_fifo_storage_depth;
 
 use super::floorplans::stream_crossing_body_level;
 use super::frames::{
-    build_frame_channel_instance, declare_frame_channel_wires, frame_channel, join_outer_side,
+    build_frame_channel_instance, declare_frame_channel_wires, frame_channel, join_streams,
 };
 use tapa_protocol::{
     stream_port_direction, PortDir, FIFO_READ_PORTS, FIFO_WRITE_PORTS, HANDSHAKE_CLK,
@@ -215,16 +215,20 @@ pub fn instantiate_fifos(
             .design()
             .fifo_endpoint(task, fifo_name, fifo.produced_by.as_ref());
         if let Some(channel) = frame_channel(design.design(), modules, task, fifo_name, fifo)? {
-            // A frame channel's ports have fixed latency: nothing may
-            // pipeline them across slots.
-            if stream_crossing_body_level(design.floorplan(), fifo_name).is_some() {
-                return Err(CodegenError::FrameChannel {
-                    fifo: fifo_name.clone(),
-                    problem: "the floorplan places its ends in different slots".to_owned(),
-                });
-            }
+            let crossing_level = stream_crossing_body_level(design.floorplan(), fifo_name);
             if let Some(mm) = modules.get_mut(task_name) {
-                mm.add_instance(build_frame_channel_instance(fifo_name, &channel));
+                for part in channel.parts(crossing_level.is_some()) {
+                    mm.add_instance(build_frame_channel_instance(fifo_name, &channel, part));
+                }
+                if let Some(level) = crossing_level {
+                    mm.add_instance(build_hs_pipeline_instance(
+                        fifo_name,
+                        Expr::ident(HANDSHAKE_RST),
+                        Expr::int(u64::from(channel.copy_width())),
+                        tapa_ir::FrameChannel::COPY_DEPTH,
+                        level,
+                    ));
+                }
             }
         } else if let Some(depth) = fifo.depth {
             // Buffered internal FIFOs must have a producer to size the buffer.
@@ -333,8 +337,9 @@ pub fn connect_fifos(
 
         let channel = frame_channel(design_data, modules, task, fifo_name, fifo)?;
         if let Some(channel) = &channel {
+            let split = stream_crossing_body_level(design.floorplan(), fifo_name).is_some();
             if let Some(mm) = modules.get_mut(task_name) {
-                declare_frame_channel_wires(mm, fifo_name, channel);
+                declare_frame_channel_wires(mm, fifo_name, channel, split);
             }
         }
         if channel.is_none() && fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
@@ -465,7 +470,7 @@ pub fn connect_fifos(
             // A frame port bound to the port: its channel's element side.
             if channel.is_some() {
                 if let Some(mm) = modules.get_mut(task_name) {
-                    join_outer_side(mm, fifo_name);
+                    join_streams(mm, &sanitized_fifo_name, &sanitized_fifo_name);
                 }
             }
         }

@@ -38,12 +38,12 @@ pub use connectivity::{
 pub use error::ParseError;
 pub use floorplan::{
     async_mmap_bridge_instance_name, axi_pipeline_instance_name, control_pipeline_instance_name,
-    floorplanned_fifo_storage_depth, global_controller_instance_name,
-    local_controller_instance_name, scope_controller_instance_name, Area, AxiChannel,
-    AxiChannelWidths, AxiEndpoint, ControlChannel, Coor, FloorplanResult, PipelineRoute,
-    PipelineScheme, Resource, RoutedChannel,
+    floorplanned_fifo_storage_depth, frame_channel_half_instance_names,
+    global_controller_instance_name, local_controller_instance_name,
+    scope_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
+    ControlChannel, Coor, FloorplanResult, PipelineRoute, PipelineScheme, Resource, RoutedChannel,
 };
-pub use graph::TaskGraph;
+pub use graph::{FrameChannel, TaskGraph};
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use memory::MemoryGeometry;
