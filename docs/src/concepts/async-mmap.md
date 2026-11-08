@@ -125,15 +125,22 @@ mem.read_addr.try_write({i_req, len});  // len elements from i_req
 ```
 
 Data for a burst arrives one element per cycle, the same rate as element
-requests. TAPA coalesces sequential element addresses into AXI bursts either
-way: adjacent addresses are merged when AXI constraints allow it, so you get
-burst efficiency for sequential patterns without burst requests. A burst holds
-fewer than 2^32 elements.
+requests; what differs is when memory sees the request. TAPA merges
+sequential requests into AXI bursts. A run of element requests makes bursts
+of up to 1 KB, so you get burst efficiency for sequential patterns without
+burst requests, but each is sent only once it ends: at a gap in the
+addresses, at 1 KB, or a few cycles after the last request. A burst request
+does not wait: it goes out as AXI bursts of up to 4 KB (and 256 elements)
+that never cross a 4 KB boundary, so its first element comes back sooner.
+An element run just before it joins its first AXI burst, and requests
+issued in the cycles right after it join its last one, while that burst
+stays within those limits. A burst of one element is an element request. A
+burst holds fewer than 2^32 elements.
 
 Write responses count elements whichever way you request them: each one
-acknowledges `ack + 1` element writes, at most 256, so a long burst can be
-acknowledged by several responses and one response can cover parts of
-several bursts. Count acknowledged elements, not responses.
+acknowledges `ack + 1` element writes, at most 256, so a long burst takes
+several responses and one response can cover several requests. Count
+acknowledged elements, not responses.
 
 ---
 

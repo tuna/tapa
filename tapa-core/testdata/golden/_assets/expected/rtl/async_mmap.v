@@ -115,13 +115,18 @@ module async_mmap #(
   // burst on its timeout.
   localparam WriteDataDepth = BufferSize + MaxBurstLen + 1;
 
+  // Bursts holding a burst request: up to 2^BurstLenWidth beats or 4 KB.
+  localparam PageBeats = 4096 >> DataWidthBytesLog;
+  localparam MaxRequestBurstLen =
+      (PageBeats < (1 << BurstLenWidth) ? PageBeats : (1 << BurstLenWidth)) - 1;
+
   // write addr buffer, from user to burst detector
-  wire [ReqLenWidth+AddrWidth-1:0] write_addr_req_dout;
-  wire                             write_addr_req_empty_n;
-  wire                             write_addr_req_read;
-  wire [AddrWidth-1:0]             write_addr_dout;
-  wire                             write_addr_empty_n;
-  wire                             write_addr_read;
+  wire [ReqLenWidth+AddrWidth-1:0]   write_addr_req_dout;
+  wire                               write_addr_req_empty_n;
+  wire                               write_addr_req_read;
+  wire [BurstLenWidth+AddrWidth-1:0] write_addr_dout;  // {beats - 1, address}
+  wire                               write_addr_empty_n;
+  wire                               write_addr_read;
 
   relay_station #(
     .DATA_WIDTH(ReqLenWidth + AddrWidth),
@@ -148,15 +153,17 @@ module async_mmap #(
 
   generate
     if (ReqLenWidth == 0) begin : write_addr_elem
-      assign write_addr_dout     = write_addr_req_dout;
+      assign write_addr_dout     = {{BurstLenWidth{1'b0}}, write_addr_req_dout};
       assign write_addr_empty_n  = write_addr_req_empty_n;
       assign write_addr_req_read = write_addr_read;
     end else begin : write_addr_burst
-      burst_expand #(
+      burst_split #(
         .AddrWidth        (AddrWidth),
         .LenWidth         (ReqLenWidth),
-        .DataWidthBytesLog(DataWidthBytesLog)
-      ) expand (
+        .DataWidthBytesLog(DataWidthBytesLog),
+        .BurstLenWidth    (BurstLenWidth),
+        .MaxBurstLen      (MaxRequestBurstLen)
+      ) split (
         .clk         (clk),
         .rst         (rst),
         .req_dout    (write_addr_req_dout),
@@ -207,11 +214,12 @@ module async_mmap #(
     .clk(clk),
     .rst(rst),
 
-    .max_wait_time(MaxWaitTime[WaitTimeWidth-1:0]),
-    .max_burst_len(MaxBurstLen[BurstLenWidth-1:0]),
-    .hold         (!write_data_full_n && burst_write_last_empty_n),
+    .max_wait_time        (MaxWaitTime[WaitTimeWidth-1:0]),
+    .max_burst_len        (MaxBurstLen[BurstLenWidth-1:0]),
+    .max_request_burst_len(MaxRequestBurstLen[BurstLenWidth-1:0]),
+    .hold                 (!write_data_full_n && burst_write_last_empty_n),
 
-    // input: individual addresses
+    // input: pieces of the requests
     .addr_dout   (write_addr_dout),
     .addr_empty_n(write_addr_empty_n),
     .addr_read   (write_addr_read),
@@ -421,12 +429,12 @@ module async_mmap #(
   assign write_req_read = write_resp_full_n && m_axi_BVALID;
 
   // read addr buffer, from user to burst detector
-  wire [ReqLenWidth+AddrWidth-1:0] read_addr_req_dout;
-  wire                             read_addr_req_empty_n;
-  wire                             read_addr_req_read;
-  wire [AddrWidth-1:0]             read_addr_dout;
-  wire                             read_addr_empty_n;
-  wire                             read_addr_read;
+  wire [ReqLenWidth+AddrWidth-1:0]   read_addr_req_dout;
+  wire                               read_addr_req_empty_n;
+  wire                               read_addr_req_read;
+  wire [BurstLenWidth+AddrWidth-1:0] read_addr_dout;  // {beats - 1, address}
+  wire                               read_addr_empty_n;
+  wire                               read_addr_read;
 
   relay_station #(
     .DATA_WIDTH(ReqLenWidth + AddrWidth),
@@ -453,15 +461,17 @@ module async_mmap #(
 
   generate
     if (ReqLenWidth == 0) begin : read_addr_elem
-      assign read_addr_dout     = read_addr_req_dout;
+      assign read_addr_dout     = {{BurstLenWidth{1'b0}}, read_addr_req_dout};
       assign read_addr_empty_n  = read_addr_req_empty_n;
       assign read_addr_req_read = read_addr_read;
     end else begin : read_addr_burst
-      burst_expand #(
+      burst_split #(
         .AddrWidth        (AddrWidth),
         .LenWidth         (ReqLenWidth),
-        .DataWidthBytesLog(DataWidthBytesLog)
-      ) expand (
+        .DataWidthBytesLog(DataWidthBytesLog),
+        .BurstLenWidth    (BurstLenWidth),
+        .MaxBurstLen      (MaxRequestBurstLen)
+      ) split (
         .clk         (clk),
         .rst         (rst),
         .req_dout    (read_addr_req_dout),
@@ -514,11 +524,12 @@ module async_mmap #(
     .clk(clk),
     .rst(rst),
 
-    .max_wait_time(MaxWaitTime[WaitTimeWidth-1:0]),
-    .max_burst_len(MaxBurstLen[BurstLenWidth-1:0]),
-    .hold         (1'b0),
+    .max_wait_time        (MaxWaitTime[WaitTimeWidth-1:0]),
+    .max_burst_len        (MaxBurstLen[BurstLenWidth-1:0]),
+    .max_request_burst_len(MaxRequestBurstLen[BurstLenWidth-1:0]),
+    .hold                 (1'b0),
 
-    // input: individual addresses
+    // input: pieces of the requests
     .addr_dout   (read_addr_dout),
     .addr_empty_n(read_addr_empty_n),
     .addr_read   (read_addr_read),
