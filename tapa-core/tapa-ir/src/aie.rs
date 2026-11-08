@@ -8,7 +8,8 @@
 //! top declares. [`AiePartition::derive`] then flattens the AI Engine tasks
 //! into kernels and classifies every stream they touch: a FIFO between two AI
 //! Engine tasks is an AI Engine net, and a FIFO between a PL task and an AI
-//! Engine task is a PLIO.
+//! Engine task is a PLIO. When the top itself is on the AI Engine, a stream
+//! argument of the top is a GMIO, whose frames the host moves.
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,6 +36,11 @@ pub struct AiePartition {
     /// Some kernel is invoked detached and never returns: the graph runs
     /// until the host ends it.
     pub run_forever: bool,
+    /// The top itself is on the AI Engine: no task runs on the PL and the
+    /// top takes no memory, so there is no PL kernel (tapacc keeps an AI
+    /// Engine top there only then). Its stream arguments are GMIOs and its
+    /// scalars runtime parameters.
+    pub pl_less: bool,
 }
 
 /// One AI Engine leaf instance.
@@ -190,6 +196,10 @@ pub enum AieStreamKind {
     Plio { input: bool, width: u32 },
     /// An AI Engine↔AI Engine stream of `depth_words` 32-bit words.
     Net { depth_words: u32 },
+    /// A stream argument of a PL-less top ([`AiePartition::pl_less`]): one
+    /// GMIO transfer per frame between host memory and a kernel's frame
+    /// port, `input` when the host writes it.
+    Gmio { input: bool },
 }
 
 /// Widest boundary element: one 128-bit PLIO beat.
@@ -216,12 +226,14 @@ impl AiePartition {
         }
         let graph = &*by_fabric(graph)?;
         let top = task(graph, &graph.top)?;
+        let pl_less = top.synth == SynthTarget::Aie;
         let mut builder = Builder {
             graph,
             partition: Self {
                 kernels: Vec::new(),
                 streams: Vec::new(),
                 run_forever: false,
+                pl_less,
             },
             top_streams: BTreeMap::new(),
         };
@@ -240,6 +252,7 @@ impl AiePartition {
             }
         }
         builder.check_locations()?;
+        builder.partition.check_gmios(&graph.top)?;
         builder.partition.mark_cycles(graph, top);
         Ok(Some(builder.partition))
     }
@@ -266,6 +279,8 @@ impl AiePartition {
         for stream in &self.streams {
             let (input, width) = match stream.kind {
                 AieStreamKind::Plio { input, width } => (input, width),
+                // A PL-less top's stream arguments are its own ports.
+                AieStreamKind::Gmio { .. } => continue,
                 AieStreamKind::Net { .. } => {
                     let top_aie_net = top.fifos.get(&stream.fifo).is_some_and(|fifo| {
                         [&fifo.produced_by, &fifo.consumed_by]
@@ -451,6 +466,53 @@ impl AiePartition {
                     step: 0,
                     position: 0,
                 });
+        }
+        Ok(())
+    }
+
+    /// A GMIO moves the frames of the kernel port it reaches, which may sit
+    /// below an upper task, so it takes that port's frame size; the port
+    /// must be a frame port. The host counts a run's output frames once
+    /// every kernel returns, so none may run forever.
+    fn check_gmios(&mut self, top: &str) -> Result<(), AieError> {
+        for kernel in &self.kernels {
+            for port in &kernel.ports {
+                let AiePortKind::Streams {
+                    streams,
+                    frame: Some(frame),
+                    ..
+                } = &port.kind
+                else {
+                    continue;
+                };
+                for &index in streams {
+                    let stream = &mut self.streams[index];
+                    if matches!(stream.kind, AieStreamKind::Gmio { .. }) {
+                        stream.frame = Some(*frame);
+                    }
+                }
+            }
+        }
+        for stream in &self.streams {
+            if !matches!(stream.kind, AieStreamKind::Gmio { .. }) {
+                continue;
+            }
+            if stream.frame.is_none() {
+                return Err(AieError(format!(
+                    "the stream argument `{}` of the top task `{top}` reaches a stream port of \
+                     an AI Engine task; with no task on the PL, the top's stream arguments \
+                     move frames over GMIO, so bind it to a frame port (`tapa::iframes`, \
+                     `tapa::oframes`, or `[[tapa::frame(N)]]`)",
+                    stream.fifo
+                )));
+            }
+            if self.run_forever {
+                return Err(AieError(format!(
+                    "the top task `{top}` has no task on the PL and invokes an AI Engine task \
+                     detached; the host learns how many frames a run wrote when every kernel \
+                     returns, so invoke each task joined"
+                )));
+            }
         }
         Ok(())
     }
@@ -857,6 +919,21 @@ impl Builder<'_> {
                     return Ok(Binding::Stream(*index));
                 }
                 let fifo = top.fifos.get(name).filter(|fifo| fifo.depth.is_some());
+                let top_port = top.port(name).filter(|port| port.cat.is_stream());
+                if let (None, Some(top_port), true) = (fifo, top_port, self.partition.pl_less) {
+                    let frame = task(graph, child)?.port(port).and_then(|port| port.frame);
+                    let index = self.push_stream(
+                        sanitize_identifier_name(name),
+                        name,
+                        stream_words(graph, child, port)?,
+                        frame,
+                        AieStreamKind::Gmio {
+                            input: top_port.cat.is_input_stream(),
+                        },
+                    );
+                    self.top_streams.insert(name.clone(), index);
+                    return Ok(Binding::Stream(index));
+                }
                 let Some(fifo) = fifo else {
                     return Err(AieError(format!(
                         "port `{port}` of the AI Engine task `{child}` is bound to the top \

@@ -491,6 +491,7 @@ mod tests {
                 plio_stream("c_q", false, 64),
             ],
             run_forever: false,
+            pl_less: false,
         };
         (report, partition)
     }

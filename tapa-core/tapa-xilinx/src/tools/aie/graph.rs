@@ -124,7 +124,7 @@ pub fn render_graph(
          #pragma once\n\n#include <adf.h>\n#include <tapa/aie/frame.h>\n\n",
     );
     for kernel in &partition.kernels {
-        let signature = signature(kernel)?;
+        let signature = signature(kernel, &partition.streams)?;
         let _ = writeln!(decls, "{signature};");
         let source = options.sources.get(&kernel.task).ok_or_else(|| {
             XilinxError::AieGraph(format!(
@@ -134,7 +134,7 @@ pub fn render_graph(
         })?;
         files.insert(
             format!("kernels/{}.cc", kernel.name),
-            wrapper(kernel, source, &signature),
+            wrapper(kernel, &partition.streams, source, &signature)?,
         );
     }
     files.insert("kernels.h".to_string(), decls);
@@ -224,8 +224,49 @@ const fn stack_size(locals: u32) -> u32 {
         .next_multiple_of(16)
 }
 
-/// One ADF kernel parameter per stream channel, frame or runtime scalar.
-fn signature(kernel: &AieKernel) -> Result<String> {
+/// The NoC burst of every GMIO, the longest there is.
+const GMIO_BURST_BYTES: u32 = 256;
+
+/// The throughput every GMIO asks of the NoC, in MB/s.
+const GMIO_MBPS: u32 = 1000;
+
+/// The kernel's frame ports that write a GMIO: each parameter's name and
+/// its stream. The kernel reports the frames it released on each through
+/// an `inout` runtime parameter, `frames_<GMIO>`, so the host knows when a
+/// run's last frame has arrived.
+fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<(String, usize)>> {
+    let mut counted = Vec::new();
+    for port in &kernel.ports {
+        let AiePortKind::Streams {
+            input: false,
+            plural,
+            streams: channels,
+            ..
+        } = &port.kind
+        else {
+            continue;
+        };
+        for &stream in channels {
+            if !matches!(streams[stream].kind, AieStreamKind::Gmio { .. }) {
+                continue;
+            }
+            if *plural {
+                return Err(XilinxError::AieGraph(format!(
+                    "the port `{}` of the AI Engine kernel `{}` writes the top's stream \
+                     argument `{}` from a channel of an `ostreams` port; bind it to a single \
+                     frame port",
+                    port.name, kernel.name, streams[stream].fifo
+                )));
+            }
+            counted.push((sanitize_identifier_name(&port.name), stream));
+        }
+    }
+    Ok(counted)
+}
+
+/// One ADF kernel parameter per stream channel, frame or runtime scalar,
+/// then one frame count per GMIO the kernel writes.
+fn signature(kernel: &AieKernel, streams: &[AieStream]) -> Result<String> {
     let mut params = Vec::new();
     for port in &kernel.ports {
         let name = sanitize_identifier_name(&port.name);
@@ -264,6 +305,9 @@ fn signature(kernel: &AieKernel) -> Result<String> {
             }
         }
     }
+    for (param, _) in counted_outputs(kernel, streams)? {
+        params.push(format!("int32 & tapa_frames_{param}"));
+    }
     Ok(format!(
         "void tapa_aie_{}({})",
         kernel.name,
@@ -271,7 +315,13 @@ fn signature(kernel: &AieKernel) -> Result<String> {
     ))
 }
 
-fn wrapper(kernel: &AieKernel, source: &KernelSource, signature: &str) -> String {
+fn wrapper(
+    kernel: &AieKernel,
+    streams: &[AieStream],
+    source: &KernelSource,
+    signature: &str,
+) -> Result<String> {
+    let counted = counted_outputs(kernel, streams)?;
     let mut args = Vec::new();
     for port in &kernel.ports {
         let name = sanitize_identifier_name(&port.name);
@@ -290,6 +340,9 @@ fn wrapper(kernel: &AieKernel, source: &KernelSource, signature: &str) -> String
                 ..
             } => args.push(format!("tapa::aie::bits{{{:#x}ULL}}", value.value)),
             AiePortKind::Memory(memory) => args.push(memory_arg(&name, memory)),
+            AiePortKind::Streams { .. } if counted.iter().any(|(param, _)| *param == name) => {
+                args.push(format!("tapa::aie::count({name}, frames_{name})"));
+            }
             AiePortKind::Streams { .. } | AiePortKind::Scalar { .. } => args.push(name),
         }
     }
@@ -303,14 +356,21 @@ fn wrapper(kernel: &AieKernel, source: &KernelSource, signature: &str) -> String
     if kernel.ordered {
         let _ = writeln!(out, "#define TAPA_AIE_ORDERED_STREAMS");
     }
-    let _ = write!(
+    let _ = write!(out, "#include \"{}\"\n\n{signature} {{\n", source.tu);
+    for (param, _) in &counted {
+        let _ = writeln!(out, "  int32 frames_{param} = 0;");
+    }
+    let _ = writeln!(
         out,
-        "#include \"{}\"\n\n{signature} {{\n  tapa::aie::invoke({}, {});\n}}\n",
-        source.tu,
+        "  tapa::aie::invoke({}, {});",
         kernel.call,
         args.join(", ")
     );
-    out
+    for (param, _) in &counted {
+        let _ = writeln!(out, "  tapa_frames_{param} = frames_{param};");
+    }
+    out.push_str("}\n");
+    Ok(out)
 }
 
 /// One end of a stream connection, as ADF spells it.
@@ -331,7 +391,12 @@ struct GraphText {
 }
 
 impl GraphText {
-    fn kernel(&mut self, kernel: &AieKernel, options: &GraphOptions) -> Result<()> {
+    fn kernel(
+        &mut self,
+        kernel: &AieKernel,
+        streams: &[AieStream],
+        options: &GraphOptions,
+    ) -> Result<()> {
         let k = format!("k_{}", kernel.name);
         let _ = writeln!(self.members, "  adf::kernel {k};");
         let _ = writeln!(
@@ -425,6 +490,15 @@ impl GraphText {
                 }
             }
         }
+        // Read once the kernel has returned, so asynchronously.
+        for (inout, (_, stream)) in counted_outputs(kernel, streams)?.into_iter().enumerate() {
+            let rtp = format!("frames_{}", streams[stream].name);
+            let _ = writeln!(self.members, "  adf::port<adf::inout> {rtp};");
+            let _ = writeln!(
+                self.body,
+                "    adf::connect<adf::parameter>(adf::async({k}.inout[{inout}]), {rtp});"
+            );
+        }
         Ok(())
     }
 
@@ -447,6 +521,28 @@ impl GraphText {
             End {
                 port: format!("{p}.{end}[0]"),
                 frame: false,
+            },
+        );
+    }
+
+    fn gmio(&mut self, index: usize, stream: &AieStream, input: bool) {
+        let g = format!("g_{}", stream.name);
+        let (class, end, table) = if input {
+            ("input_gmio", "out", &mut self.producers)
+        } else {
+            ("output_gmio", "in", &mut self.consumers)
+        };
+        let _ = writeln!(self.members, "  adf::{class} {g};");
+        let _ = writeln!(
+            self.body,
+            "    {g} = adf::{class}::create(\"{name}\", {GMIO_BURST_BYTES}, {GMIO_MBPS});",
+            name = stream.name
+        );
+        table.insert(
+            index,
+            End {
+                port: format!("{g}.{end}[0]"),
+                frame: true,
             },
         );
     }
@@ -501,7 +597,7 @@ impl GraphText {
 fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
     let mut text = GraphText::default();
     for kernel in &partition.kernels {
-        text.kernel(kernel, options)?;
+        text.kernel(kernel, &partition.streams, options)?;
     }
     let freq = options
         .plio_mhz
@@ -511,8 +607,10 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
         text.pl_control(&partition.kernels, &freq);
     }
     for (index, stream) in partition.streams.iter().enumerate() {
-        if let AieStreamKind::Plio { input, width } = stream.kind {
-            text.plio(index, stream, input, width, &freq);
+        match stream.kind {
+            AieStreamKind::Plio { input, width } => text.plio(index, stream, input, width, &freq),
+            AieStreamKind::Gmio { input } => text.gmio(index, stream, input),
+            AieStreamKind::Net { .. } => {}
         }
     }
     for (index, stream) in partition.streams.iter().enumerate() {
@@ -544,12 +642,103 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
     Ok(out)
 }
 
+/// What a simulator entry point needs to move GMIO frames. A stream file
+/// holds 32-bit words with `TLAST` lines between frames, as frt writes and
+/// reads a PLIO's. Live, x86sim lets host threads post and wait on GMIOs,
+/// so each frame moves as it arrives; aiesim does not, so a replay posts
+/// every input frame, and room for every output frame software simulation
+/// wrote, before the graph runs.
+const GMIO_SIM_HELPERS: &str = r#"
+namespace {
+
+// The next 32-bit word of a stream file, past its `TLAST` markers.
+bool tapa_word(std::istream& in, int32_t& word) {
+  std::string token;
+  while (in >> token) {
+    if (token != "TLAST") {
+      word = static_cast<int32_t>(std::stoll(token));
+      return true;
+    }
+  }
+  return false;
+}
+
+// Appends one frame to a stream file.
+void tapa_put(std::ostream& out, const int32_t* frame, size_t words) {
+  for (size_t i = 0; i < words; ++i) out << frame[i] << '\n';
+  out.flush();
+}
+
+#if defined(__X86SIM__)
+// Posts each frame of `path` as it arrives, one transfer at a time.
+void tapa_feed(adf::input_gmio& gmio, const char* path, size_t words) {
+  std::ifstream in(path);
+  auto* frame = static_cast<int32_t*>(adf::GMIO::malloc(words * 4));
+  for (;;) {
+    for (size_t i = 0; i < words; ++i) {
+      if (!tapa_word(in, frame[i])) return;
+    }
+    gmio.gm2aie_nb(frame, words * 4);
+    gmio.wait();
+  }
+}
+
+// Appends each frame `gmio` delivers to `path`, one transfer at a time.
+void tapa_drain(adf::output_gmio& gmio, const char* path, size_t words,
+                std::atomic<int>& done) {
+  std::ofstream out(path);
+  auto* frame = static_cast<int32_t*>(adf::GMIO::malloc(words * 4));
+  for (;;) {
+    gmio.aie2gm_nb(frame, words * 4);
+    gmio.wait();
+    tapa_put(out, frame, words);
+    done.fetch_add(1);
+  }
+}
+#else
+// Posts every frame of `path` in one transfer.
+void tapa_feed(adf::input_gmio& gmio, const char* path) {
+  std::ifstream in(path);
+  std::vector<int32_t> words;
+  for (int32_t word = 0; tapa_word(in, word);) words.push_back(word);
+  if (words.empty()) return;
+  void* buf = adf::GMIO::malloc(words.size() * 4);
+  std::memcpy(buf, words.data(), words.size() * 4);
+  gmio.gm2aie_nb(buf, words.size() * 4);
+}
+#endif
+
+}  // namespace
+"#;
+
+/// The file of a replay's expected output frame counts, one line per
+/// output GMIO in stream order (frt writes it).
+const GMIO_FRAMES_FILE: &str = "frames.txt";
+
 fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> Result<String> {
     let graph = graph_instance(partition.run_forever);
-    let mut out = format!(
+    let gmios: Vec<(&AieStream, bool)> = partition
+        .streams
+        .iter()
+        .filter_map(|stream| match stream.kind {
+            AieStreamKind::Gmio { input } => Some((stream, input)),
+            _ => None,
+        })
+        .collect();
+    let mut out = String::from(
         "\n#if defined(__AIESIM__) || defined(__X86SIM__)\n#include <cstdint>\n\
-         #include <cstring>\n#include <fstream>\n\nint main() {{\n  {graph}.init();\n  \
-         std::ifstream rtp(\"rtp.txt\");\n"
+         #include <cstring>\n#include <fstream>\n",
+    );
+    if !gmios.is_empty() {
+        out.push_str(
+            "#include <atomic>\n#include <cstdio>\n#include <cstdlib>\n#include <string>\n\
+             #include <thread>\n#include <vector>\n",
+        );
+        out.push_str(GMIO_SIM_HELPERS);
+    }
+    let _ = write!(
+        out,
+        "\nint main() {{\n  {graph}.init();\n  std::ifstream rtp(\"rtp.txt\");\n"
     );
     for kernel in &partition.kernels {
         for port in &kernel.ports {
@@ -577,11 +766,81 @@ fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> 
     // ADF's `run(0)` runs zero iterations; `run()` runs until `end()`.
     if partition.run_forever {
         let _ = writeln!(out, "  {graph}.run();\n  {graph}.wait({});", sim.cycles);
-    } else {
+    } else if gmios.is_empty() {
         let _ = writeln!(out, "  {graph}.run(1);");
+    } else {
+        out.push_str(&gmio_run(graph, &gmios));
     }
     let _ = writeln!(out, "  {graph}.end();\n  return 0;\n}}\n#endif");
     Ok(out)
+}
+
+/// One run of a graph with GMIOs: live on x86sim, a replay on aiesim. Each
+/// waits until every output has the frames the kernels report writing.
+fn gmio_run(graph: &str, gmios: &[(&AieStream, bool)]) -> String {
+    let words = |stream: &AieStream| stream.frame.unwrap_or(1) * stream.words;
+    let mut live = String::new();
+    let mut replay = format!("  std::ifstream expected(\"{GMIO_FRAMES_FILE}\");\n");
+    for (stream, input) in gmios {
+        let (name, words) = (&stream.name, words(stream));
+        if *input {
+            let _ = writeln!(
+                live,
+                "  std::thread(tapa_feed, std::ref({graph}.g_{name}), \"data/{name}.txt\", \
+                 size_t{{{words}}}).detach();"
+            );
+            let _ = writeln!(
+                replay,
+                "  tapa_feed({graph}.g_{name}, \"data/{name}.txt\");"
+            );
+        } else {
+            let _ = writeln!(
+                live,
+                "  std::atomic<int> done_{name}{{0}};\n  \
+                 std::thread(tapa_drain, std::ref({graph}.g_{name}), \"data/{name}.txt\", \
+                 size_t{{{words}}}, std::ref(done_{name})).detach();"
+            );
+            let _ = writeln!(
+                replay,
+                "  long expected_{name} = 0;\n  expected >> expected_{name};\n  \
+                 int32_t* out_{name} = nullptr;\n  \
+                 if (expected_{name} != 0) {{\n    \
+                 out_{name} = static_cast<int32_t*>(\n        \
+                 adf::GMIO::malloc(expected_{name} * {bytes}));\n    \
+                 {graph}.g_{name}.aie2gm_nb(out_{name}, expected_{name} * {bytes});\n  }}",
+                bytes = words * 4
+            );
+        }
+    }
+    let run = format!("  {graph}.run(1);\n  {graph}.wait();\n");
+    live.push_str(&run);
+    replay.push_str(&run);
+    for (stream, input) in gmios {
+        if *input {
+            continue;
+        }
+        let (name, words) = (&stream.name, words(stream));
+        let _ = writeln!(
+            live,
+            "  {{\n    int32 frames = 0;\n    {graph}.read({graph}.frames_{name}, frames);\n    \
+             while (done_{name}.load() < frames) std::this_thread::yield();\n  }}"
+        );
+        let _ = writeln!(
+            replay,
+            "  {{\n    int32 frames = 0;\n    {graph}.read({graph}.frames_{name}, frames);\n    \
+             if (frames != expected_{name}) {{\n      \
+             std::printf(\"TAPA: the graph wrote %d frame(s) to `{name}`; software \
+             simulation wrote %ld\\n\", (int)frames, expected_{name});\n      \
+             std::fflush(stdout);\n      std::_Exit(1);\n    }}\n    \
+             if (expected_{name} != 0) {graph}.g_{name}.wait();\n    \
+             std::ofstream out(\"data/{name}.txt\");\n    \
+             for (long f = 0; f < expected_{name}; ++f)\n      \
+             tapa_put(out, out_{name} + f * {words}, {words});\n  }}"
+        );
+    }
+    // Feeds and drains still wait on transfers no run will fill.
+    live.push_str("  std::fflush(nullptr);\n  std::_Exit(0);\n");
+    format!("#if defined(__X86SIM__)\n{live}#else\n{replay}#endif\n")
 }
 
 #[cfg(test)]
@@ -677,6 +936,7 @@ mod tests {
                 plio("c_q", false),
             ],
             run_forever: false,
+            pl_less: false,
         }
     }
 
@@ -713,6 +973,7 @@ mod tests {
                 plio("Scale_0__mem_read_data", true, 32),
             ],
             run_forever: false,
+            pl_less: false,
         };
         let options = GraphOptions {
             sources: BTreeMap::from([(
@@ -870,5 +1131,65 @@ mod tests {
         )
         .expect_err("no source and no argument");
         assert!(err.to_string().contains("no translation unit"), "{err}");
+    }
+
+    #[test]
+    fn a_gmio_feeds_a_frame_buffer_and_its_writer_reports_the_frames() {
+        let gmio = |name: &str, input| AieStream {
+            name: name.into(),
+            fifo: name.into(),
+            words: 4,
+            frame: Some(16),
+            kind: AieStreamKind::Gmio { input },
+        };
+        let partition = AiePartition {
+            kernels: vec![AieKernel {
+                name: "Pass_0".into(),
+                task: "Pass".into(),
+                call: "Pass".into(),
+                ports: vec![
+                    port("in", streams(true, vec![0], Some(16))),
+                    port("out", streams(false, vec![1], Some(16))),
+                ],
+                location: None,
+                stack_bytes: None,
+                ordered: false,
+            }],
+            streams: vec![gmio("src", true), gmio("dst", false)],
+            run_forever: false,
+            pl_less: true,
+        };
+        let options = GraphOptions {
+            sources: BTreeMap::from([(
+                "Pass".into(),
+                KernelSource {
+                    tu: "design.cpp".into(),
+                    defines: Vec::new(),
+                },
+            )]),
+            sim: Some(SimMain::default()),
+            ..GraphOptions::default()
+        };
+        let files = render_graph(&partition, &options).expect("render");
+        let graph = &files["graph.cpp"];
+        for line in [
+            "g_src = adf::input_gmio::create(\"src\", 256, 1000);",
+            "adf::connect n_src(g_src.out[0], k_Pass_0.in[0]);",
+            "adf::connect<adf::parameter>(adf::async(k_Pass_0.inout[0]), frames_dst);",
+            "std::thread(tapa_drain, std::ref(tapa_aie.g_dst), \"data/dst.txt\", size_t{64}",
+            "tapa_aie.read(tapa_aie.frames_dst, frames);",
+        ] {
+            assert!(graph.contains(line), "{line}\n{graph}");
+        }
+        let kernel = &files["kernels/Pass_0.cc"];
+        assert!(
+            kernel.contains(
+                "tapa::aie::output_frame<int32, 64>& out, int32 & tapa_frames_out) {\n  \
+                 int32 frames_out = 0;\n  \
+                 tapa::aie::invoke(Pass, in, tapa::aie::count(out, frames_out));\n  \
+                 tapa_frames_out = frames_out;\n}"
+            ),
+            "{kernel}"
+        );
     }
 }

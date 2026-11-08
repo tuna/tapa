@@ -82,14 +82,20 @@ fn kernel_sources(
     Ok(sources)
 }
 
-/// Each port of the PL kernel's top with the index of its first argument,
-/// as `kernel.xml` numbers them; a PLIO's AXIS port comes after the top's
-/// own arguments.
+/// Each port of the kernel's top with the index of its first argument,
+/// as `kernel.xml` numbers them: the PL kernel's, where a PLIO's AXIS port
+/// comes after the top's own arguments, or a PL-less top's own.
 pub fn kernel_args(graph: &Graph, partition: &AiePartition) -> Result<Vec<(u32, tapa_ir::Port)>> {
-    let pl = partition.pl_projection(graph)?;
+    let pl;
+    let top = if partition.pl_less {
+        &graph.tasks[&graph.top]
+    } else {
+        pl = partition.pl_projection(graph)?;
+        &pl.tasks[&pl.top]
+    };
     let mut args = Vec::new();
     let mut next = 0u32;
-    for port in &pl.tasks[&pl.top].ports {
+    for port in &top.ports {
         let names = port.kernel_arg_names(tapa_ir::Target::XilinxVitis);
         args.push((next, port.clone()));
         next += u32::try_from(names.len()).unwrap_or(u32::MAX);

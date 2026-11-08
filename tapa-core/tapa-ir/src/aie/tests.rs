@@ -610,7 +610,9 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
         .iter()
         .map(|s| match s.kind {
             AieStreamKind::Plio { input, width } => (s.name.as_str(), input, width),
-            AieStreamKind::Net { .. } => panic!("net {}", s.name),
+            AieStreamKind::Net { .. } | AieStreamKind::Gmio { .. } => {
+                panic!("not a PLIO: {}", s.name)
+            }
         })
         .collect();
     assert_eq!(
@@ -747,4 +749,49 @@ fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
     assert!(reads
         .iter()
         .all(|r| r.args["mem"].arg == ArgSource::Name("buf".into())));
+}
+
+/// A top on the AI Engine whose stream arguments reach the frame ports of
+/// `Pass` (`in_frame` elements per frame, `None` for a stream port), joined
+/// or `detached`.
+fn gmio_graph(in_frame: Option<u32>, detached: bool) -> TaskGraph {
+    let mut input = stream("istream", "in", 32);
+    if let Some(frame) = in_frame {
+        input["frame"] = json!(frame);
+    }
+    let mut output = stream("ostream", "out", 64);
+    output["frame"] = json!(8);
+    graph(json!({
+        "Top": {"level": "upper", "synth": "aie",
+            "ports": [stream("istream", "src", 32), stream("ostream", "dst", 64), scalar("n")],
+            "tasks": {"Pass": [{"step": -i64::from(detached),
+                "args": {"in": arg("src", "istream"), "out": arg("dst", "ostream"),
+                         "n": arg("n", "scalar")}}]}},
+        "Pass": leaf(&json!([input, output, scalar("n")]), "aie"),
+    }))
+}
+
+#[test]
+fn a_top_on_the_ai_engine_moves_its_stream_arguments_over_gmio() {
+    let partition = AiePartition::derive(&gmio_graph(Some(16), false))
+        .expect("derive")
+        .expect("aie");
+    assert!(partition.pl_less);
+    let gmios: Vec<(&str, u32, Option<u32>, AieStreamKind)> = partition
+        .streams
+        .iter()
+        .map(|s| (s.name.as_str(), s.words, s.frame, s.kind))
+        .collect();
+    assert_eq!(
+        gmios,
+        [
+            ("src", 1, Some(16), AieStreamKind::Gmio { input: true }),
+            ("dst", 2, Some(8), AieStreamKind::Gmio { input: false }),
+        ]
+    );
+
+    let error = AiePartition::derive(&gmio_graph(None, false)).expect_err("a stream port");
+    assert!(error.0.contains("bind it to a frame port"), "{error}");
+    let error = AiePartition::derive(&gmio_graph(Some(16), true)).expect_err("detached");
+    assert!(error.0.contains("invoke each task joined"), "{error}");
 }

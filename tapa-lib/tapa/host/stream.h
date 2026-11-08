@@ -119,19 +119,26 @@ class base_queue : public type_erased_queue {
   // Returns a stream suitable for passing to FRT. Crashes if incompatible.
   virtual frt::Stream<T>& get_frt_stream() = 0;
 
-  // Hands every element pushed from now on to `recorder` as well (an AI
-  // Engine replay, see `hybrid_run`); set before any task uses the queue.
-  void set_recorder(std::function<void(const T&)> recorder) {
+  // Hands every element pushed from now on to `recorder` as well, or with
+  // `pops` every element popped (an AI Engine replay, see `hybrid_run`);
+  // set before any task uses the queue.
+  void set_recorder(std::function<void(const T&)> recorder, bool pops) {
     recorder_ = std::move(recorder);
+    record_pops_ = pops;
   }
 
  protected:
   using type_erased_queue::type_erased_queue;
 
-  // What every push shows the stream log and the recorder.
+  // What every push shows the stream log and a recorder of pushes.
   void observe(const T& elem) {
     this->maybe_log(elem);
-    if (recorder_) recorder_(elem);
+    if (recorder_ && !record_pops_) recorder_(elem);
+  }
+
+  // What every pop shows a recorder of pops.
+  void observe_pop(const T& elem) {
+    if (recorder_ && record_pops_) recorder_(elem);
   }
 
   void log_leftovers(int n) final override {
@@ -143,6 +150,7 @@ class base_queue : public type_erased_queue {
 
  private:
   std::function<void(const T&)> recorder_;
+  bool record_pops_ = false;
 };
 
 template <typename T>
@@ -171,6 +179,7 @@ class locked_queue : public base_queue<T> {
     std::unique_lock<std::mutex> lock(this->mtx);
     auto val = this->buffer.front();
     this->buffer.pop_front();
+    this->observe_pop(val);
     return val;
   }
   void push(const T& val) override {
@@ -204,7 +213,11 @@ class frt_queue : public base_queue<T> {
     this->observe(val);
     stream_.push(val);
   }
-  T pop() override { return stream_.pop(); }
+  T pop() override {
+    T val = stream_.pop();
+    this->observe_pop(val);
+    return val;
+  }
   T front() const override { return stream_.front(); }
 
   frt::Stream<T>& get_frt_stream() override {
@@ -1032,7 +1045,8 @@ struct accessor<ostreams<T, L>, Arg> {
 };
 
 // The copy of a stream an AI Engine replay binds (see `hybrid_run`): every
-// element pushed on the stream, without its end-of-transmission tokens,
+// element pushed on the stream, or popped from it (see `stream_use`),
+// without its end-of-transmission tokens,
 // until `close` ends the copy with one. A later push, from a detached task,
 // is dropped.
 template <typename T>
@@ -1081,8 +1095,9 @@ class stream_copy {
 // and the queue drained: a stream into the AI Engine asserts TLAST on every
 // beat, which the cosimulation reads as EoT. `close` ends the stream with
 // an EoT token, which tells an AI Engine simulator its input is complete.
-// `copy` starts a `stream_copy` and returns its path and the function that
-// closes it.
+// `copy` starts a `stream_copy` of what tasks push on the stream, or with
+// `reads` of what they pop from it, and returns its path and the function
+// that closes it.
 struct stream_use {
   const void* queue;
   std::string name;
@@ -1092,7 +1107,7 @@ struct stream_use {
                             std::function<bool()> kernel_done)>
       frt_path_dropping_eot;
   std::function<void()> close;
-  std::function<std::pair<std::string, std::function<void()>>()> copy;
+  std::function<std::pair<std::string, std::function<void()>>(bool reads)> copy;
 };
 
 struct stream_access {
@@ -1128,10 +1143,10 @@ struct stream_access {
               while (stream.get_queue().full()) yield(name, "full");
               stream.get_queue().push({T{}, true});
             },
-            [stream, name] {
+            [stream, name](bool reads) {
               auto copy = std::make_shared<stream_copy<T>>(name);
               stream.get_queue().set_recorder(
-                  [copy](const elem_t<T>& elem) { copy->push(elem); });
+                  [copy](const elem_t<T>& elem) { copy->push(elem); }, reads);
               return std::make_pair(copy->path(), std::function<void()>([copy] {
                                       copy->close();
                                     }));

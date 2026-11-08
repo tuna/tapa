@@ -56,6 +56,8 @@ pub unsafe fn tapa_ir::aie::AiePortKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AiePortKind
 pub fn tapa_ir::aie::AiePortKind::from(T) -> T
 pub enum tapa_ir::aie::AieStreamKind
+pub tapa_ir::aie::AieStreamKind::Gmio
+pub tapa_ir::aie::AieStreamKind::Gmio::input: bool
 pub tapa_ir::aie::AieStreamKind::Net
 pub tapa_ir::aie::AieStreamKind::Net::depth_words: u32
 pub tapa_ir::aie::AieStreamKind::Plio
@@ -424,6 +426,7 @@ impl<T> core::convert::From<T> for tapa_ir::aie::AieMemoryWrites
 pub fn tapa_ir::aie::AieMemoryWrites::from(T) -> T
 pub struct tapa_ir::aie::AiePartition
 pub tapa_ir::aie::AiePartition::kernels: alloc::vec::Vec<tapa_ir::aie::AieKernel>
+pub tapa_ir::aie::AiePartition::pl_less: bool
 pub tapa_ir::aie::AiePartition::run_forever: bool
 pub tapa_ir::aie::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition
@@ -3182,6 +3185,8 @@ pub unsafe fn tapa_ir::aie::AiePortKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AiePortKind
 pub fn tapa_ir::aie::AiePortKind::from(T) -> T
 pub enum tapa_ir::AieStreamKind
+pub tapa_ir::AieStreamKind::Gmio
+pub tapa_ir::AieStreamKind::Gmio::input: bool
 pub tapa_ir::AieStreamKind::Net
 pub tapa_ir::AieStreamKind::Net::depth_words: u32
 pub tapa_ir::AieStreamKind::Plio
@@ -4341,6 +4346,7 @@ pub fn tapa_ir::port::AieMovers::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::port::AieMovers where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::AiePartition
 pub tapa_ir::AiePartition::kernels: alloc::vec::Vec<tapa_ir::aie::AieKernel>
+pub tapa_ir::AiePartition::pl_less: bool
 pub tapa_ir::AiePartition::run_forever: bool
 pub tapa_ir::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition

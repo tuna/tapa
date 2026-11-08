@@ -1,0 +1,43 @@
+"""An AI Engine top with no PL task: frames over GMIO."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:test_rules.bzl", "aie_sim_test")
+
+cc_binary(
+    name = "aie-gmio-host",
+    srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+sh_test(
+    name = "aie-gmio",
+    size = "small",
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(rootpath :aie-gmio-host)"],
+    data = [":aie-gmio-host"],
+)
+
+# The whole graph on x86sim, fed and drained live by the host.
+aie_sim_test(
+    name = "aie-gmio-x86sim",
+    host = ":aie-gmio-host",
+    kernel = "gmio",
+    top_name = "Pipeline",
+)
+
+# The whole graph on aiesim, replaying a software run.
+aie_sim_test(
+    name = "aie-gmio-aiesim",
+    size = "enormous",
+    host = ":aie-gmio-host",
+    kernel = "gmio",
+    simulator = "aiesim",
+    top_name = "Pipeline",
+)

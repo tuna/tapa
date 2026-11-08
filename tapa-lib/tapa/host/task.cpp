@@ -14,6 +14,7 @@
 #include <fstream>
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -356,11 +357,25 @@ void serve_memories(const recorded_invoke& invoke) {
 // from the moment it runs, so it runs before any task.
 void replay(frt::Instance& instance,
             const std::unordered_map<std::string, frt::HostStream>& ports,
+            const std::vector<frt::HostStream>& top_ports,
+            const std::map<int, stream_use>& top_streams,
             const std::vector<recorded_invoke>& invokes) {
   const std::vector<bool> every(invokes.size(), true);
   auto closes = std::make_shared<std::vector<std::function<void()>>>();
   for (const auto& [name, port] : ports) {
-    auto [path, close] = find_binding(invokes, every, name).second->copy();
+    auto [path, close] =
+        find_binding(invokes, every, name).second->copy(/*reads=*/false);
+    instance.SetStreamArg(port.index, path);
+    closes->push_back(std::move(close));
+  }
+  // The graph's input is what software simulation takes from the host's
+  // stream, which may hold more; its output, what software pushes there.
+  for (const frt::HostStream& port : top_ports) {
+    const auto stream = top_streams.find(port.index);
+    LOG_IF(FATAL, stream == top_streams.end())
+        << "the kernel's argument " << port.index << " ('" << port.name
+        << "') is a stream, but the host binds no stream there";
+    auto [path, close] = stream->second.copy(/*reads=*/port.kernel_reads);
     instance.SetStreamArg(port.index, path);
     closes->push_back(std::move(close));
   }
@@ -373,7 +388,8 @@ void replay(frt::Instance& instance,
   }
 
   LOG(INFO) << "AI Engine simulation: the design runs in software, then the "
-            << "simulator replays its " << ports.size() << " PLIO stream(s)";
+            << "simulator replays its " << ports.size() + top_ports.size()
+            << " stream(s)";
   instance.WriteToDevice();
   instance.Exec();
   if (joined->load() == 0) close_all();
@@ -411,12 +427,20 @@ std::vector<recorded_invoke> hybrid_recorder::run(
 }
 
 bool hybrid_run(frt::Instance& instance, int bound_args,
+                const std::map<int, stream_use>& top_streams,
                 const std::function<void()>& top_body) {
   std::unordered_map<std::string, frt::HostStream> ports;
+  std::vector<frt::HostStream> top_ports;
   for (const frt::HostStream& stream : instance.HostStreams()) {
-    if (stream.index >= bound_args) ports.emplace(stream.name, stream);
+    if (stream.index >= bound_args) {
+      ports.emplace(stream.name, stream);
+    } else {
+      top_ports.push_back(stream);
+    }
   }
-  if (ports.empty()) return false;
+  const frt::AieSimulation aie = instance.SimulatesAie();
+  const bool replaying = aie == frt::AieSimulation::kReplay;
+  if (ports.empty() && (top_ports.empty() || !replaying)) return false;
 
   hybrid_recorder recorder;
   std::vector<recorded_invoke> invokes =
@@ -428,11 +452,10 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   // simulator replays; live, the movers serve the simulator from host
   // memory; in hybrid cosimulation, a bridge carries the software task's
   // requests to the kernel's movers.
-  const frt::AieSimulation aie = instance.SimulatesAie();
-  if (aie == frt::AieSimulation::kReplay) {
+  if (replaying) {
     cross_memories(invokes, memories, memory_side::kBoth);
     for (const recorded_invoke& invoke : invokes) serve_memories(invoke);
-    replay(instance, ports, invokes);
+    replay(instance, ports, top_ports, top_streams, invokes);
     return true;
   }
 

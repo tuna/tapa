@@ -47,6 +47,9 @@ struct Manifest {
     /// The PL <-> AI Engine streams, which the host binds as stream
     /// arguments after the top's own.
     plios: Vec<Plio>,
+    /// The GMIOs of a PL-less top: its own stream arguments, moved a frame
+    /// per beat (`beat_words` and `transfer_words` are a frame's words).
+    gmios: Vec<Plio>,
     /// The upper task instances the graph is built with inlined, whose
     /// bodies the host runs itself to bind the streams inside them.
     inlined: Vec<tapa_ir::InlinedInstance>,
@@ -142,14 +145,15 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
             .map(|(index, _)| *index)
             .ok_or_else(|| CliError::InvalidArg(format!("the PL kernel has no argument `{name}`")))
     };
-    let mut plios = Vec::new();
+    let (mut plios, mut gmios) = (Vec::new(), Vec::new());
     for stream in &partition.streams {
-        let AieStreamKind::Plio { input, width } = stream.kind else {
-            continue;
-        };
-        let beat_words = width / 32;
         let frame_words = stream.frame.map_or(1, |frame| frame * stream.words);
-        plios.push(Plio {
+        let (list, input, beat_words) = match stream.kind {
+            AieStreamKind::Plio { input, width } => (&mut plios, input, width / 32),
+            AieStreamKind::Gmio { input } => (&mut gmios, input, frame_words),
+            AieStreamKind::Net { .. } => continue,
+        };
+        list.push(Plio {
             index: index_of(&stream.fifo)?,
             name: stream.name.clone(),
             input,
@@ -173,6 +177,7 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
             .collect(),
         runtime_parameters: runtime_parameters(partition),
         plios,
+        gmios,
         inlined: tapa_ir::inlined_instances(graph)?,
         memories: tapa_ir::memory_crossings(graph)?,
     })

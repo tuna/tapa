@@ -112,14 +112,17 @@ struct elem_io<vec_t<E, N>> {
 // One frame-buffer walk, shared by `iframe` and `oframe` below: the buffer
 // is acquired when a frame starts (position 0) and released when it fills
 // (position N). The buffer's `data()` return type fixes the direction:
-// `const int32*` for an input frame, `int32*` for an output frame.
+// `const int32*` for an input frame, `int32*` for an output frame. With
+// `released`, each release counts there.
 template <typename Buffer, int N>
 struct frame_cursor {
   Buffer& buf_;
+  int32* released_;
   decltype(std::declval<Buffer&>().data()) ptr_ = nullptr;
   int pos_ = 0;
 
-  TAPA_AIE_INLINE explicit frame_cursor(Buffer& buf) : buf_(buf) {}
+  TAPA_AIE_INLINE explicit frame_cursor(Buffer& buf, int32* released = nullptr)
+      : buf_(buf), released_(released) {}
 
   TAPA_AIE_INLINE void acquire() {
     buf_.acquire();
@@ -128,6 +131,7 @@ struct frame_cursor {
   TAPA_AIE_INLINE void release() {
     buf_.release();
     pos_ = 0;
+    if (released_ != nullptr) ++*released_;
   }
   // A per-element access meets a frame boundary once every N calls, so its
   // tests are hinted cold. A bulk copy meets one on nearly every pass of its
@@ -335,26 +339,31 @@ class oframes {
       if (buf_ != nullptr) {
         buf_->release();
         buf_ = nullptr;
+        if (released_ != nullptr) ++*released_;
       }
     }
     TAPA_AIE_INLINE ~view() { release(); }
 
    private:
     friend class oframes;
-    TAPA_AIE_INLINE explicit view(buffer& buf)
-        : buf_(&buf), data_(buf.data()) {}
+    TAPA_AIE_INLINE view(buffer& buf, int32* released)
+        : buf_(&buf), data_(buf.data()), released_(released) {}
     buffer* buf_;
     int32* data_;
+    int32* released_;
   };
 
-  TAPA_AIE_INLINE explicit oframes(buffer& buf) : buf_(buf) {}
+  // With `released`, each frame released counts there.
+  TAPA_AIE_INLINE explicit oframes(buffer& buf, int32* released = nullptr)
+      : buf_(buf), released_(released) {}
   TAPA_AIE_INLINE view acquire() {
     buf_.acquire();
-    return view(buf_);
+    return view(buf_, released_);
   }
 
  private:
   buffer& buf_;
+  int32* released_;
 };
 
 namespace aie {
@@ -417,7 +426,9 @@ template <typename T, int N>
 class oframe {
  public:
   using buffer = output_frame<int32, N * internal::aie::kWords<T>>;
-  TAPA_AIE_INLINE explicit oframe(buffer& buf) : cursor_(buf) {}
+  // With `released`, each frame released counts there.
+  TAPA_AIE_INLINE explicit oframe(buffer& buf, int32* released = nullptr)
+      : cursor_(buf, released) {}
   TAPA_AIE_INLINE void write(const T& value) {
     cursor_.acquire_at_start();
     internal::aie::elem_io<T>::store(cursor_.ptr_, value);
@@ -459,7 +470,7 @@ class oframe {
       std::memset(
           cursor_.buf_.data() + cursor_.pos_ * internal::aie::kWords<T>, 0,
           (N - cursor_.pos_) * internal::aie::kWords<T> * sizeof(int32));
-      cursor_.buf_.release();
+      cursor_.release();
     }
   }
 
@@ -496,6 +507,19 @@ struct pack {
 struct bits {
   uint64_t value;
 };
+
+// An output frame port writing a stream argument of a top with no PL task
+// (a GMIO), as the generated kernel wrapper passes it: the frames released
+// through it count in `frames`, which the kernel reports to the host.
+template <typename Buffer>
+struct counted {
+  Buffer& buf;
+  int32& frames;
+};
+template <typename Buffer>
+TAPA_AIE_INLINE counted<Buffer> count(Buffer& buf, int32& frames) {
+  return {buf, frames};
+}
 
 // How one task parameter is built from what the kernel wrapper received.
 template <typename Param>
@@ -548,6 +572,8 @@ template <typename T, uint64_t N>
 struct arg<tapa::oframes<T, N>&> {
   tapa::oframes<T, N> value;
   explicit arg(typename tapa::oframes<T, N>::buffer& buf) : value(buf) {}
+  explicit arg(counted<typename tapa::oframes<T, N>::buffer> port)
+      : value(port.buf, &port.frames) {}
   TAPA_AIE_INLINE tapa::oframes<T, N>& get() { return value; }
 };
 template <typename T, int N>
@@ -560,6 +586,8 @@ template <typename T, int N>
 struct arg<oframe<T, N>&> {
   oframe<T, N> value;
   explicit arg(typename oframe<T, N>::buffer& buf) : value(buf) {}
+  explicit arg(counted<typename oframe<T, N>::buffer> port)
+      : value(port.buf, &port.frames) {}
   TAPA_AIE_INLINE oframe<T, N>& get() { return value; }
 };
 

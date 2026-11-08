@@ -357,6 +357,40 @@ TEST(AieTest, AnUpperTaskTargetIsItsSubtreesDefault) {
   EXPECT_EQ(top_tasks["Top"]["synth"], "hls");
   EXPECT_EQ(top_tasks["Inc"]["synth"], "aie");
   EXPECT_EQ(top_tasks["Load"]["synth"], "hls");
+
+  // With no PL task below it and no memory, it needs no PL kernel and
+  // stays on the AI Engine: its stream arguments are not AXIS ports.
+  const TreePipelineRun aie_only = Analyze("aie_only", leaves + R"cpp(
+    [[tapa::target("aie")]]
+    void Top(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+      tapa::stream<float> mid;
+      tapa::task().invoke(Inc, a, mid, n).invoke(Inc, mid, c, n);
+    }
+  )cpp");
+  ASSERT_TRUE(aie_only.ok) << (aie_only.diags.empty() ? ""
+                                                      : aie_only.diags.front());
+  EXPECT_EQ(nlohmann::json::parse(aie_only.json)["tasks"]["Top"]["synth"],
+            "aie");
+  EXPECT_EQ(aie_only.files.at("aie_only.cpp").find("qdma_axis"),
+            std::string::npos);
+
+  // PL movers serve memory, so a top taking any stays the PL kernel.
+  const TreePipelineRun memory = Analyze("aie_top_memory", R"cpp(
+    void Fetch(tapa::async_mmap<float>& src, int n) {
+      float tile[16];
+      src.read_addr.write({0, n});
+      src.read_data.read(tile, 16);
+    }
+    [[tapa::target("aie")]]
+    void Top(tapa::mmap<float> a, int n) {
+      tapa::task().invoke(Fetch, a, n);
+    }
+  )cpp");
+  ASSERT_TRUE(memory.ok) << (memory.diags.empty() ? "" : memory.diags.front());
+  const nlohmann::json memory_tasks =
+      nlohmann::json::parse(memory.json)["tasks"];
+  EXPECT_EQ(memory_tasks["Top"]["synth"], "hls");
+  EXPECT_EQ(memory_tasks["Fetch"]["synth"], "aie");
 }
 
 TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {

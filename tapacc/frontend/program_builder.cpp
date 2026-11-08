@@ -293,6 +293,7 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.signature = CanonicalSignature(def);
   for (const clang::ParmVarDecl* param : def->parameters()) {
     sighting.parameter_names.push_back(param->getNameAsString());
+    if (IsMmapInterface(ClassifyTapaType(param))) sighting.takes_memory = true;
   }
   sighting.is_spec = def->isFunctionTemplateSpecialization();
   sighting.implicit_spec =
@@ -530,8 +531,8 @@ bool ProgramBuilder::PropagateAie(const std::string& top_key, bool aie_top) {
   // An upper task's target is the default for its subtree: a descendant
   // with no target of its own inherits the AI Engine from the nearest AI
   // Engine ancestor, and one with an explicit target keeps it and hands it
-  // down instead. An AI Engine top only sets that default; the top itself
-  // stays the PL kernel, which owns the control interface.
+  // down instead. An AI Engine top sets that default, and stays the PL
+  // kernel, which owns the control interface, unless it needs none (below).
   auto aie_scope = [&](const std::string& key) {
     return (key == top_key && aie_top) ||
            (tasks_.at(key).model.target == SynthTarget::kAie &&
@@ -571,6 +572,18 @@ bool ProgramBuilder::PropagateAie(const std::string& top_key, bool aie_top) {
          edge.loc + "; give it a target with [[tapa::target]] " +
          "or --target so it runs on one fabric");
     return false;
+  }
+  // An AI Engine top needs no PL kernel when no task below it runs on the
+  // PL and it takes no memory, which only PL movers serve: it stays on the
+  // AI Engine, its stream arguments GMIOs and its scalars runtime
+  // parameters.
+  const bool pl_below =
+      std::any_of(tasks_.begin(), tasks_.end(), [&](const auto& entry) {
+        return entry.first != top_key &&
+               entry.second.model.target != SynthTarget::kAie;
+      });
+  if (aie_top && !pl_below && !FirstSighting(top_key).takes_memory) {
+    tasks_.at(top_key).model.target = SynthTarget::kAie;
   }
   return true;
 }
@@ -685,8 +698,9 @@ bool ProgramBuilder::MergeAndDiscover() {
     return false;
   }
   // An AI Engine top is the default for the tasks it invokes; the top
-  // itself is the PL kernel (see PropagateAie). A leaf top has nothing to
-  // hand the default to, and the PL kernel owns the control interface.
+  // itself is the PL kernel unless it needs none (see PropagateAie). A leaf
+  // top has nothing to hand the default to, and the PL kernel owns the
+  // control interface.
   const bool aie_top = top_candidates[0]->target == SynthTarget::kAie;
   if (aie_top && top_candidates[0]->level != TaskLevel::kUpper) {
     Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +

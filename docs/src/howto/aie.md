@@ -41,7 +41,8 @@ and hands it down instead. An AI Engine upper task may therefore invoke
 tasks. A task that would inherit the AI Engine through one invoker but is
 also invoked by a PL task is an error; give it a target. Marking the top task
 makes the AI Engine the default for the tasks it invokes, while the top
-itself stays the PL kernel, which owns the control interface; a leaf top
+itself stays the PL kernel, which owns the control interface, unless it needs
+none (see [A top with no PL kernel](#a-top-with-no-pl-kernel)); a leaf top
 cannot be marked.
 
 Every stream between a PL task and an AI Engine task crosses into the array
@@ -184,6 +185,33 @@ tasks takes as its own `async_mmap` with its own PL tasks.
   The AI Engine simulators and hybrid cosimulation serve it too (see below),
   wherever the task is invoked.
 
+## A top with no PL kernel
+
+A top marked `[[tapa::target("aie")]]` stays on the AI Engine when no task
+below it runs on the PL and it takes no memory (memory needs the PL tasks
+above). The design then has no PL kernel: the top's scalars are the graph's
+runtime parameters, and its stream arguments move frames between host
+memory and the array over GMIO, one transfer per frame.
+
+```cpp
+[[tapa::target("aie")]]
+void Pipeline(tapa::istream<int>& src, tapa::ostream<int>& dst, int n) {
+  tapa::stream<int, 2 * kFrame> mid("mid");
+  tapa::task().invoke(AddOne, src, mid, n).invoke(Scale, mid, dst, n);
+}
+```
+
+- Each stream argument must reach a frame port of a task below:
+  `tapa::iframes` / `tapa::oframes`, or a `[[tapa::frame(N)]]` stream port.
+  A transfer is one frame, so a frame port addresses it directly in tile
+  memory.
+- The tasks writing the output arguments report how many frames they
+  released, and a run ends once those frames have reached the host. Invoke
+  every task joined: a detached one never reports, and is rejected.
+- The host program is unchanged: it passes the top streams as usual.
+- Such a top runs in the AI Engine simulators (below); `tapa pack` and
+  `tapa link` do not build it for hardware yet.
+
 ## Knobs
 
 | Knob | Where | Effect |
@@ -222,7 +250,9 @@ tapa --work-dir work.out compile -f vadd.cpp -t VecAdd \
 directory and nothing else: there is no HLS run. Given the package, the host
 program runs every PL task in software, starts the simulator, and relays each
 PL↔AI Engine stream between them as the data flows, so a stream cycle through
-the PL runs as on hardware. The scalars the AI Engine tasks read come from
+the PL runs as on hardware. A top with no PL kernel has only the host's
+streams to relay: the graph's entry point moves each frame over GMIO as it
+arrives. The scalars the AI Engine tasks read come from
 the host's arguments. Software simulation remains the run without a
 bitstream. Running a package needs the simulators on `PATH`: source the
 Vitis `settings64.sh`.
@@ -239,7 +269,13 @@ hardware, and its padding is left unread in the stream.
 instead. It reads each input in full when it starts, so it cannot be fed as
 the data flows: the host program runs the whole design in software, keeping
 a copy of each PL↔AI Engine stream, and then the simulator replays the copies
-of the inputs. An `async_mmap` port's channels are copied too: the requests
+of the inputs. For a top with no PL kernel the copies are of its stream
+arguments: the frames software simulation read from each input and wrote to
+each output. The graph's entry point posts every input frame before the run
+and room for as many output frames as software simulation wrote; the kernels
+must report that many. A replay runs from `tapa::invoke`; the host fills the
+input streams before it and drains the outputs after it, so they must hold a
+whole run. An `async_mmap` port's channels are copied too: the requests
 and writes the kernel makes must match those of software simulation, which
 hands it the data that software simulation read. Each output it writes must match what software simulation
 wrote to that stream, padding aside, or the run fails at the first differing

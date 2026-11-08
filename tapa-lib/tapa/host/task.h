@@ -13,6 +13,7 @@
 #include <chrono>
 #include <csignal>
 #include <functional>
+#include <map>
 #include <memory>
 #include <string>
 #include <tuple>
@@ -249,11 +250,43 @@ class hybrid_recorder {
 // invokes its body records. An AI Engine task's async_mmap meets the
 // kernel's streams through software tasks (see `memory_side`): the PL
 // movers on host memory against an AI Engine simulator, a bridge of the
-// task's requests against a PL kernel. Returns false, doing nothing, when
-// the kernel leaves no stream to the host past the `bound_args` the caller
-// set.
+// task's requests against a PL kernel. A top with no PL task leaves the
+// simulator its own stream arguments (GMIOs), bound as the caller set them
+// (`top_streams`, by argument index); a replay binds copies of them
+// instead: of what software simulation takes from each input and pushes
+// on each output. Returns false, doing nothing, when the kernel leaves no
+// stream to the host past the `bound_args` the caller set and does not
+// replay its own.
 bool hybrid_run(frt::Instance& instance, int bound_args,
+                const std::map<int, stream_use>& top_streams,
                 const std::function<void()>& top_body);
+
+// The stream a top's stream argument binds, kept by its argument index (see
+// `hybrid_run`): one stream passed whole, which a channel of `streams` is
+// not; none for any other argument.
+template <typename V>
+struct top_stream_use {
+  template <typename Arg>
+  static void collect(int, const Arg&, std::map<int, stream_use>&) {}
+};
+template <typename T, bool kReads>
+struct top_stream_use_of {
+  template <typename Arg>
+  static void collect(int index, const Arg& arg,
+                      std::map<int, stream_use>& out) {
+    if constexpr (std::is_base_of_v<basic_stream<T>, Arg>) {
+      out.emplace(index, stream_access::use<T>(arg, kReads));
+    }
+  }
+};
+template <typename T>
+struct top_stream_use<istream<T>> : top_stream_use_of<T, true> {};
+template <typename T>
+struct top_stream_use<ostream<T>> : top_stream_use_of<T, false> {};
+template <typename T, uint64_t N>
+struct top_stream_use<iframes<T, N>> : top_stream_use_of<T, true> {};
+template <typename T, uint64_t N>
+struct top_stream_use<oframes<T, N>> : top_stream_use_of<T, false> {};
 
 // std::bind wrapper ensuring left-to-right argument evaluation.
 struct binder {
@@ -330,13 +363,19 @@ struct invoker {
     }
   }
 
-  // Sets the kernel arguments; returns how many it set.
+  // Sets the kernel arguments; returns how many it set. With `streams`,
+  // also keeps the stream each stream argument binds (see `hybrid_run`).
   template <size_t... Is, typename... CapturedArgs>
-  static int set_fpga_args(frt::Instance& instance, std::index_sequence<Is...>,
-                           CapturedArgs&&... args) {
+  static int set_fpga_args(frt::Instance& instance,
+                           std::map<int, stream_use>* streams,
+                           std::index_sequence<Is...>, CapturedArgs&&... args) {
     int idx = 0;
-    (accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-         instance, idx, std::forward<CapturedArgs>(args)),
+    ((streams == nullptr
+          ? void()
+          : top_stream_use<std::decay_t<std::tuple_element_t<Is, Params>>>::
+                collect(idx, args, *streams),
+      accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
+          instance, idx, std::forward<CapturedArgs>(args))),
      ...);
     return idx;
   }
@@ -353,10 +392,12 @@ struct invoker {
     frt_sync_kernel_instance = &instance;
     signal(SIGINT, &kill_frt_sync_kernel);
 
+    std::map<int, stream_use> streams;
     const int bound =
-        set_fpga_args(instance, std::index_sequence_for<Args...>{},
+        set_fpga_args(instance, &streams, std::index_sequence_for<Args...>{},
                       std::forward<Args>(args)...);
-    if (!hybrid_run(instance, bound, [&] { f(std::forward<Args>(args)...); })) {
+    if (!hybrid_run(instance, bound, streams,
+                    [&] { f(std::forward<Args>(args)...); })) {
       instance.WriteToDevice();
       instance.Exec();
       instance.ReadFromDevice();
@@ -469,7 +510,7 @@ struct task {
     }
 
     auto instance = std::make_shared<internal::frt::Instance>(exe.path_);
-    internal::invoker<Func>::set_fpga_args(*instance,
+    internal::invoker<Func>::set_fpga_args(*instance, /*streams=*/nullptr,
                                            std::index_sequence_for<Args...>{},
                                            std::forward<Args>(args)...);
     return invoke_frt(std::move(instance));

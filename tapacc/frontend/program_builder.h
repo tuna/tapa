@@ -162,6 +162,7 @@ class ProgramBuilder {
     bool task_shaped = false;      // the body builds a tapa::task
     bool ignored = false;          // [[tapa::target("ignore")]]
     bool explicit_target = false;  // a target attribute or mapping
+    bool takes_memory = false;     // a memory parameter (mmap, async_mmap, ...)
     bool internal = false;         // static / anonymous namespace / a method
     TaskLevel level = TaskLevel::kLower;
     SynthTarget target = SynthTarget::kXilinxHls;
