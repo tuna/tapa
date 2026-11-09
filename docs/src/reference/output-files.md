@@ -17,6 +17,11 @@ next to the XO, and `tapa link` links and packages all three. A VCK5000 build
 also writes `<name>.aie_control.xo`, a PL kernel that controls the AI Engine
 graph through a dedicated PLIO; link includes it in the same hardware image.
 
+A design whose top runs on the AI Engine has no PL kernel, so `tapa pack`
+writes a `.zip` instead: `tapa.json`, the graph as `libadf.a`, and
+`arguments.json`, the top's stream arguments, which `tapa link` records in
+the xclbin for the runtime. Link writes `<name>.xsa` beside the `.xclbin`.
+
 ### `xilinx-slash`
 
 `tapa pack` produces a `.zip` package for SLASH linking and fast

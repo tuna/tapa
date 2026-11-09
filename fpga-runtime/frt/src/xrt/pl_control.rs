@@ -194,6 +194,7 @@ mod tests {
                 ping_address: 0x1fe0,
                 pong_address: 0x1fe0,
             }],
+            drains: Vec::new(),
         }
     }
 

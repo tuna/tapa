@@ -2,6 +2,7 @@
 
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:aie_test.bzl", "aie_vck190_test")
 load("//bazel:test_rules.bzl", "aie_sim_test")
 
 cc_binary(
@@ -40,4 +41,19 @@ aie_sim_test(
     kernel = "gmio",
     simulator = "aiesim",
     top_name = "Pipeline",
+)
+
+# VCK190 system emulation: the graph in QEMU's AI Engine model, driven by
+# the aarch64 host through XRT's graph API and GMIO. Run with
+# --test_env=VERSAL_COMMON=<extracted xilinx-versal-common directory>.
+aie_vck190_test(
+    name = "aie-gmio-hw-emu",
+    size = "enormous",
+    exec_compatible_with = ["@platforms//cpu:x86_64"],
+    headers = ["gmio.h"],
+    host = ":aie-gmio-host",
+    kernel = "gmio.cpp",
+    platform = "xilinx_vck190_base_202520_1",
+    tags = ["manual"],
+    top = "Pipeline",
 )

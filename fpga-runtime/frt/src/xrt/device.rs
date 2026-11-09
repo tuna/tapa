@@ -79,6 +79,62 @@ pub(super) fn non_null(handle: Handle, action: &str) -> Result<Handle> {
     }
 }
 
+/// Opens the device that accepts the xclbin and loads it, returning the
+/// device and the xclbin's UUID: the one `FRT_XOCL_BDF` names, or else the
+/// first by index. XRT has no C device-name enumeration API, so xclbin
+/// acceptance is the platform check; a refused candidate is closed before
+/// the next index.
+pub(super) fn load_xclbin(api: &Api, xclbin_path: &Path) -> Result<(Handle, [u8; 16])> {
+    let requested_bdf = env_non_empty(frt_shm::env::FRT_XOCL_BDF);
+    let bdf = requested_bdf
+        .as_deref()
+        .map(|value| {
+            CString::new(value)
+                .map_err(|e| FrtError::Xrt(format!("invalid device BDF `{value}`: {e}")))
+        })
+        .transpose()?;
+    let path = CString::new(xclbin_path.to_string_lossy().into_owned())
+        .map_err(|e| FrtError::Xrt(format!("xclbin path: {e}")))?;
+    let mut index = 0;
+    let device = loop {
+        let device = if let Some(bdf) = &bdf {
+            // SAFETY: a valid C string.
+            unsafe { (api.device_open_by_bdf)(bdf.as_ptr()) }
+        } else {
+            // SAFETY: plain index argument.
+            unsafe { (api.device_open)(index) }
+        };
+        let device = non_null(device, "open a device")?;
+        // SAFETY: live device handle and a valid C string.
+        let rc = unsafe { (api.device_load_xclbin_file)(device, path.as_ptr()) };
+        if rc == 0 {
+            break device;
+        }
+        // SAFETY: live device handle with no open children.
+        unsafe { (api.device_close)(device) };
+        if bdf.is_some() {
+            return Err(FrtError::Xrt(format!(
+                "cannot load the xclbin on the requested device (XRT returned {rc})"
+            )));
+        }
+        index += 1;
+        if index >= 64 {
+            return Err(FrtError::Xrt(format!(
+                "cannot load the xclbin on any available device (last XRT returned {rc})"
+            )));
+        }
+    };
+    let mut uuid = [0u8; 16];
+    // SAFETY: XRT writes the 16-byte xclbin UUID.
+    let rc = unsafe { (api.device_get_xclbin_uuid)(device, uuid.as_mut_ptr()) };
+    if let Err(error) = check(rc, "read the xclbin UUID") {
+        // SAFETY: live device handle with no open children.
+        unsafe { (api.device_close)(device) };
+        return Err(error);
+    }
+    Ok((device, uuid))
+}
+
 /// Whether an `ert_cmd_state` is a terminal failure rather than a pending
 /// state or successful completion. ERT assigns SUBMITTED a value above the
 /// terminal errors, so range comparisons are not a valid state classifier.
@@ -105,68 +161,22 @@ impl XrtDevice {
                 meta.platform = vbnv;
             }
         }
-        bootstrap_emulation_env_once(&meta)?;
+        bootstrap_emulation_env_once(meta.target, &meta.platform)?;
         let api = api()?;
 
-        let requested_bdf = env_non_empty(frt_shm::env::FRT_XOCL_BDF);
-        let bdf = requested_bdf
-            .as_deref()
-            .map(|value| {
-                CString::new(value)
-                    .map_err(|e| FrtError::Xrt(format!("invalid device BDF `{value}`: {e}")))
-            })
-            .transpose()?;
-        let path = CString::new(xclbin_path.to_string_lossy().into_owned())
-            .map_err(|e| FrtError::Xrt(format!("xclbin path: {e}")))?;
-        // XRT has no C device-name enumeration API. Without an explicit BDF,
-        // use xclbin acceptance as the platform check instead of assuming
-        // device 0. A failed load closes the candidate before the next index.
-        let mut index = 0;
-        let mut last_error;
-        let mut this = loop {
-            let device = if let Some(bdf) = &bdf {
-                // SAFETY: a valid C string.
-                unsafe { (api.device_open_by_bdf)(bdf.as_ptr()) }
-            } else {
-                // SAFETY: plain index argument.
-                unsafe { (api.device_open)(index) }
-            };
-            let device = non_null(device, "open a device")?;
-            let candidate = Self {
-                meta: meta.clone(),
-                api,
-                device,
-                kernel: std::ptr::null_mut(),
-                run: std::ptr::null_mut(),
-                graph: None,
-                scalars: HashMap::new(),
-                buffers: HashMap::new(),
-                execution_state: ExecutionState::Idle,
-                compute_ns: 0,
-            };
-            // SAFETY: live device handle and a valid C string.
-            let rc = unsafe { (api.device_load_xclbin_file)(candidate.device, path.as_ptr()) };
-            if rc == 0 {
-                break candidate;
-            }
-            last_error = rc;
-            if bdf.is_some() {
-                return Err(FrtError::Xrt(format!(
-                    "cannot load the xclbin on the requested device (XRT returned {rc})"
-                )));
-            }
-            drop(candidate);
-            index += 1;
-            if index >= 64 {
-                return Err(FrtError::Xrt(format!(
-                    "cannot load the xclbin on any available device (last XRT returned {last_error})"
-                )));
-            }
+        let (device, uuid) = load_xclbin(api, xclbin_path)?;
+        let mut this = Self {
+            meta,
+            api,
+            device,
+            kernel: std::ptr::null_mut(),
+            run: std::ptr::null_mut(),
+            graph: None,
+            scalars: HashMap::new(),
+            buffers: HashMap::new(),
+            execution_state: ExecutionState::Idle,
+            compute_ns: 0,
         };
-        let mut uuid = [0u8; 16];
-        // SAFETY: XRT writes the 16-byte xclbin UUID.
-        let rc = unsafe { (api.device_get_xclbin_uuid)(this.device, uuid.as_mut_ptr()) };
-        check(rc, "read the xclbin UUID")?;
         let name = CString::new(this.meta.top_name.clone())
             .map_err(|e| FrtError::Xrt(format!("kernel name: {e}")))?;
         // SAFETY: live device, the UUID it reported, a valid C string.
@@ -354,13 +364,13 @@ fn va_scalar(id: u32, host_type: &str, bytes: &[u8]) -> Result<VaScalar> {
 /// later opens (whatever their xclbin's mode) reuse the first
 /// bootstrap's outcome, which the `XCL_EMULATION_MODE`-already-set
 /// early-out made true of the old per-open code path as well.
-fn bootstrap_emulation_env_once(meta: &KernelXml) -> Result<()> {
+pub(super) fn bootstrap_emulation_env_once(target: XclbinTarget, platform: &str) -> Result<()> {
     static BOOTSTRAP: std::sync::OnceLock<std::result::Result<(), String>> =
         std::sync::OnceLock::new();
     BOOTSTRAP
         .get_or_init(|| {
-            apply_emulation_mode_env(meta.target);
-            ensure_xrt_emulation_bootstrap(meta).map_err(|e| e.to_string())
+            apply_emulation_mode_env(target);
+            ensure_xrt_emulation_bootstrap(platform).map_err(|e| e.to_string())
         })
         .clone()
         .map_err(FrtError::MetadataParse)
@@ -385,7 +395,7 @@ fn apply_emulation_mode_env(target: XclbinTarget) {
     }
 }
 
-fn ensure_xrt_emulation_bootstrap(meta: &KernelXml) -> Result<()> {
+fn ensure_xrt_emulation_bootstrap(platform: &str) -> Result<()> {
     if std::env::var_os("XCL_EMULATION_MODE").is_none() {
         return Ok(());
     }
@@ -416,32 +426,30 @@ fn ensure_xrt_emulation_bootstrap(meta: &KernelXml) -> Result<()> {
     let emconfig_dir = if let Some(path) = env_non_empty("EMCONFIG_PATH") {
         PathBuf::from(path)
     } else {
-        let p = frt_tmp.join(format!("emconfig.{}", meta.platform));
+        let p = frt_tmp.join(format!("emconfig.{platform}"));
         std::env::set_var("EMCONFIG_PATH", &p);
         p
     };
 
-    if meta.platform.is_empty() || emconfig_ready(&emconfig_dir, &meta.platform) {
+    if platform.is_empty() || emconfig_ready(&emconfig_dir, platform) {
         return Ok(());
     }
 
     std::fs::create_dir_all(&emconfig_dir)?;
     let status = Command::new("emconfigutil")
         .arg("--platform")
-        .arg(&meta.platform)
+        .arg(platform)
         .arg("--od")
         .arg(&emconfig_dir)
         .status()?;
     if !status.success() {
         return Err(FrtError::MetadataParse(format!(
-            "emconfigutil failed for platform '{}' with status {status}",
-            meta.platform
+            "emconfigutil failed for platform '{platform}' with status {status}"
         )));
     }
-    if !emconfig_ready(&emconfig_dir, &meta.platform) {
+    if !emconfig_ready(&emconfig_dir, platform) {
         return Err(FrtError::MetadataParse(format!(
-            "emconfigutil did not produce a valid emconfig.json for '{}'",
-            meta.platform
+            "emconfigutil did not produce a valid emconfig.json for '{platform}'"
         )));
     }
     Ok(())

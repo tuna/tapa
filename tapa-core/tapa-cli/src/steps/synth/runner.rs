@@ -49,6 +49,9 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     }
     if let Some(partition) = &partition {
         crate::aie::warn_narrow_boundaries(partition);
+        if partition.pl_less {
+            check_pl_less(args)?;
+        }
     }
 
     let device = resolve_device_info(args, state.graph.target)?;
@@ -96,6 +99,20 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         }
         _ => None,
     };
+    // A top on the AI Engine has no PL half: the graph is the design.
+    if let (Some(partition), Some(report)) = (&partition, &aie_report) {
+        if partition.pl_less {
+            write_top_report(
+                &ctx.work_dir,
+                &state.graph,
+                &args.override_report_schema_version,
+                Some((report, partition)),
+            )?;
+            state.flow.synthed = true;
+            work_io::store(&ctx.work_dir, &state)?;
+            return Ok(());
+        }
+    }
     // HLS and codegen see the PL half only; the state keeps the whole graph.
     let mut pl_graph = crate::aie::pl_graph(&state.graph)?;
     let sources = stage_hls_sources(&ctx.work_dir, &pl_graph)?;
@@ -179,6 +196,28 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
 
     report_timing_summary(clock_period, &pl_graph);
 
+    Ok(())
+}
+
+/// A top on the AI Engine is built without a PL kernel, so there is no PL
+/// half to build alone, and nothing to control its graph where only TAPA's
+/// PL controller can.
+fn check_pl_less(args: &SynthArgs) -> Result<()> {
+    if args.skip_aie {
+        return Err(CliError::InvalidArg(
+            "`--skip-aie` builds the PL half, but the top runs on the AI Engine and the design \
+             has none"
+                .into(),
+        ));
+    }
+    let platform = args.platform.as_deref().unwrap_or_default();
+    if tapa_xilinx::tools::aie::pl_control::required(platform) {
+        return Err(CliError::InvalidArg(format!(
+            "the top runs on the AI Engine, with no PL kernel; `{platform}` drives its graph \
+             only through TAPA's PL controller, so this design runs on embedded platforms \
+             such as the VCK190 for now"
+        )));
+    }
     Ok(())
 }
 

@@ -28,6 +28,9 @@ use super::{enforce_xo_suffix, enforce_zip_suffix, PackArgs};
 
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
+    if let Some(partition) = tapa_ir::AiePartition::derive(design)?.filter(|p| p.pl_less) {
+        return pack_aie_zip(args, ctx, state, &partition);
+    }
     // Keep state validation ahead of custom-RTL overlays: malformed persisted
     // state must not mutate the canonical RTL tree before packaging fails.
     resolve_top_task(design)?;
@@ -63,6 +66,49 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
         }
         Ok(())
     })
+}
+
+/// A top on the AI Engine packs no PL kernel: a `.zip` of the work state,
+/// the graph `tapa synth` compiled, and the argument list `tapa link` adds
+/// to the xclbin (see [`crate::aie::PACKAGE_LIBADF`]).
+fn pack_aie_zip(
+    args: &PackArgs,
+    ctx: &CliContext,
+    state: &WorkState,
+    partition: &tapa_ir::AiePartition,
+) -> Result<()> {
+    let libadf = crate::aie::dir(&ctx.work_dir, "hw").join("libadf.a");
+    if !libadf.is_file() {
+        return Err(CliError::MissingState {
+            name: "AI Engine graph (run `tapa synth`)".to_string(),
+            path: libadf.into(),
+        });
+    }
+    let output = enforce_zip_suffix(args.output.as_ref());
+    let arguments = crate::aie::arguments_json(&state.graph, partition)?;
+    let mut zip = super::create_zip(&output)?;
+    let opts = super::zip_entry_options();
+    super::add_zip_entry(
+        &mut zip,
+        opts,
+        crate::state::work::FILE_NAME,
+        &crate::state::work::to_bytes(state)?,
+    )?;
+    super::add_zip_entry(
+        &mut zip,
+        opts,
+        crate::aie::PACKAGE_LIBADF,
+        &fs_err::read(&libadf)?,
+    )?;
+    super::add_zip_entry(
+        &mut zip,
+        opts,
+        crate::aie::PACKAGE_ARGUMENTS,
+        arguments.as_bytes(),
+    )?;
+    super::finish_zip(zip)?;
+    log::info!("AI Engine graph, with no PL kernel: {}", output.display());
+    Ok(())
 }
 
 /// Package an already prepared RTL tree into an explicit `.xo` path.

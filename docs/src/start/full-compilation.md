@@ -128,9 +128,11 @@ and Vitis installation. See [Common Errors](../troubleshoot/common-errors.md).
 ```
 
 ```admonish note
-`tapa link` builds hardware bitstreams only. For a Vitis hardware-emulation
-build (`v++ --target hw_emu`), invoke `v++` directly as shown in
-[Vitis Cosimulation](../howto/vitis-cosim.md).
+`tapa link` builds a PL kernel's hardware bitstream only. For a Vitis
+hardware-emulation build (`v++ --target hw_emu`), invoke `v++` directly as
+shown in [Vitis Cosimulation](../howto/vitis-cosim.md). A design whose top
+runs on the AI Engine is the exception: `tapa link --sim` builds its
+hardware emulation (see [AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
 ```
 
 ```admonish warning

@@ -33,6 +33,7 @@ config_setting(
 
 exports_files([
     "run_aie_sim.sh",
+    "run_vck190.sh",
     "sim_env.sh",
 ])
 

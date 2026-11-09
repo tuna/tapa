@@ -1,7 +1,7 @@
 //! Shared AI Engine build inputs for `tapa synth` and `tapa compile
 //! --aie-sim`: where each kernel's task is defined in the rewritten tree,
-//! the kernel include paths and definitions, and the device `aiecompiler`
-//! targets.
+//! the kernel include paths and definitions, the device `aiecompiler`
+//! targets, and the streams the host moves to and from the graph.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -9,7 +9,8 @@ use std::fs;
 use std::path::Path;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use tapa_ir::{AiePartition, Graph};
+use serde::Serialize;
+use tapa_ir::{AiePartition, AieStreamKind, Graph};
 use tapa_xilinx::tools::aie::graph::{render_graph, GraphOptions, KernelSource, SimMain};
 use tapa_xilinx::tools::aie::{AieCompileJob, AieDevice, AieTarget};
 
@@ -316,6 +317,99 @@ pub fn link_config(top: &str, partition: &AiePartition, pl_control: bool) -> Str
         }
     }
     out
+}
+
+/// A stream the host moves to or from the graph: a PLIO, which the host
+/// binds as a stream argument after the top's own, or a GMIO of a top on
+/// the AI Engine, one of the top's own stream arguments. The runtime reads
+/// these fields from a simulation package's manifest and, for a GMIO, from
+/// the xclbin.
+#[derive(Debug, Clone, Serialize)]
+pub struct HostStream {
+    /// The kernel argument index the host binds it at.
+    pub index: u32,
+    /// The PLIO or GMIO logical name, which is also its file name under
+    /// `data/` in a simulation.
+    pub name: String,
+    /// The host side (the PL, or the host itself for a GMIO) writes it and
+    /// the AI Engine reads it.
+    pub input: bool,
+    /// 32-bit words per stream element.
+    pub element_words: u32,
+    /// 32-bit words per beat, one line of its simulation file: a PLIO
+    /// beat, or a GMIO frame.
+    pub beat_words: u32,
+    /// 32-bit words in a whole transfer, a whole beat and a whole frame:
+    /// a final partial one is zero-padded on input.
+    pub transfer_words: u32,
+}
+
+/// The PLIOs and the GMIOs of `partition`, by the kernel argument indices
+/// in `args` (see [`kernel_args`]).
+pub fn host_streams(
+    partition: &AiePartition,
+    args: &[(u32, tapa_ir::Port)],
+) -> Result<(Vec<HostStream>, Vec<HostStream>)> {
+    let index_of = |name: &str| {
+        args.iter()
+            .find(|(_, port)| port.name == name)
+            .map(|(index, _)| *index)
+            .ok_or_else(|| CliError::InvalidArg(format!("the kernel has no argument `{name}`")))
+    };
+    let (mut plios, mut gmios) = (Vec::new(), Vec::new());
+    for stream in &partition.streams {
+        let frame_words = stream.frame.map_or(1, |frame| frame * stream.words);
+        let (list, input, beat_words) = match stream.kind {
+            AieStreamKind::Plio { input, width } => (&mut plios, input, width / 32),
+            AieStreamKind::Gmio { input } => (&mut gmios, input, frame_words),
+            AieStreamKind::Net { .. } => continue,
+        };
+        list.push(HostStream {
+            index: index_of(&stream.fifo)?,
+            name: stream.name.clone(),
+            input,
+            element_words: stream.words,
+            beat_words,
+            transfer_words: lcm(beat_words, frame_words),
+        });
+    }
+    Ok((plios, gmios))
+}
+
+/// The least common multiple, or 0 when either is 0.
+fn lcm(first: u32, second: u32) -> u32 {
+    let (mut gcd, mut rest) = (first, second);
+    while rest != 0 {
+        (gcd, rest) = (rest, gcd % rest);
+    }
+    first.checked_div(gcd).map_or(0, |part| part * second)
+}
+
+/// The package of a top on the AI Engine (`tapa pack` writes a `.zip`, as
+/// it has no PL kernel to make an `.xo` of) holds the work state, the graph
+/// under this name, and the argument list under [`PACKAGE_ARGUMENTS`].
+pub const PACKAGE_LIBADF: &str = "libadf.a";
+pub const PACKAGE_ARGUMENTS: &str = "arguments.json";
+
+/// The argument list of a top on the AI Engine, which `tapa link` adds to
+/// the xclbin as `USER_METADATA` for the runtime: the top's name and its
+/// GMIOs. Its scalars are runtime parameters, which `AIE_METADATA` names
+/// after their argument indices.
+#[derive(Debug, Serialize)]
+pub struct Arguments {
+    pub top: String,
+    pub gmios: Vec<HostStream>,
+}
+
+/// [`Arguments`] of a top on the AI Engine, as JSON.
+pub fn arguments_json(graph: &Graph, partition: &AiePartition) -> Result<String> {
+    let (_, gmios) = host_streams(partition, &kernel_args(graph, partition)?)?;
+    let arguments = Arguments {
+        top: graph.top.clone(),
+        gmios,
+    };
+    serde_json::to_string_pretty(&arguments)
+        .map_err(|e| CliError::Report(format!("cannot serialize the argument list: {e}")))
 }
 
 /// The AI Engine sidecars of a packaged `.xo`: `<name>.libadf.a` and

@@ -208,9 +208,44 @@ void Pipeline(tapa::istream<int>& src, tapa::ostream<int>& dst, int n) {
 - The tasks writing the output arguments report how many frames they
   released, and a run ends once those frames have reached the host. Invoke
   every task joined: a detached one never reports, and is rejected.
-- The host program is unchanged: it passes the top streams as usual.
-- Such a top runs in the AI Engine simulators (below); `tapa pack` and
-  `tapa link` do not build it for hardware yet.
+- The host program is unchanged: it passes the top streams as usual. On
+  XRT each stream argument keeps one transfer in flight, so a frame should
+  be large enough to cover the round trip to the host. Each output's
+  transfer for a frame that might come next is retired after the run by a
+  drain run: the graph runs once more, every kernel skipping its task and
+  releasing one frame on each output it writes, which the runtime discards.
+  Input frames the graph did not read stay for the next invoke, so push
+  only what it reads.
+- It runs where XRT drives the graph and GMIO from the board's own
+  processor, as on the embedded VCK190. A VCK5000 drives its graph only
+  through TAPA's PL controller, so `tapa synth` rejects such a top there.
+
+With nothing to make an `.xo` of, `tapa pack` writes a `.zip` holding the
+graph and the top's argument list. `tapa link` links the graph alone,
+records the argument list in the xclbin, and leaves the `.xsa` beside it;
+`--sim` links for hardware emulation. The SD image the board or QEMU boots
+comes from `v++ --package` with the Versal common image and the host
+program, which loads that xclbin:
+
+```bash
+tapa --work-dir work.out compile -f pipeline.cpp -t Pipeline \
+  --platform xilinx_vck190_base_202520_1 -o pipeline.zip
+tapa --work-dir work.out link --package pipeline.zip --sim \
+  -o pipeline.hw_emu.xclbin
+unzip pipeline.zip libadf.a
+v++ --package --target hw_emu --platform xilinx_vck190_base_202520_1 \
+  --package.boot_mode sd --package.defer_aie_run \
+  --package.kernel_image $COMMON/Image --package.rootfs $COMMON/rootfs.ext4 \
+  --package.sd_file pipeline-host --package.sd_file pipeline.hw_emu.xclbin \
+  --package.out_dir package -o package/sd.xclbin pipeline.hw_emu.xsa libadf.a
+cd package && ./launch_hw_emu.sh \
+  -run-app "./pipeline-host --bitstream=pipeline.hw_emu.xclbin"
+```
+
+Build the host program for the board's processor; in this repository,
+`--config=vck190` cross-builds it, and
+`//tests/functional/aie-gmio:aie-gmio-hw-emu` runs the steps above
+(`--test_env=VERSAL_COMMON=<common image>`).
 
 ## Knobs
 

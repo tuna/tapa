@@ -11,11 +11,11 @@
 use std::path::Path;
 
 use serde::Serialize;
-use tapa_ir::{AiePartition, AieStreamKind};
+use tapa_ir::AiePartition;
 use tapa_xilinx::tools::aie::graph::{runtime_parameters, SimMain};
 use tapa_xilinx::tools::aie::AieTarget;
 
-use crate::aie::{device, kernel_args, pl_freq_mhz, prepare, GraphBuild};
+use crate::aie::{device, host_streams, kernel_args, pl_freq_mhz, prepare, GraphBuild, HostStream};
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
@@ -46,10 +46,10 @@ struct Manifest {
     runtime_parameters: Vec<String>,
     /// The PL <-> AI Engine streams, which the host binds as stream
     /// arguments after the top's own.
-    plios: Vec<Plio>,
+    plios: Vec<HostStream>,
     /// The GMIOs of a PL-less top: its own stream arguments, moved a frame
     /// per beat (`beat_words` and `transfer_words` are a frame's words).
-    gmios: Vec<Plio>,
+    gmios: Vec<HostStream>,
     /// The upper task instances the graph is built with inlined, whose
     /// bodies the host runs itself to bind the streams inside them.
     inlined: Vec<tapa_ir::InlinedInstance>,
@@ -62,22 +62,6 @@ struct Manifest {
 struct ScalarArg {
     index: u32,
     name: String,
-}
-
-#[derive(Serialize)]
-struct Plio {
-    index: u32,
-    /// The PLIO's logical name, which is also its file name under `data/`.
-    name: String,
-    /// The PL writes it and the AI Engine reads it.
-    input: bool,
-    /// 32-bit words per stream element.
-    element_words: u32,
-    /// 32-bit words per PLIO beat, one line of its file.
-    beat_words: u32,
-    /// 32-bit words in a whole transfer, a whole beat and a whole frame:
-    /// a final partial one is zero-padded on input.
-    transfer_words: u32,
 }
 
 /// Build the package for `sim` at `output` from the analyzed work dir.
@@ -139,29 +123,7 @@ pub fn package(
 
 fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Result<Manifest> {
     let args = kernel_args(graph, partition)?;
-    let index_of = |name: &str| {
-        args.iter()
-            .find(|(_, port)| port.name == name)
-            .map(|(index, _)| *index)
-            .ok_or_else(|| CliError::InvalidArg(format!("the PL kernel has no argument `{name}`")))
-    };
-    let (mut plios, mut gmios) = (Vec::new(), Vec::new());
-    for stream in &partition.streams {
-        let frame_words = stream.frame.map_or(1, |frame| frame * stream.words);
-        let (list, input, beat_words) = match stream.kind {
-            AieStreamKind::Plio { input, width } => (&mut plios, input, width / 32),
-            AieStreamKind::Gmio { input } => (&mut gmios, input, frame_words),
-            AieStreamKind::Net { .. } => continue,
-        };
-        list.push(Plio {
-            index: index_of(&stream.fifo)?,
-            name: stream.name.clone(),
-            input,
-            element_words: stream.words,
-            beat_words,
-            transfer_words: lcm(beat_words, frame_words),
-        });
-    }
+    let (plios, gmios) = host_streams(partition, &args)?;
     Ok(Manifest {
         simulator: match sim {
             AieSim::X86sim => "x86sim",
@@ -181,13 +143,4 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
         inlined: tapa_ir::inlined_instances(graph)?,
         memories: tapa_ir::memory_crossings(graph)?,
     })
-}
-
-/// The least common multiple, or 0 when either is 0.
-fn lcm(first: u32, second: u32) -> u32 {
-    let (mut gcd, mut rest) = (first, second);
-    while rest != 0 {
-        (gcd, rest) = (rest, gcd % rest);
-    }
-    first.checked_div(gcd).map_or(0, |part| part * second)
 }

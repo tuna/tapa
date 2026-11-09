@@ -64,6 +64,19 @@ pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
     Some(s)
 }
 
+/// What an xclbin runs on, from `m_mode` in its `axlf` header (byte 332):
+/// `XCLBIN_HW_EMU` (4) and `XCLBIN_HW_EMU_PR` (6) are hardware emulation,
+/// `XCLBIN_SW_EMU` (5) software emulation, anything else hardware.
+pub fn xclbin_target(xclbin: &[u8]) -> frt_cosim::metadata::kernel_xml::XclbinTarget {
+    use frt_cosim::metadata::kernel_xml::XclbinTarget;
+    const MODE_OFFSET: usize = 332;
+    match xclbin.get(MODE_OFFSET..MODE_OFFSET + 2) {
+        Some([4 | 6, 0]) => XclbinTarget::HwEmu,
+        Some([5, 0]) => XclbinTarget::SwEmu,
+        _ => XclbinTarget::Flat,
+    }
+}
+
 /// The payload of the first section of `kind` in an xclbin's table of
 /// contents: `m_numSections` sits at byte 448 of the `axlf` header and the
 /// 40-byte `axlf_section_header`s follow it at byte 456.
@@ -85,6 +98,44 @@ fn xclbin_section(xclbin: &[u8], kind: u32) -> Option<&[u8]> {
     })
 }
 
+/// `USER_METADATA`, where `tapa link` records the arguments of a top on
+/// the AI Engine.
+const USER_METADATA: u32 = 16;
+
+/// The arguments of a top on the AI Engine, which has no PL kernel and so
+/// no kernel in the xclbin's embedded metadata (`tapa-cli`'s `Arguments`).
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct AieTopArguments {
+    pub top: String,
+    pub gmios: Vec<GmioArgument>,
+}
+
+/// A stream argument of a top on the AI Engine: a GMIO moving one frame
+/// per transfer.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct GmioArgument {
+    pub index: u32,
+    /// The GMIO's logical name.
+    pub name: String,
+    /// The host writes it and the AI Engine reads it.
+    pub input: bool,
+    /// 32-bit words per stream element.
+    pub element_words: u32,
+    /// 32-bit words per frame, one transfer.
+    pub transfer_words: u32,
+}
+
+/// The arguments of a top on the AI Engine, when the xclbin is one.
+pub fn parse_aie_top_arguments(xclbin: &[u8]) -> Result<Option<AieTopArguments>> {
+    let Some(section) = xclbin_section(xclbin, USER_METADATA) else {
+        return Ok(None);
+    };
+    let text = section.split(|b| *b == 0).next().unwrap_or_default();
+    serde_json::from_slice(text)
+        .map(Some)
+        .map_err(|e| FrtError::MetadataParse(format!("USER_METADATA is not TAPA's: {e}")))
+}
+
 /// `AIE_METADATA`: the AI Engine control configuration `aiecompiler` wrote.
 const AIE_METADATA: u32 = 25;
 
@@ -96,6 +147,9 @@ pub struct AieGraph {
     pub run_forever: bool,
     pub iteration_addresses: Vec<u32>,
     pub rtps: Vec<AieRtp>,
+    /// The kernels' drain flags (`<graph>.drain_<kernel>`), which a graph
+    /// writing a GMIO has (see `tapa-xilinx`'s graph).
+    pub drains: Vec<String>,
 }
 
 /// A runtime parameter carrying one scalar argument of the PL kernel.
@@ -170,7 +224,8 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
         .map(|value| aie_u32(value, "iteration-memory address"))
         .collect::<Result<Vec<_>>>()?;
     let prefix = format!("{name}.rtp_");
-    let mut rtps = Vec::new();
+    let drain_prefix = format!("{name}.drain_");
+    let (mut rtps, mut drains) = (Vec::new(), Vec::new());
     for rtp in meta["RTPs"]
         .as_object()
         .into_iter()
@@ -179,6 +234,10 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
         let Some(alias) = rtp["alias_name"].as_str() else {
             continue;
         };
+        if alias.starts_with(&drain_prefix) {
+            drains.push(alias.to_owned());
+            continue;
+        }
         let Some(rest) = alias.strip_prefix(&prefix) else {
             continue;
         };
@@ -206,6 +265,7 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
         run_forever: name == "tapa_aie_forever",
         iteration_addresses,
         rtps,
+        drains,
     }))
 }
 
@@ -259,6 +319,7 @@ mod tests {
                     ping_address: 0x1fe0,
                     pong_address: 0x1fe0,
                 }],
+                drains: Vec::new(),
             }
         );
         let pl_only = xclbin_with_section(2, b"<?xml?>");

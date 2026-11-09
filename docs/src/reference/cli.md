@@ -319,8 +319,9 @@ tapa --work-dir work.out pack -o vadd.xo
 
 Link a packaged TAPA kernel into a hardware or simulation bitstream. The
 package's recorded flow target picks the backend: `xilinx-vitis` runs
-`v++ --link` (and `v++ --package` with AI Engine sidecars), `xilinx-slash`
-runs SLASH's `slashkit` against the service shell. Both run through the tool
+`v++ --link` (and `v++ --package` with AI Engine sidecars, or on the graph
+alone for a top on the AI Engine), `xilinx-slash` runs SLASH's `slashkit`
+against the service shell. Both run through the tool
 runner, so they execute on the `--remote-host` machine when one is configured.
 `xilinx-hls` has no link backend. See [Build & Run on Board](../howto/build-and-run.md)
 and [Alveo V80 with SLASH](../howto/v80.md) for the guided workflows.
@@ -329,7 +330,7 @@ and [Alveo V80 with SLASH](../howto/v80.md) for the guided workflows.
 
 | Flag | Description |
 |------|-------------|
-| `--package FILE` | Packaged TAPA kernel: `.xo` for `xilinx-vitis`, `.zip` for `xilinx-slash`. |
+| `--package FILE` | Packaged TAPA kernel: `.xo` for `xilinx-vitis`, or `.zip` when its top runs on the AI Engine; `.zip` for `xilinx-slash`. |
 | `--output FILE` / `-o FILE` | Bitstream output: `.xclbin` for `xilinx-vitis`, `.vbin` for `xilinx-slash`. |
 | `--connectivity FILE` | Connectivity configuration. Required for `xilinx-slash` (slashkit's `nk=`/`sp=` file); for `xilinx-vitis`, the standard `sp=` config passed to `v++ --config`. |
 
@@ -340,7 +341,7 @@ and [Alveo V80 with SLASH](../howto/v80.md) for the guided workflows.
 | `--clock-mhz MHZ` | Requested kernel clock. Defaults to the clock period the package's flow was synthesized with. A SLASH `[clock]` section in the config must match this value; TAPA appends one when absent. |
 | `--floorplan-xdc FILE` | Floorplan constraints (`tapa floorplan`'s `floorplan.xdc`) applied during implementation. |
 | `-j N` / `--jobs N` | Vivado parallelism per link (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `8`). |
-| `--sim` | Produce a SLASH simulation vbin instead of a hardware image (`xilinx-slash` only). |
+| `--sim` | Produce a simulation image instead of a hardware one: a SLASH simulation vbin, or the hardware emulation (`hw_emu`) xclbin of a top on the AI Engine. A PL kernel's `.xo` has no `--sim` link. |
 | `--vpp PROGRAM` | Vitis linker/packager on the tool host (default `v++`; Vitis links only). |
 | `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; SLASH links only). |
 | `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; SLASH links only). |
@@ -351,7 +352,9 @@ clock derates the recorded frequency with a warning instead of failing, and
 and the pinned SLASH commit. A Vitis link reports the routed kernel timing
 from its post-route report either way. A `--sim` link has no routed timing
 report — its metrics record the commit and the requested versus recorded MHz
-only.
+only. A top on the AI Engine has no PL kernel and so no kernel timing; its
+link leaves the `.xsa` beside the xclbin for packaging an SD image (see
+[AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
 
 ### Example
 

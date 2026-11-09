@@ -1,4 +1,5 @@
-//! Hardware or simulation linking of a packaged TAPA kernel.
+//! Hardware or simulation linking of a packaged TAPA kernel: an `.xo`, or
+//! the `.zip` of a top on the AI Engine, for Vitis; a `.zip` for SLASH.
 
 use crate::context::CliContext;
 use crate::error::{CliError, Result};
@@ -6,6 +7,7 @@ use clap::Parser;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use tapa_ir::{Target, WorkState};
+use tapa_xilinx::tools::aie::link::AieLinkJob;
 use tapa_xilinx::tools::slash::{SlashLinkJob, SlashLinkMode};
 use tapa_xilinx::{
     run_vitis_link, target_frequency_mhz, LinkOutput, ToolRunner, VitisLinkJob, VitisLinkMode,
@@ -13,7 +15,8 @@ use tapa_xilinx::{
 
 #[derive(Debug, Parser)]
 pub struct LinkArgs {
-    /// Packaged TAPA kernel (`.xo` for Vitis, `.zip` for SLASH).
+    /// Packaged TAPA kernel: `.xo` for Vitis, or `.zip` when the top runs on
+    /// the AI Engine; `.zip` for SLASH.
     #[arg(long)]
     pub package: PathBuf,
     /// Target-specific connectivity configuration (`--config` for Vitis).
@@ -39,7 +42,9 @@ pub struct LinkArgs {
     /// TAPA floorplan constraints to apply during implementation.
     #[arg(long)]
     pub floorplan_xdc: Option<PathBuf>,
-    /// Produce a SLASH simulation vbin instead of a hardware image.
+    /// Produce a simulation image instead of a hardware one: a SLASH
+    /// simulation vbin, or the Vitis hardware emulation (`hw_emu`) xclbin of
+    /// a top on the AI Engine.
     #[arg(long)]
     pub sim: bool,
 }
@@ -47,15 +52,28 @@ pub struct LinkArgs {
 #[derive(Debug)]
 enum LinkPlan {
     Vitis(VitisLinkJob),
+    /// A top on the AI Engine: the graph alone, from the package's entries.
+    Aie(AieLinkJob),
     Slash(SlashLinkJob),
 }
 
 pub fn run(args: &LinkArgs, ctx: &CliContext) -> Result<()> {
     let state = read_package_state(&args.package)?;
     let plan = plan_link(args, &ctx.work_dir, &state)?;
+    if let LinkPlan::Aie(job) = &plan {
+        extract_aie_package(&args.package, job)?;
+    }
     let output = ctx.with_tool_runner(|runner| run_plan(runner, &plan))?;
     let backend = match plan {
         LinkPlan::Vitis(_) => "Vitis",
+        LinkPlan::Aie(job) => {
+            log::info!(
+                "AI Engine link produced {}, with no PL kernel, and {}",
+                output.bitstream,
+                tapa_xilinx::tools::aie::link::xsa(&job.output_xclbin)
+            );
+            return Ok(());
+        }
         LinkPlan::Slash(_) => "SLASH",
     };
     log::info!(
@@ -70,6 +88,7 @@ pub fn run(args: &LinkArgs, ctx: &CliContext) -> Result<()> {
 fn run_plan(runner: &dyn ToolRunner, plan: &LinkPlan) -> Result<LinkOutput> {
     match plan {
         LinkPlan::Vitis(job) => Ok(run_vitis_link(runner, job)?),
+        LinkPlan::Aie(job) => Ok(tapa_xilinx::tools::aie::link::link(runner, job)?),
         LinkPlan::Slash(job) => Ok(tapa_xilinx::tools::slash::link(runner, job)?),
     }
 }
@@ -96,9 +115,14 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
     let link_work = crate::util::utf8(work_dir.join("link"));
     match state.graph.target {
         Target::XilinxVitis => {
+            if args.package.extension().is_some_and(|ext| ext == "zip") {
+                return plan_aie_link(args, link_work, state);
+            }
             if args.sim {
                 return Err(CliError::InvalidArg(
-                    "`--sim` is available only for the `xilinx-slash` target".into(),
+                    "`--sim` is available for the `xilinx-slash` target, and for a Vitis package \
+                     whose top runs on the AI Engine"
+                        .into(),
                 ));
             }
             require_extension(&args.package, "xo", "Vitis package")?;
@@ -160,6 +184,68 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                 .into(),
         )),
     }
+}
+
+/// The link of a top on the AI Engine, whose package is a `.zip`.
+fn plan_aie_link(
+    args: &LinkArgs,
+    work: camino::Utf8PathBuf,
+    state: &WorkState,
+) -> Result<LinkPlan> {
+    let pl_less = tapa_ir::AiePartition::derive(&state.graph)?.is_some_and(|p| p.pl_less);
+    if !pl_less {
+        return Err(CliError::InvalidArg(format!(
+            "`{}` is a Vitis package of a top that is not on the AI Engine; link its `.xo`",
+            args.package.display()
+        )));
+    }
+    require_extension(&args.output, "xclbin", "Vitis link output")?;
+    let platform = state.flow.platform.clone().ok_or_else(|| {
+        CliError::InvalidArg(
+            "Vitis link requires a platform in the packaged flow state; rerun `tapa synth \
+             --platform`"
+                .into(),
+        )
+    })?;
+    Ok(LinkPlan::Aie(
+        AieLinkJob::builder()
+            .platform(platform)
+            .emulation(args.sim)
+            .libadf(work.join(crate::aie::PACKAGE_LIBADF))
+            .arguments(work.join(crate::aie::PACKAGE_ARGUMENTS))
+            .work_dir(work)
+            .output_xclbin(crate::util::utf8(&args.output))
+            .vpp(args.vpp.clone())
+            .build(),
+    ))
+}
+
+/// Writes the graph and the argument list of a top on the AI Engine out of
+/// its package, where the link reads them.
+fn extract_aie_package(package: &Path, job: &AieLinkJob) -> Result<()> {
+    let file = fs_err::File::open(package)?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| {
+        CliError::Archive(format!(
+            "cannot open link package `{}` as a ZIP archive: {error}",
+            package.display()
+        ))
+    })?;
+    fs_err::create_dir_all(&job.work_dir)?;
+    for (name, path) in [
+        (crate::aie::PACKAGE_LIBADF, &job.libadf),
+        (crate::aie::PACKAGE_ARGUMENTS, &job.arguments),
+    ] {
+        let mut entry = archive.by_name(name).map_err(|error| {
+            CliError::Archive(format!(
+                "link package `{}` has no `{name}`: {error}",
+                package.display()
+            ))
+        })?;
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes)?;
+        fs_err::write(path, bytes)?;
+    }
+    Ok(())
 }
 
 fn require_extension(path: &Path, expected: &str, label: &str) -> Result<()> {
@@ -293,7 +379,47 @@ mod tests {
         parsed.sim = true;
         let error = plan_link(&parsed, Path::new("/work"), &state(Target::XilinxVitis))
             .expect_err("Vitis sim must fail");
-        assert!(error.to_string().contains("only"));
+        assert!(error.to_string().contains("top runs on the AI Engine"));
+    }
+
+    /// The work state of a top on the AI Engine, which is all it runs.
+    fn aie_top_state() -> WorkState {
+        let mut state = crate::testutil::state_from_json(
+            r#"{
+                "schema_version": 4, "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {
+                    "Top": {"readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [],
+                        "defines": [], "level": "upper", "synth": "aie",
+                        "ports": [{"cat": "istream", "name": "src", "type": "int", "width": 32}],
+                        "tasks": {"Sink": [{"args": {"in": {"arg": "src", "cat": "istream"}}}]},
+                        "fifos": {}},
+                    "Sink": {"readable_name": "Sink", "srcs": ["Top.cpp"], "include_dirs": [],
+                        "defines": [], "level": "lower", "synth": "aie",
+                        "ports": [{"cat": "istream", "name": "in", "type": "int", "width": 32,
+                            "frame": 16}]}}
+            }"#,
+        );
+        state.flow.platform = Some("xilinx_vck190_base_202520_1".into());
+        state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
+        state
+    }
+
+    #[test]
+    fn a_top_on_the_ai_engine_links_its_zip_and_simulates_as_hw_emu() {
+        let mut parsed = args("Top.zip", "Top.xclbin");
+        parsed.sim = true;
+        let plan = plan_link(&parsed, Path::new("/work"), &aie_top_state()).expect("plan");
+        let LinkPlan::Aie(job) = plan else {
+            panic!("expected an AI Engine link");
+        };
+        assert!(job.emulation);
+        assert_eq!(job.platform, "xilinx_vck190_base_202520_1");
+        assert_eq!(job.libadf, "/work/link/libadf.a");
+        assert_eq!(job.arguments, "/work/link/arguments.json");
+
+        let error = plan_link(&parsed, Path::new("/work"), &state(Target::XilinxVitis))
+            .expect_err("a PL top packs an .xo");
+        assert!(error.to_string().contains("link its `.xo`"), "{error}");
     }
 
     #[test]

@@ -128,3 +128,54 @@ fn load() -> std::result::Result<Api, String> {
         graph_update_rtp: dl_sym!(lib, LIBRARY, "xrtGraphUpdateRTP"),
     })
 }
+
+/// `xclBOSyncDirection` between a buffer and the AI Engine.
+pub(super) const SYNC_GMIO_TO_AIE: c_int = 2;
+pub(super) const SYNC_AIE_TO_GMIO: c_int = 3;
+
+/// What a graph with GMIOs needs on top of [`Api`], which XRT's embedded
+/// runtime alone provides: resolved only when such a graph opens, so other
+/// XRT installs load as before.
+pub struct GmioApi {
+    /// `xrtSyncBOAIENB(device, bo, gmio, direction, size, offset)`: posts a
+    /// transfer of a buffer to or from a GMIO.
+    pub sync_bo_nb:
+        unsafe extern "C" fn(Handle, Handle, *const c_char, c_int, usize, usize) -> c_int,
+    /// `xrtGMIOWait(device, gmio)`: waits for every transfer posted there.
+    pub wait: unsafe extern "C" fn(Handle, *const c_char) -> c_int,
+    pub graph_read_rtp: unsafe extern "C" fn(Handle, *const c_char, *mut c_char, usize) -> c_int,
+    pub bo_map: unsafe extern "C" fn(Handle) -> *mut c_void,
+}
+
+// SAFETY: as for `Api`.
+unsafe impl Send for GmioApi {}
+// SAFETY: as for `Api`.
+unsafe impl Sync for GmioApi {}
+
+/// The GMIO entry points, loading them on first use.
+pub fn gmio_api() -> Result<&'static GmioApi> {
+    static API: OnceLock<std::result::Result<GmioApi, String>> = OnceLock::new();
+    API.get_or_init(load_gmio)
+        .as_ref()
+        .map_err(|reason| FrtError::NoXrtRuntime(reason.clone()))
+}
+
+fn load_gmio() -> std::result::Result<GmioApi, String> {
+    let lib = crate::dl::open_library(
+        &candidates(),
+        libc::RTLD_NOW | libc::RTLD_GLOBAL,
+        &format!("cannot load {LIBRARY} (is XRT installed and `XILINX_XRT` set?)"),
+    )?;
+    // XRT exports the two GMIO calls with C++ linkage only; their mangled
+    // names pin the signatures above (xrt_aie.h).
+    Ok(GmioApi {
+        sync_bo_nb: dl_sym!(
+            lib,
+            LIBRARY,
+            "_Z14xrtSyncBOAIENBPvS_PKc18xclBOSyncDirectionmm"
+        ),
+        wait: dl_sym!(lib, LIBRARY, "_Z11xrtGMIOWaitPvPKc"),
+        graph_read_rtp: dl_sym!(lib, LIBRARY, "xrtGraphReadRTP"),
+        bo_map: dl_sym!(lib, LIBRARY, "xrtBOMap"),
+    })
+}

@@ -3,6 +3,7 @@
 //! simulator (`frt`'s AI Engine simulation backend).
 
 pub mod graph;
+pub mod link;
 pub mod pl_control;
 pub mod report;
 

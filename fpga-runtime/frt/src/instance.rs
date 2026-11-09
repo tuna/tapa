@@ -2,7 +2,6 @@ use crate::aiesim::AieSimDevice;
 use crate::cosim::CosimDevice;
 use crate::device::Device;
 use crate::error::{FrtError, Result};
-use crate::xrt::device::XrtDevice;
 use std::path::Path;
 
 #[derive(Clone, Debug)]
@@ -51,7 +50,7 @@ pub fn open(path: impl AsRef<Path>, sim: &Simulator) -> Result<Box<dyn Device>> 
     let path = path.as_ref();
     match ExecutionMode::of(path)? {
         ExecutionMode::Vrt => crate::vrt::open(path),
-        ExecutionMode::Hardware => Ok(Box::new(XrtDevice::open(path)?)),
+        ExecutionMode::Hardware => crate::xrt::open(path),
         ExecutionMode::Cosim => Ok(Box::new(CosimDevice::open(path, sim)?)),
         ExecutionMode::AieSim => Ok(Box::new(AieSimDevice::open(path)?)),
     }
