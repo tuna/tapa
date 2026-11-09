@@ -228,7 +228,14 @@ impl AieSimDevice {
         let out = File::create(&log)?;
         // The simulator signals its whole process group when it exits, so it
         // gets one of its own instead of the host program's.
-        let child = Command::new(simulator.program())
+        let mut command = Command::new(simulator.program());
+        // x86simulator stops a graph waiting on a GMIO no transfer is posted
+        // to, as a deadlock; the graph's entry point posts each input frame
+        // from a thread as it arrives, so such waits are not deadlocks.
+        if simulator == Simulator::X86sim && !self.manifest.gmios.is_empty() {
+            command.arg("--disable-stop-on-deadlock");
+        }
+        let child = command
             .arg("--pkg-dir=./Work")
             .arg(format!("--input-dir={}", dir.path().display()))
             .arg(format!(
