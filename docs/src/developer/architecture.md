@@ -26,6 +26,7 @@ tapacc ──task-graph JSON──► tapa-cli
                               ▼
                          .xo or .zip
 
+tapa-protocol port names, directions, widths, and handshake constants
 tapa-ir       typed graph, work state, bindings, and floorplan results
 tapa-rtl      Verilog parsing, transformation, and emission
 tapa-codegen  connected RTL and artifact manifests
@@ -51,7 +52,9 @@ persists typed state from `tapa-ir`. The engines produce floorplans and RTL;
    `tapacc.json` for debugging.
 2. **Synthesize.** `tapa synth` runs Vitis HLS for each non-ignored task,
    collects reports and Verilog, and asks `tapa-codegen` for the connected RTL
-   tree. Work can run locally or through the remote tool runner.
+   tree. For a design with AI Engine tasks it also compiles the graph with
+   `aiecompiler` (unless `--skip-aie`), and HLS and codegen see only the PL
+   tasks. Work can run locally or through the remote tool runner.
 3. **Floorplan (optional).** `tapa floorplan` reads the synthesized graph and
    per-task areas. It places and routes the design, inserts pipeline stages,
    stores the typed floorplan in `tapa.json`, and publishes `floorplan.xdc`.
@@ -60,7 +63,12 @@ persists typed state from `tapa-ir`. The engines produce floorplans and RTL;
 4. **Pack.** `tapa pack` creates an XO for `xilinx-vitis` or a ZIP for
    `xilinx-slash` and `xilinx-hls`. Packaging includes generated RTL,
    metadata, and any accepted custom-RTL overlays. XO and SLASH packaging can
-   use the remote runner; `xilinx-hls` ZIP assembly is local.
+   use the remote runner; `xilinx-hls` ZIP assembly is local. A
+   `xilinx-vitis` top on the AI Engine has no PL kernel, so it packs a ZIP of
+   the work state, the compiled graph, and its argument list; on a VCK5000,
+   TAPA builds the top's PL kernel, which packs as an XO.
+5. **Link (optional).** `tapa link` turns a package into an `.xclbin`
+   through `v++` or a `.vbin` through SLASH.
 
 `tapa compile` composes analyze, synth, and pack. Floorplanning is a separate
 step between synth and pack.
@@ -125,12 +133,14 @@ and mmap interfaces for software simulation.
   metadata, generates testbenches, and launches xsim or Verilator.
 - `frt-dpi`, `frt-dpi-xsim`, and `frt-dpi-verilator` marshal AXI and stream
   transfers between simulator signal layouts and host tokens.
-- `frt` selects fast-cosim or XRT execution from the artifact path and tracks
-  buffer transfer, execution, completion, and timing.
+- `frt` selects fast cosim (`.xo`/`.zip`), XRT (`.xclbin`), VRT (`.vbin`),
+  or AI Engine simulation (a `tapa compile --aie-sim` package) from the
+  artifact path and tracks buffer transfer, execution, completion, and
+  timing.
 
-`frt-cosim` depends on `tapa-ir` as its contract crate, so archive schema
-changes are checked by Rust types across the two Cargo workspaces. It does not
-depend on compiler engines or the CLI.
+`frt-cosim` depends on `tapa-ir` and `tapa-protocol` as its contract crates,
+so archive schema changes are checked by Rust types across the two Cargo
+workspaces. It does not depend on compiler engines or the CLI.
 
 The generated C header is another guarded boundary:
 `frt/tests/c_api_header_test.rs` compares the checked-in `c_api.h` with fresh

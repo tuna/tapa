@@ -89,15 +89,26 @@ options.
 
 ## Package and validate
 
-`floorplan` writes `floorplan.xdc`. For `xilinx-vitis`, `pack` applies that
-file and the staged connectivity configuration automatically, so no extra
-flags are required. For `xilinx-slash`, `link` inserts Full register slices on
-each HBM interface selected by the connectivity map, then registers a generated
-pre-place script with Vivado. It anchors the HBM bridges, slices and reset
-synchronizer to SLR2, checks optimized URAM demand against the RM inventory,
-sources the staged floorplan, and requests clock-region replication for
-eligible high-fanout fabric controls. Registering the script in `utils_1`
-ensures that the separate `impl_1` process executes it.
+`floorplan` writes `floorplan.xdc` and stages a verbatim copy of the
+connectivity file as `floorplan-connectivity.ini` in the work directory.
+`pack` packages the floorplanned RTL but not these constraints; pass both to
+`tapa link`:
+
+```bash
+tapa --work-dir work.out link \
+  --package vecadd.xo \
+  --floorplan-xdc work.out/floorplan.xdc \
+  --connectivity work.out/floorplan-connectivity.ini \
+  -o vecadd.xclbin
+```
+
+For `xilinx-slash`, `link` inserts Full register slices on each HBM interface
+selected by the connectivity map, then registers a generated pre-place script
+with Vivado. It anchors the HBM bridges, slices and reset synchronizer to
+SLR2, checks optimized URAM demand against the RM inventory, sources the
+`--floorplan-xdc` file, and requests clock-region replication for eligible
+high-fanout fabric controls. Registering the script in `utils_1` ensures that
+the separate `impl_1` process executes it.
 
 A frame channel (a stream with a `tapa::iframes` or `tapa::oframes` end) is
 placed with its ends. When they land in different slots, each frame-port end

@@ -23,22 +23,32 @@ TAPA splits work between local and remote:
 | Step | Runs where |
 |------|------------|
 | `tapa analyze` (runs `tapacc`) | Always local |
-| `tapa synth` (Vitis HLS synthesis) | Remote when `--remote-host` is set |
+| `tapa synth` (Vitis HLS synthesis, AI Engine graph compile) | Remote when `--remote-host` is set |
+| `tapa compile --aie-sim` (AI Engine simulation package) | Remote when `--remote-host` is set |
 | `tapa floorplan` with `--run-impl` or `--dse` (`v++ --link` or SLASH) | Remote when `--remote-host` is set |
 | `tapa pack` for `xilinx-vitis` or `xilinx-slash` (XO / SLASH packaging) | Remote when `--remote-host` is set |
-| `tapa pack` for `xilinx-hls` (ZIP assembly) | Always local |
+| `tapa pack` for `xilinx-hls`, or of a top on the AI Engine with no PL kernel (ZIP assembly) | Always local |
 | `tapa link` (`v++` for Vitis, `slashkit`/Vivado for SLASH) | Remote when `--remote-host` is set |
 | Remote job inputs and outputs | Transferred automatically by TAPA |
 
 Planning-only `tapa floorplan` (no `--run-impl`, no `--dse`) needs no vendor tool and always runs locally, using the local `cbc` solver.
 
+A `host` in [`~/.taparc`](#persistent-configuration-via-taparc) has the same
+effect as `--remote-host`: every `tapa` invocation then runs these steps
+remotely.
+
 TAPA stages each remote job's inputs and returns its outputs automatically.
-You do not need to copy source trees or compiler artifacts by hand. The
-linker programs (`v++`, `slashkit`, `vivado`) are looked up by name on the
-remote host — never on your local `PATH` — and `tapa link`'s `--vpp`,
-`--slashkit`, and `--vivado` flags rename them there. A SLASH link needs the
-V80 static shell installed wherever `slashkit` runs; see
-[Alveo V80 with SLASH](v80.md).
+Each job runs in its own directory under the remote `work_dir` (a
+`~/.taparc` key, default `/tmp/tapa-remote`), which TAPA removes when the
+job ends, so only the outputs the step returns are kept. When
+`settings64.sh` is configured, TAPA also mirrors the remote's Vitis HLS
+headers once into a local cache for `tapacc` and points `XILINX_HLS` and
+`XILINX_VITIS` at it unless you set them. You do not need to copy source
+trees or compiler artifacts by hand. The linker programs (`v++`, `slashkit`,
+`vivado`) are looked up by name on the remote host — never on your local
+`PATH` — and `tapa link`'s `--vpp`, `--slashkit`, and `--vivado` flags
+rename them there. A SLASH link needs the V80 static shell installed
+wherever `slashkit` runs; see [Alveo V80 with SLASH](v80.md).
 
 ```admonish warning
 Remote execution applies to the **`tapa` compiler only**. TAPA does not
@@ -47,8 +57,9 @@ cosimulation, hardware emulation, and on-board execution run wherever you
 launch that executable. There is no runtime equivalent of `--remote-host`.
 For fast cosimulation with xsim, that machine needs Vivado; with Verilator,
 it needs Verilator. Hardware emulation and on-board execution need XRT and
-the appropriate platform or board. Run the host over SSH yourself if those
-resources are on the build server.
+the appropriate platform or board; on the board, a V80 vbin needs SLASH's
+`vrtd` and `libvrtd` instead of XRT (see [Alveo V80 with SLASH](v80.md)).
+Run the host over SSH yourself if those resources are on the build server.
 ```
 
 ## Commands
@@ -90,6 +101,7 @@ tapa \
 - `-j` (passed to `tapa synth`) controls how many Vitis HLS processes run in parallel **on the remote host**.
 
 Keep `-j` at or below the number of cores available on the remote machine.
+Without `-j`, it defaults to the number of CPUs available on the local machine.
 ```
 
 ### Reusing the SSH connection

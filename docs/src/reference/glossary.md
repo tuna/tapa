@@ -30,7 +30,7 @@ The condition where a producer cannot write to a stream because the downstream c
 
 RTL simulation used to check hardware behavior against the software model.
 TAPA supports fast cosim from an XO or ZIP without Vitis implementation, and
-Vitis hardware emulation from an `hw_emu.xclbin`.
+Vitis hardware emulation from an xclbin built for `hw_emu`.
 
 ---
 
@@ -68,7 +68,9 @@ A stream port of a leaf task that moves whole frames of `N` elements
 frame, reads or writes its elements in any order through a view, and
 releases it. On PL its stream becomes a frame channel of
 `max(2, depth / N)` banks in one memory; on the AI Engine it is a kernel
-buffer port.
+buffer port. On Vitis, a stream argument of the top that reaches a frame
+port travels through a ring of frame slots in device memory
+(`[[tapa::ring(S)]]`).
 
 ---
 
@@ -76,22 +78,24 @@ buffer port.
 
 The optional `tapa floorplan` step, run between `synth` and `pack`. It places
 tasks across SLRs, balances resource usage, and pipelines channels that cross
-SLR boundaries to improve timing. It writes `floorplan.xdc`, which `pack`
-applies automatically.
+SLR boundaries to improve timing. It regenerates the RTL that `pack`
+packages and writes `floorplan.xdc`, which `tapa link` applies through
+`--floorplan-xdc`.
 
 ---
 
 **leaf task**
 
-A task that contains only computation and does not call `.invoke()`. Leaf tasks are the units of synthesis: each leaf task is compiled to RTL by Vitis HLS independently. A leaf task may use streams, mmap, or async_mmap parameters.
+A task that contains only computation and does not call `.invoke()`. Leaf tasks are the units of synthesis: each leaf task is compiled to RTL by Vitis HLS independently, or, with `[[tapa::target("aie")]]`, into an AI Engine kernel. A leaf task may use streams, mmap, or async_mmap parameters.
 
 ---
 
 **link**
 
-The `tapa link` step. Turns a packaged kernel (`.xo` for `xilinx-vitis`,
-`.zip` for `xilinx-slash`) into a bitstream: `v++ --link` produces an
-`.xclbin`, SLASH's `slashkit` produces a `.vbin`. Runs on the tool host,
+The `tapa link` step. Turns a packaged kernel (`.xo` for `xilinx-vitis`, or
+the `.zip` of a top on the AI Engine with no PL kernel; `.zip` for
+`xilinx-slash`) into a bitstream: `v++ --link` produces an `.xclbin`,
+SLASH's `slashkit` produces a `.vbin`. Runs on the tool host,
 including remotely via `--remote-host`.
 
 ---
@@ -116,16 +120,19 @@ An array of N mmap regions (`tapa::mmaps<T, N>`) passed as a single argument. Th
 The `tapa pack` step. Packages RTL produced by `tapa synth` into one XO for
 `tapa link` and fast cosim, one SLASH `.zip` package (IP directory,
 `kernel.xml`, `hls_data.json`) for `tapa link` and fast cosim, or one
-`xilinx-hls` ZIP for direct RTL consumers and fast cosim.
+`xilinx-hls` ZIP for direct RTL consumers and fast cosim. An AI Engine graph
+goes beside the XO, or, for a top on the AI Engine with no PL kernel, into a
+ZIP for `tapa link`.
 
 ---
 
 **remote execution**
 
 Offloading vendor-tool steps to a remote Linux host over SSH, configured
-with `--remote-host`. Analysis and planning-only floorplanning stay local;
-synthesis, Vitis XO packaging, and implementation floorplanning can run
-remotely. TAPA transfers each job's sources and outputs automatically.
+with `--remote-host` or a `host` in `~/.taparc`. Analysis and planning-only
+floorplanning stay local; synthesis (AI Engine graphs included), Vivado
+packaging, linking, and implementation floorplanning can run remotely. TAPA
+transfers each job's sources and outputs automatically.
 
 ---
 
@@ -163,7 +170,7 @@ throughput at the cost of LUT, SRL, BRAM, or URAM resources.
 
 **synth**
 
-The `tapa synth` step. Runs Vitis HLS on each non-ignored task extracted during `tapa analyze`, then generates the connected Verilog hierarchy. Per-task HLS results are stored under `hls/`, and the complete RTL tree is stored under `rtl/` in the work directory.
+The `tapa synth` step. Runs Vitis HLS on each task extracted during `tapa analyze` that is neither ignored nor on the AI Engine, compiles the AI Engine tasks into a graph with `aiecompiler`, then generates the connected Verilog hierarchy. Per-task HLS results are stored under `hls/`, and the complete RTL tree is stored under `rtl/` in the work directory.
 
 ---
 
@@ -172,7 +179,8 @@ The `tapa synth` step. Runs Vitis HLS on each non-ignored task extracted during 
 Environment variable controlling the worker threads that run task coroutines.
 Set to `1` to use one worker with cooperative interleaving at blocking points;
 it does not run each task to completion. The default is the host's physical
-CPU core count.
+CPU core count. On macOS each task runs on a thread of its own, and the
+variable has no effect.
 
 ---
 
@@ -195,8 +203,8 @@ child interfaces and control logic together.
 
 SLASH's C++ runtime layer above `vrtd`. TAPA's host runtime reimplements the
 pieces it needs in Rust over `libvrtd` (hardware) and `libzmq` (simulation),
-so a vbin runs with the unchanged host program and no SLASH host library
-installed.
+so a vbin runs with the unchanged host program and without SLASH's VRT
+library; a hardware vbin still needs SLASH's `libvrtd`.
 
 ---
 
@@ -230,10 +238,11 @@ The Verilog simulator that ships with Vivado, and the default backend for TAPA f
 
 **xclbin**
 
-Xilinx container produced from an XO by the `v++ --link` step that `tapa
-link` drives. An `hw.xclbin` contains an on-board bitstream; an
-`hw_emu.xclbin` contains the hardware-emulation model. The host loads either
-through XRT/FRT as appropriate.
+Xilinx container produced from an XO, or from the AI Engine graph of a top
+with no PL kernel, by the `v++` link that `tapa link` drives. An xclbin
+built for `hw` contains an on-board bitstream, one built for `hw_emu` the
+hardware-emulation model; the host reads which from the xclbin and loads it
+through XRT/FRT.
 
 ---
 

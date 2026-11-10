@@ -101,7 +101,7 @@ terminate on program completion.
 - For the `xilinx-vitis` target (the default), the top-level task must be an
   upper-level task — it cannot be a leaf task.
 - Leaf templated tasks (template functions that compute directly) are
-  supported. Non-leaf templated tasks that invoke other tasks are not yet
+  supported. Non-leaf templated tasks that invoke other tasks are not
   supported.
 
 ---
@@ -111,7 +111,8 @@ terminate on program completion.
 **Wrong** — computation inside an upper-level task body:
 
 ```cpp
-// Wrong: for loop makes this a leaf task, not an upper-level task
+// Wrong: hardware keeps only the invokes of an upper-level task, so the loop
+// never runs there; `tapa analyze` reports `q` as consumed but never produced
 void BadUpper(tapa::mmap<float> mem, uint64_t n) {
   tapa::stream<float> q("q");
   for (uint64_t i = 0; i < n; ++i) {  // <-- computation here

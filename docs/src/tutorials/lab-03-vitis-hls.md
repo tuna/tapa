@@ -38,8 +38,8 @@ After this lab you will understand:
 ### Pragmas
 
 Every directive below becomes a C++ attribute; the full grammar is in the
-[API reference](../reference/api.md). `tapa analyze` warns on any vendor
-pragma it still sees and names the portable form.
+[API reference](../reference/api.md). `tapa analyze` reports a remark for
+each vendor pragma it still sees and names the portable form.
 
 | Vitis HLS | TAPA |
 |-----------|------|
@@ -73,10 +73,12 @@ than one call, split it or accept the wider scope.
 ```
 
 ```admonish warning
-Two vendor constructs have no portable form, and `tapa analyze` says so
+Some vendor constructs have no portable form, and `tapa analyze` says so
 rather than suggesting one: `#pragma HLS stream ... off` (a stream that is
-not a FIFO) and `#pragma HLS dataflow` *inside* a leaf task. They must remain
-vendor-specific, so portability is limited; expect the remark.
+not a FIFO), `#pragma HLS dataflow` *inside* a leaf task, and every
+`#pragma HLS` directive absent from the table above, which passes to the
+vendor as-is. They must remain vendor-specific, so portability is limited;
+expect the remark.
 ```
 
 ```admonish note title="An unqualified `reg` becomes ambiguous"

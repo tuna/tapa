@@ -33,7 +33,7 @@ AutoBridge: Coupling Coarse-Grained Floorplanning and Pipelining for High-Freque
 *ACM/SIGDA FPGA*, 2021. **(Best Paper Award)**
 [[PDF](https://dl.acm.org/doi/pdf/10.1145/3431920.3439289)] [[Code](https://github.com/UCLA-VAST/AutoBridge)]
 
-Doubles achievable clock frequency on average by automatically floorplanning HLS dataflow designs across SLR boundaries and inserting pipeline registers. Now maintained exclusively as a plug-in of the TAPA workflow.
+Doubles achievable clock frequency on average by automatically floorplanning HLS dataflow designs across SLR boundaries and inserting pipeline registers. Maintained exclusively as a plug-in of the TAPA workflow.
 
 ---
 
@@ -80,7 +80,7 @@ TAPA-CS: Enabling Scalable Accelerator Design on Distributed HBM-FPGAs.
 *ACM ASPLOS*, 2024.
 [[arXiv](https://arxiv.org/abs/2311.10189)] [[Code](https://github.com/UCLA-VAST/TAPA-CS)]
 
-Extends TAPA to automatically partition designs across a cluster of FPGAs with the `--multi-fpga N` compiler flag. Handles congestion control, resource balancing, and inter-FPGA pipelining.
+Extends TAPA to automatically partition designs across a cluster of FPGAs with the TAPA-CS `--multi-fpga N` compiler flag. Handles congestion control, resource balancing, and inter-FPGA pipelining.
 
 ---
 

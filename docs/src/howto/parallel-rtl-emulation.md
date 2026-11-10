@@ -192,7 +192,7 @@ By default each cosim process writes to a temporary directory that is deleted at
     -cosim_work_dir_parallel
 ```
 
-TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so the simulations do not interfere with each other.
+TAPA creates `./cosim_work/<pid>_<nanoseconds>/` (a unique name per instance) so the simulations do not interfere with each other.
 
 ### Simulator backend
 

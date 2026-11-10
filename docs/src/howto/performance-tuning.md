@@ -65,8 +65,9 @@ generated RTL and writes per-task LUT, FF, BRAM, URAM, and DSP counts to:
 
 Use them to identify which tasks are consuming the most resources before
 proceeding to full implementation. If these files are missing, synthesis
-either did not run or exited before the reporting step; check the HLS log in
-`work.out/` for errors.
+either did not run or exited before the reporting step; check the errors
+`tapa synth` printed. HLS logs are kept only with `--keep-hls-work-dir`,
+under `work.out/hls/<task>/project/`.
 
 The extra pass matters because the default per-task estimates are read from
 the Vitis HLS synthesis reports, and **HLS estimates are coarse and

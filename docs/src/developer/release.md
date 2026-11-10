@@ -13,7 +13,10 @@ workflow builds and publishes a release to GitHub Releases.
 To create a release:
 
 1. Update the `VERSION` file on `main` with the desired version string
-   (e.g. `0.1.20260721`).
+   (e.g. `0.1.20260721`). The nightly `Bump Version` job already sets its
+   date part to the current date (UTC-10) when anything outside `docs/`,
+   `tests/`, and `README.md` changed since the last bump, landing the commit
+   on `main` through the `ci/next` branch.
 
 2. Trigger the `Publish Release` workflow via `workflow_dispatch` from
    the GitHub Actions UI. Optionally override the version in the input field;
@@ -33,7 +36,9 @@ nothing bumps them automatically.
 Every push to `main` triggers the `staging-build.yml` workflow, which
 builds the release artifact and runs the staging test matrix across supported
 OS and Vitis version combinations. The artifact is retained as a workflow
-artifact for 7 days; it is not published as a full release.
+artifact for 7 days; it is not published as a full release. A pushed tag
+also runs the workflow; a tag whose name does not start with `v` then
+publishes the artifact as a GitHub prerelease named `Staging Build <commit>`.
 
 ## Installing a Release
 

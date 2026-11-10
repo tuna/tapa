@@ -14,7 +14,7 @@ is not a supported way to reconfigure execution.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `TAPA_CONCURRENCY` | Number of physical CPU cores | Number of worker threads running task coroutines. Set to `1` for a simpler scheduling interleaving. Has no effect on HLS compilation parallelism (`-j`). |
+| `TAPA_CONCURRENCY` | Number of physical CPU cores | Number of worker threads running task coroutines. Set to `1` for a simpler scheduling interleaving. Has no effect on HLS compilation parallelism (`-j`), nor on macOS, where each task runs on a thread of its own. |
 | `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Existing directory for stream write logs. TAPA writes one file per named stream; unnamed streams are not logged. Useful for tracing data during software simulation. |
 | `TAPA_STREAM_LEFTOVER_LOG_COUNT` | `10` | Maximum number of leftover tokens printed for a nonempty stream when it is destroyed. Nonpositive values are invalid. |
 | `TAPA_STALL_WARN_SECONDS` | `10` | Warn when software simulation makes no successful stream progress for this many seconds, naming a blocked channel. Set `0` to disable. Suppressed while a kernel instance is running, since waiting on hardware or RTL is not a stall. |
@@ -22,6 +22,8 @@ is not a supported way to reconfigure execution.
 | `FRT_COSIM_YIELD` | `1` (enabled) | Yield CPU briefly on empty reads or full writes so other cosim processes can progress. Disable with `0` to busy-wait instead. |
 | `FRT_COSIM_TIMEOUT_SECONDS` | `0` (disabled) | Maximum wall-clock time for a fast-cosim simulator process. On expiry, TAPA terminates the simulator process group and reports a timeout. Set a positive integer to enable it. |
 | `FRT_XSIM_LEGACY` | `0` | Set to `1` to use the legacy xelab command-line format for older Vivado versions. |
+| `FRT_VERILATOR_BUILD_LOCK` | `frt-verilator-build.lock` in `$TMPDIR` | Lock file that serializes Verilator builds across cosim processes on one host. |
+| `VERILATOR_BIN` | (unset — `verilator` from `PATH`) | Verilator executable for `-cosim_simulator verilator`. |
 | `FRT_XOCL_BDF` | (unset) | PCIe Bus:Device:Function for XRT device selection. Equivalent to the `-xocl_bdf` gflag. Without it, devices are tried in index order until one accepts the xclbin; set it on multi-device hosts. |
 | `FRT_VRT_BDF` | (unset) | PCIe Bus:Device:Function of the V80 to open through vrtd for a hardware `.vbin`. Equivalent to the `-vrt_bdf` gflag; one of the two is required — the VRT backend does not scan for boards. See [Alveo V80 with SLASH](../howto/v80.md). |
 | `FRT_VRTD_LIBRARY` | (unset) | Explicit path to SLASH's `libvrtd.so.1` for hardware vbins, tried before the loader's search path and SLASH's documented install prefixes. Set it when libvrtd is installed outside them. |
@@ -67,6 +69,17 @@ compiler. Gflags accepts both `-cosim_work_dir` and `--cosim_work_dir`.
 | `-cosim_work_dir_parallel` | Create a unique subdirectory per instance when running multiple concurrent simulations, preventing work directory collisions. |
 | `-xocl_bdf <BDF>` | Select the XRT device by PCIe Bus:Device:Function. Equivalent to `FRT_XOCL_BDF`; used for hardware emulation or on-board execution, not fast cosim. |
 | `-vrt_bdf <BDF>` | Select the V80 for a hardware `.vbin` by PCIe Bus:Device:Function. Equivalent to `FRT_VRT_BDF`; required for VRT execution, not fast cosim. |
+
+Each flag other than `-cosim_simulator` reaches the runtime as an environment
+variable, which can be set instead: `-cosim_work_dir` as
+`FRT_COSIM_WORK_DIR`, `-cosim_work_dir_parallel` as
+`FRT_COSIM_WORK_DIR_PARALLEL`, `-cosim_timeout_seconds` as
+`FRT_COSIM_TIMEOUT_SECONDS`, `-cosim_setup_only` as `FRT_COSIM_SETUP_ONLY`,
+`-cosim_resume_from_post_sim` as `FRT_COSIM_RESUME_FROM_POST_SIM`,
+`-xsim_part_num` as `FRT_XSIM_PART_NUM`, `-xsim_save_waveform` as
+`FRT_XSIM_SAVE_WAVEFORM`, `-xsim_start_gui` as `FRT_XSIM_START_GUI`, and the
+two BDF flags as above. A flag left at its default keeps the variable's
+value.
 
 ### Example: save waveforms from a named work directory
 

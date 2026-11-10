@@ -51,8 +51,9 @@ int main(int argc, char* argv[]) {
 |-------------------------|---------|
 | *(empty)* | Software simulation |
 | `kernel.xo` or `kernel.zip` | Fast cosimulation |
-| `kernel.hw_emu.xclbin` | Vitis hardware emulation |
-| `kernel.hw.xclbin` | On-board execution |
+| `kernel.xclbin` | Vitis hardware emulation or on-board execution, as the xclbin was built (`hw_emu` or `hw`) |
+| `kernel.vbin` | SLASH on the V80, through VRT (hardware or simulation vbin) |
+| `tapa compile --aie-sim` package directory | AI Engine graph in `x86simulator` or `aiesimulator` |
 
 ---
 
@@ -163,6 +164,7 @@ portable form.
 [[tapa::bind_op("mul", "dsp")]]           // bind an operation to an implementation
 [[tapa::array_map("inst", -1, "vertical")]]
 [[tapa::frame(256)]]                      // stream port moving 256-element frames
+[[tapa::ring(8)]]                         // top frame argument: 8-slot ring in device memory
 
 // On a function
 [[tapa::target("hls")]]                   // build the task with HLS (the default)
@@ -194,15 +196,14 @@ tapa g++ -- kernel.cpp host.cpp -o app
 ./app
 
 # RTL synthesis
-tapa compile --top Top --part-num xcu55c-fsvh2892-2L-e \
+tapa compile --top Top --platform xilinx_u55c_gen3x16_xdma_3_202210_1 \
   --clock-period 3.33 -f kernel.cpp -o kernel.xo
 
 # Fast cosimulation
 ./app --bitstream=kernel.xo
 
-# Bitstream link (v++)
-v++ -o app.hw.xclbin --link --target hw --kernel Top \
-  --platform xilinx_u55c_gen3x16_xdma_3_202210_1 kernel.xo
+# Bitstream link (v++, platform recorded in kernel.xo)
+tapa link --package kernel.xo -o app.hw.xclbin
 
 # On-board run
 ./app --bitstream=app.hw.xclbin

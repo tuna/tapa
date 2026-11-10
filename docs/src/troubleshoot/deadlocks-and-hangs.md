@@ -24,8 +24,11 @@ which is usually enough to identify the pair below. Lower the threshold with
 warning stays quiet while a kernel instance is running, because waiting on
 hardware or RTL is not a stall.
 
-Fast cosim has no equivalent: use `-cosim_timeout_seconds` (see
-[Cosim Issues](./cosim-issues.md)) and reproduce in software simulation first.
+Fast cosim has no equivalent for the kernel's own channels; it reports only
+the progress of streams bound to the host ([Stream
+diagnostics](./cosim-issues.md#stream-diagnostics)). Use
+`-cosim_timeout_seconds` (see [Cosim Issues](./cosim-issues.md)) and
+reproduce in software simulation first.
 
 ## Diagnosis checklist
 

@@ -9,7 +9,8 @@ up and run.
 
 ## What you need
 
-- A `.xo` kernel object from `tapa compile` (or a `.zip` for `xilinx-hls`)
+- A `.xo` kernel object from `tapa compile` (or a `.zip` for `xilinx-hls` or
+  `xilinx-slash`)
 - A host executable built against the same kernel interface
 - One of these backends:
   - **xsim**: Requires Vivado on Linux.
@@ -26,7 +27,7 @@ Pass the `.xo` file as the `--bitstream` argument:
 ./vadd --bitstream vecadd.xo 1000
 ```
 
-For the `xilinx-hls` target, a `.zip` file also works:
+For the `xilinx-hls` and `xilinx-slash` targets, pass the `.zip` instead:
 
 ```bash
 ./vadd --bitstream vecadd.zip 1000
@@ -145,7 +146,7 @@ If all instances share the same `-cosim_work_dir`, their simulation environments
     -cosim_work_dir_parallel
 ```
 
-TAPA creates `./cosim_work/XXXXXX/` (a unique name per instance) so that the simulations run without interfering with each other's build artifacts.
+TAPA creates `./cosim_work/<pid>_<nanoseconds>/` (a unique name per instance) so that the simulations run without interfering with each other's build artifacts.
 
 ## Runtime flags reference
 

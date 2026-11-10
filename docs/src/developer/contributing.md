@@ -16,10 +16,13 @@
 TAPA uses GitHub Actions for continuous integration:
 
 1. Development-branch pushes run pre-commit, Bazel tests, the documentation
-   build, and the public-API audit.
+   build, and the public-API audit. A branch whose name ends in `/next` is
+   fast-forwarded into `main` once all four pass.
 2. Pushes to `main` build a release artifact and run the staging test matrix
    across supported operating systems and Vitis versions.
 3. Release builds package the binary distribution on self-hosted runners.
+4. A nightly job builds the regression designs, checks that the links in
+   `README.md` and `docs/src/` are live, and bumps `VERSION`.
 
 ### Documentation
 
@@ -41,7 +44,8 @@ TAPA uses GitHub Actions for continuous integration:
 
 ### Testing
 
-- Add appropriate unit tests for new features or bug fixes.
+- Land a bug fix with the test that would have caught it. Commit a new test
+  only when it protects a contract no existing test owns (see `AGENTS.md`).
 - Ensure all existing tests pass before submitting your changes.
 - Run the full test suite using the following command:
 
@@ -50,13 +54,15 @@ TAPA uses GitHub Actions for continuous integration:
   ```
 
 - If you change the task-graph schema, note that it has **two** implementations
-  that must agree: `tapacc/tapacc.cpp` emits the JSON, and the `tapa-ir` Rust
-  crate parses it with `deny_unknown_fields`. The fixtures under
+  that must agree: `tapacc` emits the JSON
+  (`tapacc/frontend/program_builder.cpp`), and the `tapa-ir` Rust crate
+  parses it with `deny_unknown_fields`. The fixtures under
   `tapa-core/testdata/` are hand-written and cannot catch the two drifting
   apart. `//tapa-core:tapacc_conformance_test` is what does: it runs the real
-  `tapacc` on `tests/apps/vadd/vadd.cpp` and strict-parses its verbatim
-  stdout. `tapacc` is a Clang tool that only builds on Linux, so the test is
-  gated on `@platforms//os:linux` and is skipped everywhere else:
+  `tapacc` on `tests/apps/vadd/vadd.cpp` and three functional-test kernels
+  and strict-parses its verbatim stdout. `tapacc` is a Clang tool that only
+  builds on Linux, so the test is gated on `@platforms//os:linux` and is
+  skipped everywhere else:
 
   ```bash
   bazel test //tapa-core:tapacc_conformance_test  # Linux only

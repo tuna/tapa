@@ -278,7 +278,7 @@ every frame it released is in memory.
   the next invoke on XRT, as in a stream; cosimulation starts each invoke
   afresh, so there it is dropped.
 - `[[tapa::ring(S)]]` belongs on such a stream parameter of the top only;
-  anywhere else it is an error.
+  anywhere else it is an error, as is an `S` of 0.
 
 ---
 
@@ -327,7 +327,8 @@ void Task(tapa::stream<float>& data_q) { /* ... */ }
 ```
 error: tapa::stream parameter 'data_q' declares a channel rather than a port;
 a task reads a channel through tapa::istream and writes one through
-tapa::ostream
+tapa::ostream. tapa::stream belongs in the body of an upper task, where it
+connects two invocations
 ```
 
 **Right** — the channel stays in the upper task, the port carries a direction:

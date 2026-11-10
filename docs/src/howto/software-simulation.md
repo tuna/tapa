@@ -11,16 +11,17 @@
 - No vendor headers: the host runtime is self-contained
 
 ```admonish note
-Software simulation does not read Vitis HLS headers. Use TAPA's portable
+Software simulation does not need Vitis HLS headers. Use TAPA's portable
 types (`tapa::u`, `tapa::i`, `tapa::fixed`, `tapa::axis`), `tapa::wait()`, and
 `[[tapa::...]]` attributes instead of vendor-specific headers and intrinsics.
 `wait()` and synthesis attributes have no effect on the host. A direct vendor
-header include can make the host build fail even when Vitis is installed.
+header include ties the host build to a sourced Vitis: `tapa g++` adds the
+Vitis HLS include directory only when `XILINX_HLS` or `XILINX_VITIS` is set.
 
 When `tapa analyze` recognizes a vendor construct, it reports a remark with
 the portable spelling; the usage remark itself is not an error. Other
 syntactic or semantic errors can still reject the program. See the
-[vendor-usage warnings](../reference/cli.md).
+[vendor-usage warnings](../reference/cli.md#vendor-usage-warnings).
 ```
 
 ## Commands
@@ -42,7 +43,8 @@ TAPA_CONCURRENCY=1 ./vadd
 `TAPA_CONCURRENCY` defaults to the physical CPU core count. Set it to `1`
 for a simpler scheduling interleaving at the cost of simulation speed. One
 worker still interleaves tasks at blocking points; it does not run each task
-to completion.
+to completion. On macOS the host library runs each task on a thread of its
+own and ignores `TAPA_CONCURRENCY`.
 ```
 
 ## Expected output

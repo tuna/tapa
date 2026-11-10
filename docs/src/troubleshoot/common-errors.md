@@ -8,7 +8,7 @@ Symptom descriptions and fixes for the most common compile-time and runtime erro
 
 ## Stream passed by value
 
-**Symptom:** Compile error mentioning a deleted copy constructor, or that `istream`/`ostream` is not CopyConstructible.
+**Symptom:** `tapacc` reports `tapa::istream parameter 'in' must be passed by reference` (or `tapa::ostream`), and `tapa g++` stops at a `static_assert`: `tapa::istream<T>& must be passed by reference as a TAPA task parameter`.
 
 **Cause:** The stream parameter is declared without `&`. A TAPA task port
 must preserve the endpoint's reference identity; passing it by value is
@@ -28,7 +28,7 @@ void Task(tapa::istream<int>& in, tapa::ostream<int>& out) { ... }
 
 ## `mmap` passed by reference
 
-**Symptom:** Compile error about a type mismatch or an unexpected `&` on an `mmap` parameter.
+**Symptom:** `tapacc` reports `tapa::mmap parameter 'mem' must be passed by value (not by reference)`, and `tapa g++` stops at a `static_assert`: `tapa::mmap<T> must be passed by value as a TAPA task parameter`.
 
 **Cause:** `tapa::mmap<T>` is essentially a pointer to a memory region and must be passed by value, not by reference.
 
@@ -68,7 +68,7 @@ void Load(tapa::mmap<const int> mem, tapa::ostream<int>& out) { /* ... */ }
 
 ## `async_mmap` passed by value
 
-**Symptom:** The build fails with "`async_mmap` parameter must be passed by reference".
+**Symptom:** `tapacc` reports `tapa::async_mmap parameter 'mem' must be passed by reference`, and `tapa g++` stops at `tapa::async_mmap<T>& must be passed by reference as a TAPA task parameter`.
 
 **Cause:** `tapa::async_mmap<T>` is a set of streams that controls memory access. Like regular streams, it must be passed by reference.
 
@@ -86,7 +86,7 @@ void Task(tapa::async_mmap<int>& mem) { ... }
 
 ## Computation in upper-level task body
 
-**Symptom:** `tapacc` reports an error about computation in an upper-level task, or the design fails synthesis unexpectedly.
+**Symptom:** `tapacc` reports `cannot bind a <Clang expression kind> here; each invoke argument after the task must be a stream or mmap channel, a scalar naming a parent task parameter, or an integer constant`, or the design fails synthesis unexpectedly.
 
 **Cause:** Upper-level tasks (tasks that invoke other tasks) may only contain stream declarations and `.invoke()` chains. Any arithmetic, conditionals, or other function calls belong in leaf tasks. For example, computing `n * 2` directly in `TopLevel` is not allowed:
 

@@ -125,7 +125,9 @@ this is not a bundled sysroot. Other execution platforms use the distributions
 selected by `toolchains_llvm`. The LLVM source dependency used to build
 `tapacc` is pinned separately in `MODULE.bazel` (currently 23.1.2). See the
 [toolchain details](https://github.com/tuna/tapa/tree/main/tools/llvm-toolchain)
-for archive provenance and the optional source build.
+for archive provenance and the optional source build. `--config=vck190`
+cross-builds for the VCK190's Arm processor against the aarch64 sysroot that
+ships with Vitis.
 
 Hardware-emulation builds explicitly select XSIM's bundled Clang for generated
 simulation code, rather than relying on the host GCC's default C standard.
@@ -154,8 +156,8 @@ After the build process completes, you can find the compiled binaries in the
 
 ```admonish note
 The build process duration may vary depending on your system's performance.
-LLVM, a significant dependency used by TAPA for code generation, requires
-considerable time to build. Bazel will cache it after the initial build.
+LLVM and Clang, which `tapacc` is built on, require considerable time to
+build. Bazel will cache them after the initial build.
 ```
 
 ## Use the Built TAPA

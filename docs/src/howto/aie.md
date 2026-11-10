@@ -54,25 +54,27 @@ own tasks joined or detached. Hybrid cosimulation and a simulator package
 run the body of such a task on the host and split the run among the tasks
 it invokes, so a crossing may be declared at any level.
 
-A hybrid top must also keep at least one
-scalar or memory (`mmap`) argument: a top with only stream ports packages as
+A hybrid top must also keep at least one scalar or memory (`mmap`) argument,
+or a stream argument carried by a ring ([Frames from and to the
+host](../concepts/streams.md#frames-from-and-to-the-host)), which XRT sees
+as a memory argument: a top with only AXIS stream ports packages as
 `ap_ctrl_none`, a free-running kernel XRT can neither start nor wait on, so
-`tapa synth` rejects it. (A PL-only design may still be a stream top; it just
-cannot be run through XRT.)
+`tapa synth` rejects it. (A PL-only design may still be such a stream top;
+it just cannot be run through XRT.)
 
 ## What an AI Engine task may use
 
 | Construct | On the AI Engine |
 |---|---|
-| `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits. |
+| `istream`, `ostream`, `istreams`, `ostreams` | Yes. Elements must be a multiple of 32 bits, and at most 128 bits on a stream to or from the PL. |
 | `iframes`, `oframes` | Yes: the kernel's buffer ports, filled or drained by DMA; `acquire()` takes the next buffer and its view addresses tile memory directly. Between two AI Engine frame ports the graph connects the buffers, so neighbouring kernels share tile memory and others are joined by DMA. A PL task feeds or drains one through an ordinary `ostream` or `istream`, or through a frame port of its own, whose frame channel sits in the PL kernel's top. See [frame ports](../concepts/streams.md#frame-ports). |
 | `read()`, `write()`, `>>`, `<<`, `read(dst, n)`, `write(src, n)` | Yes, blocking. |
 | `close`, `open`, `eot`, `try_eot`, `TAPA_WHILE_*EOT` | No. AI Engine streams carry no end-of-transmission token: loop over an element count. |
 | `try_read`, `try_write` | Accepted, but they block on the AI Engine. Use them only where the schedule guarantees progress. |
 | `peek`, `empty`, `full` | No. AI Engine streams expose no occupancy. |
 | `async_mmap` | Yes, served from the PL; see [Memory](#memory). Elements must be 32, 64 or 128 bits. |
-| `mmap`, `mmaps`, `hmap` | No. Use an `async_mmap`, or read memory in a PL task and stream the data in. |
-| Scalars | Yes. |
+| `mmap`, `mmaps`, `hmap` | No, except a `tapa::mmap` an upper task hands on (see [Memory](#memory)). Use an `async_mmap`, or read memory in a PL task and stream the data in. |
+| Scalars | Yes. One bound to a scalar argument of the top is a runtime parameter, and must be an 8-, 16-, 32- or 64-bit integer, a `bool` or a `float`; an invoke-site constant is compiled into the kernel. |
 | Local variables and arrays | Yes. They live on the kernel's stack, which the graph sizes as ADF's default 1 KB plus every local the body and the functions it calls declare. The stack must fit in the tile's 32 KB data memory. |
 | `[[tapa::pipeline]]` on a loop | Lowered to `chess_prepare_for_pipelining`. Every loop nested in it is fully unrolled, as HLS does when it pipelines a loop; `[[tapa::unroll(k)]]` on a nested loop unrolls it `k` times instead. On a function it is ignored with a remark: put it on the loop. |
 | `[[tapa::unroll]]` | Lowered to `chess_flatten_loop`, the AI Engine compiler's full unroll, when full and `chess_unroll_loop(k)` with a factor. |
@@ -81,7 +83,8 @@ cannot be run through XRT.)
 | HLS-only attributes such as `partition`, `dependence` and `flatten` | Ignored with a remark; they still affect the PL build. The AI Engine compiler does not merge loop nests, so `flatten` has nothing to control there. |
 
 A PL task must not `close()` a stream that feeds an AI Engine task, because
-the end-of-transmission token would be read as data.
+the end-of-transmission token would be read as data; `tapa analyze` rejects
+it.
 
 An AI Engine task that a cycle of streams runs through, such as a ring of
 tasks or a round trip through a PL task, keeps every stream access behind its
@@ -262,7 +265,9 @@ ring's frames, unused where GMIO moves them.
 
 `tapa compile` writes an `.xo` with the graph and the PL controller beside
 it, which `tapa link` links like a hybrid design's. Each output argument
-takes two of a column's six AI Engine-to-PL channels. With `--skip-aie`
+takes two AI Engine-to-PL PLIOs, its frames and its count: two of the six
+64-bit channels an interface column has in that direction, or three when its
+elements are wider than 64 bits. With `--skip-aie`
 the kernel runs in hybrid cosimulation, the AI Engine tasks in software
 ([Hybrid cosimulation](#hybrid-cosimulation));
 `//tests/functional/aie-gmio:aie-gmio-vck5000-hybrid` runs it.
@@ -272,7 +277,7 @@ the kernel runs in hybrid cosimulation, the AI Engine tasks in software
 | Knob | Where | Effect |
 |---|---|---|
 | `[[tapa::frame(N)]]` | `istream`/`ostream` parameter of a leaf task | The port moves whole frames of `N` elements, and its stream must hold at least one: `tapa analyze` rejects a shallower stream on every target, since the AI Engine fills a frame before its reader sees any of it. On the AI Engine the frames arrive in tile memory, filled by DMA, instead of through the core's stream port. The body is unchanged. A final partial output frame is zero-padded; an input frame releases and discards unused padding when the task returns. On PL the port is an ordinary stream. Where both ends of a stream move frames, here or through `tapa::iframes` / `tapa::oframes`, they must agree on `N`. |
-| `tapa analyze --aie-plio TASK.PORT:W` | `istream`, `ostream`, `iframes` or `oframes` port of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream. |
+| `tapa analyze --aie-plio TASK.PORT:W` | `istream`, `ostream`, `iframes` or `oframes` port of an AI Engine task | PLIO width `W` of 32, 64 or 128 bits for a boundary stream; the default is the element width, rounded up to one of these. |
 | `tapa analyze --aie-location TASK:COL,ROW[,INSTANCE]` | AI Engine leaf task | Pins the task to a tile; `INSTANCE` picks one instance of a task invoked several times. |
 
 Placement and PLIO widths depend on the device, so they stay out of the
@@ -321,18 +326,20 @@ and PLIO beat. A final partial output frame arrives zero-padded, as on
 hardware, and its padding is left unread in the stream.
 
 `--aie-sim aiesim` builds the graph for the cycle-approximate `aiesimulator`
-instead. It reads each input in full when it starts, so it cannot be fed as
-the data flows: the host program runs the whole design in software, keeping
-a copy of each PL↔AI Engine stream, and then the simulator replays the copies
-of the inputs. For a top with no PL kernel the copies are of its stream
-arguments: the frames software simulation read from each input and wrote to
-each output. The graph's entry point posts every input frame before the run
-and room for as many output frames as software simulation wrote; the kernels
-must report that many. A replay runs from `tapa::invoke`; the host fills the
-input streams before it and drains the outputs after it, so they must hold a
-whole run. An `async_mmap` port's channels are copied too: the requests
-and writes the kernel makes must match those of software simulation, which
-hands it the data that software simulation read. Each output it writes must match what software simulation
+instead, with `aiecompiler --target=hw` as for hardware, which needs the AI
+Engine compiler licence. It reads each input in full when it starts, so it
+cannot be fed as the data flows: the host program runs the whole design in
+software, keeping a copy of each PL↔AI Engine stream, and then the
+simulator replays the copies of the inputs. For a top with no PL kernel the
+copies are of its stream arguments: the frames software simulation read
+from each input and wrote to each output. The graph's entry point posts
+every input frame before the run and room for as many output frames as
+software simulation wrote; the kernels must report that many. A replay runs
+from `tapa::invoke`; the host fills the input streams before it and drains
+the outputs after it, so they must hold a whole run. An `async_mmap` port's
+channels are copied too: the requests and writes the kernel makes must
+match those of software simulation, which hands it the data that software
+simulation read. Each output it writes must match what software simulation
 wrote to that stream, padding aside, or the run fails at the first differing
 word. Each output is printed with the simulated time of its beats:
 
@@ -376,7 +383,8 @@ The PL kernel of a top with no PL task on a VCK5000 ([On a
 VCK5000](#on-a-vck5000)) runs the same way: the host's streams feed its
 rings, and the top's tasks run in software on streams of their own, bound
 to the kernel's PLIOs; each output's frame count goes to the kernel when
-the task writing it returns.
+the task writing it returns. Elsewhere such a top has no PL half, and
+`tapa synth` rejects `--skip-aie` for it.
 
 ## Building and linking
 
@@ -392,7 +400,7 @@ tapa link --package vadd.xo -o vadd.xclbin
 
 - `tapa synth` compiles the AI Engine tasks into `work.out/aie/hw/libadf.a`
   with `aiecompiler --target=hw`, which needs the AI Engine compiler licence,
-  and synthesizes only the PL tasks. Each PL-to-AI Engine stream becomes an
+  and synthesizes only the PL tasks. Each PL↔AI Engine stream becomes an
   AXIS port of the PL kernel named after the stream, and its PLIO runs at the
   PL kernel clock. It warns about each such stream whose elements are
   narrower than 128 bits: the PL moves one element per cycle, and only a
@@ -409,11 +417,18 @@ tapa link --package vadd.xo -o vadd.xclbin
 - `tapa pack` writes the PL kernel as `vadd.xo` and, next to it, the graph as
   `vadd.libadf.a` and the PLIO connectivity as `vadd.aie.cfg`, one
   `stream_connect` per boundary stream between the kernel's compute unit
-  (named after the top task) and `ai_engine_0`. A VCK5000 build also writes
+  (named after the top task) and `ai_engine_0`. A VCK5000 build (on a
+  platform whose name contains `vck5000`, such as
+  `xilinx_vck5000_gen4x8_qdma_2_202220_1`) also writes
   `vadd.aie_control.xo`, a PL kernel that controls the graph through a
   dedicated PLIO; no APU control program is needed.
 - `tapa link` finds the sidecars next to the `.xo`, links the graph, PL XOs and
   connectivity into an `.xsa`, and packages that into the `.xclbin`.
+
+A stream into the AI Engine asserts TLAST on every beat, and the last word of
+every element an AI Engine task writes toward the PL carries TLAST, which the
+PL ignores. The AI Engine interface would otherwise hold a lone 32-bit word,
+in either direction, until a second one arrives.
 
 ### Iterating on the AI Engine only
 
@@ -447,11 +462,6 @@ mapping. Without valid synthesized PL state, AIE-only
 does not invent a PL report or refresh stale reports; it also does not create
 root reports when none exist. The compiler output and console remain available
 until a later full PL synth writes the root report.
-
-A stream into the AI Engine asserts TLAST on every beat, and the last word of
-every element an AI Engine task writes toward the PL carries TLAST, which the
-PL ignores. The AI Engine interface would otherwise hold a lone 32-bit word,
-in either direction, until a second one arrives.
 
 ## Running the xclbin
 

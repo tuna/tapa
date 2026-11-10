@@ -35,6 +35,7 @@ placement + timing constraints
     │
     ▼  tapa pack      (XO/SLASH packaging can run remotely)
     ├─ .xo (xilinx-vitis) ── tapa link (v++ --link) → .xclbin
+    ├─ .zip (xilinx-vitis, AI Engine top, no PL kernel) ─ tapa link → .xclbin
     ├─ .zip (xilinx-slash) ─ tapa link (slashkit) → .vbin
     └─ .zip (xilinx-hls) → fast cosim or a downstream RTL flow
 ```
@@ -49,23 +50,32 @@ commands.
 **`tapa synth`** — Runs Vitis HLS and produces the design's RTL. This is
 usually the most time-consuming step. With `-j N`, up to N tasks are
 synthesized in parallel. With `--remote-host`, synthesis runs on a remote
-Linux machine that has Vitis HLS installed.
+Linux machine that has Vitis HLS installed. For a design with AI Engine
+tasks it also compiles the AI Engine graph, unless `--skip-aie` leaves it out
+(see [AI Engine Tasks](../howto/aie.md)).
 
 **`tapa floorplan`** *(optional)* — Assigns tasks to SLRs on a supported
 multi-die device, balances resource usage across them, and inserts pipeline
-registers on channels that cross SLR boundaries. It writes `floorplan.xdc`,
-which `pack` picks up automatically. Skip it if your design already meets
+registers on channels that cross SLR boundaries. `pack` then packages the
+floorplanned RTL, and `tapa link` applies the `floorplan.xdc` it writes
+(`--floorplan-xdc`). Skip it if your design already meets
 timing; see [Floorplan for Timing Closure](../howto/floorplan.md) for when it
 helps and how to run it.
 
 **`tapa pack`** — Combines the generated RTL into an `.xo` for the default
 `xilinx-vitis` target, a `.zip` SLASH package for `xilinx-slash`, or a
-`.zip` for `xilinx-hls`. The XO and the SLASH package feed `tapa link`; the
-`xilinx-hls` ZIP is for direct RTL consumers and fast cosimulation.
+`.zip` for `xilinx-hls`. For `xilinx-vitis`, an AI Engine top with no PL
+kernel packs a `.zip` of its graph instead, except on a VCK5000, where it
+packs an `.xo` with TAPA's PL kernel ([AI Engine
+Tasks](../howto/aie.md#a-top-with-no-pl-kernel)). The XO, that graph ZIP and
+the SLASH package feed `tapa link`; the `xilinx-hls` ZIP is for direct RTL
+consumers and fast cosimulation.
 
 **Shortcut:** `tapa compile` runs analyze, synth, and pack in the correct
 order in a single command. It does not floorplan or link — for those, run
 `tapa floorplan` between `synth` and `pack`, and `tapa link` on the package.
+With `--aie-sim`, it runs `analyze` and then builds only the AI Engine graph,
+as a simulator package at `--output`.
 
 **`tapa link`** — Links a package into a bitstream on the tool host: `v++`
 for `xilinx-vitis` (`.xclbin`, including AI Engine designs) or SLASH's
@@ -144,8 +154,9 @@ tapa --work-dir work.out pack \
   stage ordering automatically. Floorplanning requires running the steps
   separately.
 - The `-j` / `--jobs` flag on `tapa synth` controls how many Vitis HLS
-  processes run in parallel. Keep it at or below the available core count on
-  the synthesis machine.
+  processes run in parallel; it defaults to the core count of the machine
+  running `tapa`. Keep it at or below the available core count on the
+  synthesis machine.
 - `--work-dir` is a top-level flag: `tapa --work-dir DIR <subcommand>`.
 
 ---

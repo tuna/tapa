@@ -75,8 +75,6 @@ The same host executable used for software and hardware simulation runs on board
 ## Expected output
 
 ```
-INFO: Found platform: Xilinx
-INFO: Found device: xilinx_u55c_gen3x16_xdma_3_202210_1
 ...
 kernel time: 0.00042 s
 PASS!
@@ -88,7 +86,9 @@ XRT log messages and kernel time vary by platform, design, and workload.
 
 The run is correct when:
 
-1. XRT finds and selects the expected device.
+1. The xclbin loads on the intended card. The runtime tries the cards in
+   index order until one accepts the xclbin; on a host with several cards,
+   select one by its PCIe address with `-xocl_bdf=<BDF>`.
 2. The host process exits successfully.
 3. The application's correctness check prints `PASS!`.
 

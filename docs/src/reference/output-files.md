@@ -24,6 +24,12 @@ the xclbin for the runtime. Link writes `<name>.xsa` beside the `.xclbin`.
 On a VCK5000 such a top gets a PL kernel TAPA builds for its rings, so pack
 writes an `.xo` and its sidecars as above.
 
+`tapa compile --aie-sim` writes a directory at `--output` instead: the AI
+Engine graph compiled for the simulator, and `manifest.json`, which tells
+the runtime how the host's arguments and streams reach it. The host
+executable takes the directory as `--bitstream`. See [AI Engine
+Tasks](../howto/aie.md).
+
 ### `xilinx-slash`
 
 `tapa pack` produces a `.zip` package for SLASH linking and fast
@@ -31,11 +37,10 @@ cosimulation. A typical archive contains:
 
 ```text
 work.zip
-├── ip/                      # packaged IP directory (component.xml, HDL, xgui)
-├── kernel.xml               # kernel description for packaging and cosim
+├── impl/ip/                 # packaged IP directory (component.xml, HDL, xgui)
 ├── hls_data.json            # register map and ABI metadata for slashkit
-├── rtl/                     # generated RTL
-├── report.yaml              # synthesis summary, when available
+├── kernel.xml               # kernel description for packaging and cosim
+├── report.yaml              # synthesis summary
 └── tapa.json                # kernel interface and build metadata
 ```
 
@@ -56,10 +61,10 @@ work.zip
 └── tapa.json               # kernel interface and build metadata
 ```
 
-Both formats are ZIP-based archives that you can inspect with standard archive
-tools. To replace a task's RTL, prefer the supported
-[`--custom-rtl`](cli.md#tapa-pack) workflow over editing a packed artifact by
-hand.
+Every package format, the `.xo` included, is a ZIP archive that you can
+inspect with standard archive tools. To replace a task's RTL, prefer the
+supported [`--custom-rtl`](cli.md#tapa-pack) workflow over editing a packed
+artifact by hand.
 
 ## Reproducibility
 
@@ -87,16 +92,20 @@ work.out/
 ├── templates_info.json        # custom-RTL port information, when needed
 ├── tapa.json                  # compiler state shared between stages
 ├── tapacc.json                # raw frontend output for debugging
+├── aie/                       # with AI Engine tasks
+│   ├── hw/                    # the AI Engine graph tapa synth compiles
+│   └── pl-control/            # the VCK5000 PL controller tapa pack builds
 ├── floorplan.xdc              # with tapa floorplan
+├── floorplan-connectivity.ini # with tapa floorplan --connectivity
 ├── floorplan-metrics.json     # with --run-impl or --dse
 ├── floorplan-timing.rpt       # with --run-impl or --dse
 ├── floorplan.xclbin           # implementation winner, Vitis backend
 ├── floorplan.vbin             # implementation winner, SLASH backend
 ├── link/                      # with tapa link (inputs, hook, metrics)
 │   ├── link-metrics.json      # with a SLASH link
-│   ├── hbm-slices.tsv         # generated HBM slices, hardware links
-│   └── control-coverage.tsv   # high-fanout control requests, hardware links
-└── dse/                       # with tapa floorplan --dse
+│   ├── hbm-slices.tsv         # generated HBM slices, SLASH hardware links
+│   └── control-coverage.tsv   # high-fanout control requests, SLASH hardware links
+└── dse/                       # with --run-impl or --dse
 ```
 
 ### Files to use during development
@@ -112,9 +121,9 @@ work.out/
 | `floorplan-timing.rpt` | Post-implementation timing report used to produce those metrics. |
 | `floorplan.xclbin` / `floorplan.vbin` | The winning implementation's bitstream from `--run-impl` or `--dse` (`.xclbin` from the Vitis backend, `.vbin` from SLASH). |
 | `link/link-metrics.json` | SLASH link record: pinned `slash_commit`, `requested_mhz` vs `recorded_mhz`, kernel WNS and Fmax, `timing_closed`, and the fixed-shell domain's WNS. A `--sim` link records only the commit and requested versus recorded MHz — simulation produces no routed timing report. |
-| `link/hbm-slices.tsv` | Full AXI register-slice configuration on each HBM interface selected by the connectivity map. |
-| `link/control-coverage.tsv` | Eligible high-fanout fabric controls requested for clock-region replication. |
-| `dse/candidates.json` | Exploration results and ranking diagnostics for all candidates explored by `--dse`; final full-link metrics are in `floorplan-metrics.json`. |
+| `link/hbm-slices.tsv` | SLASH hardware link: full AXI register-slice configuration on each HBM interface selected by the connectivity map. |
+| `link/control-coverage.tsv` | SLASH hardware link: eligible high-fanout fabric controls requested for clock-region replication. |
+| `dse/candidates.json` | Implementation results and ranking diagnostics for every candidate of `--run-impl` or `--dse`; final full-link metrics are in `floorplan-metrics.json`. |
 
 ### Files TAPA manages for you
 
@@ -128,7 +137,9 @@ work.out/
 - **`tapacc.json`** is raw frontend output retained for diagnostics. Later
   stages do not read it, so editing it has no effect.
 - **`floorplan.xdc`** contains the constraints produced by `tapa floorplan`.
-  `tapa pack` applies it automatically; you normally do not need to edit it.
+  The package does not carry it; pass it, with
+  `floorplan-connectivity.ini`, to `tapa link` (`--floorplan-xdc`,
+  `--connectivity`). You normally do not need to edit it.
 
 The final archive includes the interface metadata needed by fast cosimulation,
 so you can move the `.xo` or `.zip` to another machine without also copying the

@@ -96,7 +96,8 @@ tapa -w work synth --platform slash_v80_service
 tapa -w work floorplan --connectivity v80.cfg
 tapa -w work pack --output vecadd.zip
 tapa -w work link --package vecadd.zip \
-  --connectivity v80.cfg --output vecadd.vbin
+  --connectivity v80.cfg --floorplan-xdc work/floorplan.xdc \
+  --output vecadd.vbin
 ```
 
 `slash_v80_service` supplies part `xcv80-lsva4737-2MHP-e-S` and a 3.33 ns
@@ -130,8 +131,8 @@ and Vitis installation. See [Common Errors](../troubleshoot/common-errors.md).
 ```admonish note
 `tapa link` builds a PL kernel's hardware bitstream only. For a Vitis
 hardware-emulation build (`v++ --target hw_emu`), invoke `v++` directly as
-shown in [Vitis Cosimulation](../howto/vitis-cosim.md). A design whose top
-runs on the AI Engine is the exception: `tapa link --sim` builds its
+shown in [Vitis Cosimulation](../howto/vitis-cosim.md). A top on the AI
+Engine with no PL kernel is the exception: `tapa link --sim` builds its
 hardware emulation (see [AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
 ```
 

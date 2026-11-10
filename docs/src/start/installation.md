@@ -33,8 +33,8 @@ curl -fsSL https://raw.githubusercontent.com/tuna/tapa/main/install.sh | sh -s -
 This installs the latest release. With root privileges, TAPA installs to
 `/opt/tapa` with symlinks in `/usr/local/bin`. Otherwise it installs to
 `~/.tapa` and adds itself to your `PATH` via your shell profile. To update to
-a newer release, run the script again — it overwrites the existing
-installation.
+the latest release, run `tapa update` (with `sudo` for a root installation),
+or run the script again — it overwrites the existing installation.
 
 To install a specific version:
 
@@ -82,9 +82,10 @@ sudo yum install gcc-c++ libxcrypt-compat
 
 ## Install CBC
 
-Floorplanning (`tapa floorplan` and synthesis flows that floorplan) solves its
-ILPs with the external [CBC](https://github.com/coin-or/Cbc) solver binary,
-which must be on `PATH`. Software simulation does not need it.
+Floorplanning (`tapa floorplan`) solves its ILPs with the external
+[CBC](https://github.com/coin-or/Cbc) solver binary, `cbc` on `PATH`; set
+`TAPA_CBC` to the path of a `cbc` elsewhere. Software simulation does not
+need it.
 
 ### Ubuntu / Debian
 

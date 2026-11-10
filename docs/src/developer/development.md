@@ -42,8 +42,9 @@ The TAPA codebase is organized into several key directories:
 - `fpga-runtime/`: Provides the FPGA runtime library.
 
   The runtime executes a design from the supplied artifact. It drives fast
-  cosimulation from an XO or ZIP and uses XRT for Vitis hardware emulation or
-  on-board execution from an XCLBIN.
+  cosimulation from an XO or ZIP, uses XRT for Vitis hardware emulation or
+  on-board execution from an XCLBIN, uses VRT for a SLASH VBIN, and runs an
+  AI Engine graph in its simulator from a `tapa compile --aie-sim` package.
 
 - `tapa-lib/`: Houses the TAPA runtime library.
 
@@ -62,9 +63,10 @@ The TAPA codebase is organized into several key directories:
   The TAPA compiler serves as the entry point for the TAPA framework. It
   invokes the `tapacc` compiler, synthesizes tasks into RTL
   using HLS tools, and generates system interconnect and XO object file for
-  FPGA. For the `xilinx-hls` target, a `.zip` RTL archive is generated
-  instead. The Bazel `//tapa-core:tapa` target provides the command wrapper
-  and `tapa-core/tapa-codegen/assets` contains shared Verilog templates.
+  FPGA. For the `xilinx-hls` and `xilinx-slash` targets, a `.zip` package is
+  generated instead. The Bazel `//tapa-core:tapa` target provides the command
+  wrapper and `tapa-core/tapa-codegen/assets` contains shared Verilog
+  templates.
 
 - `tapacc/`: Implements the TAPA C++ compiler to translate TAPA tasks to JSON.
 
@@ -89,9 +91,11 @@ cd tapa-core && cargo llvm-cov --locked --workspace
 cd fpga-runtime && cargo llvm-cov --locked --workspace -- --skip open_cosim_verilator
 ```
 
-The `open_cosim_verilator` end-to-end tests are skipped because they need
-the `libfrt_dpi_verilator` shared library that only the Bazel runfiles
-tree stages; run them through `bazel test //fpga-runtime:cargo_test`.
+The `open_cosim_verilator` end-to-end tests build the
+`libfrt_dpi_verilator` shared library themselves and run the Verilator named
+by `VERILATOR_BIN` or found on `PATH`. Skip them unless that Verilator is one
+TAPA supports (see [Cosimulation Issues](../troubleshoot/cosim-issues.md)),
+and run them through `bazel test //fpga-runtime:cargo_test`.
 
 Coverage is informational, not a project target or CI gate. Remote SSH and
 XRT paths may require a remote host or board, so use the Bazel integration

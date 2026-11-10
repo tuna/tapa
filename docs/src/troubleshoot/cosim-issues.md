@@ -54,9 +54,10 @@ task or protocol is blocked.
 
 ## xsim issues
 
-### `xsim not found` or `Vivado not found`
+### ``cosim error: simulator tool `vivado` not found``
 
-xsim is part of the Vivado installation. Source the Vivado environment script before running cosim:
+xsim is part of the Vivado installation, and fast cosim drives it through the
+`vivado` on `PATH`. Source the Vivado environment script before running cosim:
 
 ```bash
 source /opt/Xilinx/Vivado/2022.1/settings64.sh
@@ -81,11 +82,12 @@ CI configuration lists the versions TAPA tests.
 
 ## Verilator issues
 
-### `cosim error: tool not found: verilator`
+### ``cosim error: simulator tool `verilator` not found``
 
-Verilator is not on `PATH`. Install it — but read the next section first and
-check the version you get, because the package managers ship releases too old
-for TAPA and the resulting failure looks like something else entirely:
+Verilator is not on `PATH` and `VERILATOR_BIN` is unset. Install it, or set
+`VERILATOR_BIN` to a Verilator executable — but read the next section first
+and check the version you get, because the package managers ship releases too
+old for TAPA and the resulting failure looks like something else entirely:
 
 ```bash
 # Debian/Ubuntu — check `verilator --version` afterwards
@@ -142,7 +144,7 @@ progress roughly every 10 seconds. These messages appear on stderr and
 include the port name and queue state:
 
 ```
-frt-dpi: progress[a_fifo_s]: read_ok=16 read_empty=40M write_ok=0 write_full=0 q_head=8 q_tail=8
+frt-dpi: progress[a_fifo_s]: read_ok=16 read_empty=40000000 write_ok=0 write_full=0 q_head=8 q_tail=8
 ```
 
 | Field | Meaning |

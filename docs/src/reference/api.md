@@ -6,6 +6,34 @@ This page documents the TAPA C++ library (`#include <tapa.h>`). Types and functi
 
 ## Task Invocation
 
+### `tapa::invoke`
+
+The host's entry point: runs the top-level task `f` on `args` and returns the
+kernel time in nanoseconds (in software simulation, the wall-clock time of the
+run). `f` names the task function itself, not a pointer to it.
+
+```cpp
+template <typename Func, typename... Args>
+int64_t invoke(Func&& f, const std::string& bitstream, Args&&... args);
+```
+
+Each memory argument takes a
+[directional wrapper](#directional-mmap-wrappers-host-side-only); a stream
+argument of the top takes a `tapa::stream`, which XRT carries only for a
+stream that reaches a frame port ([Frames from and to the
+host](../concepts/streams.md#frames-from-and-to-the-host)) and VRT not at
+all. The path selects the backend:
+
+| `bitstream` | Backend |
+|-------------|---------|
+| empty | Software simulation |
+| `.xo` or `.zip` | Fast cosimulation of the package's RTL |
+| `.xclbin` | XRT: Vitis hardware emulation for an xclbin built for `hw_emu`, the board otherwise |
+| `.vbin` | An Alveo V80 through VRT, or SLASH simulation for a vbin linked with `--sim` |
+| a package directory from `tapa compile --aie-sim` | The AI Engine simulator, PL tasks in software |
+
+Any other path is an error.
+
 ### `tapa::task`
 
 The task hierarchy builder. An upper-level task constructs a `tapa::task` and chains `.invoke()` calls on it. The `tapa::task` destructor waits for all joined child instances to finish before returning.
@@ -25,6 +53,11 @@ struct task {
   task& invoke(Func&& func, Args&&... args);
 };
 ```
+
+Each form also takes an instance name, a string literal, right after `func`:
+`.invoke(Worker, "worker", args...)`. It names the instance in the generated
+RTL and the floorplan, in place of the task name and index; with a repeat
+count `N`, instance `i` is named `<name>_<i>`.
 
 **Invoke modes:**
 
@@ -209,6 +242,10 @@ class mmap {
 };
 ```
 
+This is the host's class. In HLS a task's `tapa::mmap<T>` parameter is a
+plain `T*`, so task code uses only subscripts (`mem[i]`) and pointer
+arithmetic on it.
+
 ### `tapa::async_mmap<T>`
 
 Decoupled memory access type. The kernel issues read/write requests and
@@ -220,7 +257,7 @@ See [async_mmap channels](#async_mmap-channels) below for channel details.
 
 ### `tapa::mmaps<T, N>`
 
-Array of `N` `tapa::mmap<T>` regions. Passed by value as a single argument and unpacked by the framework one region per child invocation.
+Array of `N` `tapa::mmap<T>` regions. Passed by value as a single argument and unpacked by the framework one region per child invocation. Only an upper task takes one: `tapa synth` rejects a leaf task's `mmaps` parameter.
 
 ```cpp
 template <typename T, uint64_t N>
@@ -244,6 +281,7 @@ Each form passes the same buffer addresses, element counts, and direction hints.
 | `tapa::write_only_mmap<T>` | Kernel writes, host reads |
 | `tapa::read_write_mmap<T>` | Both read and write |
 | `tapa::placeholder_mmap<T>` | No host/device transfer; for an unused buffer |
+| `tapa::placeholder_mmaps<T, N>` | Array variant of `placeholder_mmap` |
 | `tapa::read_only_mmaps<T, N>` | Array variant of `read_only_mmap` |
 | `tapa::write_only_mmaps<T, N>` | Array variant of `write_only_mmap` |
 | `tapa::read_write_mmaps<T, N>` | Array variant of `read_write_mmap` |
@@ -478,7 +516,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 | `[[tapa::bind_op(op, impl, latency)]]` | `bind_op` | Bind an operation to a specific implementation, e.g. `("mul", "dsp")`. |
 | `[[tapa::array_map(instance, offset, orient)]]` | `array_map` | Map an array into a larger physical instance. `offset` is positional and optional — `-1` omits it. |
 | `[[tapa::frame(N)]]` | — | On a stream parameter of a leaf task: the port moves whole frames of `N` elements, and `tapa analyze` rejects a stream that holds fewer, on every target. On the AI Engine the frames arrive in tile memory; final partial output frames are zero-padded. See [AI Engine Tasks](../howto/aie.md). |
-| `[[tapa::ring(S)]]` | — | On a stream parameter of a Vitis top that reaches a frame port: the ring in device memory that carries it holds `S` frames instead of 4; on an AI Engine top's, the ring it gets on a VCK5000 (unused under GMIO). Anywhere else an error. See [Streams: frames from and to the host](../concepts/streams.md#frames-from-and-to-the-host). |
+| `[[tapa::ring(S)]]` | — | On a stream parameter of the top that reaches a frame port, `S >= 1`: on Vitis the ring in device memory that carries it holds `S` frames instead of 4; on an AI Engine top's, the ring it gets on a VCK5000 (unused under GMIO); the other flows have no ring. Anywhere else an error. See [Streams: frames from and to the host](../concepts/streams.md#frames-from-and-to-the-host). |
 
 **On a function.**
 

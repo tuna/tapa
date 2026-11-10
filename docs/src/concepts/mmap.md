@@ -57,6 +57,7 @@ with each buffer and therefore which transfers the runtime performs:
 | `tapa::read_only_mmap<T>(vec)` | Reads the buffer | Yes | No |
 | `tapa::write_only_mmap<T>(vec)` | Writes the buffer | No | Yes |
 | `tapa::read_write_mmap<T>(vec)` | Reads and writes | Yes | Yes |
+| `tapa::placeholder_mmap<T>(vec)` | Leaves the host's data unused | No | No |
 
 The kernel task still receives a plain `mmap<T>` or `mmaps<T, N>` parameter.
 These wrappers control runtime transfers; they do not add C++ access
@@ -87,8 +88,7 @@ std::vector<float, tapa::aligned_allocator<float>> b(n);
 std::vector<float, tapa::aligned_allocator<float>> c(n);
 ```
 
-This allows XRT to use the allocation without an alignment-related copy and
-suppresses the corresponding warnings.
+This allows XRT to use the allocation without an alignment-related copy.
 
 ---
 
@@ -148,6 +148,10 @@ tapa::invoke(VecAdd, FLAGS_bitstream,
 void VecAdd(tapa::mmaps<float, M> a, tapa::mmaps<float, M> b,
             tapa::mmaps<float, M> c, uint64_t n) { /* ... */ }
 ```
+
+Only an upper-level task takes `mmaps`: each task it invokes with the array
+takes the next region as its `mmap<T>`. `tapa synth` rejects a leaf task's
+`mmaps` parameter.
 
 ---
 

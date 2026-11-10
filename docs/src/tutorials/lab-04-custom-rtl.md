@@ -93,6 +93,8 @@ tapa compile \
 
 Because `Rsqrt` is tagged `ignore`, TAPA generates RTL template files under `work.out/template/`. These templates define the exact port signatures the replacement RTL module must match.
 
+The XO this step packs still holds the empty template for `Rsqrt`, so `tapa` warns that it is packaging an empty port shell that will not compute anything. Step 6 replaces it.
+
 ### Step 5: Implement the RTL
 
 Write or adapt your RTL files so their port declarations match the generated templates. When you run `tapa pack --custom-rtl` in the next step, TAPA performs advisory port checking on `.v` files: it warns on mismatches but does not abort the build. Resolve any reported mismatches before moving to hardware.

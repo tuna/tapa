@@ -14,7 +14,8 @@ under software simulation with no FPGA and no vendor tools.
 | vadd | Vector addition | Basic streams + mmap | `tests/apps/vadd` |
 | bandwidth | Memory bandwidth benchmark | `async_mmap` over many HBM channels | `tests/apps/bandwidth` |
 | cannon | Cannon's matrix multiply | 2D stream arrays, systolic | `tests/apps/cannon` |
-| gemv | Matrix-vector multiply | Stream reduction | `tests/apps/gemv` |
+| fft2d | 2-D FFT | Frame ports (`tapa::iframes`/`tapa::oframes`), optional AI Engine tasks | `tests/apps/fft2d` |
+| gemv | Matrix-vector multiply | `hmap` over HBM channels, replicated PEs | `tests/apps/gemv` |
 | graph | Graph traversal | Large per-task local buffers | `tests/apps/graph` |
 | jacobi | Stencil computation | End-of-transaction (`close()`) | `tests/apps/jacobi` |
 | network | Packet switching | `peek`, detached tasks, hierarchical tasks | `tests/apps/network` |

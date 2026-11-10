@@ -126,9 +126,8 @@ int64_t kernel_time_ns = tapa::invoke(
 `tapa::invoke` is the host-side entry point. It is not the same as calling `VecAdd()` directly: calling `VecAdd()` would run it as a plain C++ function (software simulation without timing), while `tapa::invoke` selects the execution mode based on the bitstream path:
 
 - Empty string (`""`) — software simulation. TAPA runs `VecAdd` as C++ but with stream and mmap semantics enforced by the runtime library. Fast, no FPGA required.
-- `.xo` file — fast cosimulation. The synthesized RTL runs inside a cycle-accurate simulator. Useful for verifying timing-sensitive behavior.
-- `.hw_emu.xclbin` file — Vitis hardware emulation.
-- `.hw.xclbin` file — execution on a real FPGA.
+- `.xo` (or `.zip`) file — fast cosimulation. The synthesized RTL runs inside a cycle-accurate simulator. Useful for verifying timing-sensitive behavior.
+- `.xclbin` file — Vitis hardware emulation if it was built with `--target hw_emu`, execution on a real FPGA if built with `--target hw`. The target recorded in the xclbin decides, not its file name (`.hw_emu.xclbin` and `.hw.xclbin` are only conventions).
 
 `tapa::read_only_mmap<const float>(a)` says the kernel reads `a`, so the
 runtime copies it to the device before execution and does not copy it back.

@@ -50,7 +50,8 @@ Top-level task  ← orchestrates child tasks
   tasks rather than through the orchestration body.
 
 All child tasks spawned by `tapa::task().invoke(...)` run **concurrently**. The
-top-level task returns only after every child task has finished.
+top-level task returns only after every joined (not detached) child task has
+finished.
 
 ---
 
@@ -89,6 +90,9 @@ software simulation:
 #include <gflags/gflags.h>
 #include <tapa.h>
 
+void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b,
+            tapa::mmap<float> c, uint64_t n);
+
 DEFINE_string(bitstream, "", "Path to XO or xclbin file. Empty = software simulation.");
 
 int main(int argc, char* argv[]) {
@@ -110,8 +114,12 @@ int main(int argc, char* argv[]) {
 The `--bitstream` flag is what controls which backend runs:
 - Omitted or empty → software simulation
 - `.xo` or `.zip` → fast cosimulation
-- `.hw_emu.xclbin` → Vitis hardware emulation
-- `.hw.xclbin` → on-board execution
+- `.xclbin` → Vitis hardware emulation if the xclbin was built for `hw_emu`,
+  on-board execution otherwise
+- `.vbin` → an Alveo V80 through SLASH, or SLASH simulation for a vbin linked
+  with `--sim` ([Alveo V80 with SLASH](../howto/v80.md))
+- a package from `tapa compile --aie-sim` → an AI Engine simulator ([AI
+  Engine Tasks](../howto/aie.md))
 
 ---
 
@@ -173,8 +181,9 @@ tapa::invoke(VecAdd, FLAGS_bitstream,
 
 `tapa::invoke` examines the bitstream path at runtime and dispatches to the
 correct backend: software simulation (empty path), RTL cosimulation (`.xo`
-or `.zip`), Vitis hardware emulation (`.hw_emu.xclbin`), or on-board execution
-(`.hw.xclbin`).
+or `.zip`), Vitis hardware emulation or on-board execution (`.xclbin`, as the
+xclbin was built), a V80 through SLASH (`.vbin`), or an AI Engine simulator
+(a `tapa compile --aie-sim` package).
 
 ---
 
