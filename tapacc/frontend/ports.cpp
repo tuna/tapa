@@ -145,7 +145,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kAsyncMmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width, std::nullopt,
                              std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kMmaps: {
@@ -155,7 +155,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
           ports.push_back(Port{ArrayNameAt(name, static_cast<int>(i)),
                                TapaKind::kMmap, elem + "*", elem_width,
                                std::nullopt, std::nullopt, std::nullopt,
-                               std::nullopt, std::nullopt});
+                               std::nullopt, std::nullopt, std::nullopt});
         }
         break;
       }
@@ -163,21 +163,21 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kHmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width,
                              IntArg(param, 1), IntArg(param, 2), std::nullopt,
-                             std::nullopt, std::nullopt});
+                             std::nullopt, std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kIStream:
       case TapaKind::kOStream:
         ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
                              std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kIStreams:
       case TapaKind::kOStreams:
         ports.push_back(Port{name, kind, elem, elem_width, IntArg(param, 1),
                              std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       // The frame size is the type's; ReadFrameAttrs checks the rest.
@@ -185,7 +185,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kOFrames:
         ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
                              std::nullopt, IntArg(param, 1), std::nullopt,
-                             std::nullopt});
+                             std::nullopt, std::nullopt});
         break;
 
       default:
@@ -193,7 +193,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         ports.push_back(
             Port{name, TapaKind::kNotTapa, param->getType().getAsString(),
                  BitWidth(ctx, param->getType()), std::nullopt, std::nullopt,
-                 std::nullopt, std::nullopt, std::nullopt});
+                 std::nullopt, std::nullopt, std::nullopt, std::nullopt});
         break;
     }
   }

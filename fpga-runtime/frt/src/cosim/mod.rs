@@ -15,6 +15,10 @@ use crate::env_bool;
 use frt_shm::env_non_empty;
 use frt_shm::MmapSegment;
 
+mod rings;
+
+use rings::CosimRing;
+
 enum TbDir {
     Temp(tempfile::TempDir),
     Fixed(PathBuf),
@@ -75,6 +79,10 @@ pub struct CosimDevice {
     simulation_state: SimulationState,
     readback_scheduled: bool,
     compute_ns: u64,
+    /// The top's frame arguments in device memory (see `rings`).
+    rings: Vec<CosimRing>,
+    /// This run's testbench was told to end the simulation.
+    finish_sent: bool,
 }
 
 // SAFETY: CosimDevice is only accessed from a single owner thread.
@@ -102,6 +110,11 @@ impl CosimDevice {
             .collect();
         let opts = runtime_options()?;
         let tb_dir = make_tb_dir(opts.work_dir.as_deref(), opts.work_dir_parallel)?;
+        let rings = if opts.resume_from_post_sim {
+            Vec::new()
+        } else {
+            CosimRing::of(&spec)?
+        };
         let ctx = if opts.resume_from_post_sim {
             let config_path = tb_dir.path().join("dpi_config.json");
             let json = std::fs::read_to_string(&config_path).map_err(|e| {
@@ -161,6 +174,8 @@ impl CosimDevice {
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
             compute_ns: 0,
+            rings,
+            finish_sent: false,
         })
     }
 
@@ -224,6 +239,16 @@ impl CosimDevice {
     }
 
     fn poll_simulation(&mut self) -> Result<bool> {
+        if matches!(self.simulation_state, SimulationState::Running(_)) {
+            if let Some(error) = self.rings.iter_mut().find_map(CosimRing::failure) {
+                if let SimulationState::Running(run) = &mut self.simulation_state {
+                    terminate_running_simulation(run)?;
+                }
+                self.complete_simulation(Some(error));
+                return Ok(true);
+            }
+            self.end_ring_run()?;
+        }
         match &mut self.simulation_state {
             SimulationState::Idle => Ok(false),
             SimulationState::Finished(_) => Ok(true),
@@ -255,11 +280,38 @@ impl CosimDevice {
         if let SimulationState::Running(run) = &self.simulation_state {
             self.compute_ns = crate::elapsed_ns(run.started_at);
         }
+        if let Some(control) = &self.ctx.control {
+            control.close();
+        }
+        for ring in &mut self.rings {
+            ring.stop();
+        }
         self.simulation_state = SimulationState::Finished(error);
     }
 
+    /// Ends a run with rings, which the testbench leaves to the host: once
+    /// the kernel is done and the host has every output frame.
+    fn end_ring_run(&mut self) -> Result<()> {
+        let Some(control) = &self.ctx.control else {
+            return Ok(());
+        };
+        if self.finish_sent || !control.done() {
+            return Ok(());
+        }
+        for ring in &self.rings {
+            if !ring.delivered()? {
+                return Ok(());
+            }
+        }
+        control.finish()?;
+        self.finish_sent = true;
+        Ok(())
+    }
+
     fn wait_simulation(&mut self) -> Result<()> {
-        if self.timeout_seconds.is_some()
+        // A run with rings ends only as the host drives it (see
+        // `end_ring_run`).
+        if (self.timeout_seconds.is_some() || !self.rings.is_empty())
             && matches!(self.simulation_state, SimulationState::Running(_))
         {
             while !self.poll_simulation()? {
@@ -675,6 +727,10 @@ impl Device for CosimDevice {
             }
             return Ok(());
         }
+        if let Some(ring) = self.rings.iter_mut().find(|ring| ring.index() == index) {
+            ring.bind(shm_path);
+            return Ok(());
+        }
         let name = self.stream_arg_name(index)?.to_owned();
         if self.ctx.streams.contains_key(&name) {
             self.ctx.bind_stream_path(&name, shm_path)?;
@@ -715,6 +771,9 @@ impl Device for CosimDevice {
             self.compute_ns = 0;
             return Ok(());
         }
+        for ring in &self.rings {
+            ring.size(&mut self.ctx)?;
+        }
         self.runner
             .prepare(&self.spec, &self.ctx, &self.scalars, self.tb_dir.path())?;
         if self.setup_only {
@@ -724,6 +783,9 @@ impl Device for CosimDevice {
             self.simulation_state = SimulationState::Finished(None);
             return Ok(());
         }
+        if let Some(control) = &self.ctx.control {
+            control.reopen();
+        }
         let child = self
             .runner
             .spawn(&self.spec, &self.ctx, self.tb_dir.path())?;
@@ -731,6 +793,13 @@ impl Device for CosimDevice {
             child,
             started_at: Instant::now(),
         });
+        self.finish_sent = false;
+        for ring in &mut self.rings {
+            if let Err(error) = ring.start(&self.ctx) {
+                self.kill()?;
+                return Err(error);
+            }
+        }
         Ok(())
     }
 
@@ -829,6 +898,7 @@ mod tests {
             scalar_register_map: HashMap::new(),
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
         };
         let arg_names = HashMap::new();
         let stream_arg_names = HashMap::new();
@@ -849,6 +919,8 @@ mod tests {
             simulation_state: SimulationState::Idle,
             readback_scheduled: false,
             compute_ns: 0,
+            rings: Vec::new(),
+            finish_sent: false,
         }
     }
 
@@ -1159,6 +1231,7 @@ mod tests {
             streams: HashMap::new(),
             stream_path_overrides: HashMap::new(),
             base_addresses: HashMap::new(),
+            control: None,
         };
         dev.resume_from_post_sim = true;
         dev

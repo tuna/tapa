@@ -6,6 +6,23 @@ frt_dpi::dpi_export! {
     ret: bool as ::core::convert::identity;
 }
 
+/// The memory of the mmap argument `port`, with its size in `size`.
+///
+/// It is the host's segment, mapped in: the testbench's memory model, which
+/// host and kernel then share as the run goes (a ring's frames move during
+/// it).
+///
+/// # Safety
+/// `port` is a C string and `size` a writable `u64`, both valid for the call.
+#[no_mangle]
+pub unsafe extern "C" fn tapa_axi_memory(port: *const ::libc::c_char, size: *mut u64) -> *mut u8 {
+    // SAFETY: the caller passes a C string valid for the call.
+    let port = unsafe { frt_dpi::c_port_str(port) };
+    // SAFETY: the caller passes a writable `u64`.
+    let size = unsafe { &mut *size };
+    frt_dpi::ctrl::axi_memory_impl(frt_dpi::get_or_init(), port, size)
+}
+
 // Floating-point DPI support for Xilinx IP behavioral models.
 // Called from generated SystemVerilog via `import "DPI-C"`.
 macro_rules! fp_op {

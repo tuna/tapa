@@ -1,5 +1,6 @@
 pub mod axi;
 pub mod context;
+pub mod ctrl;
 pub mod stream;
 
 use context::DpiContext;
@@ -36,7 +37,7 @@ pub unsafe fn c_port_str<'a>(port: *const std::ffi::c_char) -> &'a str {
         .unwrap_or("")
 }
 
-/// Emit the seven `tapa_*` DPI entry points with backend-specific marshalling.
+/// Emit the nine `tapa_*` DPI entry points with backend-specific marshalling.
 ///
 /// The two backend cdylibs (frt-dpi-verilator, frt-dpi-xsim) expose the same
 /// symbols to the simulators but differ in wire representation, so each
@@ -141,6 +142,19 @@ macro_rules! dpi_export {
                 $flag_of(consume),
                 $mut_ptr(out),
             ))
+        }
+
+        #[no_mangle]
+        pub unsafe extern "C" fn tapa_ctrl_request(out: $mut_arr) -> $ret {
+            $ret_of($crate::ctrl::ctrl_request_impl(
+                $crate::get_or_init(),
+                $mut_ptr(out),
+            ))
+        }
+
+        #[no_mangle]
+        pub unsafe extern "C" fn tapa_ctrl_reply(data: $const_arr) {
+            $crate::ctrl::ctrl_reply_impl($crate::get_or_init(), $const_ptr(data));
         }
 
         #[no_mangle]

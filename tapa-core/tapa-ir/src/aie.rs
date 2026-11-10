@@ -334,6 +334,7 @@ impl AiePartition {
                 stream_depth: None,
                 mmap_addr_width: None,
                 aie_movers: None,
+                ring: None,
             });
         }
         for kernel in &self.kernels {
@@ -439,6 +440,7 @@ impl AiePartition {
                     stream_depth: None,
                     mmap_addr_width: None,
                     aie_movers: None,
+                    ring: None,
                 });
                 args.insert(
                     mover_port.to_string(),

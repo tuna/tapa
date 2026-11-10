@@ -62,6 +62,7 @@ mod tests {
         DpiContext {
             buffers: HashMap::from([(name.to_owned(), (seg, base))]),
             streams: HashMap::new(),
+            control: None,
         }
     }
 
@@ -111,6 +112,7 @@ mod tests {
         let ctx = DpiContext {
             buffers: HashMap::new(),
             streams: HashMap::new(),
+            control: None,
         };
         let mut out = [0xffu8; 4];
         axi_read_impl(&ctx, "missing", 0, 4, out.as_mut_ptr());

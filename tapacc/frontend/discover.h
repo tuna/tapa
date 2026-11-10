@@ -1,6 +1,7 @@
 #ifndef TAPA_FRONTEND_DISCOVER_H_
 #define TAPA_FRONTEND_DISCOVER_H_
 
+#include <utility>
 #include <vector>
 
 #include "clang/AST/ASTContext.h"
@@ -28,6 +29,16 @@ std::vector<const clang::CXXMemberCallExpr*> GetInvokes(
 // not a plain function reference. A cross-TU invoke yields the declaration
 // visible in the invoking TU, not the definition.
 const clang::FunctionDecl* InvokeCallee(const clang::CXXMemberCallExpr* invoke);
+
+// Whether an invoke names its instance: a `const char (&)[N]` parameter right
+// after the callable, never a port.
+bool InvokeNamesInstance(const clang::CXXMemberCallExpr* invoke);
+
+// The port arguments of an invoke, each with the index of the callee
+// parameter it binds: every argument after the callable, the instance name
+// and a `tapa::executable`.
+std::vector<std::pair<unsigned, const clang::Expr*>> InvokePortArgs(
+    const clang::CXXMemberCallExpr* invoke);
 
 // The body of a loop statement, or nullptr if it is not a loop.
 const clang::Stmt* LoopBody(const clang::Stmt* stmt);

@@ -129,13 +129,7 @@ InvokeMode GetInvokeMode(const clang::CXXMemberCallExpr* invoke) {
     }
   }
 
-  // A name is a `const char (&)[N]` parameter right after the callable —
-  // never a port, so the parameter's type identifies it unambiguously.
-  if (method->getNumParams() > 1) {
-    const clang::QualType type = method->getParamDecl(1)->getType();
-    mode.has_name = type->isReferenceType() &&
-                    type->getPointeeType()->isConstantArrayType();
-  }
+  mode.has_name = InvokeNamesInstance(invoke);
   return mode;
 }
 

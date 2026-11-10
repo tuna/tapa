@@ -18,6 +18,8 @@ pub struct DpiStreamInner {
 pub struct DpiContext {
     pub buffers: HashMap<String, (MmapSegment, u64)>,
     pub streams: HashMap<String, DpiStream>,
+    /// The host's control-register requests and the replies to them.
+    pub control: Option<Mutex<(SharedMemoryQueue, SharedMemoryQueue)>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,7 +71,20 @@ impl DpiContext {
             );
         }
 
-        Ok(Self { buffers, streams })
+        let control = cfg
+            .control
+            .map(|entry| -> Result<_, DpiError> {
+                Ok(Mutex::new((
+                    SharedMemoryQueue::open(&entry.requests)?,
+                    SharedMemoryQueue::open(&entry.replies)?,
+                )))
+            })
+            .transpose()?;
+        Ok(Self {
+            buffers,
+            streams,
+            control,
+        })
     }
 }
 

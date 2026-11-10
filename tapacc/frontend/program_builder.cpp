@@ -168,6 +168,7 @@ nlohmann::json PortJson(const Port& port) {
   if (port.chan_count) j[kFieldChanCount] = *port.chan_count;
   if (port.chan_size) j[kFieldChanSize] = *port.chan_size;
   if (port.frame) j[kFieldFrame] = *port.frame;
+  if (port.ring) j[kFieldRing] = *port.ring;
   if (port.aie_reads || port.aie_writes) {
     nlohmann::json& movers = j[kFieldAieMovers] = nlohmann::json::object();
     if (port.aie_reads) movers[kFieldReads] = *port.aie_reads;
@@ -198,9 +199,9 @@ std::vector<Port> MoverPorts(const Port& memory, bool writes, bool responses) {
   const std::string element = memory.ctype.substr(0, memory.ctype.size() - 1);
   const auto port = [](std::string name, TapaKind kind, std::string ctype,
                        uint32_t width) {
-    return Port{std::move(name), kind,         std::move(ctype),
-                width,           std::nullopt, std::nullopt,
-                std::nullopt,    std::nullopt, std::nullopt};
+    return Port{std::move(name), kind,         std::move(ctype), width,
+                std::nullopt,    std::nullopt, std::nullopt,     std::nullopt,
+                std::nullopt,    std::nullopt};
   };
   std::vector<Port> ports{
       port("mem", TapaKind::kAsyncMmap, memory.ctype, memory.width)};
@@ -293,7 +294,19 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.signature = CanonicalSignature(def);
   for (const clang::ParmVarDecl* param : def->parameters()) {
     sighting.parameter_names.push_back(param->getNameAsString());
-    if (IsMmapInterface(ClassifyTapaType(param))) sighting.takes_memory = true;
+    const TapaKind kind = ClassifyTapaType(param);
+    if (IsMmapInterface(kind)) sighting.takes_memory = true;
+    const bool stream =
+        kind == TapaKind::kIStream || kind == TapaKind::kOStream;
+    sighting.stream_params.push_back(stream);
+    sighting.frame_params.push_back(
+        IsFramesPort(kind) ||
+        (stream && param->hasAttr<clang::TapaFrameAttr>()));
+    if (const auto* ring = param->getAttr<clang::TapaRingAttr>()) {
+      const int index = static_cast<int>(sighting.parameter_names.size()) - 1;
+      sighting.ring_slots[index] = ring->getSlots();
+      sighting.ring_locs[index] = PresumedLocString(ctx, ring->getLocation());
+    }
   }
   sighting.is_spec = def->isFunctionTemplateSpecialization();
   sighting.implicit_spec =
@@ -402,6 +415,18 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
       edge.callee_name = callee->getNameAsString();
       edge.caller_name = caller.plain_name;
       edge.loc = PresumedLocString(ctx, invoke->getBeginLoc());
+      for (const auto& [param, arg] : InvokePortArgs(invoke)) {
+        const auto* ref =
+            llvm::dyn_cast<clang::DeclRefExpr>(arg->IgnoreImplicit());
+        const auto* own =
+            ref == nullptr ? nullptr
+                           : llvm::dyn_cast<clang::ParmVarDecl>(ref->getDecl());
+        if (own != nullptr) {
+          edge.bindings.emplace_back(
+              static_cast<int>(param),
+              static_cast<int>(own->getFunctionScopeIndex()));
+        }
+      }
       index.invokes.push_back(std::move(edge));
     }
   }
@@ -584,6 +609,69 @@ bool ProgramBuilder::PropagateAie(const std::string& top_key, bool aie_top) {
       });
   if (aie_top && !pl_below && !FirstSighting(top_key).takes_memory) {
     tasks_.at(top_key).model.target = SynthTarget::kAie;
+  }
+  return true;
+}
+
+bool ProgramBuilder::ComputeRings(const std::string& top_key) {
+  // Whether parameter `index` of the task `key` is a frame port, or reaches
+  // one through the invokes that pass it on.
+  std::map<std::pair<std::string, int>, bool> memo;
+  std::function<bool(const std::string&, int)> reaches_frame =
+      [&](const std::string& key, int index) {
+        auto [it, inserted] = memo.emplace(std::make_pair(key, index), false);
+        if (!inserted) return it->second;
+        const DefSighting& def = FirstSighting(key);
+        bool reaches = index < static_cast<int>(def.frame_params.size()) &&
+                       def.frame_params[index];
+        for (auto [edge, end] = edges_.equal_range(key);
+             !reaches && edge != end; ++edge) {
+          if (defs_.count(edge->second.callee_key) == 0) continue;
+          for (const auto& [callee, caller] : edge->second.bindings) {
+            if (caller == index &&
+                reaches_frame(edge->second.callee_key, callee)) {
+              reaches = true;
+              break;
+            }
+          }
+        }
+        memo[{key, index}] = reaches;
+        return reaches;
+      };
+  const auto top_frame_stream = [&](const std::string& key, int index) {
+    const DefSighting& def = FirstSighting(key);
+    return key == top_key && def.level == TaskLevel::kUpper &&
+           def.stream_params[index] && reaches_frame(key, index);
+  };
+  for (const auto& [key, task] : tasks_) {
+    const DefSighting& def = FirstSighting(key);
+    for (const auto& [index, slots] : def.ring_slots) {
+      if (!top_frame_stream(key, index)) {
+        Fail("[[tapa::ring]] at " + def.ring_locs.at(index) + " is on '" +
+             def.parameter_names[index] + "' of '" + def.name +
+             "': only a stream argument of the top task that reaches a frame "
+             "port has a ring");
+        return false;
+      }
+      if (slots == 0) {
+        Fail("[[tapa::ring(0)]] at " + def.ring_locs.at(index) +
+             ": a ring holds at least one frame");
+        return false;
+      }
+    }
+  }
+  // A ring carries a stream argument of a PL top on XRT, where the host
+  // moves its frames through device memory; on every other target the
+  // argument stays a stream.
+  MergedTask& top = tasks_.at(top_key);
+  if (top.model.target != SynthTarget::kXilinxVitis) return true;
+  const DefSighting& def = FirstSighting(top_key);
+  for (int index = 0; index < static_cast<int>(def.stream_params.size());
+       ++index) {
+    if (!top_frame_stream(top_key, index)) continue;
+    auto slots = def.ring_slots.find(index);
+    top.model.rings[def.parameter_names[index]] =
+        slots == def.ring_slots.end() ? 4 : slots->second;
   }
   return true;
 }
@@ -773,6 +861,7 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
   }
   if (!PropagateAie(top_key, aie_top)) return false;
+  if (!ComputeRings(top_key)) return false;
 
   // Rule 2, site half: the mirror writes one file per source path, so a
   // task sighted at two distinct sites would need two different rewrites of
@@ -867,6 +956,7 @@ Program ProgramBuilder::TuView(clang::ASTContext& ctx,
     model.readable_name = task.model.readable_name;
     model.level = task.model.level;
     model.target = task.model.target;
+    model.rings = task.model.rings;
     // The mangled wrapper is spliced after its invoker's definition; a TU
     // holding only the invoker's declaration must not splice anything into
     // it, or the header holding that declaration would render differently
@@ -897,6 +987,11 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
     // Ports, instances, and streams exist only where the definition is.
     model.ports = BuildPorts(ctx, model.def);
     ReadFrameAttrs(ctx, model);
+    for (Port& port : model.ports) {
+      if (auto ring = model.rings.find(port.name); ring != model.rings.end()) {
+        port.ring = ring->second;
+      }
+    }
     if (model.target == SynthTarget::kAie) {
       CheckAieTask(ctx, model);
       if (model.level == TaskLevel::kLower) {

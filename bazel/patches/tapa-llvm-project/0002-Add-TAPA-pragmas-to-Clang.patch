@@ -2,7 +2,7 @@ diff --git a/clang/include/clang/Basic/Attr.td b/clang/include/clang/Basic/Attr.
 index 2c62f46d4..8cccc5939 100644
 --- a/clang/include/clang/Basic/Attr.td
 +++ b/clang/include/clang/Basic/Attr.td
-@@ -5503,3 +5503,151 @@ def Personality : InheritableAttr {
+@@ -5503,3 +5503,163 @@ def Personality : InheritableAttr {
    let Subjects = SubjectList<[Function]>;
    let Documentation = [PersonalityDocs];
  }
@@ -153,6 +153,18 @@ index 2c62f46d4..8cccc5939 100644
 +  let Documentation = [Undocumented];
 +}
 +
++// The ring of Slots frames in device memory that carries a PL top's frame
++// argument on XRT. The handler only parses the integer; tapacc checks it
++// against the parameter it annotates.
++def TapaRing : Attr {
++  let Spellings = [GNU<"tapa_ring">,
++                   CXX11<"tapa","ring">,
++                   C23<"tapa", "ring">];
++  let Args = [IntArgument<"Slots">];
++  let Subjects = SubjectList<[ParmVar]>;
++  let Documentation = [Undocumented];
++}
++
 +// End TAPA
 diff --git a/clang/include/clang/Basic/AttributeCommonInfo.h b/clang/include/clang/Basic/AttributeCommonInfo.h
 index 77b5eb8a1..ae24cd287 100644
@@ -185,7 +197,7 @@ diff --git a/clang/lib/Sema/SemaDeclAttr.cpp b/clang/lib/Sema/SemaDeclAttr.cpp
 index 1b272b541..3a0899f9e 100644
 --- a/clang/lib/Sema/SemaDeclAttr.cpp
 +++ b/clang/lib/Sema/SemaDeclAttr.cpp
-@@ -165,6 +165,205 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
+@@ -165,6 +165,213 @@ bool Sema::checkStringLiteralArgumentAttr(const ParsedAttr &AL, unsigned ArgNum,
    return checkStringLiteralArgumentAttr(AL, ArgExpr, Str, ArgLocation);
  }
  
@@ -343,6 +355,14 @@ index 1b272b541..3a0899f9e 100644
 +  D->addAttr(::new (S.Context) TapaFrameAttr(S.Context, AL, size));
 +}
 +
++// [[tapa::ring(S)]] carries one unsigned integer; tapacc validates it against
++// the parameter it annotates.
++static void handleTapaRingAttr(Sema &S, Decl *D, const ParsedAttr &AL) {
++  uint32_t slots = 0;
++  if (!S.checkUInt32Argument(AL, AL.getArgAsExpr(0), slots)) return;
++  D->addAttr(::new (S.Context) TapaRingAttr(S.Context, AL, slots));
++}
++
 +// Region attrs (latency, dependence, tripcount, flatten, balance) may sit
 +// before a declaration statement; they then attach to the VarDecl and are
 +// lowered with the same pragma text.
@@ -391,7 +411,7 @@ index 1b272b541..3a0899f9e 100644
  /// Check if the passed-in expression is of type int or bool.
  static bool isIntOrBool(Expr *Exp) {
    QualType QT = Exp->getType();
-@@ -8502,6 +8701,44 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
+@@ -8502,6 +8709,47 @@ ProcessDeclAttribute(Sema &S, Scope *scope, Decl *D, const ParsedAttr &AL,
            << AL << AL.isRegularKeywordAttribute() << D->getLocation();
      handleSimpleAttribute<PointerFieldProtectionAttr>(S, D, AL);
      break;
@@ -433,10 +453,13 @@ index 1b272b541..3a0899f9e 100644
 +  case ParsedAttr::AT_TapaFrame:
 +    handleTapaFrameAttr(S, D, AL);
 +    break;
++  case ParsedAttr::AT_TapaRing:
++    handleTapaRingAttr(S, D, AL);
++    break;
    }
  }
  
-@@ -8712,6 +8949,15 @@ void Sema::checkUnusedDeclAttributes(Declarator &D) {
+@@ -8712,6 +8960,15 @@ void Sema::checkUnusedDeclAttributes(Declarator &D) {
  }
  
  void Sema::DiagnoseUnknownAttribute(const ParsedAttr &AL) {

@@ -362,11 +362,15 @@ pub fn connect_fifos(
                     let _ = mm.add_signal(sig);
                 }
             }
-        } else if fifo.depth.is_none() {
+        } else if fifo.depth.is_none()
+            && !(task_name == design_data.top
+                && task.port(fifo_name).is_some_and(|port| port.ring.is_some()))
+        {
             // External FIFO: parent module ports exist, just need to ensure
             // wires exist for child instance connections. The stream port with
             // this FIFO's name carries the payload width; a plural stream FIFO
-            // like `data[0]` maps to the base port `data`.
+            // like `data[0]` maps to the base port `data`. A ring carries
+            // the top's frame argument instead (see `rings`).
             let stream_width = task
                 .port(fifo_name)
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?

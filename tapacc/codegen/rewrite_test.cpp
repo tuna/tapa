@@ -12,6 +12,7 @@
 #include "gtest/gtest.h"
 
 #include "llvm/ADT/StringRef.h"
+#include "nlohmann/json.hpp"
 
 #include "test_util.h"
 #include "tree_pipeline.h"
@@ -123,6 +124,75 @@ TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
   EXPECT_TRUE(Contains(code, "hls::stream<qdma_axis<24, 0, 0, 0> >& narrow"));
   EXPECT_TRUE(Contains(code, "out.write(qdma_axis<544, 0, 0, 0>());"));
   EXPECT_TRUE(Contains(code, "narrow.write(qdma_axis<24, 0, 0, 0>());"));
+}
+
+// A Vitis top's stream argument that reaches a frame port, here through an
+// upper task, moves through a ring in device memory: the argument becomes
+// the ring's base address, and the ring's registers follow the top's last
+// parameter so the host's argument indices stay the parameters'.
+TEST(Rewrite, TopFrameArgumentsBecomeRings) {
+  constexpr char kRing[] = R"cpp(
+    void Turn([[tapa::frame(64)]] tapa::istream<float>& in,
+              [[tapa::frame(64)]] tapa::ostream<float>& out, int n) {
+      for (int i = 0; i < n * 64; ++i) out.write(in.read());
+    }
+    void Mid(tapa::istream<float>& in, tapa::ostream<float>& out, int n) {
+      tapa::task().invoke(Turn, in, out, n);
+    }
+    void Top(tapa::istream<float>& rows,
+             [[tapa::ring(8)]] tapa::ostream<float>& cols, int n) {
+      tapa::task().invoke(Mid, rows, cols, n);
+    }
+  )cpp";
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/ring.cpp", kRing}}, "Top",
+      TempRoot("rewrite", "ring"), {"-std=c++17"}, {},
+      {{"Top", SynthTarget::kXilinxVitis}});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const nlohmann::json ports =
+      nlohmann::json::parse(run.json)["tasks"]["Top"]["ports"];
+  EXPECT_EQ(ports[0]["ring"], 4);
+  EXPECT_EQ(ports[1]["ring"], 8);
+  EXPECT_FALSE(ports[2].contains("ring"));
+  const std::string& code = run.files.at("ring.cpp");
+  // The rewrite keeps the source's line break between the parameters.
+  EXPECT_TRUE(Contains(code, "void Top(uint64_t rows_offset,\n")) << code;
+  EXPECT_TRUE(
+      Contains(code,
+               "uint64_t cols_offset, int n, "
+               "uint32_t rows_host_frames, uint32_t& rows_kernel_frames, "
+               "uint64_t& rows_ring_shape, uint32_t cols_host_frames, "
+               "uint32_t& cols_kernel_frames, uint64_t& cols_ring_shape)"))
+      << code;
+  EXPECT_TRUE(Contains(
+      code,
+      "HLS interface s_axilite port = cols_kernel_frames bundle = control"))
+      << code;
+  EXPECT_FALSE(Contains(code, "qdma_axis")) << code;
+  EXPECT_FALSE(Contains(code, "tapa::ring")) << code;
+
+  // Only such an argument has a ring.
+  constexpr char kStray[] = R"cpp(
+    void Copy(tapa::istream<float>& in, tapa::ostream<float>& out) {
+      out.write(in.read());
+    }
+    void Top([[tapa::ring(8)]] tapa::istream<float>& in,
+             tapa::ostream<float>& out) {
+      tapa::task().invoke(Copy, in, out);
+    }
+  )cpp";
+  const TreePipelineRun stray = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/stray.cpp", kStray}}, "Top",
+      TempRoot("rewrite", "stray"), {"-std=c++17"}, {},
+      {{"Top", SynthTarget::kXilinxVitis}});
+  EXPECT_FALSE(stray.ok);
+  bool reported = false;
+  for (const std::string& error : stray.builder.errors()) {
+    reported |= Contains(error,
+                         "only a stream argument of the top task that "
+                         "reaches a frame port has a ring");
+  }
+  EXPECT_TRUE(reported);
 }
 
 constexpr char kAttrs[] = R"cpp(

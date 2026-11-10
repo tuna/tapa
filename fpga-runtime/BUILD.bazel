@@ -8,7 +8,8 @@ load("//bazel:cargo_rules.bzl", "cargo_artifacts", "cargo_platform_artifacts", "
 package(default_visibility = ["//visibility:public"])
 
 # `frt-cosim` depends on `//tapa-core:tapa-ir` by relative path, to parse a
-# packed archive's `tapa.json` with the same types that wrote it. The glob
+# packed archive's `tapa.json` with the same types that wrote it, and on
+# `//tapa-core:tapa-protocol` for the control slave's register map. The glob
 # below only covers this package, so the dependency's sources are staged
 # explicitly. Cargo loads every workspace member's manifest up front, so this
 # is required by *all* the cargo targets here — including the DPI-only ones
@@ -21,6 +22,7 @@ _ALL_SRCS = glob(
     ],
 ) + [
     "//tapa-core:tapa-ir-srcs",
+    "//tapa-core:tapa-protocol-srcs",
     "//tapa-lib:frt-c-api-header",
 ]
 

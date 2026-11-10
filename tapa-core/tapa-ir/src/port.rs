@@ -187,6 +187,12 @@ pub struct Port {
     /// partition instantiates them in the PL kernel.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aie_movers: Option<AieMovers>,
+    /// A stream argument of a Vitis top that reaches a frame port: the
+    /// frame slots of the device-memory ring that carries it on XRT
+    /// (`[[tapa::ring(S)]]`, default 4). The ring replaces the argument's
+    /// AXIS port; see [`crate::Ring`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ring: Option<u32>,
 }
 
 /// The PL movers of an AI Engine task's `async_mmap` port, by task name:

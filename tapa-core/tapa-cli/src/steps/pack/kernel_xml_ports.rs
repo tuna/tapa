@@ -22,6 +22,8 @@ pub(super) fn build_kernel_xml_ports(
     let mut out = Vec::<KernelXmlPort>::new();
     for port in ports {
         let category = match port.cat {
+            // A ring in device memory, at the argument's own M-AXI port.
+            _ if port.ring.is_some() => PortCategory::MAxi,
             ArgCategory::Scalar => PortCategory::Scalar,
             ArgCategory::Mmap
             | ArgCategory::Immap
@@ -35,13 +37,19 @@ pub(super) fn build_kernel_xml_ports(
                 PortCategory::OStream
             }
         };
+        // A ring's argument is the address of its elements.
+        let ctype = if port.ring.is_some() {
+            format!("{}*", port.ctype)
+        } else {
+            port.ctype.clone()
+        };
         for name in projected_port_names(port, m_axi_bases) {
             out.push(KernelXmlPort {
                 name,
                 category,
                 width: port.width,
                 port: String::new(),
-                ctype: port.ctype.clone(),
+                ctype: ctype.clone(),
             });
         }
     }
@@ -59,7 +67,7 @@ pub(super) fn m_axi_param_block(
         ("SUPPORTS_NARROW_BURST".to_string(), "0".to_string()),
     ];
     for port in ports {
-        if !port.cat.is_mmap_like() {
+        if !port.cat.is_mmap_like() && port.ring.is_none() {
             continue;
         }
         for name in projected_port_names(port, m_axi_bases) {
@@ -67,6 +75,33 @@ pub(super) fn m_axi_param_block(
         }
     }
     out
+}
+
+/// The registers of the top's rings, after every argument, at the offsets
+/// HLS gave them in the control slave `control_s_axi` (its Verilog).
+pub(super) fn ring_register_ports(
+    rings: &[tapa_ir::Ring],
+    control_s_axi: &str,
+) -> Result<Vec<KernelXmlPort>, String> {
+    let offsets = tapa_protocol::control_register_offsets(control_s_axi);
+    let mut out = Vec::new();
+    for ring in rings {
+        for register in tapa_ir::ring_registers(&ring.port) {
+            let offset = offsets
+                .get(&register.name.to_lowercase())
+                .ok_or_else(|| format!("the control slave has no register `{}`", register.name))?;
+            out.push(KernelXmlPort {
+                name: register.name,
+                category: PortCategory::Register {
+                    offset: u64::from(*offset),
+                },
+                width: register.bits,
+                port: String::new(),
+                ctype: format!("uint{}_t", register.bits),
+            });
+        }
+    }
+    Ok(out)
 }
 
 fn projected_port_names(port: &Port, m_axi_bases: &BTreeSet<String>) -> Vec<String> {

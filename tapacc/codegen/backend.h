@@ -1,6 +1,8 @@
 #ifndef TAPA_CODEGEN_BACKEND_H_
 #define TAPA_CODEGEN_BACKEND_H_
 
+#include <cstdint>
+#include <map>
 #include <string>
 
 #include "clang/AST/Decl.h"
@@ -21,6 +23,8 @@ struct PortContext {
   TapaKind kind;
   TaskLevel level;
   bool is_top;
+  // A top stream argument a device-memory ring carries (TaskModel::rings).
+  bool ring = false;
 };
 
 // A synthesis backend (vendor). The base class owns non-virtual routers that
@@ -46,11 +50,16 @@ class Backend {
 
   // The per-parameter form of the router above: every parameter's preamble,
   // blank-line separated (the lower-level body preamble / ignore shell).
-  void EmitPortPreambles(const clang::FunctionDecl* func, TaskLevel level,
-                         bool is_top, CodeSink& out) const {
+  void EmitPortPreambles(
+      const clang::FunctionDecl* func, TaskLevel level, bool is_top,
+      CodeSink& out,
+      const std::map<std::string, uint32_t>* rings = nullptr) const {
     for (const clang::ParmVarDecl* param : func->parameters()) {
+      const bool ring =
+          rings != nullptr && rings->count(param->getNameAsString()) != 0;
       EmitPortPreamble(
-          PortContext{param, ClassifyTapaType(param), level, is_top}, out);
+          PortContext{param, ClassifyTapaType(param), level, is_top, ring},
+          out);
       out.Line("");  // blank line between parameters
     }
   }

@@ -22,12 +22,13 @@ struct TbTemplate<'a> {
     scalar_args: Vec<ScalarArg>,
     stream_args: Vec<StreamArg>,
     stream_out_args: Vec<StreamArg>,
+    /// The host reads and writes registers during the run (rings).
+    control: bool,
 }
 
 pub struct VerilatorTbGenerator<'a> {
     spec: &'a KernelSpec,
     base_addresses: &'a HashMap<String, u64>,
-    buffer_sizes: &'a HashMap<String, usize>,
     scalar_values: &'a HashMap<u32, Vec<u8>>,
 }
 
@@ -35,13 +36,11 @@ impl<'a> VerilatorTbGenerator<'a> {
     pub fn new(
         spec: &'a KernelSpec,
         base_addresses: &'a HashMap<String, u64>,
-        buffer_sizes: &'a HashMap<String, usize>,
         scalar_values: &'a HashMap<u32, Vec<u8>>,
     ) -> Self {
         Self {
             spec,
             base_addresses,
-            buffer_sizes,
             scalar_values,
         }
     }
@@ -51,28 +50,13 @@ impl<'a> VerilatorTbGenerator<'a> {
 
         let verilog_contents = read_verilog_contents(self.spec);
         let base_addresses = self.base_addresses;
-        let buffer_sizes = self.buffer_sizes;
 
         let (mmap_args, scalar_args, stream_args, stream_out_args) = classify_args(
             self.spec,
             self.scalar_values,
             &verilog_contents,
             |arg, offset| {
-                MmapArg {
-                    // The context creates a segment for every mmap argument,
-                    // so the entry is always here in production. An unknown
-                    // size models nothing rather than guessing at one: reads
-                    // return zero and writes are dropped, which is what an
-                    // unbound argument did when the model was a hash map.
-                    data_size: buffer_sizes.get(&arg.name).copied().unwrap_or(0),
-                    ..super::mmap_arg_from_spec(
-                        NAMING,
-                        arg,
-                        &verilog_contents,
-                        base_addresses,
-                        offset,
-                    )
-                }
+                super::mmap_arg_from_spec(NAMING, arg, &verilog_contents, base_addresses, offset)
             },
             |arg, _width, offset, bytes| {
                 ScalarArg::new(
@@ -95,6 +79,7 @@ impl<'a> VerilatorTbGenerator<'a> {
             scalar_args,
             stream_args,
             stream_out_args,
+            control: !self.spec.rings.is_empty(),
         };
         tmpl.render()
             .map_err(|e| CosimError::Metadata(format!("template render failed: {e}")))
@@ -131,11 +116,11 @@ mod tests {
             scalar_register_map: HashMap::from([("value".to_owned(), 0x100)]),
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
         };
         let base_addresses = HashMap::new();
-        let buffer_sizes = HashMap::new();
         let scalar_values = HashMap::from([(0, vec![0; 4])]);
-        let tb = VerilatorTbGenerator::new(&spec, &base_addresses, &buffer_sizes, &scalar_values)
+        let tb = VerilatorTbGenerator::new(&spec, &base_addresses, &scalar_values)
             .render_tb()
             .expect("render testbench");
 

@@ -398,9 +398,6 @@ pub(crate) struct MmapArg {
     pub base_addr: u64,
     pub reg_offset_lo: u32,
     pub reg_offset_hi: u32,
-    /// Bytes of device memory modeled for this argument. Only the Verilator
-    /// backend models memory in the testbench; xsim leaves it zero.
-    pub data_size: usize,
     /// ARID width the packaged RTL declares. Only xsim declares the AXI
     /// signals itself and so needs it; Verilator leaves it zero.
     pub id_width: usize,
@@ -411,7 +408,7 @@ pub(crate) struct MmapArg {
 
 /// The shared `MmapArg` fields for one spec arg: naming, the direct-offset
 /// port probe, the byte width, the base address. Each backend overlays its
-/// extras (Verilator's `data_size`, xsim's AXI id/lock widths).
+/// extras (xsim's AXI id/lock widths).
 pub(super) fn mmap_arg_from_spec(
     naming: Naming,
     arg: &ArgSpec,
@@ -452,7 +449,6 @@ impl MmapArg {
             base_addr,
             reg_offset_lo,
             reg_offset_hi: reg_offset_lo + 4,
-            data_size: 0,
             id_width: 0,
             lock_width: 0,
         }
@@ -577,6 +573,7 @@ mod tests {
             scalar_register_map: register_map,
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
         }
     }
 

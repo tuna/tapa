@@ -329,5 +329,6 @@ cc_test(
         ":tree_pipeline",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@nlohmann_json//:json",
     ],
 )

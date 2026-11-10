@@ -39,6 +39,55 @@ impl FrameChannel {
     pub const COPY_DEPTH: u32 = 2;
 }
 
+/// A stream argument of a Vitis top carried by a ring of frame slots in
+/// device memory, in place of an AXIS port.
+///
+/// The host fills (input) or empties (output) slots, and a mover in the
+/// top moves each frame between its slot and the argument's frame channel.
+/// Two frame counters in the control registers, after the last argument,
+/// hand the slots over: frames the host has written (input) or taken
+/// (output), and frames the kernel has taken (input) or written (output).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ring {
+    /// The top's stream port.
+    pub port: String,
+    /// The kernel reads the frames.
+    pub input: bool,
+    /// Elements in a frame.
+    pub frame: u32,
+    /// Frames the ring holds.
+    pub slots: u32,
+}
+
+/// A control register of a ring, after the top's last argument.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RingRegister {
+    pub name: String,
+    pub bits: u32,
+    /// The host writes it; the kernel writes the others.
+    pub host_writes: bool,
+}
+
+/// The registers of the ring of the top's port `port`.
+///
+/// In order: frames the host has moved, frames the kernel has moved, and
+/// the ring's shape (the frame's elements in the low word, the slots in the
+/// high word, whose top bit is set when the kernel reads the frames).
+#[must_use]
+pub fn ring_registers(port: &str) -> [RingRegister; 3] {
+    let port = crate::port::sanitize_array_name(port);
+    let register = |suffix: &str, bits, host_writes| RingRegister {
+        name: format!("{port}_{suffix}"),
+        bits,
+        host_writes,
+    };
+    [
+        register("host_frames", 32, true),
+        register("kernel_frames", 32, false),
+        register("ring_shape", 64, false),
+    ]
+}
+
 /// Root of the unified task graph.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -216,6 +265,26 @@ impl TaskGraph {
             producer_view: producer.is_some(),
             consumer_view: consumer.is_some(),
         })
+    }
+
+    /// The top's stream arguments a device-memory ring carries (see
+    /// [`Ring`]), in port order.
+    #[must_use]
+    pub fn rings(&self) -> Vec<Ring> {
+        let Some(top) = self.tasks.get(&self.top) else {
+            return Vec::new();
+        };
+        top.ports
+            .iter()
+            .filter_map(|port| {
+                Some(Ring {
+                    port: port.name.clone(),
+                    input: port.cat == ArgCategory::Istream,
+                    frame: self.view_frame(&self.top, &port.name)?,
+                    slots: port.ring?,
+                })
+            })
+            .collect()
     }
 
     /// A stream that carries `[[tapa::frame(N)]]` frames holds at least one

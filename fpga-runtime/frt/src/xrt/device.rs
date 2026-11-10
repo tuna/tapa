@@ -4,6 +4,7 @@ use super::api::{
 };
 use super::metadata::{extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, AieGraph};
 use super::pl_control::{self, PlControl};
+use super::rings::{self, XrtRing};
 use crate::device::{BufferAccess, Device, ExecutionState};
 use crate::error::{FrtError, Result};
 use frt_cosim::metadata::kernel_xml::{self, KernelXml, XclbinTarget};
@@ -52,6 +53,10 @@ pub struct XrtDevice {
     graph: Option<Graph>,
     scalars: HashMap<u32, Vec<u8>>,
     buffers: HashMap<u32, BufferBinding>,
+    /// The top's frame arguments in device memory (see `rings`).
+    rings: Vec<XrtRing>,
+    /// `read_from_device` came during a run: `finish` copies back.
+    readback_scheduled: bool,
     execution_state: ExecutionState,
     compute_ns: u64,
 }
@@ -174,17 +179,31 @@ impl XrtDevice {
             graph: None,
             scalars: HashMap::new(),
             buffers: HashMap::new(),
+            rings: Vec::new(),
+            readback_scheduled: false,
             execution_state: ExecutionState::Idle,
             compute_ns: 0,
         };
         let name = CString::new(this.meta.top_name.clone())
             .map_err(|e| FrtError::Xrt(format!("kernel name: {e}")))?;
+        // The host reads and writes a ring's registers during a run, which
+        // XRT allows only on a kernel opened for exclusive access.
+        let ring_args = rings::ring_args(&this.meta.args);
+        let open = if ring_args.is_empty() {
+            api.kernel_open
+        } else {
+            api.kernel_open_exclusive
+        };
         // SAFETY: live device, the UUID it reported, a valid C string.
-        let kernel = unsafe { (api.kernel_open)(this.device, uuid.as_ptr(), name.as_ptr()) };
+        let kernel = unsafe { open(this.device, uuid.as_ptr(), name.as_ptr()) };
         this.kernel = non_null(kernel, &format!("open kernel `{}`", this.meta.top_name))?;
         // SAFETY: live kernel handle.
         let run = unsafe { (api.run_open)(this.kernel) };
         this.run = non_null(run, "create a kernel run")?;
+        for (arg, registers) in ring_args {
+            let ring = XrtRing::open(api, this.device, this.kernel, this.run, arg, registers)?;
+            this.rings.push(ring);
+        }
         if let Some(meta) = parse_aie_graph(&bytes)? {
             let (handle, control) = if this.meta.aie_pl_control {
                 (
@@ -284,6 +303,25 @@ impl XrtDevice {
         let rc = unsafe { (self.api.graph_reset)(graph.handle) };
         check(rc, "reset the AI Engine graph after a kernel failure")
     }
+
+    /// Copies every buffer the kernel writes back to the host.
+    fn copy_back(&self) -> Result<()> {
+        for (index, binding) in &self.buffers {
+            if !binding.access.stores_to_host() {
+                continue;
+            }
+            // SAFETY: live buffer handle of `bytes` bytes.
+            let rc = unsafe { (self.api.bo_sync)(binding.bo, SYNC_FROM_DEVICE, binding.bytes, 0) };
+            check(rc, &format!("read argument {index} from the device"))?;
+            if binding.staged {
+                // SAFETY: `ptr` holds `bytes` writable bytes.
+                let rc =
+                    unsafe { (self.api.bo_read)(binding.bo, binding.ptr.cast(), binding.bytes, 0) };
+                check(rc, &format!("unstage argument {index}"))?;
+            }
+        }
+        Ok(())
+    }
 }
 
 impl Drop for XrtDevice {
@@ -298,9 +336,14 @@ impl Drop for XrtDevice {
                 drop(control);
             }
         }
+        // The pumps stop before the run and kernel they use close.
+        let rings = std::mem::take(&mut self.rings);
         if !self.run.is_null() {
             // SAFETY: live run handle.
             unsafe { (self.api.run_close)(self.run) };
+        }
+        for ring in rings {
+            ring.close();
         }
         for binding in self.buffers.values() {
             // SAFETY: live buffer handle, no longer used by the closed run.
@@ -555,11 +598,19 @@ impl Device for XrtDevice {
         Ok(())
     }
 
-    fn set_stream_arg(&mut self, index: u32, _shm_path: &str) -> Result<()> {
-        Err(FrtError::MetadataParse(format!(
-            "argument {index}: stream arguments cannot be bound from the host in the \
-             XRT runtime"
-        )))
+    fn set_stream_arg(&mut self, index: u32, shm_path: &str) -> Result<()> {
+        let ring = self
+            .rings
+            .iter()
+            .find(|ring| ring.index() == index)
+            .ok_or_else(|| {
+                FrtError::MetadataParse(format!(
+                    "argument {index}: XRT moves a stream argument of the host only through a \
+                     ring in device memory, which only a frame argument of the top has"
+                ))
+            })?;
+        ring.bind(shm_path);
+        Ok(())
     }
 
     fn write_to_device(&mut self) -> Result<()> {
@@ -583,23 +634,12 @@ impl Device for XrtDevice {
 
     fn read_from_device(&mut self) -> Result<()> {
         if matches!(self.execution_state, ExecutionState::Running(_)) {
-            self.finish()?;
+            // The host's stream tasks run alongside the kernel until it is
+            // done; `finish` copies back then.
+            self.readback_scheduled = true;
+            return Ok(());
         }
-        for (index, binding) in &self.buffers {
-            if !binding.access.stores_to_host() {
-                continue;
-            }
-            // SAFETY: live buffer handle of `bytes` bytes.
-            let rc = unsafe { (self.api.bo_sync)(binding.bo, SYNC_FROM_DEVICE, binding.bytes, 0) };
-            check(rc, &format!("read argument {index} from the device"))?;
-            if binding.staged {
-                // SAFETY: `ptr` holds `bytes` writable bytes.
-                let rc =
-                    unsafe { (self.api.bo_read)(binding.bo, binding.ptr.cast(), binding.bytes, 0) };
-                check(rc, &format!("unstage argument {index}"))?;
-            }
-        }
-        Ok(())
+        self.copy_back()
     }
 
     fn exec(&mut self) -> Result<()> {
@@ -607,6 +647,9 @@ impl Device for XrtDevice {
         args.sort_by_key(|a| a.id);
         let mut values = HashMap::new();
         for arg in &args {
+            if rings::is_ring_register(&self.meta.args, arg) {
+                continue; // set by `rings::start_run`
+            }
             match arg.kind {
                 ArgKind::Scalar { width } => {
                     let raw = normalized_scalar_bytes(
@@ -632,9 +675,14 @@ impl Device for XrtDevice {
                     values.insert(arg.id, raw);
                 }
                 ArgKind::Mmap { .. } => {
-                    // Already bound by `set_buffer_arg`; only its presence
-                    // still needs checking here.
-                    if !self.buffers.contains_key(&arg.id) {
+                    // Already bound by `set_buffer_arg` or `set_stream_arg`;
+                    // only its presence still needs checking here.
+                    let bound = self.buffers.contains_key(&arg.id)
+                        || self
+                            .rings
+                            .iter()
+                            .any(|ring| ring.index() == arg.id && ring.is_bound());
+                    if !bound {
                         return Err(FrtError::MetadataParse(format!(
                             "missing mmap arg binding for id {}",
                             arg.id
@@ -650,13 +698,14 @@ impl Device for XrtDevice {
             self.abort_graph()?;
             return Err(error);
         }
-        // SAFETY: live run handle with every argument set.
-        let rc = unsafe { (self.api.run_start)(self.run) };
-        if let Err(error) = check(rc, "start the kernel") {
+        if let Err(error) = rings::start_run(self.api, self.run, &self.rings) {
             self.abort_graph()?;
             return Err(error);
         }
         self.execution_state = ExecutionState::Running(Instant::now());
+        for ring in &mut self.rings {
+            ring.start()?;
+        }
         Ok(())
     }
 
@@ -674,6 +723,12 @@ impl Device for XrtDevice {
             }
             self.stop_graph()?;
         }
+        for ring in &self.rings {
+            ring.deliver_all()?;
+        }
+        if std::mem::take(&mut self.readback_scheduled) {
+            self.copy_back()?;
+        }
         Ok(())
     }
 
@@ -683,12 +738,22 @@ impl Device for XrtDevice {
     }
 
     fn is_finished(&mut self) -> Result<bool> {
+        if let Some(error) = self.rings.iter_mut().find_map(XrtRing::failure) {
+            return Err(error);
+        }
         let ExecutionState::Running(start) = self.execution_state else {
             return Ok(matches!(self.execution_state, ExecutionState::Finished));
         };
         // SAFETY: live run handle.
         let state = unsafe { (self.api.run_state)(self.run) };
         if state == RUN_COMPLETED {
+            // Done once the host has every output frame; it takes them on
+            // this thread, between these polls.
+            for ring in &self.rings {
+                if !ring.delivered()? {
+                    return Ok(false);
+                }
+            }
             self.compute_ns = elapsed_ns(start);
             self.execution_state = ExecutionState::Finished;
             self.stop_graph()?;

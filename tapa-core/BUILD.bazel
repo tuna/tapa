@@ -74,6 +74,15 @@ filegroup(
     visibility = ["//fpga-runtime:__pkg__"],
 )
 
+filegroup(
+    name = "tapa-protocol-srcs",
+    srcs = glob(
+        ["tapa-protocol/**"],
+        exclude = ["tapa-protocol/target/**"],
+    ),
+    visibility = ["//fpga-runtime:__pkg__"],
+)
+
 _REMOTE_XILINX_SETTINGS = remote_xilinx_settings(
     REMOTE_XILINX_SETTINGS,
     REMOTE_XILINX_TOOL_PATH,

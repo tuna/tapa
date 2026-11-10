@@ -138,6 +138,11 @@ impl FrameChannel {
         .collect()
     }
 
+    /// The width of an element.
+    pub(super) const fn data_width(&self) -> u32 {
+        self.data_width
+    }
+
     /// The width of the element stream between the halves: an element and
     /// the end-of-transmission bit of the channel's element side.
     pub(super) const fn copy_width(&self) -> u32 {

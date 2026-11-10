@@ -17,6 +17,11 @@ pub enum PortCategory {
     IStream,
     /// AXI-Stream output (OSTREAM).
     OStream,
+    /// A control register at the offset HLS gave it, past every argument
+    /// the host program binds: a ring's (see `tapa_ir::ring_registers`).
+    Register {
+        offset: u64,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -137,6 +142,11 @@ fn project_kernel_xml(args: &KernelXmlArgs) -> Result<(Vec<XmlPort>, Vec<XmlArg>
                 let off = offset;
                 offset += size + 4;
                 (1u8, size, host_size, pname, off)
+            }
+            PortCategory::Register { offset: at } => {
+                has_s_axi_control = true;
+                let host_size = u64::from(port.width) / 8;
+                (0u8, host_size.max(4), host_size, S_AXI_NAME.to_string(), at)
             }
             PortCategory::IStream | PortCategory::OStream => {
                 let size = 8u64;

@@ -37,6 +37,7 @@ const TASK_PASSES: &[TaskPass] = &[
     passes::create_fsm_module,
     passes::generate_child_signals,
     passes::fifo_instantiate_connect,
+    passes::frame_rings,
     passes::m_axi_crossbars,
     passes::axi_pipeline_instantiate,
     passes::control_fsm,

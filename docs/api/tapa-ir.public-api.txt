@@ -1904,6 +1904,97 @@ impl<T> core::clone::CloneToUninit for tapa_ir::graph::FrameChannel where T: cor
 pub unsafe fn tapa_ir::graph::FrameChannel::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::graph::FrameChannel
 pub fn tapa_ir::graph::FrameChannel::from(T) -> T
+pub struct tapa_ir::graph::Ring
+pub tapa_ir::graph::Ring::frame: u32
+pub tapa_ir::graph::Ring::input: bool
+pub tapa_ir::graph::Ring::port: alloc::string::String
+pub tapa_ir::graph::Ring::slots: u32
+impl core::clone::Clone for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::clone(&self) -> tapa_ir::graph::Ring
+impl core::cmp::Eq for tapa_ir::graph::Ring
+impl core::cmp::PartialEq for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::eq(&self, &tapa_ir::graph::Ring) -> bool
+impl core::fmt::Debug for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::graph::Ring
+impl core::marker::Freeze for tapa_ir::graph::Ring
+impl core::marker::Send for tapa_ir::graph::Ring
+impl core::marker::Sync for tapa_ir::graph::Ring
+impl core::marker::Unpin for tapa_ir::graph::Ring
+impl core::marker::UnsafeUnpin for tapa_ir::graph::Ring
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::Ring
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::Ring
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::Ring where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::Ring where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::Ring where U: core::convert::From<T>
+pub fn tapa_ir::graph::Ring::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::Ring where U: core::convert::Into<T>
+pub type tapa_ir::graph::Ring::Error = core::convert::Infallible
+pub fn tapa_ir::graph::Ring::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::Ring where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::Ring::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::Ring::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::Ring where T: core::clone::Clone
+pub type tapa_ir::graph::Ring::Owned = T
+pub fn tapa_ir::graph::Ring::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::Ring::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::Ring where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::Ring where T: ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::Ring where T: ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::Ring where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::Ring::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::from(T) -> T
+pub struct tapa_ir::graph::RingRegister
+pub tapa_ir::graph::RingRegister::bits: u32
+pub tapa_ir::graph::RingRegister::host_writes: bool
+pub tapa_ir::graph::RingRegister::name: alloc::string::String
+impl core::clone::Clone for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::clone(&self) -> tapa_ir::graph::RingRegister
+impl core::cmp::Eq for tapa_ir::graph::RingRegister
+impl core::cmp::PartialEq for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::eq(&self, &tapa_ir::graph::RingRegister) -> bool
+impl core::fmt::Debug for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::graph::RingRegister
+impl core::marker::Freeze for tapa_ir::graph::RingRegister
+impl core::marker::Send for tapa_ir::graph::RingRegister
+impl core::marker::Sync for tapa_ir::graph::RingRegister
+impl core::marker::Unpin for tapa_ir::graph::RingRegister
+impl core::marker::UnsafeUnpin for tapa_ir::graph::RingRegister
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::RingRegister
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::RingRegister
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::RingRegister where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::RingRegister where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::RingRegister where U: core::convert::From<T>
+pub fn tapa_ir::graph::RingRegister::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::RingRegister where U: core::convert::Into<T>
+pub type tapa_ir::graph::RingRegister::Error = core::convert::Infallible
+pub fn tapa_ir::graph::RingRegister::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::RingRegister where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::RingRegister::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::RingRegister::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::RingRegister where T: core::clone::Clone
+pub type tapa_ir::graph::RingRegister::Owned = T
+pub fn tapa_ir::graph::RingRegister::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::RingRegister::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::RingRegister where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::RingRegister where T: ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::RingRegister where T: ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::RingRegister where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::RingRegister::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::from(T) -> T
 pub struct tapa_ir::graph::TaskGraph
 pub tapa_ir::graph::TaskGraph::cflags: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::graph::TaskGraph::schema_version: u32
@@ -1916,6 +2007,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::rings(&self) -> alloc::vec::Vec<tapa_ir::graph::Ring>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
@@ -1965,6 +2057,7 @@ impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
 pub const tapa_ir::graph::SCHEMA_VERSION: u32
+pub fn tapa_ir::graph::ring_registers(&str) -> [tapa_ir::graph::RingRegister; 3]
 pub mod tapa_ir::instance
 pub enum tapa_ir::instance::ArgSource
 pub tapa_ir::instance::ArgSource::Literal(tapa_ir::instance::WireValue)
@@ -2500,6 +2593,7 @@ pub tapa_ir::port::Port::ctype: alloc::string::String
 pub tapa_ir::port::Port::frame: core::option::Option<u32>
 pub tapa_ir::port::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::port::Port::name: alloc::string::String
+pub tapa_ir::port::Port::ring: core::option::Option<u32>
 pub tapa_ir::port::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::port::Port::width: u32
 impl tapa_ir::port::Port
@@ -4815,6 +4909,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::rings(&self) -> alloc::vec::Vec<tapa_ir::graph::Ring>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
@@ -5166,6 +5261,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::rings(&self) -> alloc::vec::Vec<tapa_ir::graph::Ring>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
@@ -5709,6 +5805,7 @@ pub tapa_ir::Port::ctype: alloc::string::String
 pub tapa_ir::Port::frame: core::option::Option<u32>
 pub tapa_ir::Port::mmap_addr_width: core::option::Option<u32>
 pub tapa_ir::Port::name: alloc::string::String
+pub tapa_ir::Port::ring: core::option::Option<u32>
 pub tapa_ir::Port::stream_depth: core::option::Option<u32>
 pub tapa_ir::Port::width: u32
 impl tapa_ir::port::Port
@@ -5797,6 +5894,97 @@ impl<T> core::clone::CloneToUninit for tapa_ir::bindings::PortBinding<'a> where 
 pub unsafe fn tapa_ir::bindings::PortBinding<'a>::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::bindings::PortBinding<'a>
 pub fn tapa_ir::bindings::PortBinding<'a>::from(T) -> T
+pub struct tapa_ir::Ring
+pub tapa_ir::Ring::frame: u32
+pub tapa_ir::Ring::input: bool
+pub tapa_ir::Ring::port: alloc::string::String
+pub tapa_ir::Ring::slots: u32
+impl core::clone::Clone for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::clone(&self) -> tapa_ir::graph::Ring
+impl core::cmp::Eq for tapa_ir::graph::Ring
+impl core::cmp::PartialEq for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::eq(&self, &tapa_ir::graph::Ring) -> bool
+impl core::fmt::Debug for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::graph::Ring
+impl core::marker::Freeze for tapa_ir::graph::Ring
+impl core::marker::Send for tapa_ir::graph::Ring
+impl core::marker::Sync for tapa_ir::graph::Ring
+impl core::marker::Unpin for tapa_ir::graph::Ring
+impl core::marker::UnsafeUnpin for tapa_ir::graph::Ring
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::Ring
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::Ring
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::Ring where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::Ring where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::Ring where U: core::convert::From<T>
+pub fn tapa_ir::graph::Ring::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::Ring where U: core::convert::Into<T>
+pub type tapa_ir::graph::Ring::Error = core::convert::Infallible
+pub fn tapa_ir::graph::Ring::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::Ring where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::Ring::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::Ring::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::Ring where T: core::clone::Clone
+pub type tapa_ir::graph::Ring::Owned = T
+pub fn tapa_ir::graph::Ring::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::Ring::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::Ring where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::Ring where T: ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::Ring where T: ?core::marker::Sized
+pub fn tapa_ir::graph::Ring::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::Ring where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::Ring::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::Ring
+pub fn tapa_ir::graph::Ring::from(T) -> T
+pub struct tapa_ir::RingRegister
+pub tapa_ir::RingRegister::bits: u32
+pub tapa_ir::RingRegister::host_writes: bool
+pub tapa_ir::RingRegister::name: alloc::string::String
+impl core::clone::Clone for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::clone(&self) -> tapa_ir::graph::RingRegister
+impl core::cmp::Eq for tapa_ir::graph::RingRegister
+impl core::cmp::PartialEq for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::eq(&self, &tapa_ir::graph::RingRegister) -> bool
+impl core::fmt::Debug for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::StructuralPartialEq for tapa_ir::graph::RingRegister
+impl core::marker::Freeze for tapa_ir::graph::RingRegister
+impl core::marker::Send for tapa_ir::graph::RingRegister
+impl core::marker::Sync for tapa_ir::graph::RingRegister
+impl core::marker::Unpin for tapa_ir::graph::RingRegister
+impl core::marker::UnsafeUnpin for tapa_ir::graph::RingRegister
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::graph::RingRegister
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::graph::RingRegister
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::graph::RingRegister where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::graph::RingRegister where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::graph::RingRegister where U: core::convert::From<T>
+pub fn tapa_ir::graph::RingRegister::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::graph::RingRegister where U: core::convert::Into<T>
+pub type tapa_ir::graph::RingRegister::Error = core::convert::Infallible
+pub fn tapa_ir::graph::RingRegister::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::graph::RingRegister where U: core::convert::TryFrom<T>
+pub type tapa_ir::graph::RingRegister::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::graph::RingRegister::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::graph::RingRegister where T: core::clone::Clone
+pub type tapa_ir::graph::RingRegister::Owned = T
+pub fn tapa_ir::graph::RingRegister::clone_into(&self, &mut T)
+pub fn tapa_ir::graph::RingRegister::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::graph::RingRegister where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::graph::RingRegister where T: ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::graph::RingRegister where T: ?core::marker::Sized
+pub fn tapa_ir::graph::RingRegister::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::graph::RingRegister where T: core::clone::Clone
+pub unsafe fn tapa_ir::graph::RingRegister::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::graph::RingRegister
+pub fn tapa_ir::graph::RingRegister::from(T) -> T
 pub struct tapa_ir::Task
 pub tapa_ir::Task::aie_location: alloc::vec::Vec<tapa_ir::task::AieLocation>
 pub tapa_ir::Task::aie_stack_bytes: core::option::Option<u32>
@@ -5872,6 +6060,7 @@ pub fn tapa_ir::graph::TaskGraph::fifo_endpoint<'a>(&'a self, &'a tapa_ir::task:
 impl tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::frame_channel(&self, &tapa_ir::task::Task, &str) -> core::option::Option<tapa_ir::graph::FrameChannel>
 pub fn tapa_ir::graph::TaskGraph::from_json(&str) -> core::result::Result<Self, tapa_ir::ParseError>
+pub fn tapa_ir::graph::TaskGraph::rings(&self) -> alloc::vec::Vec<tapa_ir::graph::Ring>
 pub fn tapa_ir::graph::TaskGraph::validate(&self) -> core::result::Result<(), tapa_ir::ParseError>
 pub fn tapa_ir::graph::TaskGraph::view_frame(&self, &str, &str) -> core::option::Option<u32>
 impl core::clone::Clone for tapa_ir::graph::TaskGraph
@@ -6093,4 +6282,5 @@ pub const fn tapa_ir::global_controller_instance_name() -> &'static str
 pub fn tapa_ir::inlined_instances(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::InlinedInstance>, tapa_ir::aie::AieError>
 pub fn tapa_ir::local_controller_instance_name(&str) -> alloc::string::String
 pub fn tapa_ir::memory_crossings(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::MemoryCrossing>, tapa_ir::aie::AieError>
+pub fn tapa_ir::ring_registers(&str) -> [tapa_ir::graph::RingRegister; 3]
 pub fn tapa_ir::scope_controller_instance_name(&str) -> alloc::string::String

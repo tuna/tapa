@@ -163,7 +163,11 @@ void AieBackend::LowerDeclAttr(const clang::Attr& attr, const clang::VarDecl&,
 void AieBackend::LowerParamAttr(const clang::Attr& attr,
                                 const clang::ParmVarDecl&, const clang::Stmt*,
                                 EditSink& edits) const {
-  if (attr.getKind() == clang::attr::TapaFrame) return;
+  // Read by the frontend; nothing to lower.
+  if (attr.getKind() == clang::attr::TapaFrame ||
+      attr.getKind() == clang::attr::TapaRing) {
+    return;
+  }
   ReportUnsupportedAttr(attr, edits);
 }
 }  // namespace tapa::cc

@@ -18,5 +18,6 @@ pub fn parse_kernel_xml(xml: &str) -> Result<KernelSpec> {
         scalar_register_map: HashMap::new(),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
     })
 }

@@ -17,6 +17,7 @@ fn hls_spec() -> KernelSpec {
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "a".into(),
@@ -56,6 +57,7 @@ fn vitis_spec() -> KernelSpec {
         scalar_register_map: HashMap::from([("a".into(), 0x10u32), ("n".into(), 0x1cu32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "a".into(),
@@ -95,6 +97,7 @@ fn vitis_stream_out_spec() -> KernelSpec {
         scalar_register_map: HashMap::from([("n".into(), 0x10u32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),
@@ -135,6 +138,7 @@ fn two_stream_out_spec(mode: Mode) -> KernelSpec {
         scalar_register_map: HashMap::from([("n".into(), 0x10u32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),
@@ -176,6 +180,7 @@ fn banked_hls_spec() -> KernelSpec {
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "chan[0]".into(),
@@ -205,6 +210,7 @@ fn hls_stream_out_spec() -> KernelSpec {
         scalar_register_map: HashMap::from([("n".into(), 0x18u32)]),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
         args: vec![
             ArgSpec {
                 name: "n".into(),
@@ -229,9 +235,8 @@ fn hls_stream_out_spec() -> KernelSpec {
 fn verilator_hls_tb_snapshot() {
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(tb.contains("service_all_axi"));
     assert!(tb.contains("tapa_stream_try_read"));
@@ -247,17 +252,16 @@ fn verilator_hls_tb_snapshot() {
 fn verilator_models_device_memory_as_a_flat_array_per_port() {
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
 
-    // One region per port, sized from the host buffer. Keyed on the actual
-    // buffer size so the region can never silently fall back to a default.
+    // One region per port: the host's segment for it, mapped in.
     assert!(
-        tb.contains("static MemRegion mem_a(0x0000000010000000ULL, 4096);"),
+        tb.contains("static MemRegion mem_a(0x0000000010000000ULL);"),
         "{tb}"
     );
+    assert!(tb.contains("mem_a.attach(\"a\");"), "{tb}");
     // A hash map over the address space costs ~43 bytes of node per modeled
     // byte: a 16 MiB buffer took 738 MB of resident memory, versus 34 MB here.
     // (The header, not the word -- the region's comment names the type it
@@ -269,15 +273,14 @@ fn verilator_models_device_memory_as_a_flat_array_per_port() {
 fn verilator_hls_escapes_banked_mmap_names() {
     let spec = banked_hls_spec();
     let base_addrs = std::collections::HashMap::from([("chan[0]".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("chan[0]".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     // Verilator strips brackets: chan[0] → chan_0 in C++ member names
     assert!(tb.contains("rd_q_chan_0"), "{tb}");
     assert!(tb.contains("dut->m_axi_chan_0_ARREADY"), "{tb}");
-    // The load_from_shm call still uses the original name for port lookup
-    assert!(tb.contains("load_from_shm(\"chan[0]\""), "{tb}");
+    // Attaching the port's segment still uses the original name
+    assert!(tb.contains("mem_chan_0.attach(\"chan[0]\")"), "{tb}");
 }
 
 #[test]
@@ -411,9 +414,8 @@ fn xsim_hls_stream_input_refills_without_bubble() {
 fn verilator_hls_stream_input_refills_without_bubble() {
     let spec = hls_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(1u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(
         tb.contains("stream_in_have_s = tapa_stream_istream_step("),
@@ -547,9 +549,8 @@ fn xsim_vitis_axis_output_uses_direct_write_handshake() {
 fn verilator_vitis_tb_uses_direct_axis_input_handshake() {
     let spec = vitis_spec();
     let base_addrs = std::collections::HashMap::from([("a".into(), 0x1000_0000u64)]);
-    let buf_sizes = std::collections::HashMap::from([("a".into(), 4096usize)]);
     let scalar_vals = std::collections::HashMap::from([(2u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(
         tb.contains("bool tapa_stream_try_read(const char* port, uint8_t* out);"),
@@ -579,9 +580,8 @@ fn verilator_vitis_tb_uses_direct_axis_input_handshake() {
 fn verilator_vitis_tb_uses_direct_axis_write_handshake() {
     let spec = vitis_stream_out_spec();
     let base_addrs = std::collections::HashMap::new();
-    let buf_sizes = std::collections::HashMap::new();
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(
         tb.contains("bool tapa_stream_try_write(const char* port, const uint8_t* data);"),
@@ -625,9 +625,8 @@ fn verilator_names_each_output_stream_buffer_after_its_argument() {
     for mode in [Mode::Hls, Mode::Vitis] {
         let spec = two_stream_out_spec(mode);
         let base_addrs = std::collections::HashMap::new();
-        let buf_sizes = std::collections::HashMap::new();
         let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
-        let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+        let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
         let tb = generator.render_tb().expect("render");
         assert!(tb.contains("stream_out_bytes_s_out{};"), "{tb}");
         assert!(tb.contains("stream_out_bytes_t_out{};"), "{tb}");
@@ -642,9 +641,8 @@ fn verilator_names_each_output_stream_buffer_after_its_argument() {
 fn verilator_vitis_tb_drains_output_streams_after_completion() {
     let spec = vitis_stream_out_spec();
     let base_addrs = std::collections::HashMap::new();
-    let buf_sizes = std::collections::HashMap::new();
     let scalar_vals = std::collections::HashMap::from([(0u32, vec![7u8, 0, 0, 0])]);
-    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &buf_sizes, &scalar_vals);
+    let generator = VerilatorTbGenerator::new(&spec, &base_addrs, &scalar_vals);
     let tb = generator.render_tb().expect("render");
     assert!(
         tb.contains("if (dut->s_out_TVALID) idle_cycles = 0;"),

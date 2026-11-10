@@ -26,6 +26,8 @@ struct SvTemplate<'a> {
     scalar_args: Vec<ScalarArg>,
     stream_args: Vec<StreamArg>,
     stream_out_args: Vec<StreamArg>,
+    /// The host reads and writes registers during the run (rings).
+    control: bool,
 }
 
 #[derive(Template)]
@@ -139,6 +141,7 @@ impl<'a> XsimTbGenerator<'a> {
             scalar_args,
             stream_args,
             stream_out_args,
+            control: !self.spec.rings.is_empty(),
         };
         template
             .render()
@@ -262,6 +265,7 @@ mod tests {
             scalar_register_map: HashMap::from([("buf".to_owned(), 0x10)]),
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
         };
         let base_addresses = HashMap::from([("buf".to_owned(), 0xdead_beef_1234_5678_u64)]);
         let tb = XsimTbGenerator::new(
@@ -302,6 +306,7 @@ mod tests {
             scalar_register_map: HashMap::from([("value".to_owned(), 0x100)]),
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
         };
         let base_addresses = HashMap::new();
         let scalar_values = HashMap::from([(0, vec![0; 8])]);

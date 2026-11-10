@@ -17,6 +17,7 @@ mod fifos;
 mod floorplans;
 mod frames;
 pub mod m_axi;
+mod rings;
 mod s_axi;
 
 use std::collections::BTreeMap;
@@ -292,6 +293,14 @@ pub fn generate_child_signals(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenEr
 pub fn fifo_instantiate_connect(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
     crate::passes::fifos::instantiate_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
     crate::passes::fifos::connect_fifos(ctx.design, &mut ctx.modules, ctx.name)?;
+    Ok(())
+}
+
+/// Task pass: instantiate the rings of the top's frame arguments.
+pub fn frame_rings(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
+    if ctx.inputs.is_top_task {
+        rings::instantiate_rings(ctx.design, &mut ctx.modules, ctx.name)?;
+    }
     Ok(())
 }
 

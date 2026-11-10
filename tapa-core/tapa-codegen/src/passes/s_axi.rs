@@ -72,6 +72,20 @@ pub fn instantiate_top_control_s_axi(
                 let _ = mm.add_signal(wide_wire(&name, "63", "0"));
                 vec![name]
             }
+        } else if port.ring.is_some() {
+            // A ring's registers (`rings` declares their wires); the kernel's
+            // are always valid.
+            let mut names = Vec::new();
+            for register in super::rings::ring_registers(&port.name) {
+                if !register.host_writes {
+                    ports.push(PortArg::new(
+                        format!("{}_ap_vld", register.name),
+                        Expr::lit("1'b1"),
+                    ));
+                }
+                names.push(register.name);
+            }
+            names
         } else {
             // Streams contribute no s_axilite control ports.
             Vec::new()

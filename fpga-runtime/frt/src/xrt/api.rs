@@ -32,6 +32,12 @@ pub struct Api {
     pub device_load_xclbin_file: unsafe extern "C" fn(Handle, *const c_char) -> c_int,
     pub device_get_xclbin_uuid: unsafe extern "C" fn(Handle, *mut u8) -> c_int,
     pub kernel_open: unsafe extern "C" fn(Handle, *const u8, *const c_char) -> Handle,
+    /// Opens a kernel whose registers the host reads and writes during a
+    /// run: a top with rings.
+    pub kernel_open_exclusive: unsafe extern "C" fn(Handle, *const u8, *const c_char) -> Handle,
+    pub kernel_arg_offset: unsafe extern "C" fn(Handle, c_int) -> u32,
+    pub kernel_read_register: unsafe extern "C" fn(Handle, u32, *mut u32) -> c_int,
+    pub kernel_write_register: unsafe extern "C" fn(Handle, u32, u32) -> c_int,
     pub kernel_close: unsafe extern "C" fn(Handle) -> c_int,
     pub kernel_arg_group_id: unsafe extern "C" fn(Handle, c_int) -> c_int,
     pub bo_alloc: unsafe extern "C" fn(Handle, usize, u64, u32) -> Handle,
@@ -40,6 +46,8 @@ pub struct Api {
     pub bo_write: unsafe extern "C" fn(Handle, *const c_void, usize, usize) -> c_int,
     pub bo_read: unsafe extern "C" fn(Handle, *mut c_void, usize, usize) -> c_int,
     pub bo_sync: unsafe extern "C" fn(Handle, c_int, usize, usize) -> c_int,
+    pub bo_map: unsafe extern "C" fn(Handle) -> *mut c_void,
+    pub bo_address: unsafe extern "C" fn(Handle) -> u64,
     pub run_open: unsafe extern "C" fn(Handle) -> Handle,
     pub run_close: unsafe extern "C" fn(Handle) -> c_int,
     /// Variadic: XRT reads the value by the argument's type in the xclbin
@@ -106,6 +114,10 @@ fn load() -> std::result::Result<Api, String> {
         device_load_xclbin_file: dl_sym!(lib, LIBRARY, "xrtDeviceLoadXclbinFile"),
         device_get_xclbin_uuid: dl_sym!(lib, LIBRARY, "xrtDeviceGetXclbinUUID"),
         kernel_open: dl_sym!(lib, LIBRARY, "xrtPLKernelOpen"),
+        kernel_open_exclusive: dl_sym!(lib, LIBRARY, "xrtPLKernelOpenExclusive"),
+        kernel_arg_offset: dl_sym!(lib, LIBRARY, "xrtKernelArgOffset"),
+        kernel_read_register: dl_sym!(lib, LIBRARY, "xrtKernelReadRegister"),
+        kernel_write_register: dl_sym!(lib, LIBRARY, "xrtKernelWriteRegister"),
         kernel_close: dl_sym!(lib, LIBRARY, "xrtKernelClose"),
         kernel_arg_group_id: dl_sym!(lib, LIBRARY, "xrtKernelArgGroupId"),
         bo_alloc: dl_sym!(lib, LIBRARY, "xrtBOAlloc"),
@@ -114,6 +126,8 @@ fn load() -> std::result::Result<Api, String> {
         bo_write: dl_sym!(lib, LIBRARY, "xrtBOWrite"),
         bo_read: dl_sym!(lib, LIBRARY, "xrtBORead"),
         bo_sync: dl_sym!(lib, LIBRARY, "xrtBOSync"),
+        bo_map: dl_sym!(lib, LIBRARY, "xrtBOMap"),
+        bo_address: dl_sym!(lib, LIBRARY, "xrtBOAddress"),
         run_open: dl_sym!(lib, LIBRARY, "xrtRunOpen"),
         run_close: dl_sym!(lib, LIBRARY, "xrtRunClose"),
         run_set_arg: dl_sym!(lib, LIBRARY, "xrtRunSetArg"),
@@ -144,7 +158,6 @@ pub struct GmioApi {
     /// `xrtGMIOWait(device, gmio)`: waits for every transfer posted there.
     pub wait: unsafe extern "C" fn(Handle, *const c_char) -> c_int,
     pub graph_read_rtp: unsafe extern "C" fn(Handle, *const c_char, *mut c_char, usize) -> c_int,
-    pub bo_map: unsafe extern "C" fn(Handle) -> *mut c_void,
 }
 
 // SAFETY: as for `Api`.
@@ -176,6 +189,5 @@ fn load_gmio() -> std::result::Result<GmioApi, String> {
         ),
         wait: dl_sym!(lib, LIBRARY, "_Z11xrtGMIOWaitPvPKc"),
         graph_read_rtp: dl_sym!(lib, LIBRARY, "xrtGraphReadRTP"),
-        bo_map: dl_sym!(lib, LIBRARY, "xrtBOMap"),
     })
 }

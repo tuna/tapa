@@ -18,32 +18,37 @@ bool tapa_stream_try_read(const char* port, uint8_t* out);
 bool tapa_stream_try_write(const char* port, const uint8_t* data);
 bool tapa_stream_can_write(const char* port);
 bool tapa_hls_stream_ostream_step(const char* port, bool write, const uint8_t* data);
+uint8_t* tapa_axi_memory(const char* port, uint64_t* size);
+{% if control %}
+bool tapa_ctrl_request(uint8_t* out);
+void tapa_ctrl_reply(const uint8_t* data);
+{% endif %}
 }
 
-// The device memory one mmap argument sees. Each argument is addressed
-// through its own AXI port over a known range, so this is a flat array per
-// port rather than one map over a shared address space. A
-// `std::unordered_map<uint64_t, uint8_t>` spends about 43 bytes of hash node
-// per modeled byte: a 16 MiB buffer cost 738 MB resident, against 34 MB here.
+// The device memory one mmap argument sees: the host's shared segment for
+// it, mapped in, so host and kernel see each other's writes as the run goes
+// (a ring's frames move during it). Each argument is addressed through its
+// own AXI port over a known range.
 //
 // Addresses outside the range are ordinary traffic, not errors -- the last
 // full-width beat of a buffer can run past the end. Reads there yield zero and
-// writes there are dropped, which is what the map did for addresses it never
-// loaded.
+// writes there are dropped.
 class MemRegion {
  public:
-  MemRegion(uint64_t base, size_t size) : base_(base), data_(size) {}
+  explicit MemRegion(uint64_t base) : base_(base) {}
 
-  uint64_t base() const { return base_; }
-  size_t size() const { return data_.size(); }
-  uint8_t* data() { return data_.data(); }
+  void attach(const char* port) {
+    uint64_t size = 0;
+    data_ = tapa_axi_memory(port, &size);
+    size_ = data_ == nullptr ? 0 : static_cast<size_t>(size);
+  }
 
   void read(uint64_t addr, void* buf, size_t nbytes) const {
     auto* dst = reinterpret_cast<uint8_t*>(buf);
     for (size_t i = 0; i < nbytes; i++) {
       // Below `base_` this wraps to a huge value, which the bound rejects.
       const uint64_t off = addr + i - base_;
-      dst[i] = off < data_.size() ? data_[off] : 0;
+      dst[i] = off < size_ ? data_[off] : 0;
     }
   }
 
@@ -54,14 +59,15 @@ class MemRegion {
     for (size_t i = 0; i < nbytes; i++) {
       const size_t byte = lane + i;
       const uint64_t off = addr + i - base_;
-      if (off < data_.size() && (strb[byte / 8] & (1 << (byte % 8))))
+      if (off < size_ && (strb[byte / 8] & (1 << (byte % 8))))
         data_[off] = src[byte];
     }
   }
 
  private:
   uint64_t base_;
-  std::vector<uint8_t> data_;
+  uint8_t* data_ = nullptr;
+  size_t size_ = 0;
 };
 
 static V{{ top_name }}* dut;
@@ -98,7 +104,7 @@ struct AxiWriteReq {
 };
 
 {% for arg in mmap_args %}
-static MemRegion mem_{{ arg.ident }}(0x{{ "{:016x}"|format(arg.base_addr) }}ULL, {{ arg.data_size }});
+static MemRegion mem_{{ arg.ident }}(0x{{ "{:016x}"|format(arg.base_addr) }}ULL);
 static std::deque<AxiReadReq<std::remove_reference_t<decltype(dut->{{ arg.axi.arid }})>>> rd_q_{{ arg.ident }};
 static bool rd_have_data_{{ arg.ident }} = false;
 static std::deque<AxiWriteReq<std::remove_reference_t<decltype(dut->{{ arg.axi.awid }})>>> wr_q_{{ arg.ident }};
@@ -224,6 +230,17 @@ static void service_all_axi() {
 }
 
 {% if mode == "vitis" %}
+static void service_streams();
+// Set once the kernel starts: register accesses then keep the streams
+// moving.
+static bool running = false;
+
+static void ctrl_tick() {
+  service_all_axi();
+  if (running) service_streams();
+  tick();
+}
+
 static void ctrl_write(uint32_t addr, uint32_t data) {
   dut->s_axi_control_AWVALID = 1;
   dut->s_axi_control_AWADDR = addr;
@@ -232,16 +249,57 @@ static void ctrl_write(uint32_t addr, uint32_t data) {
   dut->s_axi_control_WSTRB = 0xF;
   dut->s_axi_control_BREADY = 1;
   for (int i = 0; i < 20; ++i) {
-    service_all_axi();
-    tick();
+    ctrl_tick();
     if (dut->s_axi_control_BVALID) break;
   }
   dut->s_axi_control_AWVALID = 0;
   dut->s_axi_control_WVALID = 0;
   dut->s_axi_control_BREADY = 0;
-  service_all_axi();
-  tick();
+  ctrl_tick();
 }
+{% if control %}
+
+// The model shows the state after each edge, so each handshake signal is
+// read before the edge that takes it.
+static uint32_t ctrl_read(uint32_t addr) {
+  dut->s_axi_control_ARVALID = 1;
+  dut->s_axi_control_ARADDR = addr;
+  dut->eval();
+  while (!dut->s_axi_control_ARREADY) ctrl_tick();
+  ctrl_tick();
+  dut->s_axi_control_ARVALID = 0;
+  dut->s_axi_control_RREADY = 1;
+  dut->eval();
+  while (!dut->s_axi_control_RVALID) ctrl_tick();
+  const uint32_t data = dut->s_axi_control_RDATA;
+  ctrl_tick();
+  dut->s_axi_control_RREADY = 0;
+  return data;
+}
+
+// The host reads and writes registers while the kernel runs (its rings) and
+// ends the simulation itself, once it has every frame. Requests are
+// {op, offset, value}, little-endian words: op 0 reads, 1 writes, 2
+// finishes; each read or write gets a reply {0, value}, and the end of the
+// kernel a reply {1, 0}. True once the host has finished.
+static bool serve_control() {
+  uint8_t request[12];
+  while (tapa_ctrl_request(request)) {
+    uint32_t words[3];
+    std::memcpy(words, request, sizeof(words));
+    if (words[0] == 2) return true;
+    uint32_t value = words[2];
+    if (words[0] == 0) {
+      value = ctrl_read(words[1]);
+    } else {
+      ctrl_write(words[1], value);
+    }
+    const uint32_t reply[2] = {0, value};
+    tapa_ctrl_reply(reinterpret_cast<const uint8_t*>(reply));
+  }
+  return false;
+}
+{% endif %}
 {% endif %}
 
 static void service_streams() {
@@ -351,25 +409,6 @@ static void drain_output_streams() {
 }
 {% endif %}
 
-// The DPI carries its transfer length in a uint32_t, so moving a whole region
-// between shared memory and the model is chunked rather than issued as one
-// call. The chunk goes straight into the region -- there is no staging buffer.
-static constexpr size_t kShmChunkBytes = 1u << 20;
-
-static void load_from_shm(const char* port, MemRegion& region) {
-  for (size_t off = 0; off < region.size(); off += kShmChunkBytes) {
-    const size_t chunk = std::min(kShmChunkBytes, region.size() - off);
-    tapa_axi_read(port, region.base() + off, (uint32_t)chunk, region.data() + off);
-  }
-}
-
-static void store_to_shm(const char* port, MemRegion& region) {
-  for (size_t off = 0; off < region.size(); off += kShmChunkBytes) {
-    const size_t chunk = std::min(kShmChunkBytes, region.size() - off);
-    tapa_axi_write(port, region.base() + off, (uint32_t)chunk, region.data() + off);
-  }
-}
-
 int main(int argc, char** argv) {
   Verilated::commandArgs(argc, argv);
   dut = new V{{ top_name }};
@@ -404,7 +443,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < 5; ++i) tick();
 
 {% for arg in mmap_args %}
-  load_from_shm("{{ arg.name }}", mem_{{ arg.ident }});
+  mem_{{ arg.ident }}.attach("{{ arg.name }}");
 {% endfor %}
 
 {% if mode == "hls" %}
@@ -437,6 +476,7 @@ int main(int argc, char** argv) {
 {% endfor %}
 {% endfor %}
   ctrl_write(0x00, 1);
+  running = true;
 {% endif %}
   std::fprintf(stderr, "Kernel started, running simulation...\n");
   std::fprintf(stderr,
@@ -457,6 +497,9 @@ int main(int argc, char** argv) {
       dut->ap_start = 0;
     }
 {% else %}
+{% if control %}
+    if (cycle % 16 == 0) serve_control();
+{% endif %}
     if (dut->__SYM__interrupt) {
       std::fprintf(stderr, "Kernel done after %llu cycles\n",
                    static_cast<unsigned long long>(cycle));
@@ -464,14 +507,21 @@ int main(int argc, char** argv) {
     }
 {% endif %}
   }
+{% if control %}
+  {
+    const uint32_t done[2] = {1, 0};
+    tapa_ctrl_reply(reinterpret_cast<const uint8_t*>(done));
+  }
+  for (uint64_t cycle = 0; !(cycle % 16 == 0 && serve_control()); ++cycle) {
+    service_all_axi();
+    service_streams();
+    tick();
+  }
+{% endif %}
 
 {% if !stream_out_args.is_empty() %}
   drain_output_streams();
 {% endif %}
-
-{% for arg in mmap_args %}
-  store_to_shm("{{ arg.name }}", mem_{{ arg.ident }});
-{% endfor %}
 
   std::fprintf(stderr, "simulation complete (mode={{ mode }})\n");
   delete dut;

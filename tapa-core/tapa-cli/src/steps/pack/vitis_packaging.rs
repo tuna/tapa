@@ -23,7 +23,7 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work::FlowSettings;
 
-use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block};
+use super::kernel_xml_ports::{build_kernel_xml_ports, m_axi_param_block, ring_register_ports};
 use super::{enforce_xo_suffix, enforce_zip_suffix, PackArgs};
 
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
@@ -234,7 +234,17 @@ fn prepare_package_inputs(
         .unwrap_or(rtl_dir);
     let (part_num, clock_period) = resolve_device_settings(state_root, flow)?;
     let top_m_axi_bases = top_rtl_m_axi_bases(rtl_dir, &design.top)?;
-    let kernel_ports = build_kernel_xml_ports(&top_task.ports, &top_m_axi_bases);
+    let mut kernel_ports = build_kernel_xml_ports(&top_task.ports, &top_m_axi_bases);
+    let rings = design.rings();
+    if !rings.is_empty() {
+        let path = rtl_dir.join(format!("{}_control_s_axi.v", design.top));
+        let control_s_axi = std::fs::read_to_string(&path)
+            .map_err(|e| CliError::Codegen(format!("cannot read `{}`: {e}", path.display())))?;
+        kernel_ports.extend(
+            ring_register_ports(&rings, &control_s_axi)
+                .map_err(|e| CliError::Codegen(format!("`{}`: {e}", path.display())))?,
+        );
+    }
     if kernel_ports.is_empty() {
         return Err(CliError::InvalidArg(format!(
             "top task `{}` has no external ports; cannot emit kernel.xml",

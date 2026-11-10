@@ -3,6 +3,7 @@ mod api;
 pub mod device;
 pub mod metadata;
 mod pl_control;
+mod rings;
 
 use std::path::Path;
 

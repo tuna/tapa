@@ -1,5 +1,4 @@
 pub mod kernel_xml;
-pub mod sax_control;
 pub mod xo;
 pub mod zip_pkg;
 
@@ -76,6 +75,9 @@ pub struct KernelSpec {
     pub inlined: Vec<tapa_ir::InlinedInstance>,
     /// The AI Engine tasks' `async_mmap` ports the host program serves.
     pub memories: Vec<tapa_ir::MemoryCrossing>,
+    /// The top's frame arguments rings in device memory carry (see
+    /// [`tapa_ir::Ring`]); none without the design's task graph.
+    pub rings: Vec<tapa_ir::Ring>,
 }
 
 /// Normalize a scalar argument's raw bytes to exactly the width declared
@@ -139,6 +141,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     let mut part_num = None;
     let mut inlined = Vec::new();
     let mut memories = Vec::new();
+    let mut rings = Vec::new();
     let mut scalar_register_map = HashMap::new();
 
     let (extract_dir, files) = extract_archive(zip, "xo", |name, path, files| {
@@ -152,12 +155,16 @@ fn load_xo_spec<R: Read + std::io::Seek>(
             part_num = state.flow.part_num;
             inlined = tapa_ir::inlined_instances(&state.graph).map_err(CosimError::metadata)?;
             memories = tapa_ir::memory_crossings(&state.graph).map_err(CosimError::metadata)?;
+            rings = state.graph.rings();
             return Ok(());
         }
         // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
         // may use the legacy `s_axi_control.v` name.
         if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
-            scalar_register_map = sax_control::parse_register_map(&std::fs::read_to_string(path)?);
+            scalar_register_map =
+                tapa_protocol::control_register_offsets(&std::fs::read_to_string(path)?)
+                    .into_iter()
+                    .collect();
         }
         files.classify(name, path.to_path_buf());
         Ok(())
@@ -170,6 +177,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     spec.part_num = part_num;
     spec.inlined = inlined;
     spec.memories = memories;
+    spec.rings = rings;
     spec.verilog_files = files.verilog;
     spec.tcl_files = files.tcl;
     spec.xci_files = files.xci;

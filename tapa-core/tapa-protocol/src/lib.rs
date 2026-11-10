@@ -158,6 +158,62 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
     "ARADDR", "RVALID", "RREADY", "RDATA", "RRESP", "BVALID", "BREADY", "BRESP",
 ];
 
+/// The offset of each argument's (low) data word in an HLS control slave.
+///
+/// Keyed by lowercase argument name and read from the slave's Verilog:
+/// `localparam ADDR_<NAME>_DATA_0 = 6'h10` (Vitis HLS 2021 and later) or
+/// `ADDR_<NAME>_0` (2020), else the `// 0x10 : Data signal of <name>`
+/// comments.
+#[must_use]
+pub fn control_register_offsets(verilog: &str) -> std::collections::BTreeMap<String, u32> {
+    let mut map = std::collections::BTreeMap::new();
+    for line in verilog.lines() {
+        let Some(rest) = line.trim_start().strip_prefix("localparam") else {
+            continue;
+        };
+        let Some((name, value)) = rest.split_once('=') else {
+            continue;
+        };
+        let name = name.trim().to_lowercase();
+        let Some(name) = name.strip_prefix("addr_") else {
+            continue;
+        };
+        let Some(name) = name
+            .strip_suffix("_data_0")
+            .or_else(|| name.strip_suffix("_0"))
+        else {
+            continue;
+        };
+        let hex = value.split_once(['h', 'H']).map_or("", |(_, hex)| hex);
+        let hex: String = hex.chars().take_while(char::is_ascii_hexdigit).collect();
+        if let Ok(offset) = u32::from_str_radix(&hex, 16) {
+            map.entry(name.to_owned()).or_insert(offset);
+        }
+    }
+    if map.is_empty() {
+        for line in verilog.lines() {
+            let Some((offset, rest)) = line
+                .split_once("0x")
+                .map(|(_, rest)| rest)
+                .and_then(|rest| rest.split_once(':'))
+            else {
+                continue;
+            };
+            let Some(name) = rest.trim().strip_prefix("Data signal of") else {
+                continue;
+            };
+            if let (Ok(offset), Some(name)) = (
+                u32::from_str_radix(offset.trim(), 16),
+                name.split_whitespace().next(),
+            ) {
+                // The first is the low word of a 64-bit argument.
+                map.entry(name.to_lowercase()).or_insert(offset);
+            }
+        }
+    }
+    map
+}
+
 pub const M_AXI_PREFIX: &str = "m_axi_";
 
 // ── M-AXI default parameters ───────────────────────────────────────
@@ -372,6 +428,31 @@ pub fn m_axi_port_direction(suffix: &str) -> Option<PortDir> {
 }
 
 // ── Tests ───────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod control_register_tests {
+    use super::control_register_offsets;
+
+    #[test]
+    fn reads_either_localparam_spelling_and_keeps_the_low_word() {
+        let v = "localparam ADDR_A_0 = 8'h10;\nlocalparam ADDR_N_DATA_0 = 6'h20;\n\
+                 localparam ADDR_N_DATA_1 = 6'h24;\nlocalparam ADDR_AP_CTRL = 5'h00;\n\
+                 localparam ADDR_N_CTRL = 6'h28;\n";
+        let m = control_register_offsets(v);
+        assert_eq!(m.get("a").copied(), Some(0x10));
+        assert_eq!(m.get("n").copied(), Some(0x20));
+        assert_eq!(m.len(), 2);
+    }
+
+    #[test]
+    fn falls_back_to_the_comments() {
+        let v = "// 0x10 : Data signal of a\n// 0x14 : Data signal of a\n\
+                 // 0x18 : Data signal of b\n";
+        let m = control_register_offsets(v);
+        assert_eq!(m.get("a").copied(), Some(0x10));
+        assert_eq!(m.get("b").copied(), Some(0x18));
+    }
+}
 
 #[cfg(test)]
 mod tests {

@@ -60,6 +60,27 @@ const clang::FunctionDecl* InvokeCallee(
   return llvm::dyn_cast<clang::FunctionDecl>(ref->getDecl());
 }
 
+bool InvokeNamesInstance(const clang::CXXMemberCallExpr* invoke) {
+  const auto* method =
+      llvm::dyn_cast_or_null<clang::CXXMethodDecl>(invoke->getCalleeDecl());
+  if (method == nullptr || method->getNumParams() <= 1) return false;
+  const clang::QualType type = method->getParamDecl(1)->getType();
+  return type->isReferenceType() &&
+         type->getPointeeType()->isConstantArrayType();
+}
+
+std::vector<std::pair<unsigned, const clang::Expr*>> InvokePortArgs(
+    const clang::CXXMemberCallExpr* invoke) {
+  std::vector<std::pair<unsigned, const clang::Expr*>> out;
+  const unsigned first = InvokeNamesInstance(invoke) ? 2 : 1;
+  for (unsigned i = first; i < invoke->getNumArgs(); ++i) {
+    const clang::Expr* arg = invoke->getArg(i);
+    if (ClassifyTapaType(arg->getType()) == TapaKind::kExecutable) continue;
+    out.emplace_back(static_cast<unsigned>(out.size()), arg);
+  }
+  return out;
+}
+
 const clang::Stmt* LoopBody(const clang::Stmt* stmt) {
   if (const auto* s = llvm::dyn_cast<clang::DoStmt>(stmt)) return s->getBody();
   if (const auto* s = llvm::dyn_cast<clang::ForStmt>(stmt)) return s->getBody();

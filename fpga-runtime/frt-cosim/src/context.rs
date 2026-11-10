@@ -1,3 +1,4 @@
+use crate::control::Control;
 use crate::error::Result;
 use crate::metadata::{ArgKind, KernelSpec};
 use frt_shm::config::{BufferEntry, DpiConfig, StreamEntry};
@@ -16,6 +17,8 @@ pub struct CosimContext {
     pub streams: HashMap<String, SharedMemoryQueue>,
     pub stream_path_overrides: HashMap<String, String>,
     pub base_addresses: HashMap<String, u64>,
+    /// A kernel with rings: the host's register requests during the run.
+    pub control: Option<std::sync::Arc<Control>>,
 }
 
 impl CosimContext {
@@ -46,6 +49,7 @@ impl CosimContext {
             streams: HashMap::new(),
             stream_path_overrides: HashMap::new(),
             base_addresses,
+            control: None,
         })
     }
 
@@ -77,11 +81,17 @@ impl CosimContext {
             }
         }
 
+        let control = if spec.rings.is_empty() {
+            None
+        } else {
+            Some(std::sync::Arc::new(Control::create()?))
+        };
         Ok(Self {
             buffers,
             streams,
             stream_path_overrides: HashMap::new(),
             base_addresses,
+            control,
         })
     }
 
@@ -164,6 +174,7 @@ impl CosimContext {
                     )
                 })
                 .collect(),
+            control: self.control.as_ref().map(|control| control.entry()),
         };
         serde_json::to_string(&config).expect("DPI configuration is JSON serializable")
     }
@@ -186,6 +197,7 @@ mod tests {
             scalar_register_map: HashMap::new(),
             inlined: Vec::new(),
             memories: Vec::new(),
+            rings: Vec::new(),
             args: vec![
                 ArgSpec {
                     name: "a".into(),

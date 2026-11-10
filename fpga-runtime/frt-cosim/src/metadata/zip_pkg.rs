@@ -89,6 +89,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
         scalar_register_map: HashMap::new(),
         inlined: Vec::new(),
         memories: Vec::new(),
+        rings: Vec::new(),
     })
 }
 

@@ -151,6 +151,8 @@ serde_json = "1"
 # schema crate — rather than re-deriving its shape from an untyped parse — is
 # what keeps the producer and the consumer from drifting apart.
 tapa-ir = { path = "../tapa-core/tapa-ir" }
+# The control slave's register map, read the way `tapa pack` reads it.
+tapa-protocol = { path = "../tapa-core/tapa-protocol" }
 tempfile = "3"
 thiserror = "2"
 tracing = "0.1"

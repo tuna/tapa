@@ -138,6 +138,14 @@ void RewriteStreamDefinitions(const clang::FunctionDecl* func,
 
 void XilinxBackend::EmitStreamPort(const PortContext& p, CodeSink& out) const {
   const Lvl lvl = LvlOf(p.level, p.is_top, is_vitis_);
+  if (lvl == Lvl::kTop && p.ring) {
+    // The ring's base address; its counters follow the last parameter.
+    const std::string offset = OffsetName(p.param->getNameAsString());
+    out.Pragma({"HLS interface s_axilite port =", offset, "bundle = control"});
+    out.Line("{ auto val = reinterpret_cast<volatile uint8_t&>(" + offset +
+             "); }");
+    return;
+  }
   if (lvl == Lvl::kTop) {
     out.Pragma({"HLS interface axis port =", p.param->getNameAsString()});
     EmitDummyStreamRW(p.param, p.kind, out, /*qdma=*/true);
@@ -269,10 +277,21 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   // so the emitted signatures agree.
   for (const clang::FunctionDecl* decl : task.def->redecls()) {
     bool rewrote_axis_stream = false;
+    std::string counters;
     for (const clang::ParmVarDecl* param : decl->parameters()) {
       const std::string name = param->getNameAsString();
       const TapaKind kind = ClassifyTapaType(param);
-      if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
+      if (lvl == Lvl::kTop && task.rings.count(name) != 0) {
+        // A ring: its base address in place, its registers after the last
+        // parameter, so the host's argument indices stay the parameters'.
+        edits.ReplaceText(
+            param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+            "uint64_t");
+        edits.ReplaceText(param->getLocation(), OffsetName(name));
+        counters += ", uint32_t " + RingHostFramesName(name) + ", uint32_t& " +
+                    RingKernelFramesName(name) + ", uint64_t& " +
+                    RingShapeName(name);
+      } else if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
         edits.ReplaceText(
             param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
             "uint64_t");
@@ -309,6 +328,10 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
                             "#include \"ap_axi_sdata.h\"\n"
                             "#include \"hls_stream.h\"\n\n");
     }
+    if (!counters.empty()) {
+      edits.InsertTextBefore(decl->getFunctionTypeLoc().getRParenLoc(),
+                             counters);
+    }
   }
 }
 
@@ -338,7 +361,24 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     return;
   }
   CodeSink sink;
-  EmitPortPreambles(func, task.level, is_top, sink);
+  EmitPortPreambles(func, task.level, is_top, sink, &task.rings);
+  if (lvl == Lvl::kTop) {
+    for (const auto& [name, slots] : task.rings) {
+      const std::string host = RingHostFramesName(name);
+      const std::string kernel = RingKernelFramesName(name);
+      sink.Pragma({"HLS interface s_axilite port =", host, "bundle = control"});
+      sink.Line("{ auto val = reinterpret_cast<volatile uint8_t&>(" + host +
+                "); }");
+      sink.Pragma(
+          {"HLS interface s_axilite port =", kernel, "bundle = control"});
+      sink.Line(kernel + " = 0;");
+      const std::string shape = RingShapeName(name);
+      sink.Pragma(
+          {"HLS interface s_axilite port =", shape, "bundle = control"});
+      sink.Line(shape + " = 0;");
+      sink.Line("");
+    }
+  }
   const std::string lines = sink.Str();
 
   if (lvl == Lvl::kLower) {

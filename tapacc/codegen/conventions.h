@@ -18,6 +18,21 @@ inline std::string OffsetName(std::string_view base) {
   return std::string(base) + "_offset";
 }
 
+// The registers of a top stream argument a device-memory ring carries, all
+// after the top's last parameter: "<base>_host_frames" (frames the host has
+// moved, written by the host), "<base>_kernel_frames" (frames the kernel has
+// moved) and "<base>_ring_shape" (the frame and slot counts), both written
+// by the kernel.
+inline std::string RingHostFramesName(std::string_view base) {
+  return std::string(base) + "_host_frames";
+}
+inline std::string RingKernelFramesName(std::string_view base) {
+  return std::string(base) + "_kernel_frames";
+}
+inline std::string RingShapeName(std::string_view base) {
+  return std::string(base) + "_ring_shape";
+}
+
 // The i-th channel of an `mmaps` port as a flat offset parameter:
 // "<base>_<i>_offset".
 inline std::string ArrayElemOffset(std::string_view base, int i) {

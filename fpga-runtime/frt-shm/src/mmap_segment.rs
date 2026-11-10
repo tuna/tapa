@@ -73,6 +73,12 @@ impl MmapSegment {
         unsafe { std::ptr::copy_nonoverlapping(src, dst.cast_mut(), len) };
     }
 
+    /// The start of the mapping, for code in this process that reads and
+    /// writes it as the other process does (a testbench's memory model).
+    pub fn shared_ptr(&self) -> *mut u8 {
+        self.mmap.as_ptr().cast_mut()
+    }
+
     pub fn len(&self) -> usize {
         self.mmap.len()
     }

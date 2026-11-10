@@ -90,13 +90,7 @@ impl SimRunner for VerilatorRunner {
         scalar_values: &HashMap<u32, Vec<u8>>,
         tb_dir: &Path,
     ) -> Result<()> {
-        let buffer_sizes: HashMap<String, usize> = ctx
-            .buffers
-            .iter()
-            .map(|(name, seg)| (name.clone(), seg.len()))
-            .collect();
-        let generator =
-            VerilatorTbGenerator::new(spec, &ctx.base_addresses, &buffer_sizes, scalar_values);
+        let generator = VerilatorTbGenerator::new(spec, &ctx.base_addresses, scalar_values);
         std::fs::write(tb_dir.join("tb.cpp"), generator.render_tb()?)?;
         let rtl_dir = tb_dir.join("rtl");
         std::fs::create_dir_all(&rtl_dir)?;

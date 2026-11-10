@@ -69,7 +69,9 @@ int main(int argc, char* argv[]) {
     ok = RunCornerTurn(src, n) && ok;
   }
   if (FLAGS_bitstream.empty() || FLAGS_stream_top) {
-    ok = RunTurnStream(src, n) && ok;
+    // Twice: on XRT the second invoke's frames continue the counts of the
+    // rings that carry TurnStream's arguments.
+    for (int run = 0; run < 2; ++run) ok = RunTurnStream(src, n) && ok;
   }
   std::clog << (ok ? "PASS!" : "FAIL!") << std::endl;
   return ok ? 0 : 1;

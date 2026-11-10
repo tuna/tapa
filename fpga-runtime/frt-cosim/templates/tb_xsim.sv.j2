@@ -8,6 +8,10 @@ import "DPI-C" function bit tapa_stream_try_read(input string port, output byte 
 import "DPI-C" function bit tapa_stream_try_write(input string port, input byte unsigned data[]);
 import "DPI-C" function bit tapa_stream_can_write(input string port);
 import "DPI-C" function bit tapa_hls_stream_ostream_step(input string port, input bit write, input byte unsigned data[]);
+{% if control %}
+import "DPI-C" function bit tapa_ctrl_request(output byte unsigned out[]);
+import "DPI-C" function void tapa_ctrl_reply(input byte unsigned data[]);
+{% endif %}
 
 reg ap_clk = 0;
 always #5 ap_clk = ~ap_clk;
@@ -61,6 +65,26 @@ begin
   @(posedge ap_clk);
 end
 endtask
+{% endif %}
+{% if control %}
+
+task automatic ctrl_read(input [{{ control_addr_width - 1 }}:0] addr, output [31:0] data);
+begin
+  s_axi_control_ARVALID <= 1'b1;
+  s_axi_control_ARADDR <= addr;
+  do @(posedge ap_clk); while (!s_axi_control_ARREADY);
+  s_axi_control_ARVALID <= 1'b0;
+  s_axi_control_RREADY <= 1'b1;
+  do @(posedge ap_clk); while (!s_axi_control_RVALID);
+  data = s_axi_control_RDATA;
+  s_axi_control_RREADY <= 1'b0;
+  @(posedge ap_clk);
+end
+endtask
+
+// The host reads and writes registers while the kernel runs (its rings) and
+// ends the simulation itself, once it has every frame.
+bit control_finished = 1'b0;
 {% endif %}
 
 {% for arg in mmap_args %}
@@ -294,6 +318,44 @@ initial begin
 {% endfor %}
 {% endfor %}
   ctrl_write({{ control_addr_width }}'h00, 32'h0000_0001);
+{% if control %}
+  begin : control
+    byte unsigned request[12];
+    byte unsigned reply[8];
+    bit [31:0] offset;
+    bit [31:0] value;
+    bit done_told;
+    done_told = 1'b0;
+    while (!control_finished) begin
+      repeat (16) @(posedge ap_clk);
+      if (!done_told && interrupt === 1'b1) begin
+        // Reply kind 1: the kernel is done.
+        reply = '{8{8'h00}};
+        reply[0] = 8'd1;
+        tapa_ctrl_reply(reply);
+        done_told = 1'b1;
+      end
+      // Requests are {op, offset, value}, little-endian words; op 0 reads,
+      // 1 writes, 2 finishes. Each read or write gets a reply {0, value}.
+      while (!control_finished && tapa_ctrl_request(request)) begin
+        offset = {request[7], request[6], request[5], request[4]};
+        value = {request[11], request[10], request[9], request[8]};
+        if (request[0] == 8'd2) begin
+          control_finished = 1'b1;
+        end else begin
+          if (request[0] == 8'd0) begin
+            ctrl_read(offset[{{ control_addr_width - 1 }}:0], value);
+          end else begin
+            ctrl_write(offset[{{ control_addr_width - 1 }}:0], value);
+          end
+          reply = '{8{8'h00}};
+          {reply[7], reply[6], reply[5], reply[4]} = value;
+          tapa_ctrl_reply(reply);
+        end
+      end
+    end
+  end
+{% endif %}
 {% endif %}
 end
 
@@ -531,6 +593,9 @@ initial begin
 {% endfor %}
     end
   end
+{% endif %}
+{% if control %}
+  wait (control_finished === 1'b1);
 {% endif %}
   repeat (2) @(posedge ap_clk);
 {% endif %}

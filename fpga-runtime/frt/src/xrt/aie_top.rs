@@ -18,11 +18,9 @@ use std::collections::HashMap;
 use std::ffi::{c_char, CString};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
-
-use frt_shm::SharedMemoryQueue;
+use std::time::Instant;
 
 use super::api::{
     api, gmio_api, Api, GmioApi, Handle, SYNC_AIE_TO_GMIO, SYNC_FROM_DEVICE, SYNC_GMIO_TO_AIE,
@@ -34,9 +32,7 @@ use super::metadata::{
 };
 use crate::device::{BufferAccess, Device};
 use crate::error::{FrtError, Result};
-
-/// How long a pump waits before it looks at an empty or full queue again.
-const POLL: Duration = Duration::from_micros(100);
+use crate::host_frames::{FrameQueue, HostQueue, POLL};
 
 /// An XRT handle the pumps share with the device.
 #[derive(Clone, Copy)]
@@ -52,14 +48,13 @@ unsafe impl Sync for Shared {}
 struct Pump {
     gmio: GmioArgument,
     name: CString,
-    queue: Mutex<Option<String>>,
+    frames: FrameQueue,
     /// Output frames delivered so far, over every run.
     delivered: AtomicU64,
     /// The next output frame is a drain run's, to discard.
     drain: AtomicBool,
     /// An output waits for the next run before it posts a transfer.
     idle: AtomicBool,
-    stop: AtomicBool,
 }
 
 pub struct XrtAieTopDevice {
@@ -118,14 +113,14 @@ impl XrtAieTopDevice {
             .map(|gmio| {
                 let name = CString::new(gmio.name.clone())
                     .map_err(|e| FrtError::Xrt(format!("GMIO name: {e}")))?;
+                let frames = FrameQueue::new(gmio.name.clone(), gmio.element_words as usize * 4);
                 Ok(Arc::new(Pump {
                     gmio,
                     name,
-                    queue: Mutex::new(None),
+                    frames,
                     delivered: AtomicU64::new(0),
                     drain: AtomicBool::new(false),
                     idle: AtomicBool::new(true),
-                    stop: AtomicBool::new(false),
                 }))
             })
             .collect::<Result<Vec<_>>>()?;
@@ -150,7 +145,7 @@ impl XrtAieTopDevice {
             return Ok(());
         }
         for pump in &self.pumps {
-            if pump.queue.lock().expect("pump queue").is_none() {
+            if !pump.frames.is_bound() {
                 return Err(FrtError::Xrt(format!(
                     "the stream argument {} (`{}`) was never bound",
                     pump.gmio.index, pump.gmio.name
@@ -202,7 +197,7 @@ impl Device for XrtAieTopDevice {
                     "argument {index} of a top on the AI Engine is not a stream"
                 ))
             })?;
-        *pump.queue.lock().expect("pump queue") = Some(shm_path.to_owned());
+        pump.frames.bind(shm_path);
         Ok(())
     }
 
@@ -286,8 +281,8 @@ impl Device for XrtAieTopDevice {
                         };
                         check(rc, &format!("read the frame count of `{}`", pump.gmio.name))?;
                         let frames = u64::from(u32::from_le_bytes(frames));
-                        wait_for(pump, || {
-                            pump.delivered.load(Ordering::Acquire) - before >= frames
+                        pump.frames.wait_for(|| {
+                            Ok(pump.delivered.load(Ordering::Acquire) - before >= frames)
                         })?;
                     }
                     let elapsed = crate::elapsed_ns(started);
@@ -302,7 +297,8 @@ impl Device for XrtAieTopDevice {
                     let rc = unsafe { (api.graph_wait)(graph.0, 0) };
                     check(rc, "wait for the drain run")?;
                     for (pump, _, _) in &outputs {
-                        wait_for(pump, || pump.idle.load(Ordering::Acquire))?;
+                        pump.frames
+                            .wait_for(|| Ok(pump.idle.load(Ordering::Acquire)))?;
                     }
                     Ok(elapsed)
                 })?,
@@ -317,7 +313,7 @@ impl Device for XrtAieTopDevice {
         while !run.is_finished() {
             if let Some(error) = self.pump_failure() {
                 for pump in &self.pumps {
-                    pump.stop.store(true, Ordering::Release);
+                    pump.frames.stop();
                 }
                 return Err(error);
             }
@@ -332,7 +328,7 @@ impl Device for XrtAieTopDevice {
 
     fn kill(&mut self) -> Result<()> {
         for pump in &self.pumps {
-            pump.stop.store(true, Ordering::Release);
+            pump.frames.stop();
         }
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_reset)(self.graph) };
@@ -354,7 +350,7 @@ impl Drop for XrtAieTopDevice {
     // the device stays open under it for the rest of the process.
     fn drop(&mut self) {
         for pump in &self.pumps {
-            pump.stop.store(true, Ordering::Release);
+            pump.frames.stop();
         }
         // SAFETY: live graph handle, closed once.
         unsafe { (self.api.graph_close)(self.graph) };
@@ -378,39 +374,24 @@ fn set_drains(api: &Api, graph: Shared, drains: &[CString], on: bool) -> Result<
     Ok(())
 }
 
-/// Waits until `done`, or fails once the device stops the pump.
-fn wait_for(pump: &Pump, done: impl Fn() -> bool) -> Result<()> {
-    while !done() {
-        if pump.stop.load(Ordering::Acquire) {
-            return Err(FrtError::Xrt(format!(
-                "the GMIO `{}` stopped short of its frames",
-                pump.gmio.name
-            )));
-        }
-        std::thread::sleep(POLL);
-    }
-    Ok(())
-}
-
 /// Moves one GMIO's frames until the device stops it.
 fn run_pump(api: &Api, gmio: &GmioApi, device: Shared, pump: &Pump) -> Result<()> {
-    let words = pump.gmio.transfer_words as usize;
-    let bytes = words * 4;
+    let bytes = pump.gmio.transfer_words as usize * 4;
     // SAFETY: live device; default flags in the default memory group.
     let bo = non_null(
         unsafe { (api.bo_alloc)(device.0, bytes, 0, 0) },
         &format!("allocate the buffer of GMIO `{}`", pump.gmio.name),
     )?;
     // SAFETY: live buffer handle.
-    let map = unsafe { (gmio.bo_map)(bo) }.cast::<u32>();
+    let map = unsafe { (api.bo_map)(bo) }.cast::<u8>();
     if map.is_null() {
         return Err(FrtError::Xrt(format!(
             "cannot map the buffer of GMIO `{}`",
             pump.gmio.name
         )));
     }
-    // SAFETY: XRT maps `bytes` bytes, 4-byte aligned, for the buffer's life.
-    let frame = unsafe { std::slice::from_raw_parts_mut(map, words) };
+    // SAFETY: XRT maps `bytes` bytes for the buffer's life.
+    let frame = unsafe { std::slice::from_raw_parts_mut(map, bytes) };
     let mut host = HostQueue::default();
     let transfer = |direction| -> Result<()> {
         // SAFETY: live device and buffer; a valid C string.
@@ -428,14 +409,14 @@ fn run_pump(api: &Api, gmio: &GmioApi, device: Shared, pump: &Pump) -> Result<()
     };
     loop {
         if pump.gmio.input {
-            if !host.fill(pump, frame)? {
+            if !host.fill(&pump.frames, frame)? {
                 return Ok(());
             }
             sync(SYNC_TO_DEVICE)?;
             transfer(SYNC_GMIO_TO_AIE)?;
         } else {
             while pump.idle.load(Ordering::Acquire) {
-                if pump.stop.load(Ordering::Acquire) {
+                if pump.frames.stopped() {
                     return Ok(());
                 }
                 std::thread::sleep(POLL);
@@ -446,164 +427,10 @@ fn run_pump(api: &Api, gmio: &GmioApi, device: Shared, pump: &Pump) -> Result<()
                 continue;
             }
             sync(SYNC_FROM_DEVICE)?;
-            if !host.drain(pump, frame)? {
+            if !host.drain(&pump.frames, frame)? {
                 return Ok(());
             }
             pump.delivered.fetch_add(1, Ordering::AcqRel);
         }
-    }
-}
-
-/// The host queue a pump has open: the one bound for the current run.
-#[derive(Default)]
-struct HostQueue {
-    open: Option<(String, SharedMemoryQueue)>,
-    /// The host closed the stream: nothing more until it is bound anew.
-    closed: bool,
-}
-
-impl HostQueue {
-    /// The queue bound now, reopened when a run bound another.
-    fn current(&mut self, pump: &Pump) -> Result<&mut SharedMemoryQueue> {
-        let bound = pump
-            .queue
-            .lock()
-            .expect("pump queue")
-            .clone()
-            .unwrap_or_default();
-        if self.open.as_ref().is_none_or(|(path, _)| *path != bound) {
-            let queue = SharedMemoryQueue::open(&bound)?;
-            if queue.width() <= pump.gmio.element_words as usize * 4 {
-                return Err(FrtError::Xrt(format!(
-                    "the host stream of GMIO `{}` has {}-byte slots, too narrow for {}-word \
-                     elements",
-                    pump.gmio.name,
-                    queue.width(),
-                    pump.gmio.element_words
-                )));
-            }
-            self.open = Some((bound, queue));
-            self.closed = false;
-        }
-        Ok(&mut self.open.as_mut().expect("opened just above").1)
-    }
-
-    /// Fills `frame` from the host, zero-padding it if the host closes the
-    /// stream part way; false once the device stops the pump.
-    fn fill(&mut self, pump: &Pump, frame: &mut [u32]) -> Result<bool> {
-        let element = pump.gmio.element_words as usize;
-        let mut filled = 0;
-        while filled < frame.len() {
-            if pump.stop.load(Ordering::Acquire) {
-                return Ok(false);
-            }
-            // Reopens on a new binding, which also clears `closed`.
-            let width = self.current(pump)?.width();
-            if self.closed && filled > 0 {
-                break;
-            }
-            let mut slot = vec![0u8; width];
-            if self.closed || !self.current(pump)?.pop_into(&mut slot) {
-                std::thread::sleep(POLL);
-                continue;
-            }
-            if slot[element * 4] != 0 {
-                // The end-of-transmission token: pad what is there.
-                self.closed = true;
-                continue;
-            }
-            for (word, bytes) in frame[filled..filled + element]
-                .iter_mut()
-                .zip(slot.as_chunks::<4>().0)
-            {
-                *word = u32::from_le_bytes(*bytes);
-            }
-            filled += element;
-        }
-        frame[filled..].fill(0);
-        Ok(true)
-    }
-
-    /// Pushes `frame` to the host element by element; false once the device
-    /// stops the pump.
-    fn drain(&mut self, pump: &Pump, frame: &[u32]) -> Result<bool> {
-        let element = pump.gmio.element_words as usize;
-        for value in frame.chunks_exact(element) {
-            let queue = self.current(pump)?;
-            // The flag and the padding stay clear.
-            let mut slot: Vec<u8> = value.iter().flat_map(|word| word.to_le_bytes()).collect();
-            slot.resize(queue.width(), 0);
-            while queue.try_push(&slot).is_err() {
-                if pump.stop.load(Ordering::Acquire) {
-                    return Ok(false);
-                }
-                std::thread::sleep(POLL);
-            }
-        }
-        Ok(true)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn pump(input: bool, queue: &SharedMemoryQueue) -> Pump {
-        Pump {
-            gmio: GmioArgument {
-                index: 0,
-                name: "g".into(),
-                input,
-                element_words: 2,
-                transfer_words: 4,
-            },
-            name: CString::new("g").expect("name"),
-            queue: Mutex::new(Some(queue.path().to_string_lossy().into_owned())),
-            delivered: AtomicU64::new(0),
-            drain: AtomicBool::new(false),
-            idle: AtomicBool::new(false),
-            stop: AtomicBool::new(false),
-        }
-    }
-
-    /// A slot of two words and the end-of-transmission flag after them.
-    fn slot(words: [u32; 2], eot: bool) -> Vec<u8> {
-        let mut slot: Vec<u8> = words.iter().flat_map(|word| word.to_le_bytes()).collect();
-        slot.push(u8::from(eot));
-        slot
-    }
-
-    #[test]
-    fn a_frame_the_host_closes_part_way_is_zero_padded() {
-        let mut queue = SharedMemoryQueue::create("frt_gmio_fill", 8, 9).expect("queue");
-        for element in [
-            slot([1, 2], false),
-            slot([3, 4], false),
-            slot([5, 6], false),
-        ] {
-            queue.try_push(&element).expect("push");
-        }
-        queue.try_push(&slot([0, 0], true)).expect("push");
-        let pump = pump(true, &queue);
-        let mut host = HostQueue::default();
-        let mut frame = [9; 4];
-        assert!(host.fill(&pump, &mut frame).expect("fill"));
-        assert_eq!(frame, [1, 2, 3, 4]);
-        assert!(host.fill(&pump, &mut frame).expect("fill"));
-        assert_eq!(frame, [5, 6, 0, 0]);
-    }
-
-    #[test]
-    fn a_frame_reaches_the_host_element_by_element() {
-        let mut queue = SharedMemoryQueue::create("frt_gmio_drain", 8, 9).expect("queue");
-        let pump = pump(false, &queue);
-        let mut host = HostQueue::default();
-        assert!(host.drain(&pump, &[1, 2, 3, 4]).expect("drain"));
-        let mut element = vec![0u8; 9];
-        for want in [slot([1, 2], false), slot([3, 4], false)] {
-            assert!(queue.pop_into(&mut element));
-            assert_eq!(element, want);
-        }
-        assert!(!queue.pop_into(&mut element));
     }
 }

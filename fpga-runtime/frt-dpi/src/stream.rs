@@ -252,6 +252,7 @@ mod tests {
         let q = SharedMemoryQueue::create(name, depth, width).expect("create stream queue");
         DpiContext {
             buffers: HashMap::new(),
+            control: None,
             streams: HashMap::from([(
                 name.to_owned(),
                 DpiStream {

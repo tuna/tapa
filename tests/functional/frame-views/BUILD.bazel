@@ -1,8 +1,10 @@
 """Frame ports: corner turns through frame channels."""
 
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("@vars//:vars.bzl", "HAS_XRT", "XILINX_HW_EMU_PLATFORM")
 load("//bazel:tapa_rules.bzl", "tapa_xo")
 load("//bazel:test_rules.bzl", "aie_sim_test", "tapa_functional_test")
+load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
 tapa_functional_test(
     name = "frame-views",
@@ -70,6 +72,41 @@ sh_test(
         "//fpga-runtime:cargo_release_artifacts",
     ],
     tags = ["cpu:2"],
+)
+
+# TurnStream on XRT hardware emulation: its arguments are rings in device
+# memory, which the host fills and drains while the kernel runs. Manual:
+# hw_emu's scheduler polls the kernel under the device lock the host's
+# register reads and syncs take, so a run lasts from minutes to over an hour.
+vpp_xclbin(
+    name = "frame-views-stream-hw-emu-xclbin",
+    platform_name = XILINX_HW_EMU_PLATFORM,
+    tags = ["manual"],
+    target = "hw_emu",
+    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
+    top_name = "TurnStream",
+    xo = ":frame-views-stream-xo",
+)
+
+sh_test(
+    name = "frame-views-stream-hw-emu",
+    size = "enormous",
+    srcs = ["//bazel:xrt_env.sh"],
+    args = [
+        "$(rootpath frame-views-host)",
+        "--bitstream=$(rootpath frame-views-stream-hw-emu-xclbin)",
+        "--stream_top",
+        "8",
+    ],
+    data = [
+        ":frame-views-host",
+        ":frame-views-stream-hw-emu-xclbin",
+    ],
+    tags = [
+        "cpu:2",
+        "manual",
+    ],
+    target_compatible_with = [] if HAS_XRT else ["@platforms//:incompatible"],
 )
 
 # Only Turn on the AI Engine: TurnOut's frame port, inside Emit, takes its

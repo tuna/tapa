@@ -8,6 +8,8 @@ pub enum CosimError {
     SimFailed(std::process::ExitStatus),
     #[error("simulator tool `{0}` not found")]
     ToolNotFound(String),
+    #[error("the simulation ended with a control-register request unanswered")]
+    Unanswered,
 }
 
 impl CosimError {

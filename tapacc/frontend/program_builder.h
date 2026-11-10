@@ -5,6 +5,7 @@
 #include <memory>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "clang/AST/ASTContext.h"
@@ -163,7 +164,14 @@ class ProgramBuilder {
     bool ignored = false;          // [[tapa::target("ignore")]]
     bool explicit_target = false;  // a target attribute or mapping
     bool takes_memory = false;     // a memory parameter (mmap, async_mmap, ...)
-    bool internal = false;         // static / anonymous namespace / a method
+    // Per parameter: a stream port (istream/ostream), and a frame port
+    // (iframes/oframes or [[tapa::frame(N)]]).
+    std::vector<bool> stream_params;
+    std::vector<bool> frame_params;
+    // [[tapa::ring(S)]] parameters: index -> S, and where each sits.
+    std::map<int, uint32_t> ring_slots;
+    std::map<int, std::string> ring_locs;
+    bool internal = false;  // static / anonymous namespace / a method
     TaskLevel level = TaskLevel::kLower;
     SynthTarget target = SynthTarget::kXilinxHls;
   };
@@ -178,6 +186,9 @@ class ProgramBuilder {
     std::string caller_name;
     std::string loc;
     int tu = 0;
+    // The caller parameters passed straight to the callee: pairs of callee
+    // and caller parameter index.
+    std::vector<std::pair<int, int>> bindings;
   };
 
   // The per-TU index, transient to one AST.
@@ -225,6 +236,7 @@ class ProgramBuilder {
   void Fail(std::string message);
   bool ApplyTaskTargets();
   bool PropagateAie(const std::string& top_key, bool aie_top);
+  bool ComputeRings(const std::string& top_key);
   std::string ScannedTus() const;
   const DefSighting& FirstSighting(const std::string& key) const;
 

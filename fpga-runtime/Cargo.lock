@@ -277,6 +277,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tapa-ir",
+ "tapa-protocol",
  "tempfile",
  "thiserror",
  "which",
@@ -626,6 +627,10 @@ dependencies = [
  "strum",
  "thiserror",
 ]
+
+[[package]]
+name = "tapa-protocol"
+version = "0.1.0"
 
 [[package]]
 name = "tar"

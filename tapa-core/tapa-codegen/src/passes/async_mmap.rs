@@ -59,6 +59,36 @@ fn signal_name(base: &str, tag: &str, suffix: &str) -> String {
     format!("{}_{}__{suffix}", sanitize_array_name(base), tag)
 }
 
+/// The connections of an RTL user of a bridge whose ports are the bridge's
+/// FIFO side, named `{tag}{suffix}` (as `frame_ring` names them): `active`
+/// tags reach the bridge's wires, the others' inputs are tied off.
+pub(super) fn user_portargs(bridge_base: &str, active: &BTreeSet<&'static str>) -> Vec<PortArg> {
+    let mut ports = Vec::new();
+    for &tag in TAGS {
+        for &suffix in tag_suffixes(tag) {
+            let user_input = matches!(suffix, "_full_n" | "_dout" | "_empty_n");
+            let connection = if active.contains(tag) {
+                Expr::ident(signal_name(bridge_base, tag, suffix))
+            } else if user_input {
+                Expr::lit("'d0")
+            } else {
+                Expr::lit("")
+            };
+            ports.push(PortArg::new(format!("{tag}{suffix}"), connection));
+        }
+    }
+    ports
+}
+
+/// The tags of a bridge that only reads (`read`) or only writes.
+pub(super) fn one_way_tags(read: bool) -> BTreeSet<&'static str> {
+    if read {
+        [READ_ADDR, READ_DATA].into()
+    } else {
+        [WRITE_ADDR, WRITE_DATA, WRITE_RESP].into()
+    }
+}
+
 pub fn bridge_base_from_m_axi_prefix(prefix: &str) -> String {
     prefix
         .strip_prefix(M_AXI_PREFIX)

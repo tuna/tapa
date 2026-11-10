@@ -43,6 +43,9 @@ struct Port {
   // body uses (see Mover).
   std::optional<std::string> aie_reads;
   std::optional<std::string> aie_writes;
+  // A Vitis top's stream argument that reaches a frame port: the slots of
+  // the device-memory ring that carries it ([[tapa::ring(S)]], default 4).
+  std::optional<uint32_t> ring;
 };
 
 // One argument of a child invocation: what the child port binds to in the
@@ -116,6 +119,10 @@ struct TaskModel {
   // Stream ports the body closes (`close()`/`try_close()`): an end-of-
   // transmission token must never cross into an AI Engine task.
   std::set<std::string> closed_ports;
+  // The top only: the stream parameters a device-memory ring carries, with
+  // their slots (see Port::ring). Merged before pass 2, so a TU that sees
+  // only the top's declaration rewrites it the same way.
+  std::map<std::string, uint32_t> rings;
 
   // Upper tasks only: child instantiations keyed by child task name, and FIFOs
   // keyed by variable name. Ordered maps -> deterministic output (§8.5), never

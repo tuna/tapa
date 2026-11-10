@@ -56,7 +56,7 @@ const clang::Stmt* GetRegionBody(const clang::Stmt* stmt) {
 
 // Listed explicitly rather than as a range over the generated AttrKinds:
 // TableGen orders attr::Kind by record name within an inheritance group, so
-// `TapaAggregate..TapaUnroll` covers today's thirteen only by accident of
+// `TapaAggregate..TapaUnroll` covers today's fifteen only by accident of
 // spelling. A future attribute sorting outside those endpoints — or one
 // derived from InheritableAttr, which moves it to another group — would
 // silently not be a TAPA attribute here, so LowerAttrs would skip it and
@@ -74,6 +74,7 @@ constexpr bool IsTapaAttr(clang::attr::Kind kind) {
     case clang::attr::TapaLatency:
     case clang::attr::TapaPartition:
     case clang::attr::TapaPipeline:
+    case clang::attr::TapaRing:
     case clang::attr::TapaStorage:
     case clang::attr::TapaTarget:
     case clang::attr::TapaTripcount:

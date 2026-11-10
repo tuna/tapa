@@ -217,9 +217,10 @@ argument.
   read or written in place without a copy, and the producer fills one bank
   while the consumer works on another. The channel sits where the stream is
   declared; an upper task in between carries the frame port's signals in
-  place of the stream's. A kernel's own stream argument, or a stream to the
-  AI Engine, gets a channel of two banks in the PL kernel's top, filled from
-  or drained to that argument element by element. When `tapa floorplan`
+  place of the stream's. A stream to the AI Engine gets a channel of two
+  banks in the PL kernel's top, filled from or drained to its PLIO element
+  by element; so does a stream argument of the kernel itself, which on
+  Vitis comes from the host as described below. When `tapa floorplan`
   puts the two ends in different slots, the channel is copied, as an AI
   Engine tile DMA copies a buffer between distant tiles: each frame-port end
   gets its own channel of the same banks, and the elements cross the slots
@@ -244,6 +245,37 @@ Rules:
   at least one frame (`tapa analyze` checks both).
 - A top task that is itself a leaf cannot take a frame port: nothing would
   hold its channel. Invoke the leaf from an upper top task.
+
+### Frames from and to the host
+
+XRT has no streams between host and kernel, so on Vitis a stream argument
+of the top that reaches a frame port moves through device memory: a ring
+of frame slots, 4 unless the top's parameter says otherwise,
+`[[tapa::ring(S)]] tapa::istream<float>& rows`. The host program is the
+same as in software simulation: it passes a `tapa::stream`, and TAPA's
+runtime moves each frame between it and a free slot while the kernel runs.
+In the kernel a mover streams each frame between its slot and the
+argument's frame channel; for an output, the kernel is done only once
+every frame it released is in memory.
+
+- Every Vitis flow runs the ring: xosim, Verilator cosimulation, hardware
+  emulation and hardware. A stream argument that reaches no frame port
+  stays an AXIS port, which only simulation can feed.
+- In `kernel.xml` the argument is a memory argument (its own `m_axi` port,
+  placed by connectivity like any other), followed after every argument
+  of the top by three registers per ring: the host's and the kernel's frame
+  counts, and the ring's shape.
+- Per frame the host pays a DMA transfer and a few register accesses; a
+  larger frame, or more slots, amortizes them. In hardware emulation each
+  of them waits behind XRT's own polling of the running kernel, so a few
+  frames there take minutes, at times over an hour.
+- The host reads the kernel's registers during the run, so XRT opens the
+  kernel for exclusive access: one process at a time.
+- An input frame the kernel has not taken when an invoke ends carries into
+  the next invoke on XRT, as in a stream; cosimulation starts each invoke
+  afresh, so there it is dropped.
+- `[[tapa::ring(S)]]` belongs on such a stream parameter of the top only;
+  anywhere else it is an error.
 
 ---
 

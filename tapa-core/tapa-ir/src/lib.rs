@@ -43,7 +43,7 @@ pub use floorplan::{
     scope_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
     ControlChannel, Coor, FloorplanResult, PipelineRoute, PipelineScheme, Resource, RoutedChannel,
 };
-pub use graph::{FrameChannel, TaskGraph};
+pub use graph::{ring_registers, FrameChannel, Ring, RingRegister, TaskGraph};
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use memory::MemoryGeometry;
