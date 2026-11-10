@@ -139,13 +139,23 @@ pub fn parse_aie_top_arguments(xclbin: &[u8]) -> Result<Option<AieTopArguments>>
 /// `AIE_METADATA`: the AI Engine control configuration `aiecompiler` wrote.
 const AIE_METADATA: u32 = 25;
 
+/// An AI Engine tile, as the AIE metadata numbers it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AieTile {
+    pub column: u32,
+    pub row: u32,
+}
+
 /// The AI Engine graph `tapa synth` generated, as the xclbin records it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AieGraph {
     /// `tapa_aie`, or `tapa_aie_forever` when some kernel never returns.
     pub name: String,
     pub run_forever: bool,
-    pub iteration_addresses: Vec<u32>,
+    /// The tiles of the graph's kernels.
+    pub cores: Vec<AieTile>,
+    /// Each kernel's iteration count: its tile and its address there.
+    pub iterations: Vec<(AieTile, u32)>,
     pub rtps: Vec<AieRtp>,
     /// The kernels' drain flags (`<graph>.drain_<kernel>`), which a graph
     /// writing a GMIO has (see `tapa-xilinx`'s graph).
@@ -160,6 +170,8 @@ pub struct AieRtp {
     /// The PL kernel argument whose value it carries.
     pub arg: u32,
     pub bytes: usize,
+    /// The tile holding its buffer.
+    pub tile: AieTile,
     pub ping_address: u32,
     pub pong_address: u32,
 }
@@ -217,12 +229,43 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
         return Ok(None);
     };
     let name = graph["name"].as_str().expect("matched graph name");
-    let iteration_addresses = graph["iteration_memory_addresses"]
-        .as_array()
+    let numbers = |field: &str| {
+        graph[field]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|value| aie_u32(value, field))
+            .collect::<Result<Vec<_>>>()
+    };
+    let tiles = |columns: &str, rows: &str| -> Result<Vec<AieTile>> {
+        let (columns, rows) = (numbers(columns)?, numbers(rows)?);
+        if columns.len() != rows.len() {
+            return Err(FrtError::MetadataParse(format!(
+                "AIE graph `{name}` has {} columns but {} rows",
+                columns.len(),
+                rows.len()
+            )));
+        }
+        Ok(columns
+            .into_iter()
+            .zip(rows)
+            .map(|(column, row)| AieTile { column, row })
+            .collect())
+    };
+    let cores = tiles("core_columns", "core_rows")?;
+    let iteration_tiles = tiles("iteration_memory_columns", "iteration_memory_rows")?;
+    let iteration_addresses = numbers("iteration_memory_addresses")?;
+    if iteration_tiles.len() != iteration_addresses.len() {
+        return Err(FrtError::MetadataParse(format!(
+            "AIE graph `{name}` has {} iteration-memory tiles but {} addresses",
+            iteration_tiles.len(),
+            iteration_addresses.len()
+        )));
+    }
+    let iterations = iteration_tiles
         .into_iter()
-        .flatten()
-        .map(|value| aie_u32(value, "iteration-memory address"))
-        .collect::<Result<Vec<_>>>()?;
+        .zip(iteration_addresses)
+        .collect();
     let prefix = format!("{name}.rtp_");
     let drain_prefix = format!("{name}.drain_");
     let (mut rtps, mut drains) = (Vec::new(), Vec::new());
@@ -256,6 +299,10 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
             alias: alias.to_owned(),
             arg,
             bytes,
+            tile: AieTile {
+                column: aie_u32(&rtp["ping_buffer_column"], "RTP column")?,
+                row: aie_u32(&rtp["ping_buffer_row"], "RTP row")?,
+            },
             ping_address: aie_u32(&rtp["ping_buffer_address"], "RTP ping address")?,
             pong_address: aie_u32(&rtp["pong_buffer_address"], "RTP pong address")?,
         });
@@ -263,7 +310,8 @@ pub fn parse_aie_graph(xclbin: &[u8]) -> Result<Option<AieGraph>> {
     Ok(Some(AieGraph {
         name: name.to_owned(),
         run_forever: name == "tapa_aie_forever",
-        iteration_addresses,
+        cores,
+        iterations,
         rtps,
         drains,
     }))
@@ -293,11 +341,15 @@ mod tests {
     fn the_aie_graph_and_its_runtime_parameters_come_from_aie_metadata() {
         let json = br#"{"aie_metadata": {
             "graphs": {"graph0": {"id": "0", "name": "tapa_aie_forever",
-                "iteration_memory_addresses": ["8196"]}},
+                "core_columns": ["24", "25"], "core_rows": ["0", "0"],
+                "iteration_memory_columns": ["24", "25"],
+                "iteration_memory_rows": ["0", "0"],
+                "iteration_memory_addresses": ["8196", "16388"]}},
             "RTPs": {
                 "rtp0": {"alias_name": "tapa_aie_forever.rtp_3_Scale_0_factor",
                          "port_name": "tapa_aie_forever.k_Scale_0.in[1]",
                          "number_of_bytes": "4",
+                         "ping_buffer_column": "24", "ping_buffer_row": "0",
                          "ping_buffer_address": 8160, "pong_buffer_address": 8160},
                 "rtp1": {"alias_name": "other.rtp_0_x", "number_of_bytes": "8"}
             }}}"#;
@@ -311,11 +363,19 @@ mod tests {
             AieGraph {
                 name: "tapa_aie_forever".into(),
                 run_forever: true,
-                iteration_addresses: vec![0x2004],
+                cores: vec![
+                    AieTile { column: 24, row: 0 },
+                    AieTile { column: 25, row: 0 }
+                ],
+                iterations: vec![
+                    (AieTile { column: 24, row: 0 }, 0x2004),
+                    (AieTile { column: 25, row: 0 }, 0x4004)
+                ],
                 rtps: vec![AieRtp {
                     alias: "tapa_aie_forever.rtp_3_Scale_0_factor".into(),
                     arg: 3,
                     bytes: 4,
+                    tile: AieTile { column: 24, row: 0 },
                     ping_address: 0x1fe0,
                     pong_address: 0x1fe0,
                 }],

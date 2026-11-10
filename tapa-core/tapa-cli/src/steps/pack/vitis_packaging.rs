@@ -552,11 +552,14 @@ fn write_aie_pl_control(
         return Ok(());
     }
     let output = crate::aie::pl_control_sidecar(xo);
+    let tiles =
+        tapa_xilinx::tools::aie::pl_control::control_tiles(&crate::aie::dir(work_dir, "hw"))?;
     let job = tapa_xilinx::tools::aie::pl_control::AiePlControlJob::builder()
         .platform(platform.to_string())
         .target_mhz(target_mhz)
         .work_dir(crate::aie::dir(work_dir, "pl-control"))
         .output(crate::util::utf8(&output))
+        .tiles(tiles)
         .build();
     tapa_xilinx::tools::aie::pl_control::compile(runner, &job)?;
     log::info!("AI Engine PL control: {}", output.display());

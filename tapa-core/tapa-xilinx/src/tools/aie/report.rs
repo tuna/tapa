@@ -322,10 +322,10 @@ fn parse_program_size(text: &str) -> std::result::Result<u64, String> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
-    const COMPILER: &str = r#"{
+    pub const COMPILER: &str = r#"{
       "blockTypes": {
         "z": {"type": "function", "function": "tapa_aie_Z_0"},
         "a": {"type": "function", "function": "tapa_aie_Add_0"},
@@ -348,7 +348,7 @@ mod tests {
       }}
     }"#;
 
-    fn linker_map(program_bytes: u64) -> String {
+    pub fn linker_map(program_bytes: u64) -> String {
         format!(
             "Memory map for memory 'DM_bankA':\n  Width = 8 bits\n  Used = 36\n\n\
              Memory map for memory 'PM':\n  Size = 16384\n  Width = 8 bits\n  \
@@ -356,7 +356,7 @@ mod tests {
         )
     }
 
-    fn write_reports(compiler: &str, maps: &[(&str, &str)]) -> tempfile::TempDir {
+    pub fn write_reports(compiler: &str, maps: &[(&str, &str)]) -> tempfile::TempDir {
         let temp = tempfile::tempdir().expect("temporary graph directory");
         let reports = temp.path().join("Work/reports");
         fs_err::create_dir_all(&reports).expect("report directory");
@@ -370,7 +370,7 @@ mod tests {
         temp
     }
 
-    fn graph_dir(temp: &tempfile::TempDir) -> &Utf8Path {
+    pub fn graph_dir(temp: &tempfile::TempDir) -> &Utf8Path {
         Utf8Path::from_path(temp.path()).expect("UTF-8 temporary path")
     }
 

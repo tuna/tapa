@@ -660,24 +660,36 @@ impl GraphText {
         );
     }
 
+    /// TAPA's PL controller writes each kernel's tile through the packet
+    /// controller there, `control_<kernel>`: a split routes each packet id
+    /// to one tile (`pl_control::control_tiles`). The kernel's stack, and
+    /// ADF's iteration count beside it, stay on that tile.
     fn pl_control(&mut self, kernels: &[AieKernel], freq: &str) {
-        let _ = writeln!(self.members, "  adf::input_plio p_tapa_ctrl;");
+        let n = kernels.len();
+        let _ = writeln!(
+            self.members,
+            "  adf::input_plio p_tapa_ctrl;\n  adf::pktsplit<{n}> tapa_ctrl_split;"
+        );
         let _ = writeln!(
             self.body,
             "    p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", \
-             adf::plio_32_bits, \"data/tapa_ctrl.txt\"{freq});"
+             adf::plio_32_bits, \"data/tapa_ctrl.txt\"{freq});\n    \
+             tapa_ctrl_split = adf::pktsplit<{n}>::create();\n    \
+             adf::connect<adf::pktstream> n_tapa_ctrl\
+             (p_tapa_ctrl.out[0], tapa_ctrl_split.in[0]);"
         );
-        for kernel in kernels {
+        for (index, kernel) in kernels.iter().enumerate() {
             let control = format!("control_{}", kernel.name);
+            let k = format!("k_{}", kernel.name);
             let _ = writeln!(self.members, "  adf::pktcontrol {control};");
             let _ = writeln!(
                 self.body,
                 "    {control} = adf::pktcontrol::create();\n    \
                  adf::connect<adf::pktstream, adf::pktstream> n_{control}\
-                 (p_tapa_ctrl.out[0], {control}.in[0]);\n    \
+                 (tapa_ctrl_split.out[{index}], {control}.in[0]);\n    \
                  adf::location<adf::interconnect>({control}) = \
-                 adf::location<adf::kernel>(k_{});",
-                kernel.name
+                 adf::location<adf::kernel>({k});\n    \
+                 adf::location<adf::stack>({k}) = adf::location<adf::kernel>({k});"
             );
         }
     }
@@ -1202,17 +1214,20 @@ mod tests {
     }
 
     #[test]
-    fn pl_control_broadcasts_to_tile_local_packet_controllers() {
+    fn pl_control_reaches_each_kernel_tile_through_its_own_packet_id() {
         let graph = &render_with_control(None, true)["graph.cpp"];
         for line in [
             "p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", adf::plio_32_bits, \
              \"data/tapa_ctrl.txt\", 312.5);",
+            "adf::pktsplit<2> tapa_ctrl_split;",
+            "n_tapa_ctrl(p_tapa_ctrl.out[0], tapa_ctrl_split.in[0]);",
             "control_Fan_0 = adf::pktcontrol::create();",
             "control_Join_0 = adf::pktcontrol::create();",
-            "n_control_Fan_0(p_tapa_ctrl.out[0], control_Fan_0.in[0]);",
-            "n_control_Join_0(p_tapa_ctrl.out[0], control_Join_0.in[0]);",
+            "n_control_Fan_0(tapa_ctrl_split.out[0], control_Fan_0.in[0]);",
+            "n_control_Join_0(tapa_ctrl_split.out[1], control_Join_0.in[0]);",
             "adf::location<adf::interconnect>(control_Join_0) = \
              adf::location<adf::kernel>(k_Join_0);",
+            "adf::location<adf::stack>(k_Join_0) = adf::location<adf::kernel>(k_Join_0);",
             "adf::single_buffer(k_Join_0.in[2]);",
             "adf::location<adf::buffer>(k_Join_0.in[2]) = \
              adf::location<adf::kernel>(k_Join_0);",

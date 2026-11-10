@@ -281,7 +281,7 @@ impl XrtDevice {
             return Ok(());
         };
         if let Some(control) = &graph.pl_control {
-            return control.execute(&pl_control::stop()?);
+            return control.execute(&pl_control::stop(&graph.meta)?);
         }
         let cycles = u64::from(graph.meta.run_forever);
         // SAFETY: live graph handle.
@@ -297,7 +297,7 @@ impl XrtDevice {
             return Ok(());
         };
         if let Some(control) = &graph.pl_control {
-            return control.execute(&pl_control::abort()?);
+            return control.execute(&pl_control::abort(&graph.meta)?);
         }
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_reset)(graph.handle) };

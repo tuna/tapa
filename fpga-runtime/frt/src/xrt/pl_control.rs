@@ -3,7 +3,7 @@ use std::ffi::CString;
 
 use super::api::{Api, Handle, RUN_COMPLETED, SYNC_TO_DEVICE};
 use super::device::{check, non_null};
-use super::metadata::AieGraph;
+use super::metadata::{AieGraph, AieTile};
 use crate::error::{FrtError, Result};
 
 const KERNEL_NAME: &str = "tapa_aie_pl_control:{controller_1}";
@@ -44,8 +44,8 @@ impl PlControl {
         if commands.is_empty() {
             return Err(FrtError::Xrt("empty AIE PL control command".into()));
         }
-        // SAFETY: live PL-kernel handle and argument two is its command BO.
-        let group = unsafe { (self.api.kernel_arg_group_id)(self.kernel, 2) };
+        // SAFETY: live PL-kernel handle and argument one is its command BO.
+        let group = unsafe { (self.api.kernel_arg_group_id)(self.kernel, 1) };
         let group = u32::try_from(group)
             .map_err(|e| FrtError::Xrt(format!("PL command buffer has no memory bank: {e}")))?;
         // SAFETY: live device handle.
@@ -59,13 +59,10 @@ impl PlControl {
             // SAFETY: live BO of `commands.len()` bytes.
             let rc = unsafe { (self.api.bo_sync)(bo, SYNC_TO_DEVICE, commands.len(), 0) };
             check(rc, "sync the AIE PL command buffer")?;
-            // SAFETY: live run handle; argument one is the control packet ID.
-            let rc = unsafe { (self.api.run_set_arg)(self.run, 1, 0u32) };
-            check(rc, "set the AIE PL control packet ID")?;
-            // SAFETY: live run and BO handles; argument two is the command BO.
-            let rc = unsafe { (self.api.run_set_arg)(self.run, 2, bo) };
+            // SAFETY: live run and BO handles; argument one is the command BO.
+            let rc = unsafe { (self.api.run_set_arg)(self.run, 1, bo) };
             check(rc, "bind the AIE PL command buffer")?;
-            // SAFETY: live run handle with both arguments set.
+            // SAFETY: live run handle with its argument set.
             let rc = unsafe { (self.api.run_start)(self.run) };
             check(rc, "start the AIE PL control kernel")?;
             // SAFETY: live run handle.
@@ -96,31 +93,43 @@ impl Drop for PlControl {
     }
 }
 
-fn encode(writes: &[(u32, u32)]) -> Result<Vec<u8>> {
+/// One register write the controller sends to one tile.
+type Write = (AieTile, u32, u32);
+
+/// The program the controller runs: the word count, then per write the
+/// tile's key (`(column << 16) | row`, as `tapa-xilinx`'s
+/// `pl_control::tile_key`), the tile-local address and the value.
+fn encode(writes: &[Write]) -> Result<Vec<u8>> {
     let words = writes
         .len()
-        .checked_mul(2)
+        .checked_mul(3)
         .filter(|words| *words <= MAX_PROGRAM_WORDS)
         .ok_or_else(|| FrtError::Xrt("AIE PL control program is too large".into()))?;
     let mut out = Vec::with_capacity((words + 1) * 4);
     out.extend_from_slice(&(words as u32).to_le_bytes());
-    for (address, value) in writes {
-        out.extend_from_slice(&address.to_le_bytes());
-        out.extend_from_slice(&value.to_le_bytes());
+    for (tile, address, value) in writes {
+        for word in [(tile.column << 16) | tile.row, *address, *value] {
+            out.extend_from_slice(&word.to_le_bytes());
+        }
     }
     Ok(out)
 }
 
-fn validate_memory_map(graph: &AieGraph) -> Result<BTreeSet<u32>> {
-    let iterations = graph
-        .iteration_addresses
-        .iter()
-        .copied()
-        .collect::<BTreeSet<_>>();
-    if iterations.is_empty() {
-        return Err(FrtError::Xrt("AIE graph has no iteration register".into()));
+/// The controller reaches the kernels' tiles only, each through its own
+/// packet controller; every runtime parameter and iteration count must lie
+/// there, as the graph keeps them (each kernel's stack, and the iteration
+/// count beside it, is pinned to the kernel's tile).
+fn validate(graph: &AieGraph) -> Result<()> {
+    let cores = graph.cores.iter().copied().collect::<BTreeSet<_>>();
+    if cores.is_empty() {
+        return Err(FrtError::Xrt("AIE graph has no kernel tile".into()));
     }
-    let mut addresses = iterations.clone();
+    let unreachable = |what: &str, tile: AieTile| {
+        FrtError::Xrt(format!(
+            "AIE PL control reaches only the kernels' tiles, not {what} in tile ({}, {})",
+            tile.column, tile.row
+        ))
+    };
     for rtp in &graph.rtps {
         if rtp.ping_address != rtp.pong_address {
             return Err(FrtError::Xrt(format!(
@@ -128,14 +137,23 @@ fn validate_memory_map(graph: &AieGraph) -> Result<BTreeSet<u32>> {
                 rtp.alias
             )));
         }
-        if !addresses.insert(rtp.ping_address) {
-            return Err(FrtError::Xrt(format!(
-                "AIE PL control cannot broadcast colliding register address {:#x}",
-                rtp.ping_address
-            )));
+        if !cores.contains(&rtp.tile) {
+            return Err(unreachable(&format!("RTP `{}`", rtp.alias), rtp.tile));
         }
     }
-    Ok(iterations)
+    for (tile, _) in &graph.iterations {
+        if !cores.contains(tile) {
+            return Err(unreachable("an iteration count", *tile));
+        }
+    }
+    Ok(())
+}
+
+fn core_control(graph: &AieGraph, value: u32) -> impl Iterator<Item = Write> + '_ {
+    graph
+        .cores
+        .iter()
+        .map(move |tile| (*tile, CORE_CONTROL, value))
 }
 
 pub(super) fn start(
@@ -143,10 +161,10 @@ pub(super) fn start(
     values: &HashMap<u32, Vec<u8>>,
     reset: bool,
 ) -> Result<Vec<u8>> {
-    let iterations = validate_memory_map(graph)?;
+    validate(graph)?;
     let mut writes = Vec::new();
     if reset {
-        writes.push((CORE_CONTROL, CORE_DISABLE));
+        writes.extend(core_control(graph, CORE_DISABLE));
     }
     for rtp in &graph.rtps {
         let value = rtp.scalar_value(values)?;
@@ -158,23 +176,23 @@ pub(super) fn start(
             let address = rtp.ping_address.checked_add(offset).ok_or_else(|| {
                 FrtError::Xrt(format!("RTP address overflows for `{}`", rtp.alias))
             })?;
-            writes.push((address, u32::from_le_bytes(word)));
+            writes.push((rtp.tile, address, u32::from_le_bytes(word)));
         }
     }
     let count = if graph.run_forever { u32::MAX } else { 1 };
-    for address in iterations {
-        writes.push((address, count));
+    for (tile, address) in &graph.iterations {
+        writes.push((*tile, *address, count));
     }
-    writes.push((CORE_CONTROL, CORE_ENABLE));
+    writes.extend(core_control(graph, CORE_ENABLE));
     encode(&writes)
 }
 
-pub(super) fn stop() -> Result<Vec<u8>> {
-    encode(&[(CORE_CONTROL, CORE_DISABLE)])
+pub(super) fn stop(graph: &AieGraph) -> Result<Vec<u8>> {
+    encode(&core_control(graph, CORE_DISABLE).collect::<Vec<_>>())
 }
 
-pub(super) fn abort() -> Result<Vec<u8>> {
-    stop()
+pub(super) fn abort(graph: &AieGraph) -> Result<Vec<u8>> {
+    stop(graph)
 }
 
 #[cfg(test)]
@@ -182,15 +200,24 @@ mod tests {
     use super::*;
     use crate::xrt::metadata::AieRtp;
 
+    const T0: AieTile = AieTile { column: 24, row: 0 };
+    const T1: AieTile = AieTile { column: 25, row: 0 };
+    const K0: u32 = 0x18_0000;
+    const K1: u32 = 0x19_0000;
+
+    /// Two kernels on T0 and T1; T0's holds the runtime parameter and the
+    /// iteration count.
     fn graph(run_forever: bool) -> AieGraph {
         AieGraph {
             name: "tapa_aie".into(),
             run_forever,
-            iteration_addresses: vec![0x2004],
+            cores: vec![T0, T1],
+            iterations: vec![(T0, 0x2004)],
             rtps: vec![AieRtp {
                 alias: "g.n".into(),
                 arg: 3,
                 bytes: 4,
+                tile: T0,
                 ping_address: 0x1fe0,
                 pong_address: 0x1fe0,
             }],
@@ -214,13 +241,23 @@ mod tests {
         assert_eq!(
             words(&program),
             [
-                8,
+                18,
+                K0,
                 CORE_CONTROL,
                 CORE_DISABLE,
+                K1,
+                CORE_CONTROL,
+                CORE_DISABLE,
+                K0,
                 0x1fe0,
                 64,
+                K0,
                 0x2004,
                 u32::MAX,
+                K0,
+                CORE_CONTROL,
+                CORE_ENABLE,
+                K1,
                 CORE_CONTROL,
                 CORE_ENABLE,
             ]
@@ -233,34 +270,56 @@ mod tests {
             start(&graph(false), &HashMap::from([(3, vec![7])]), false).expect("encode start");
         assert_eq!(
             words(&program),
-            [6, 0x1fe0, 7, 0x2004, 1, CORE_CONTROL, CORE_ENABLE]
+            [
+                12,
+                K0,
+                0x1fe0,
+                7,
+                K0,
+                0x2004,
+                1,
+                K0,
+                CORE_CONTROL,
+                CORE_ENABLE,
+                K1,
+                CORE_CONTROL,
+                CORE_ENABLE
+            ]
         );
-        assert_eq!(
-            words(&stop().expect("stop")),
-            [2, CORE_CONTROL, CORE_DISABLE]
-        );
-        assert_eq!(
-            words(&abort().expect("abort")),
-            [2, CORE_CONTROL, CORE_DISABLE]
-        );
+        let stopped = [
+            6,
+            K0,
+            CORE_CONTROL,
+            CORE_DISABLE,
+            K1,
+            CORE_CONTROL,
+            CORE_DISABLE,
+        ];
+        assert_eq!(words(&stop(&graph(false)).expect("stop")), stopped);
+        assert_eq!(words(&abort(&graph(false)).expect("abort")), stopped);
     }
 
     #[test]
     fn wide_rtp_values_use_consecutive_words() {
         let mut graph = graph(false);
         graph.rtps[0].bytes = 8;
+        graph.cores.pop();
         let program =
             start(&graph, &HashMap::from([(3, vec![1, 2])]), false).expect("encode wide RTP");
         assert_eq!(
             words(&program),
             [
-                8,
+                12,
+                K0,
                 0x1fe0,
                 0x0201,
+                K0,
                 0x1fe4,
                 0,
+                K0,
                 0x2004,
                 1,
+                K0,
                 CORE_CONTROL,
                 CORE_ENABLE
             ]
@@ -268,37 +327,44 @@ mod tests {
     }
 
     #[test]
-    fn distinct_iteration_addresses_are_each_programmed() {
+    fn each_iteration_count_goes_to_its_own_tile() {
         let mut graph = graph(false);
-        graph.iteration_addresses.push(4);
+        graph.iterations.push((T1, 0x2004));
         let program = start(&graph, &HashMap::from([(3, vec![64])]), false)
             .expect("encode multi-kernel start");
         assert_eq!(
-            words(&program),
-            [8, 0x1fe0, 64, 4, 1, 0x2004, 1, CORE_CONTROL, CORE_ENABLE]
+            &words(&program)[4..10],
+            [K0, 0x2004, 1, K1, 0x2004, 1],
+            "the same address on two tiles is two writes"
         );
     }
 
     #[test]
-    fn unsafe_memory_maps_are_rejected() {
-        let mut graph = graph(false);
-        graph.rtps[0].pong_address = 0x2000;
-        assert!(start(&graph, &HashMap::new(), false)
-            .unwrap_err()
-            .to_string()
-            .contains("single-buffered"));
-        graph.rtps[0].pong_address = graph.rtps[0].ping_address;
-        graph.rtps.push(graph.rtps[0].clone());
-        assert!(start(&graph, &HashMap::new(), false)
-            .unwrap_err()
-            .to_string()
-            .contains("colliding register"));
+    fn parameters_outside_the_kernels_tiles_or_double_buffered_are_rejected() {
+        let error = |graph: &AieGraph| {
+            start(graph, &HashMap::new(), false)
+                .unwrap_err()
+                .to_string()
+        };
+        let mut double = graph(false);
+        double.rtps[0].pong_address = 0x2000;
+        assert!(error(&double).contains("single-buffered"));
+        let mut far = graph(false);
+        far.rtps[0].tile = AieTile { column: 25, row: 1 };
+        assert!(
+            error(&far).contains("not RTP `g.n` in tile (25, 1)"),
+            "{}",
+            error(&far)
+        );
+        let mut far = graph(false);
+        far.iterations[0].0 = AieTile { column: 25, row: 1 };
+        assert!(error(&far).contains("not an iteration count in tile (25, 1)"));
     }
 
     #[test]
     fn missing_scalars_and_oversized_programs_are_errors() {
         let error = start(&graph(false), &HashMap::new(), false).unwrap_err();
         assert!(error.to_string().contains("not a scalar"), "{error}");
-        encode(&vec![(0, 0); MAX_PROGRAM_WORDS / 2 + 1]).unwrap_err();
+        encode(&vec![(T0, 0, 0); MAX_PROGRAM_WORDS / 3 + 1]).unwrap_err();
     }
 }

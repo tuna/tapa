@@ -2,6 +2,11 @@
 #include "ap_int.h"
 #include "hls_stream.h"
 
+// `kTiles`, and per controlled tile `kTileKeys[i]` ((column << 16) | row)
+// and `kTilePackets[i]`, the packet id aiecompiler routes to that tile's
+// packet controller; generated for each design (`pl_control::compile`).
+#include "pl_control_tiles.h"
+
 namespace {
 
 using Packet = ap_axiu<32, 0, 0, 0>;
@@ -29,10 +34,11 @@ void write_register(hls::stream<Packet>& output, ap_uint<32> id,
 
 }  // namespace
 
-extern "C" void tapa_aie_pl_control(hls::stream<Packet>& output, ap_uint<32> id,
+// `program[0]` counts the words after it: (tile, address, value) triples,
+// each written to the named tile only. The host names controlled tiles only.
+extern "C" void tapa_aie_pl_control(hls::stream<Packet>& output,
                                     ap_uint<32>* program) {
 #pragma HLS interface axis port = output
-#pragma HLS interface s_axilite port = id bundle = control
 #pragma HLS interface m_axi port = program offset = slave bundle = gmem
 #pragma HLS interface s_axilite port = program bundle = control
 #pragma HLS interface s_axilite port = return bundle = control
@@ -43,9 +49,13 @@ extern "C" void tapa_aie_pl_control(hls::stream<Packet>& output, ap_uint<32> id,
 #pragma HLS pipeline II = 1
     if (i < words) commands[i] = program[i + 1];
   }
-  for (ap_uint<32> pc = 0; pc + 1 < words; pc += 2) {
-    const ap_uint<32> address = commands[pc];
-    const ap_uint<32> value = commands[pc + 1];
-    write_register(output, id, address, value);
+  for (ap_uint<32> pc = 0; pc + 2 < words; pc += 3) {
+    const ap_uint<32> tile = commands[pc];
+    for (int i = 0; i < kTiles; ++i) {
+      if (kTileKeys[i] == tile) {
+        write_register(output, kTilePackets[i], commands[pc + 1],
+                       commands[pc + 2]);
+      }
+    }
   }
 }

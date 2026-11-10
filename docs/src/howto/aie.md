@@ -469,7 +469,9 @@ writes to `tapa_aie_pl_control` in the PL: runtime parameters, the iteration
 count and core-enable before the PL kernel starts, then core-disable after it
 completes. The graph does not run before that: `tapa link` packages it with its
 start deferred to the controller. No APU control program or host `xrtGraphOpen`
-call is used. The control packets broadcast to per-kernel packet controllers.
-FRT writes every distinct iteration-register address, requires single-buffered
-RTPs, and rejects colliding register addresses rather than controlling an
-ambiguous layout.
+call is used. Each write reaches only the tile it names: a packet split in the
+graph gives each kernel's packet controller its own packet id, which `tapa
+pack` compiles into the controller from the compiled graph's reports. Each
+kernel's stack, and the iteration count beside it, stays on the kernel's tile;
+FRT requires single-buffered RTPs and rejects a runtime parameter or iteration
+count outside the kernels' tiles.
