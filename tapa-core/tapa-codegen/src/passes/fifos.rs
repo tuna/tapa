@@ -172,9 +172,10 @@ fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> Modul
 }
 
 /// A lone 32-bit word without TLAST waits in the AI Engine interface's
-/// 32-to-64-bit upsizer for a second one. AI Engine streams carry no
-/// end-of-transmission token, so every beat of the PLIO `name` into the AI
-/// Engine asserts TLAST and the `adapter`'s own TLAST goes unused.
+/// 32-to-64-bit upsizer for a second one, in either direction. AI Engine
+/// streams carry no end-of-transmission token, so every beat of the PLIO
+/// `name` into the AI Engine asserts TLAST and the `adapter`'s own TLAST
+/// goes unused.
 fn assert_tlast_toward_aie(
     mm: &mut tapa_rtl::mutation::MutableModule,
     adapter: &mut ModuleInstance,
@@ -191,6 +192,17 @@ fn assert_tlast_toward_aie(
         Expr::ident(format!("{name}_TLAST")),
         Expr::lit("1'b1"),
     ));
+}
+
+/// Every element an AI Engine task writes toward the PL ends with TLAST (see
+/// `assert_tlast_toward_aie`), which is no end-of-transmission token: the
+/// `adapter` from the AI Engine reads none.
+fn ignore_tlast_from_aie(adapter: &mut ModuleInstance) {
+    for port in &mut adapter.ports {
+        if port.port_name == "s_axis_tlast" {
+            port.connection = Expr::lit("1'b0");
+        }
+    }
 }
 
 /// The AXIS ports of the PLIO `name`, `width` bits, in the top `mm`, and its
@@ -219,7 +231,9 @@ pub(super) fn add_plio_adapter(
     }
     add_plio_axis_ports(mm, &name, width, from_aie);
     let mut adapter = build_axis_adapter(&name, width, from_aie);
-    if !from_aie {
+    if from_aie {
+        ignore_tlast_from_aie(&mut adapter);
+    } else {
         assert_tlast_toward_aie(mm, &mut adapter, &name);
     }
     mm.add_instance(adapter);
@@ -488,7 +502,9 @@ pub fn connect_fifos(
                 // Instantiate AXIS adapter
                 let is_input = has_consumer;
                 let mut adapter = build_axis_adapter(fifo_name, stream_width, is_input);
-                if to_aie && !is_input {
+                if to_aie && is_input {
+                    ignore_tlast_from_aie(&mut adapter);
+                } else if to_aie {
                     if let Some(mm) = modules.get_mut(task_name) {
                         assert_tlast_toward_aie(mm, &mut adapter, &sanitized_fifo_name);
                     }

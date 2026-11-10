@@ -448,8 +448,10 @@ does not invent a PL report or refresh stale reports; it also does not create
 root reports when none exist. The compiler output and console remain available
 until a later full PL synth writes the root report.
 
-A stream into the AI Engine asserts TLAST on every beat. The AI Engine
-interface would otherwise hold a lone 32-bit word until a second one arrives.
+A stream into the AI Engine asserts TLAST on every beat, and the last word of
+every element an AI Engine task writes toward the PL carries TLAST, which the
+PL ignores. The AI Engine interface would otherwise hold a lone 32-bit word,
+in either direction, until a second one arrives.
 
 ## Running the xclbin
 

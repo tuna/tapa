@@ -623,9 +623,9 @@ fn test_generate_rtl_plio_ports_get_axis_ports_and_per_beat_tlast() {
             "output wire c_q_TREADY",
             ".m_axis_tlast(a_q_eot_unused)",
             "assign a_q_TLAST = 1'b1;",
-            ".s_axis_tlast(c_q_TLAST)",
+            ".s_axis_tlast(1'b0)",
         ],
-        &[".m_axis_tlast(a_q_TLAST)"],
+        &[".m_axis_tlast(a_q_TLAST)", ".s_axis_tlast(c_q_TLAST)"],
     );
 }
 

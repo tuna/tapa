@@ -45,9 +45,13 @@ struct word_io {
     for (auto& word : words) word = readincr(s);
     return __builtin_bit_cast(T, words);
   }
+  // An element's last word carries TLAST: the AI Engine interface to the PL
+  // holds a lone 32-bit word until a second one arrives otherwise. AI Engine
+  // streams carry no end-of-transmission token, so every reader ignores it.
   static TAPA_AIE_INLINE void write(output_stream<int32>* s, const T& value) {
     auto words = __builtin_bit_cast(words_t, value);
-    for (const auto word : words) writeincr(s, word);
+    for (int i = 0; i + 1 < kWords<T>; ++i) writeincr(s, words[i]);
+    writeincr(s, words[kWords<T> - 1], true);
   }
   static TAPA_AIE_INLINE T load(const int32* p) {
     words_t words;
@@ -84,7 +88,8 @@ struct elem_io<vec_t<E, N>> {
     if constexpr (requires {
                     typename ::aie::detail::native_vector_type_t<E, N>;
                   }) {
-      writeincr(reinterpret_cast<output_stream<E>*>(s), value.v);
+      // TLAST on the last word, as `word_io::write` explains.
+      writeincr(reinterpret_cast<output_stream<E>*>(s), value.v, true);
     } else {
       word_io<vec_t<E, N>>::write(s, value);
     }
