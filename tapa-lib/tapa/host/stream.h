@@ -800,6 +800,10 @@ class oframes : virtual public internal::basic_stream<T> {
   bool live_ = false;
 };
 
+namespace internal {
+struct stream_factory;
+}  // namespace internal
+
 /// Communication channel between two task instances.
 template <typename T, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
@@ -820,6 +824,7 @@ class stream : public internal::unbound_stream<T> {
   friend class streams;
   template <typename Param, typename Arg>
   friend struct internal::accessor;
+  friend struct internal::stream_factory;
 
   stream(const internal::basic_stream<T>& base)
       : internal::basic_stream<T>(base) {}
@@ -1095,6 +1100,11 @@ class stream_copy {
 // and the queue drained: a stream into the AI Engine asserts TLAST on every
 // beat, which the cosimulation reads as EoT. `close` ends the stream with
 // an EoT token, which tells an AI Engine simulator its input is complete.
+// `frt_path_counting` binds a fresh queue for the kernel to read and sets
+// `forward` to the task that moves what tasks push on the stream into it,
+// then, once `written` and the stream is drained, calls `moved` with how
+// many elements it moved: software's frames on an AI Engine top's output
+// ring, whose count the kernel waits for (see `HostStream::ring`).
 // `copy` starts a `stream_copy` of what tasks push on the stream, or with
 // `reads` of what they pop from it, and returns its path and the function
 // that closes it.
@@ -1106,6 +1116,10 @@ struct stream_use {
   std::function<std::string(std::function<void()>& forward,
                             std::function<bool()> kernel_done)>
       frt_path_dropping_eot;
+  std::function<std::string(std::function<void()>& forward,
+                            std::function<bool()> written,
+                            std::function<void(uint64_t)> moved)>
+      frt_path_counting;
   std::function<void()> close;
   std::function<std::pair<std::string, std::function<void()>>(bool reads)> copy;
 };
@@ -1139,6 +1153,31 @@ struct stream_access {
               };
               return path;
             },
+            [stream, name](std::function<void()>& forward,
+                           std::function<bool()> written,
+                           std::function<void(uint64_t)> moved) {
+              auto beats = std::make_shared<frt_queue<elem_t<T>>>(
+                  kHybridForwardDepth, name + ".beats");
+              const std::string path = beats->get_frt_stream().path();
+              forward = [beats, stream, name, written, moved] {
+                uint64_t count = 0;
+                for (;;) {
+                  while (stream.get_queue().empty()) {
+                    // Done once the writer returned and left nothing.
+                    if (written() && stream.get_queue().empty()) {
+                      moved(count);
+                      return;
+                    }
+                    yield(name, "empty");
+                  }
+                  const elem_t<T> elem = stream.get_queue().pop();
+                  while (beats->full()) yield(name, "full");
+                  beats->push(elem);
+                  if (!elem.eot) ++count;
+                }
+              };
+              return path;
+            },
             [stream, name] {
               while (stream.get_queue().full()) yield(name, "full");
               stream.get_queue().push({T{}, true});
@@ -1153,6 +1192,25 @@ struct stream_access {
             }};
   }
   static constexpr int64_t kHybridForwardDepth = 64;
+};
+
+// Whether `V` is a `tapa::stream`.
+template <typename V>
+struct is_tapa_stream : std::false_type {};
+template <typename T, uint64_t N, uint64_t SimulationDepth>
+struct is_tapa_stream<stream<T, N, SimulationDepth>> : std::true_type {};
+
+// A `tapa::stream` named at run time, which the host makes for itself (see
+// `hybrid_run`): the type of `like`, a stream of its own.
+struct stream_factory {
+  template <typename T, uint64_t N, uint64_t SimulationDepth>
+  static std::shared_ptr<stream<T, N, SimulationDepth>> named(
+      const stream<T, N, SimulationDepth>& like, const std::string& name) {
+    (void)like;
+    return std::shared_ptr<stream<T, N, SimulationDepth>>(
+        new stream<T, N, SimulationDepth>(
+            basic_stream<T>(name, SimulationDepth)));
+  }
 };
 
 // The streams one task argument touches; none for a non-stream argument.

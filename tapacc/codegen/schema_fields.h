@@ -32,6 +32,9 @@ inline constexpr int kSchemaVersion = 4;
 inline constexpr const char* kFieldSrcs = "srcs";
 inline constexpr const char* kFieldIncludeDirs = "include_dirs";
 inline constexpr const char* kFieldDefines = "defines";
+// An AI Engine top with rings: the guard of its PL kernel's HLS stub, built
+// where only PL drives the graph.
+inline constexpr const char* kFieldPlKernelDefines = "pl_kernel_defines";
 inline constexpr const char* kFieldLevel = "level";
 inline constexpr const char* kFieldSynth = "synth";
 inline constexpr const char* kFieldReadableName = "readable_name";

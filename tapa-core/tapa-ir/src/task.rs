@@ -58,6 +58,11 @@ pub struct Task {
     /// the mirrored tree compiles once per task with exactly its define
     /// set.
     pub defines: Vec<String>,
+    /// An AI Engine top with rings: the guard of its PL kernel's HLS stub
+    /// in the same sources, built where only PL drives the graph (a
+    /// VCK5000); empty otherwise.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pl_kernel_defines: Vec<String>,
     /// Human-readable task name emitted by `tapacc` (e.g. the demangled
     /// template specialization). Required: `tapacc` emits it unconditionally
     /// for every task, equal to the task name for non-template tasks.

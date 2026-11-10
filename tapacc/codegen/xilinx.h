@@ -31,6 +31,7 @@ class XilinxBackend final : public Backend {
   void LowerParamAttr(const clang::Attr& attr, const clang::ParmVarDecl& param,
                       const clang::Stmt* body, EditSink& edits) const override;
   std::string GenerateMover(const Mover& mover) const override;
+  void RewritePlKernel(const TaskModel& top, EditSink& edits) const override;
 
  protected:
   void EmitStreamPort(const PortContext&, CodeSink&) const override;
@@ -44,6 +45,9 @@ class XilinxBackend final : public Backend {
   // top-level rewrite RewriteTaskFunc applies to every redeclaration.
   void WrapTaskDeclExternC(const clang::FunctionDecl* decl,
                            EditSink& edits) const;
+  // The interface pragmas of a task's shell or body preamble: every port's,
+  // and on a Vitis top each ring's registers.
+  std::string InterfaceLines(const TaskModel& task, bool is_top) const;
 
   bool is_vitis_;
 };

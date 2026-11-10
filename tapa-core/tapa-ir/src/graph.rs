@@ -88,6 +88,21 @@ pub fn ring_registers(port: &str) -> [RingRegister; 3] {
     ]
 }
 
+/// The PLIO between the ring of a PL-less top's stream argument `port` and
+/// the AI Engine graph (see [`crate::RingPlio`]): the name of the graph's
+/// PLIO and of the PL kernel's AXIS port.
+#[must_use]
+pub fn ring_plio(port: &str) -> String {
+    format!("{}_plio", crate::port::sanitize_array_name(port))
+}
+
+/// The PLIO carrying the frame count of the output ring of `port` (see
+/// [`crate::RingPlio::Count`]).
+#[must_use]
+pub fn ring_count_plio(port: &str) -> String {
+    format!("{}_count", crate::port::sanitize_array_name(port))
+}
+
 /// Root of the unified task graph.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -225,14 +240,20 @@ impl TaskGraph {
     /// signals through the upper task.
     #[must_use]
     pub fn view_frame(&self, task: &str, port: &str) -> Option<u32> {
+        self.reached_frame(task, port, false)
+    }
+
+    /// [`Self::view_frame`], or with `aie_streams` also the frame of an AI
+    /// Engine leaf's `[[tapa::frame(N)]]` stream port, which the AI Engine
+    /// moves whole as it does a view's.
+    fn reached_frame(&self, task: &str, port: &str, aie_streams: bool) -> Option<u32> {
         let def = self.tasks.get(task)?;
         let own = def.port(port)?;
-        if own.cat.is_frames() {
+        let leaf = def.level != crate::task::TaskLevel::Upper;
+        if own.cat.is_frames() || (aie_streams && leaf && def.synth == crate::SynthTarget::Aie) {
             return own.frame;
         }
-        if def.level != crate::task::TaskLevel::Upper
-            || !matches!(own.cat, ArgCategory::Istream | ArgCategory::Ostream)
-        {
+        if leaf || !matches!(own.cat, ArgCategory::Istream | ArgCategory::Ostream) {
             return None;
         }
         def.tasks.iter().find_map(|(child, instances)| {
@@ -240,7 +261,7 @@ impl TaskGraph {
                 .iter()
                 .flat_map(|instance| &instance.args)
                 .find(|(_, arg)| arg.arg.name() == Some(port))
-                .and_then(|(child_port, _)| self.view_frame(child, child_port))
+                .and_then(|(child_port, _)| self.reached_frame(child, child_port, aie_streams))
         })
     }
 
@@ -280,7 +301,11 @@ impl TaskGraph {
                 Some(Ring {
                     port: port.name.clone(),
                     input: port.cat == ArgCategory::Istream,
-                    frame: self.view_frame(&self.top, &port.name)?,
+                    // A PL-less top's argument reaches the AI Engine graph,
+                    // whose PL projection records the frame.
+                    frame: self
+                        .reached_frame(&self.top, &port.name, true)
+                        .or(port.frame)?,
                     slots: port.ring?,
                 })
             })

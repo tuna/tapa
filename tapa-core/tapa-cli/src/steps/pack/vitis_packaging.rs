@@ -28,7 +28,10 @@ use super::{enforce_xo_suffix, enforce_zip_suffix, PackArgs};
 
 pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let design = &state.graph;
-    if let Some(partition) = tapa_ir::AiePartition::derive(design)?.filter(|p| p.pl_less) {
+    let top_frames = crate::aie::top_frames(state.flow.platform.as_deref());
+    if let Some(partition) =
+        tapa_ir::AiePartition::derive(design, top_frames)?.filter(|p| p.pl_less && !p.has_rings())
+    {
         return pack_aie_zip(args, ctx, state, &partition);
     }
     // Keep state validation ahead of custom-RTL overlays: malformed persisted
@@ -226,7 +229,10 @@ fn prepare_package_inputs(
     output_path: &Path,
     report_work_dir: Option<&Path>,
 ) -> Result<PackageXoInputs> {
-    let design = &crate::aie::pl_graph(&state.graph)?;
+    let design = &crate::aie::pl_graph(
+        &state.graph,
+        crate::aie::top_frames(state.flow.platform.as_deref()),
+    )?;
     let flow = &state.flow;
     let top_task = resolve_top_task(design)?;
     let state_root = report_work_dir
@@ -567,7 +573,9 @@ fn write_aie_sidecars(
     platform: &str,
     xo: &Path,
 ) -> Result<bool> {
-    let Some(partition) = tapa_ir::AiePartition::derive(design)? else {
+    let Some(partition) =
+        tapa_ir::AiePartition::derive(design, crate::aie::top_frames(Some(platform)))?
+    else {
         remove_aie_sidecars(xo)?;
         return Ok(false);
     };

@@ -686,6 +686,25 @@ impl Device for CosimDevice {
     }
 
     fn host_streams(&self) -> Vec<crate::device::HostStream> {
+        // An AI Engine top's PL kernel names each ring's PLIOs after the
+        // argument the ring carries.
+        let ring_of = |name: &str| {
+            self.spec.rings.iter().find_map(|ring| {
+                let count = if name == tapa_ir::ring_plio(&ring.port) {
+                    false
+                } else if name == tapa_ir::ring_count_plio(&ring.port) {
+                    true
+                } else {
+                    return None;
+                };
+                let arg = self.spec.args.iter().find(|arg| arg.name == ring.port)?;
+                Some(crate::device::HostRing {
+                    arg: arg.id,
+                    count,
+                    frame: ring.frame,
+                })
+            })
+        };
         self.spec
             .args
             .iter()
@@ -695,6 +714,7 @@ impl Device for CosimDevice {
                         index: arg.id,
                         name: arg.name.clone(),
                         kernel_reads: *dir == frt_cosim::metadata::StreamDir::In,
+                        ring: ring_of(&arg.name),
                     })
                 }
                 frt_cosim::metadata::ArgKind::Scalar { .. }

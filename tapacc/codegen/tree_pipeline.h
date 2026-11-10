@@ -55,7 +55,8 @@ TreePipelineRun RunTreePipeline(
     const std::vector<VirtualTu>& tus, const std::string& top,
     const std::string& out_root, const std::vector<std::string>& args,
     const clang::tooling::FileContentMappings& virtual_files = {},
-    std::map<std::string, SynthTarget> task_targets = {});
+    std::map<std::string, SynthTarget> task_targets = {},
+    SynthTarget flow = SynthTarget::kXilinxHls);
 
 }  // namespace tapa::cc::test_support
 

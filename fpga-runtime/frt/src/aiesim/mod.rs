@@ -432,6 +432,7 @@ impl Device for AieSimDevice {
                 index: plio.index,
                 name: plio.name.clone(),
                 kernel_reads: plio.input,
+                ring: None,
             })
             .collect()
     }

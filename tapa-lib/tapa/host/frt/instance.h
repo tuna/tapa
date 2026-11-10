@@ -18,6 +18,12 @@ struct HostStream {
   int index;
   std::string name;
   bool kernel_reads;  // the host writes it
+  // A PLIO of the ring of the AI Engine top's stream argument `ring` (-1:
+  // none), in the PL kernel TAPA builds for the top: its frames of `frame`
+  // elements, or with `ring_count` the frames a run released.
+  int ring = -1;
+  bool ring_count = false;
+  int frame = 0;
 };
 
 // An upper task instance the instance was built with inlined: the host

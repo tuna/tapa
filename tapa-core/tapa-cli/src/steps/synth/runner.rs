@@ -35,7 +35,8 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     // synthesis is Xilinx HLS for every supported flow, and the target's
     // only other say is which platform shell device resolution accepts.
     let mut state = work_io::load(&ctx.work_dir)?;
-    let partition = tapa_ir::AiePartition::derive(&state.graph)?;
+    let top_frames = crate::aie::top_frames(args.platform.as_deref());
+    let partition = tapa_ir::AiePartition::derive(&state.graph, top_frames)?;
     if args.aie_only && partition.is_none() {
         return Err(CliError::InvalidArg(
             "`--aie-only` requires an AI Engine partition, but the design has no AI Engine task"
@@ -49,8 +50,12 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     }
     if let Some(partition) = &partition {
         crate::aie::warn_narrow_boundaries(partition);
-        if partition.pl_less {
-            check_pl_less(args)?;
+        if partition.pl_less && !partition.has_rings() && args.skip_aie {
+            return Err(CliError::InvalidArg(
+                "`--skip-aie` builds the PL half, but the top runs on the AI Engine and the \
+                 design has none"
+                    .into(),
+            ));
         }
     }
 
@@ -99,9 +104,10 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         }
         _ => None,
     };
-    // A top on the AI Engine has no PL half: the graph is the design.
+    // A top on the AI Engine has no PL half, unless TAPA builds its rings'
+    // PL kernel: the graph is the design.
     if let (Some(partition), Some(report)) = (&partition, &aie_report) {
-        if partition.pl_less {
+        if partition.pl_less && !partition.has_rings() {
             write_top_report(
                 &ctx.work_dir,
                 &state.graph,
@@ -114,7 +120,7 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
         }
     }
     // HLS and codegen see the PL half only; the state keeps the whole graph.
-    let mut pl_graph = crate::aie::pl_graph(&state.graph)?;
+    let mut pl_graph = crate::aie::pl_graph(&state.graph, top_frames)?;
     let sources = stage_hls_sources(&ctx.work_dir, &pl_graph)?;
 
     let opts = HlsRunOptions {
@@ -199,28 +205,6 @@ pub fn run_native(args: &SynthArgs, ctx: &CliContext, runner: &dyn ToolRunner) -
     Ok(())
 }
 
-/// A top on the AI Engine is built without a PL kernel, so there is no PL
-/// half to build alone, and nothing to control its graph where only TAPA's
-/// PL controller can.
-fn check_pl_less(args: &SynthArgs) -> Result<()> {
-    if args.skip_aie {
-        return Err(CliError::InvalidArg(
-            "`--skip-aie` builds the PL half, but the top runs on the AI Engine and the design \
-             has none"
-                .into(),
-        ));
-    }
-    let platform = args.platform.as_deref().unwrap_or_default();
-    if tapa_xilinx::tools::aie::pl_control::required(platform) {
-        return Err(CliError::InvalidArg(format!(
-            "the top runs on the AI Engine, with no PL kernel; `{platform}` drives its graph \
-             only through TAPA's PL controller, so this design runs on embedded platforms \
-             such as the VCK190 for now"
-        )));
-    }
-    Ok(())
-}
-
 /// Rebuild only the AI Engine graph. PL results remain reusable only while
 /// all inputs that produced them are unchanged; this path never creates PL
 /// results or promotes an analyzed/failed state to synthesized.
@@ -254,7 +238,10 @@ fn run_aie_only(
     let report_exists =
         ctx.work_dir.join("report.json").exists() || ctx.work_dir.join("report.yaml").exists();
     if state.flow.synthed && report_exists {
-        let pl_graph = crate::aie::pl_graph(&state.graph)?;
+        let pl_graph = crate::aie::pl_graph(
+            &state.graph,
+            crate::aie::top_frames(args.platform.as_deref()),
+        )?;
         write_top_report(
             &ctx.work_dir,
             &pl_graph,
@@ -521,10 +508,11 @@ mod tests {
     }
 
     fn write_current_report(work: &Path, state: &WorkState, program_bytes: u64) {
-        let partition = tapa_ir::AiePartition::derive(&state.graph)
+        let partition = tapa_ir::AiePartition::derive(&state.graph, tapa_ir::TopFrames::Gmio)
             .expect("derive partition")
             .expect("AIE partition");
-        let pl_graph = crate::aie::pl_graph(&state.graph).expect("PL graph");
+        let pl_graph =
+            crate::aie::pl_graph(&state.graph, tapa_ir::TopFrames::Gmio).expect("PL graph");
         let aie = AieReport {
             tiles_used: 1,
             plio_map: BTreeMap::new(),

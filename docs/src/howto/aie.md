@@ -216,9 +216,9 @@ void Pipeline(tapa::istream<int>& src, tapa::ostream<int>& dst, int n) {
   releasing one frame on each output it writes, which the runtime discards.
   Input frames the graph did not read stay for the next invoke, so push
   only what it reads.
-- It runs where XRT drives the graph and GMIO from the board's own
-  processor, as on the embedded VCK190. A VCK5000 drives its graph only
-  through TAPA's PL controller, so `tapa synth` rejects such a top there.
+- GMIO needs XRT on the board's own processor, as on the embedded VCK190.
+  A VCK5000 reaches its array only through PL, so there TAPA builds a PL
+  kernel named after the top instead ([below](#on-a-vck5000)).
 
 With nothing to make an `.xo` of, `tapa pack` writes a `.zip` holding the
 graph and the top's argument list. `tapa link` links the graph alone,
@@ -246,6 +246,26 @@ Build the host program for the board's processor; in this repository,
 `--config=vck190` cross-builds it, and
 `//tests/functional/aie-gmio:aie-gmio-hw-emu` runs the steps above
 (`--test_env=VERSAL_COMMON=<common image>`).
+
+### On a VCK5000
+
+The same source builds for a VCK5000, whose graph TAPA's PL controller
+drives. The top's PL kernel is TAPA's: each stream argument is a ring of
+frames in device memory, as for a PL top ([Frames from and to the
+host](../concepts/streams.md#frames-from-and-to-the-host)), which moves its
+frames to or from the graph over a PLIO named `<argument>_plio`. The task
+writing an output argument sends how many frames it released, once it
+returns, on a 32-bit PLIO `<argument>_count`; the kernel is done once that
+many frames are in memory. Its scalars stay runtime parameters, which the
+PL controller writes. `[[tapa::ring(S)]]` on a stream argument sets the
+ring's frames, unused where GMIO moves them.
+
+`tapa compile` writes an `.xo` with the graph and the PL controller beside
+it, which `tapa link` links like a hybrid design's. Each output argument
+takes two of a column's six AI Engine-to-PL channels. With `--skip-aie`
+the kernel runs in hybrid cosimulation, the AI Engine tasks in software
+([Hybrid cosimulation](#hybrid-cosimulation));
+`//tests/functional/aie-gmio:aie-gmio-vck5000-hybrid` runs it.
 
 ## Knobs
 
@@ -351,6 +371,12 @@ the AI Engine side of them. The PL invocations run in the kernel, as in any
 `.xo` cosimulation. As with a simulator package, name each boundary stream
 after its variable. An AI Engine task's `async_mmap` runs in software too,
 its requests carried over the kernel's streams to the PL movers in the RTL.
+
+The PL kernel of a top with no PL task on a VCK5000 ([On a
+VCK5000](#on-a-vck5000)) runs the same way: the host's streams feed its
+rings, and the top's tasks run in software on streams of their own, bound
+to the kernel's PLIOs; each output's frame count goes to the kernel when
+the task writing it returns.
 
 ## Building and linking
 

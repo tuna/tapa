@@ -192,7 +192,9 @@ fn plan_aie_link(
     work: camino::Utf8PathBuf,
     state: &WorkState,
 ) -> Result<LinkPlan> {
-    let pl_less = tapa_ir::AiePartition::derive(&state.graph)?.is_some_and(|p| p.pl_less);
+    let top_frames = crate::aie::top_frames(state.flow.platform.as_deref());
+    let pl_less = tapa_ir::AiePartition::derive(&state.graph, top_frames)?
+        .is_some_and(|p| p.pl_less && !p.has_rings());
     if !pl_less {
         return Err(CliError::InvalidArg(format!(
             "`{}` is a Vitis package of a top that is not on the AI Engine; link its `.xo`",

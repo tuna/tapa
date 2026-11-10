@@ -662,9 +662,14 @@ bool ProgramBuilder::ComputeRings(const std::string& top_key) {
   }
   // A ring carries a stream argument of a PL top on XRT, where the host
   // moves its frames through device memory; on every other target the
-  // argument stays a stream.
+  // argument stays a stream. An AI Engine top (see PropagateAie) gets its
+  // rings in the PL kernel a platform whose graph only PL drives builds
+  // for it; elsewhere its arguments are GMIOs and the rings go unused.
   MergedTask& top = tasks_.at(top_key);
-  if (top.model.target != SynthTarget::kXilinxVitis) return true;
+  const bool vitis_kernel = top.model.target == SynthTarget::kXilinxVitis ||
+                            (top.model.target == SynthTarget::kAie &&
+                             default_target_ == SynthTarget::kXilinxVitis);
+  if (!vitis_kernel) return true;
   const DefSighting& def = FirstSighting(top_key);
   for (int index = 0; index < static_cast<int>(def.stream_params.size());
        ++index) {
@@ -1172,6 +1177,10 @@ nlohmann::json ProgramBuilder::EmitJson() const {
     t[kFieldSrcs] = tree_srcs;
     t[kFieldIncludeDirs] = tree_include_dirs;
     t[kFieldDefines] = nlohmann::json::array({TaskGuardDefine(model.name)});
+    if (model.target == SynthTarget::kAie && !model.rings.empty()) {
+      t[kFieldPlKernelDefines] =
+          nlohmann::json::array({PlKernelGuardDefine(model.name)});
+    }
     t[kFieldLevel] = LevelStr(model.level);
     t[kFieldSynth] = SynthStr(model.target);
     t[kFieldReadableName] = model.readable_name;

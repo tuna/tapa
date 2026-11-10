@@ -21,6 +21,8 @@ A design whose top runs on the AI Engine has no PL kernel, so `tapa pack`
 writes a `.zip` instead: `tapa.json`, the graph as `libadf.a`, and
 `arguments.json`, the top's stream arguments, which `tapa link` records in
 the xclbin for the runtime. Link writes `<name>.xsa` beside the `.xclbin`.
+On a VCK5000 such a top gets a PL kernel TAPA builds for its rings, so pack
+writes an `.xo` and its sidecars as above.
 
 ### `xilinx-slash`
 

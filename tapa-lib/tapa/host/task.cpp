@@ -527,7 +527,39 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
   auto kernel_done = std::make_shared<std::atomic<bool>>(false);
   std::vector<std::function<void()>> forwards;
   for (const auto& [name, port] : ports) {
+    // A ring's frame count goes with its frames, below.
+    if (port.ring_count) continue;
     const auto [producer, bound] = find_binding(invokes, software, name);
+    if (port.kernel_reads && port.ring >= 0) {
+      // The frames software releases on an AI Engine top's output ring,
+      // counted, then their count once the writer returns, which the AI
+      // Engine kernel sends on its own (see `HostStream::ring`).
+      const int ring = port.ring;
+      const auto count =
+          std::find_if(ports.begin(), ports.end(), [ring](const auto& other) {
+            return other.second.ring_count && other.second.ring == ring;
+          });
+      LOG_IF(FATAL, count == ports.end())
+          << "the ring of the kernel's argument " << ring
+          << " has no frame-count stream";
+      auto counts = std::make_shared<frt_queue<elem_t<uint32_t>>>(
+          2, count->first + ".count");
+      instance.SetStreamArg(count->second.index,
+                            counts->get_frt_stream().path());
+      auto written = std::make_shared<std::atomic<bool>>(false);
+      closes[producer].push_back(
+          [written] { written->store(true, std::memory_order_release); });
+      forwards.emplace_back();
+      instance.SetStreamArg(
+          port.index,
+          bound->frt_path_counting(
+              forwards.back(),
+              [written] { return written->load(std::memory_order_acquire); },
+              [counts, frame = port.frame](uint64_t moved) {
+                counts->push({static_cast<uint32_t>(moved / frame), false});
+              }));
+      continue;
+    }
     if (port.kernel_reads) {
       instance.SetStreamArg(port.index, bound->frt_path());
       if (aie_device) closes[producer].push_back(bound->close);

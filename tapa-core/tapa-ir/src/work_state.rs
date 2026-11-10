@@ -152,6 +152,7 @@ mod tests {
                 srcs: vec!["Top.cpp".to_string()],
                 include_dirs: Vec::new(),
                 defines: Vec::new(),
+                pl_kernel_defines: Vec::new(),
                 ports: Vec::new(),
                 tasks: BTreeMap::new(),
                 fifos: BTreeMap::new(),

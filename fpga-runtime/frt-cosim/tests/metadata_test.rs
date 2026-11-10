@@ -65,6 +65,7 @@ fn task_graph(ports: Vec<Port>) -> TaskGraph {
             srcs: vec!["vadd.cpp".to_owned()],
             include_dirs: Vec::new(),
             defines: Vec::new(),
+            pl_kernel_defines: Vec::new(),
             readable_name: "vadd".to_owned(),
             aie_location: Vec::new(),
             aie_stack_bytes: None,

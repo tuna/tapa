@@ -10,12 +10,24 @@ use std::path::Path;
 
 use camino::{Utf8Path, Utf8PathBuf};
 use serde::Serialize;
-use tapa_ir::{AiePartition, AieStreamKind, Graph};
+use tapa_ir::{AiePartition, AieStreamKind, Graph, TopFrames};
 use tapa_xilinx::tools::aie::graph::{render_graph, GraphOptions, KernelSource, SimMain};
 use tapa_xilinx::tools::aie::{AieCompileJob, AieDevice, AieTarget};
 
 use crate::error::{CliError, Result};
 use crate::tapacc::discover::find_resource;
+
+/// How a PL-less top's frames reach the host on `platform` (see
+/// [`TopFrames`]): through rings where only TAPA's PL controller drives the
+/// graph, else by GMIO.
+#[must_use]
+pub fn top_frames(platform: Option<&str>) -> TopFrames {
+    if platform.is_some_and(tapa_xilinx::tools::aie::pl_control::required) {
+        TopFrames::Rings
+    } else {
+        TopFrames::Gmio
+    }
+}
 
 /// The device an AI Engine graph compiles for: a platform's `.xpfm`, or a
 /// part number when no platform is known.
@@ -88,7 +100,7 @@ fn kernel_sources(
 /// comes after the top's own arguments, or a PL-less top's own.
 pub fn kernel_args(graph: &Graph, partition: &AiePartition) -> Result<Vec<(u32, tapa_ir::Port)>> {
     let pl;
-    let top = if partition.pl_less {
+    let top = if partition.pl_less && !partition.has_rings() {
         &graph.tasks[&graph.top]
     } else {
         pl = partition.pl_projection(graph)?;
@@ -226,8 +238,8 @@ pub fn dir(work_dir: &Path, name: &str) -> Utf8PathBuf {
 
 /// The design `tapa synth` builds as RTL: the PL projection when some task
 /// is on the AI Engine, else the graph itself.
-pub fn pl_graph(graph: &Graph) -> Result<Graph> {
-    match AiePartition::derive(graph)? {
+pub fn pl_graph(graph: &Graph, top_frames: TopFrames) -> Result<Graph> {
+    match AiePartition::derive(graph, top_frames)? {
         Some(partition) => Ok(partition.pl_projection(graph)?),
         None => Ok(graph.clone()),
     }
@@ -250,7 +262,8 @@ pub fn warn_narrow_boundaries(partition: &AiePartition) {
         })
         .collect();
     for (index, stream) in partition.streams.iter().enumerate() {
-        if responses.contains(&index) {
+        // So is a ring's frame count.
+        if responses.contains(&index) || stream.ring == Some(tapa_ir::RingPlio::Count) {
             continue;
         }
         let bits = stream.words * 32;

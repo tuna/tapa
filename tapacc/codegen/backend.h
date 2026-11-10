@@ -113,6 +113,12 @@ class Backend {
   //  - GenerateMover: the definition of a PL mover (see Mover); only a PL
   //    backend has one.
   virtual std::string GenerateMover(const Mover&) const { return ""; }
+  //  - RewritePlKernel: rewrite an AI Engine top's definition into the PL
+  //    kernel carrying its frame arguments (see PlKernelGuardDefine): the
+  //    top's signature and shell, on the definition alone. Its other
+  //    declarations keep the AI Engine spelling, an overload the vendor
+  //    leaves aside. Only a PL backend has one.
+  virtual void RewritePlKernel(const TaskModel&, EditSink&) const {}
 
  protected:
   // Per-category port hooks: a vendor overrides only what it needs; the

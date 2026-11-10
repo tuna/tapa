@@ -57,14 +57,23 @@ inline std::string PeekVar(std::string_view name) {
 // The preprocessor define selecting one task definition in the rewritten
 // tree. Graph-key bytes outside the identifier alphabet become underscores;
 // ProgramBuilder rejects distinct keys that sanitize to the same define.
-inline std::string TaskGuardDefine(std::string_view task_key) {
-  std::string define = "TAPA_TASK_DEF_";
+inline std::string GuardDefine(std::string define, std::string_view task_key) {
   for (const unsigned char c : task_key) {
     const bool safe = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
                       (c >= '0' && c <= '9') || c == '_';
     define.push_back(safe ? static_cast<char>(c) : '_');
   }
   return define;
+}
+
+inline std::string TaskGuardDefine(std::string_view task_key) {
+  return GuardDefine("TAPA_TASK_DEF_", task_key);
+}
+
+// The guard of the PL kernel an AI Engine top gets where only PL drives its
+// graph (a VCK5000): the top's HLS stub, its frame arguments rings.
+inline std::string PlKernelGuardDefine(std::string_view task_key) {
+  return GuardDefine("TAPA_PL_KERNEL_", task_key);
 }
 
 // The hard diagnostic for two distinct graph keys selecting one guard after

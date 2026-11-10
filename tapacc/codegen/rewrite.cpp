@@ -631,10 +631,28 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   auto guard_mixed_definition = [&](const std::vector<MixedVariant>& variants,
                                     const clang::FunctionDecl* func,
                                     const BodyRewrite& rewrite_body) {
-    const auto prelude =
-        begin_guarded(func, variants.front().first.name, [] {});
-    if (!prelude) return;
-    const auto& [definition, stub] = *prelude;
+    const clang::SourceRange definition = DefinitionRange(func, edits);
+    if (reject_macro_owned_definition(definition,
+                                      variants.front().first.name)) {
+      return;
+    }
+    // Each variant, and the stub, is rewritten on its own copy of the
+    // definition, which then replaces it whole: an edit of the main sink
+    // inside it (a removed attribute) would shift the replaced range.
+    const auto scratch = [&](clang::Rewriter& rewriter) {
+      EditSink sink(ctx, rewriter);
+      sink.TrackFile(edits.getSourceMgr().getFileID(definition.getBegin()),
+                     [](clang::SourceLocation, unsigned, llvm::StringRef) {
+                       return true;
+                     });
+      return sink;
+    };
+    clang::Rewriter stub_rewriter(edits.getSourceMgr(), edits.getLangOpts());
+    EditSink stub_edits = scratch(stub_rewriter);
+    RemoveParamAttrs(func, stub_edits);
+    RemoveFuncAttrs(func, stub_edits);
+    const std::string stub =
+        RewrittenSignature(func, definition.getBegin(), stub_edits);
     std::string guarded;
     for (size_t i = 0; i < variants.size(); ++i) {
       auto [model, defines] = variants[i];
@@ -643,12 +661,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
       const Backend& backend = BackendFor(model.target, backends);
       clang::Rewriter variant_rewriter(edits.getSourceMgr(),
                                        edits.getLangOpts());
-      EditSink variant_edits(ctx, variant_rewriter);
-      variant_edits.TrackFile(
-          edits.getSourceMgr().getFileID(definition.getBegin()),
-          [](clang::SourceLocation, unsigned, llvm::StringRef) {
-            return true;
-          });
+      EditSink variant_edits = scratch(variant_rewriter);
       rewrite_body(model, backend, variant_edits);
       guarded += variant_edits.getRewrittenText(definition);
       guarded += "\n";
@@ -705,6 +718,33 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
       backend.RewriteTaskFunc(model, name == program.top, edits);
       LowerFuncAttrs(model.def, backend, edits);
       LowerParamAttrs(model.def, backend, edits);
+      continue;
+    }
+    if (name == program.top && model.target == SynthTarget::kAie &&
+        !model.rings.empty()) {
+      // An AI Engine top whose frame arguments have rings: its graph's
+      // definition, and the PL kernel carrying those arguments where only
+      // PL drives the graph (see PlKernelGuardDefine); which one a platform
+      // builds is synth's choice.
+      TaskModel pl = model;
+      pl.target = default_target;
+      const auto rewrite_top = [](TaskModel& variant, const Backend& backend,
+                                  EditSink& variant_edits) {
+        RemoveParamAttrs(variant.def, variant_edits);
+        RemoveFuncAttrs(variant.def, variant_edits);
+        if (variant.target != SynthTarget::kAie) {
+          backend.RewritePlKernel(variant, variant_edits);
+          return;
+        }
+        backend.RewriteTaskFunc(variant, /*is_top=*/true, variant_edits);
+        LowerParamAttrPragmas(variant.def, backend, variant_edits);
+        LowerFuncAttrPragmas(variant.def, backend, variant_edits);
+        LowerAttrs(variant.def->getBody(), variant_edits.getASTContext(),
+                   backend, variant_edits, /*in_block=*/false);
+      };
+      guard_mixed_definition({{model, {TaskGuardDefine(model.name)}},
+                              {pl, {PlKernelGuardDefine(model.name)}}},
+                             model.def, rewrite_top);
       continue;
     }
     guard_definition(model, model.def, name == program.top, backend,

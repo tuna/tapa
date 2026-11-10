@@ -284,7 +284,8 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     })?;
     aie_pins::apply(&mut graph, &args.aie_locations, &args.aie_plios)?;
     graph.validate()?;
-    if let Some(partition) = tapa_ir::AiePartition::derive(&graph)? {
+    // Analysis knows no platform; GMIOs and rings bind the same ports.
+    if let Some(partition) = tapa_ir::AiePartition::derive(&graph, tapa_ir::TopFrames::Gmio)? {
         crate::aie::report_crossings(&partition);
     }
 

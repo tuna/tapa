@@ -396,8 +396,21 @@ struct invoker {
     const int bound =
         set_fpga_args(instance, &streams, std::index_sequence_for<Args...>{},
                       std::forward<Args>(args)...);
-    if (!hybrid_run(instance, bound, streams,
-                    [&] { f(std::forward<Args>(args)...); })) {
+    // The PL kernel TAPA builds for an AI Engine top carries the top's
+    // stream arguments through rings to PLIOs: the top's tasks, which run in
+    // software, take streams named after the PLIOs in place of the host's,
+    // which feed the rings (see `hybrid_run`).
+    std::map<int, std::string> plios;
+    for (const frt::HostStream& stream : instance.HostStreams()) {
+      if (stream.ring >= 0 && !stream.ring_count) {
+        plios.emplace(stream.ring, stream.name);
+      }
+    }
+    std::vector<std::shared_ptr<void>> substitutes;
+    if (!hybrid_run(instance, bound, streams, [&] {
+          on_plios(f, plios, substitutes, std::index_sequence_for<Args...>{},
+                   args...);
+        })) {
       instance.WriteToDevice();
       instance.Exec();
       instance.ReadFromDevice();
@@ -410,6 +423,33 @@ struct invoker {
     frt_sync_kernel_instance = nullptr;
 
     return instance.ComputeTimeNanoSeconds();
+  }
+
+  // Calls `f` with each argument at an index in `plios`, a stream, replaced
+  // by a stream of its own named after the PLIO, kept in `substitutes`. The
+  // top of such a kernel takes no memory, so an argument's position is its
+  // index.
+  template <size_t... Is, typename... CapturedArgs>
+  static void on_plios(F& f, const std::map<int, std::string>& plios,
+                       std::vector<std::shared_ptr<void>>& substitutes,
+                       std::index_sequence<Is...>, CapturedArgs&... args) {
+    f(on_plio<std::tuple_element_t<Is, Params>>(static_cast<int>(Is), plios,
+                                                substitutes, args)...);
+  }
+
+  template <typename Param, typename Arg>
+  static Param on_plio(int index, const std::map<int, std::string>& plios,
+                       std::vector<std::shared_ptr<void>>& substitutes,
+                       Arg& arg) {
+    if constexpr (is_tapa_stream<std::decay_t<Arg>>::value) {
+      const auto plio = plios.find(index);
+      if (plio != plios.end()) {
+        auto substitute = stream_factory::named(arg, plio->second);
+        substitutes.push_back(substitute);
+        return *substitute;
+      }
+    }
+    return arg;
   }
 
   // The invoke as a hybrid run records it: the task applied to its

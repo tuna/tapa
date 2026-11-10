@@ -151,6 +151,64 @@ TEST(AieTest, AnAsyncMmapGetsAMoverPerDirectionItsBodyUses) {
       << mover;
 }
 
+// An AI Engine top keeps its graph's definition, and also gets the HLS stub
+// of the PL kernel that carries its frame arguments through rings where
+// only PL drives the graph (a VCK5000); synth picks one per platform.
+TEST(AieTest, AnAieTopAlsoGetsItsPlKernelStub) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/pl_kernel.cpp", R"cpp(
+                   void Turn([[tapa::frame(64)]] tapa::istream<float>& in,
+                             [[tapa::frame(64)]] tapa::ostream<float>& out,
+                             int n) {
+                     for (int i = 0; i < n * 64; ++i) out.write(in.read());
+                   }
+                   [[tapa::target("aie")]]
+                   void Top(tapa::istream<float>& rows,
+                            [[tapa::ring(8)]] tapa::ostream<float>& cols,
+                            int n) {
+                     tapa::task().invoke(Turn, rows, cols, n);
+                   }
+                 )cpp"}},
+      "Top", testing::TempDir() + "/aie_pl_kernel", {"-std=c++17"}, {}, {},
+      SynthTarget::kXilinxVitis);
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const nlohmann::json top = nlohmann::json::parse(run.json)["tasks"]["Top"];
+  EXPECT_EQ(top["synth"], "aie");
+  EXPECT_EQ(top["ports"][0]["ring"], 4);
+  EXPECT_EQ(top["ports"][1]["ring"], 8);
+  EXPECT_FALSE(top["ports"][2].contains("ring"));
+  EXPECT_EQ(top["defines"], nlohmann::json::array({"TAPA_TASK_DEF_Top"}));
+  EXPECT_EQ(top["pl_kernel_defines"],
+            nlohmann::json::array({"TAPA_PL_KERNEL_Top"}));
+
+  const std::string& tu = run.files.at("pl_kernel.cpp");
+  const size_t graph = tu.find("#ifdef TAPA_TASK_DEF_Top");
+  const size_t kernel = tu.find("#elif defined(TAPA_PL_KERNEL_Top)", graph);
+  const size_t stub = tu.find("#else", kernel);
+  ASSERT_NE(graph, std::string::npos) << tu;
+  ASSERT_NE(kernel, std::string::npos) << tu;
+  ASSERT_NE(stub, std::string::npos) << tu;
+  const std::string aie = tu.substr(graph, kernel - graph);
+  const std::string pl = tu.substr(kernel, stub - kernel);
+  const std::string other = tu.substr(stub, tu.find("#endif", stub) - stub);
+  EXPECT_NE(aie.find("TAPA_AIE_INLINE void Top("), std::string::npos) << aie;
+  EXPECT_NE(aie.find(".invoke(Turn"), std::string::npos) << aie;
+  EXPECT_NE(pl.find("extern \"C\""), std::string::npos) << pl;
+  EXPECT_NE(pl.find("Top(uint64_t rows_offset"), std::string::npos) << pl;
+  EXPECT_NE(pl.find("uint32_t rows_host_frames, uint32_t& rows_kernel_frames, "
+                    "uint64_t& rows_ring_shape, uint32_t cols_host_frames"),
+            std::string::npos)
+      << pl;
+  EXPECT_NE(pl.find("HLS interface s_axilite port = cols_kernel_frames"),
+            std::string::npos)
+      << pl;
+  EXPECT_EQ(pl.find(".invoke("), std::string::npos) << pl;
+  EXPECT_NE(other.find("void Top(tapa::istream<float>& rows"),
+            std::string::npos)
+      << other;
+  EXPECT_EQ(tu.find("[[tapa::"), std::string::npos) << tu;
+}
+
 TEST(AieTest, PipelineUnrollsNestedLoops) {
   const TreePipelineRun automatic = Analyze(
       "nested_pipeline", Design(R"cpp(

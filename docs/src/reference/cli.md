@@ -330,7 +330,7 @@ and [Alveo V80 with SLASH](../howto/v80.md) for the guided workflows.
 
 | Flag | Description |
 |------|-------------|
-| `--package FILE` | Packaged TAPA kernel: `.xo` for `xilinx-vitis`, or `.zip` when its top runs on the AI Engine; `.zip` for `xilinx-slash`. |
+| `--package FILE` | Packaged TAPA kernel: `.xo` for `xilinx-vitis`, or `.zip` when its top runs on the AI Engine with no PL kernel (on a VCK5000 TAPA builds one, so `.xo`); `.zip` for `xilinx-slash`. |
 | `--output FILE` / `-o FILE` | Bitstream output: `.xclbin` for `xilinx-vitis`, `.vbin` for `xilinx-slash`. |
 | `--connectivity FILE` | Connectivity configuration. Required for `xilinx-slash` (slashkit's `nk=`/`sp=` file); for `xilinx-vitis`, the standard `sp=` config passed to `v++ --config`. |
 
@@ -352,9 +352,9 @@ clock derates the recorded frequency with a warning instead of failing, and
 and the pinned SLASH commit. A Vitis link reports the routed kernel timing
 from its post-route report either way. A `--sim` link has no routed timing
 report — its metrics record the commit and the requested versus recorded MHz
-only. A top on the AI Engine has no PL kernel and so no kernel timing; its
-link leaves the `.xsa` beside the xclbin for packaging an SD image (see
-[AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
+only. A top on the AI Engine has no PL kernel, except on a VCK5000, and so
+no kernel timing; its link leaves the `.xsa` beside the xclbin for packaging
+an SD image (see [AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
 
 ### Example
 

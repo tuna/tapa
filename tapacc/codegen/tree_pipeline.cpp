@@ -17,12 +17,12 @@ TreePipelineRun RunTreePipeline(
     const std::vector<VirtualTu>& tus, const std::string& top,
     const std::string& out_root, const std::vector<std::string>& args,
     const clang::tooling::FileContentMappings& virtual_files,
-    std::map<std::string, SynthTarget> task_targets) {
+    std::map<std::string, SynthTarget> task_targets, SynthTarget flow) {
   std::vector<std::string> main_files;
   main_files.reserve(tus.size());
   for (const VirtualTu& tu : tus) main_files.push_back(CanonicalPath(tu.path));
   CollectingDiagConsumer diags;
-  ProgramBuilder builder(top, SynthTarget::kXilinxHls,
+  ProgramBuilder builder(top, flow,
                          TreeConfig{out_root, std::move(main_files)});
   builder.SetTaskTargets(std::move(task_targets));
 

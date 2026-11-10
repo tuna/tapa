@@ -267,6 +267,85 @@ void XilinxBackend::EmitScalarPort(const PortContext& p, CodeSink& out) const {
   }
 }
 
+namespace {
+
+// One declaration's parameter list of a middle or top task (see
+// RewriteSignature).
+void RewriteDeclSignature(const TaskModel& task, Lvl lvl,
+                          const clang::FunctionDecl* decl, EditSink& edits) {
+  bool rewrote_axis_stream = false;
+  std::string counters;
+  for (const clang::ParmVarDecl* param : decl->parameters()) {
+    const std::string name = param->getNameAsString();
+    const TapaKind kind = ClassifyTapaType(param);
+    if (lvl == Lvl::kTop && task.rings.count(name) != 0) {
+      // A ring: its base address in place, its registers after the last
+      // parameter, so the host's argument indices stay the parameters'.
+      edits.ReplaceText(
+          param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+          "uint64_t");
+      edits.ReplaceText(param->getLocation(), OffsetName(name));
+      counters += ", uint32_t " + RingHostFramesName(name) + ", uint32_t& " +
+                  RingKernelFramesName(name) + ", uint64_t& " +
+                  RingShapeName(name);
+    } else if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
+      edits.ReplaceText(
+          param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+          "uint64_t");
+      edits.ReplaceText(param->getLocation(), OffsetName(name));
+    } else if (IsMmapArray(kind)) {
+      std::string text;
+      for (int64_t i = 0; i < ArraySize(param); ++i) {
+        if (!text.empty()) text += ", ";
+        text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
+      }
+      edits.ReplaceText(param->getSourceRange(), text);
+    } else if (lvl == Lvl::kTop &&
+               (kind == TapaKind::kIStream || kind == TapaKind::kOStream)) {
+      // Vitis top-level streams become axis interfaces. Rewrite the type to
+      // hls::stream<qdma_axis<W>> so Vitis HLS emits `{name}_TDATA/_TVALID/
+      // _TREADY/_TLAST` (what the cosim testbench binds to), instead of the
+      // `tapa::istream` disaggregated `_s_*` member ports.
+      if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
+        if (arg->getKind() == clang::TemplateArgument::Type) {
+          const uint32_t w = AxisDataWidth(param);
+          edits.ReplaceText(
+              param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
+              "hls::stream<qdma_axis<" + std::to_string(w) + ", 0, 0, 0> >&");
+          rewrote_axis_stream = true;
+        }
+      }
+    }
+  }
+  // A declaration can live in a header included before the definition.
+  // Make qdma_axis available at each rewritten declaration, not just in
+  // the translation unit containing the function body.
+  if (rewrote_axis_stream) {
+    edits.InsertTextAfter(decl->getBeginLoc(),
+                          "#include \"ap_axi_sdata.h\"\n"
+                          "#include \"hls_stream.h\"\n\n");
+  }
+  if (!counters.empty()) {
+    edits.InsertTextBefore(decl->getFunctionTypeLoc().getRParenLoc(), counters);
+  }
+}
+
+// The Vitis top's definition: a shell of its interface `lines`, wrapped in
+// extern "C" (Vitis only links extern-C kernels).
+void WrapTopDefinition(const clang::FunctionDecl* def, const std::string& lines,
+                       EditSink& edits) {
+  // The shell carries an s_axilite return-control pragma.
+  edits.ReplaceText(def->getBody()->getSourceRange(),
+                    "{\n" + lines +
+                        "#pragma HLS interface s_axilite port = return bundle "
+                        "= control\n}\n");
+  edits.InsertTextAfter(def->getBeginLoc(), "extern \"C\" {\n\n");
+  edits.InsertTextAfterToken(def->getEndLoc(), "\n\n}  // extern \"C\"\n");
+  RemoveInline(def, edits);
+}
+
+}  // namespace
+
 void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
                                      EditSink& edits) const {
   const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
@@ -276,62 +355,7 @@ void XilinxBackend::RewriteSignature(const TaskModel& task, bool is_top,
   // declaration of the function (the forward declaration and the definition),
   // so the emitted signatures agree.
   for (const clang::FunctionDecl* decl : task.def->redecls()) {
-    bool rewrote_axis_stream = false;
-    std::string counters;
-    for (const clang::ParmVarDecl* param : decl->parameters()) {
-      const std::string name = param->getNameAsString();
-      const TapaKind kind = ClassifyTapaType(param);
-      if (lvl == Lvl::kTop && task.rings.count(name) != 0) {
-        // A ring: its base address in place, its registers after the last
-        // parameter, so the host's argument indices stay the parameters'.
-        edits.ReplaceText(
-            param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
-            "uint64_t");
-        edits.ReplaceText(param->getLocation(), OffsetName(name));
-        counters += ", uint32_t " + RingHostFramesName(name) + ", uint32_t& " +
-                    RingKernelFramesName(name) + ", uint64_t& " +
-                    RingShapeName(name);
-      } else if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
-        edits.ReplaceText(
-            param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
-            "uint64_t");
-        edits.ReplaceText(param->getLocation(), OffsetName(name));
-      } else if (IsMmapArray(kind)) {
-        std::string text;
-        for (int64_t i = 0; i < ArraySize(param); ++i) {
-          if (!text.empty()) text += ", ";
-          text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
-        }
-        edits.ReplaceText(param->getSourceRange(), text);
-      } else if (lvl == Lvl::kTop &&
-                 (kind == TapaKind::kIStream || kind == TapaKind::kOStream)) {
-        // Vitis top-level streams become axis interfaces. Rewrite the type to
-        // hls::stream<qdma_axis<W>> so Vitis HLS emits `{name}_TDATA/_TVALID/
-        // _TREADY/_TLAST` (what the cosim testbench binds to), instead of the
-        // `tapa::istream` disaggregated `_s_*` member ports.
-        if (const auto* arg = GetTemplateArg(param->getType(), 0)) {
-          if (arg->getKind() == clang::TemplateArgument::Type) {
-            const uint32_t w = AxisDataWidth(param);
-            edits.ReplaceText(
-                param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
-                "hls::stream<qdma_axis<" + std::to_string(w) + ", 0, 0, 0> >&");
-            rewrote_axis_stream = true;
-          }
-        }
-      }
-    }
-    // A declaration can live in a header included before the definition.
-    // Make qdma_axis available at each rewritten declaration, not just in
-    // the translation unit containing the function body.
-    if (rewrote_axis_stream) {
-      edits.InsertTextAfter(decl->getBeginLoc(),
-                            "#include \"ap_axi_sdata.h\"\n"
-                            "#include \"hls_stream.h\"\n\n");
-    }
-    if (!counters.empty()) {
-      edits.InsertTextBefore(decl->getFunctionTypeLoc().getRParenLoc(),
-                             counters);
-    }
+    RewriteDeclSignature(task, lvl, decl, edits);
   }
 }
 
@@ -360,26 +384,7 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     if (lvl == Lvl::kTop) WrapTaskDeclExternC(func, edits);
     return;
   }
-  CodeSink sink;
-  EmitPortPreambles(func, task.level, is_top, sink, &task.rings);
-  if (lvl == Lvl::kTop) {
-    for (const auto& [name, slots] : task.rings) {
-      const std::string host = RingHostFramesName(name);
-      const std::string kernel = RingKernelFramesName(name);
-      sink.Pragma({"HLS interface s_axilite port =", host, "bundle = control"});
-      sink.Line("{ auto val = reinterpret_cast<volatile uint8_t&>(" + host +
-                "); }");
-      sink.Pragma(
-          {"HLS interface s_axilite port =", kernel, "bundle = control"});
-      sink.Line(kernel + " = 0;");
-      const std::string shape = RingShapeName(name);
-      sink.Pragma(
-          {"HLS interface s_axilite port =", shape, "bundle = control"});
-      sink.Line(shape + " = 0;");
-      sink.Line("");
-    }
-  }
-  const std::string lines = sink.Str();
+  const std::string lines = InterfaceLines(task, is_top);
 
   if (lvl == Lvl::kLower) {
     // Leading newline so the first pragma starts its own line after the brace.
@@ -398,22 +403,46 @@ void XilinxBackend::RewriteTaskFunc(const TaskModel& task, bool is_top,
     return;
   }
 
-  // Top level in Vitis mode: the shell carries an s_axilite return-control
-  // pragma, and every declaration (forward decl + definition) is wrapped in
-  // extern "C" (Vitis only links extern-C kernels).
-  const std::string shell =
-      "{\n" + lines +
-      "#pragma HLS interface s_axilite port = return bundle = control\n}\n";
+  // Top level in Vitis mode: every declaration (forward decl + definition)
+  // is wrapped in extern "C" (Vitis only links extern-C kernels).
   for (const clang::FunctionDecl* decl : func->redecls()) {
     if (decl->isThisDeclarationADefinition()) {
-      edits.ReplaceText(decl->getBody()->getSourceRange(), shell);
-      edits.InsertTextAfter(decl->getBeginLoc(), "extern \"C\" {\n\n");
-      edits.InsertTextAfterToken(decl->getEndLoc(), "\n\n}  // extern \"C\"\n");
-      RemoveInline(decl, edits);
+      WrapTopDefinition(decl, lines, edits);
     } else {
       WrapTaskDeclExternC(decl, edits);
     }
   }
+}
+
+void XilinxBackend::RewritePlKernel(const TaskModel& top,
+                                    EditSink& edits) const {
+  RewriteDeclSignature(top, Lvl::kTop, top.def, edits);
+  WrapTopDefinition(top.def, InterfaceLines(top, /*is_top=*/true), edits);
+}
+
+std::string XilinxBackend::InterfaceLines(const TaskModel& task,
+                                          bool is_top) const {
+  const Lvl lvl = LvlOf(task.level, is_top, is_vitis_);
+  CodeSink sink;
+  EmitPortPreambles(task.def, task.level, is_top, sink, &task.rings);
+  if (lvl == Lvl::kTop) {
+    for (const auto& [name, slots] : task.rings) {
+      const std::string host = RingHostFramesName(name);
+      const std::string kernel = RingKernelFramesName(name);
+      sink.Pragma({"HLS interface s_axilite port =", host, "bundle = control"});
+      sink.Line("{ auto val = reinterpret_cast<volatile uint8_t&>(" + host +
+                "); }");
+      sink.Pragma(
+          {"HLS interface s_axilite port =", kernel, "bundle = control"});
+      sink.Line(kernel + " = 0;");
+      const std::string shape = RingShapeName(name);
+      sink.Pragma(
+          {"HLS interface s_axilite port =", shape, "bundle = control"});
+      sink.Line(shape + " = 0;");
+      sink.Line("");
+    }
+  }
+  return sink.Str();
 }
 
 void XilinxBackend::StripOtherTask(const clang::FunctionDecl* func,

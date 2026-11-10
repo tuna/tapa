@@ -84,9 +84,11 @@ pub fn package(
         )));
     }
     let state = work_io::load(&ctx.work_dir)?;
-    let partition = AiePartition::derive(&state.graph)?.ok_or_else(|| {
-        CliError::InvalidArg("`--aie-sim` needs an AI Engine task; the design has none".into())
-    })?;
+    // The simulators move a PL-less top's frames by GMIO.
+    let partition =
+        AiePartition::derive(&state.graph, tapa_ir::TopFrames::Gmio)?.ok_or_else(|| {
+            CliError::InvalidArg("`--aie-sim` needs an AI Engine task; the design has none".into())
+        })?;
     // Before the build: it wipes `output` and takes minutes.
     let manifest = manifest(sim, &state.graph, &partition)?;
     let job = prepare(

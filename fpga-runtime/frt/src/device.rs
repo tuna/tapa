@@ -44,6 +44,20 @@ pub struct HostStream {
     pub name: String,
     /// Whether the kernel reads the stream (the host writes it).
     pub kernel_reads: bool,
+    /// A PLIO of the ring of an AI Engine top's stream argument, in the PL
+    /// kernel TAPA builds for the top (see `tapa_ir::RingPlio`).
+    pub ring: Option<HostRing>,
+}
+
+/// The ring a [`HostStream`] is a PLIO of.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct HostRing {
+    /// The top's argument the ring carries.
+    pub arg: u32,
+    /// The stream carries the frame count of a run, not the frames.
+    pub count: bool,
+    /// Elements in a frame.
+    pub frame: u32,
 }
 
 /// Kernel lifecycle: idle, running since the enclosed instant, or finished.

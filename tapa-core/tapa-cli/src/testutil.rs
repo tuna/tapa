@@ -20,6 +20,7 @@ pub fn task(name: &str) -> Task {
         srcs: vec![format!("{name}.cpp")],
         include_dirs: Vec::new(),
         defines: Vec::new(),
+        pl_kernel_defines: Vec::new(),
         ports: Vec::new(),
         tasks: BTreeMap::new(),
         fifos: BTreeMap::new(),

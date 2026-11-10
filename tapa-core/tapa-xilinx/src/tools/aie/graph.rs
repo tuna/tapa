@@ -13,7 +13,8 @@ use std::fmt::Write as _;
 
 use tapa_ir::port::sanitize_identifier_name;
 use tapa_ir::{
-    AieKernel, AieMemoryPort, AiePartition, AiePortKind, AieStream, AieStreamKind, ScalarBinding,
+    AieKernel, AieMemoryPort, AiePartition, AiePortKind, AieStream, AieStreamKind, RingPlio,
+    ScalarBinding,
 };
 
 use crate::error::{Result, XilinxError};
@@ -231,11 +232,22 @@ const GMIO_BURST_BYTES: u32 = 256;
 /// The throughput every GMIO asks of the NoC, in MB/s.
 const GMIO_MBPS: u32 = 1000;
 
-/// The kernel's frame ports that write a GMIO: each parameter's name and
-/// its stream. The kernel reports the frames it released on each through
-/// an `inout` runtime parameter, `frames_<GMIO>`, so the host knows when a
-/// run's last frame has arrived.
-fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<(String, usize)>> {
+/// A frame port of a kernel that writes a PL-less top's stream argument.
+/// The kernel reports the frames it released there once its task returns,
+/// so the host knows when a run's last frame has arrived: through an
+/// `inout` runtime parameter, `frames_<GMIO>`, for a GMIO, or on the
+/// argument's count PLIO for a ring (see [`tapa_ir::RingPlio::Count`]).
+struct Counted {
+    /// The parameter's name.
+    param: String,
+    /// The stream it writes.
+    stream: usize,
+    /// The ring's count PLIO, or `None` for a GMIO's runtime parameter.
+    plio: Option<usize>,
+}
+
+/// The kernel's [`Counted`] frame ports, in parameter order.
+fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<Counted>> {
     let mut counted = Vec::new();
     for port in &kernel.ports {
         let AiePortKind::Streams {
@@ -248,9 +260,20 @@ fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<(Str
             continue;
         };
         for &stream in channels {
-            if !matches!(streams[stream].kind, AieStreamKind::Gmio { .. }) {
+            let plio = if streams[stream].ring == Some(RingPlio::Frames) {
+                let fifo = &streams[stream].fifo;
+                let count = streams
+                    .iter()
+                    .position(|c| c.ring == Some(RingPlio::Count) && c.fifo == *fifo)
+                    .ok_or_else(|| {
+                        XilinxError::AieGraph(format!("the ring of `{fifo}` has no count PLIO"))
+                    })?;
+                Some(count)
+            } else if matches!(streams[stream].kind, AieStreamKind::Gmio { .. }) {
+                None
+            } else {
                 continue;
-            }
+            };
             if *plural {
                 return Err(XilinxError::AieGraph(format!(
                     "the port `{}` of the AI Engine kernel `{}` writes the top's stream \
@@ -259,7 +282,11 @@ fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<(Str
                     port.name, kernel.name, streams[stream].fifo
                 )));
             }
-            counted.push((sanitize_identifier_name(&port.name), stream));
+            counted.push(Counted {
+                param: sanitize_identifier_name(&port.name),
+                stream,
+                plio,
+            });
         }
     }
     Ok(counted)
@@ -278,8 +305,8 @@ fn drains(partition: &AiePartition) -> bool {
 }
 
 /// One ADF kernel parameter per stream channel, frame or runtime scalar,
-/// then the drain flag ([`drains`]), then one frame count per GMIO the
-/// kernel writes.
+/// then the drain flag ([`drains`]), then one frame count per GMIO or ring
+/// the kernel writes ([`Counted`]).
 fn signature(kernel: &AieKernel, streams: &[AieStream], drain: bool) -> Result<String> {
     let mut params = Vec::new();
     for port in &kernel.ports {
@@ -322,8 +349,12 @@ fn signature(kernel: &AieKernel, streams: &[AieStream], drain: bool) -> Result<S
     if drain {
         params.push("int32 tapa_drain".to_string());
     }
-    for (param, _) in counted_outputs(kernel, streams)? {
-        params.push(format!("int32 & tapa_frames_{param}"));
+    for counted in counted_outputs(kernel, streams)? {
+        let param = &counted.param;
+        params.push(match counted.plio {
+            None => format!("int32 & tapa_frames_{param}"),
+            Some(_) => format!("output_stream<int32>* tapa_count_{param}"),
+        });
     }
     Ok(format!(
         "void tapa_aie_{}({})",
@@ -358,7 +389,7 @@ fn wrapper(
                 ..
             } => args.push(format!("tapa::aie::bits{{{:#x}ULL}}", value.value)),
             AiePortKind::Memory(memory) => args.push(memory_arg(&name, memory)),
-            AiePortKind::Streams { .. } if counted.iter().any(|(param, _)| *param == name) => {
+            AiePortKind::Streams { .. } if counted.iter().any(|c| c.param == name) => {
                 args.push(format!("tapa::aie::count({name}, frames_{name})"));
             }
             AiePortKind::Streams { .. } | AiePortKind::Scalar { .. } => args.push(name),
@@ -377,12 +408,12 @@ fn wrapper(
     let _ = write!(out, "#include \"{}\"\n\n{signature} {{\n", source.tu);
     if drain {
         out.push_str("  if (tapa_drain != 0) {\n");
-        for (param, _) in &counted {
+        for Counted { param, .. } in &counted {
             let _ = writeln!(out, "    {param}.acquire();\n    {param}.release();");
         }
         out.push_str("    return;\n  }\n");
     }
-    for (param, _) in &counted {
+    for Counted { param, .. } in &counted {
         let _ = writeln!(out, "  int32 frames_{param} = 0;");
     }
     let _ = writeln!(
@@ -391,8 +422,16 @@ fn wrapper(
         kernel.call,
         args.join(", ")
     );
-    for (param, _) in &counted {
-        let _ = writeln!(out, "  tapa_frames_{param} = frames_{param};");
+    for Counted { param, plio, .. } in &counted {
+        let _ = match plio {
+            None => writeln!(out, "  tapa_frames_{param} = frames_{param};"),
+            // With TLAST: the interface to the PL holds a lone 32-bit word
+            // until a second one arrives, and none follows the count.
+            Some(_) => writeln!(
+                out,
+                "  writeincr(tapa_count_{param}, frames_{param}, true);"
+            ),
+        };
     }
     out.push_str("}\n");
     Ok(out)
@@ -516,7 +555,31 @@ impl GraphText {
                 }
             }
         }
+        self.ring_counts(kernel, streams, outputs)?;
         self.gmio_parameters(kernel, streams, drain, inputs)
+    }
+
+    /// The count each ring the kernel writes leaves on, an output after
+    /// the kernel's own, from `output` on.
+    fn ring_counts(
+        &mut self,
+        kernel: &AieKernel,
+        streams: &[AieStream],
+        mut output: usize,
+    ) -> Result<()> {
+        for counted in counted_outputs(kernel, streams)? {
+            if let Some(plio) = counted.plio {
+                self.producers.insert(
+                    plio,
+                    End {
+                        port: format!("k_{}.out[{output}]", kernel.name),
+                        frame: false,
+                    },
+                );
+                output += 1;
+            }
+        }
+        Ok(())
     }
 
     /// The runtime parameters a graph writing a GMIO adds after a kernel's
@@ -538,8 +601,11 @@ impl GraphText {
                 "    adf::connect<adf::parameter>({rtp}, adf::async({k}.in[{input}]));"
             );
         }
-        for (inout, (_, stream)) in counted_outputs(kernel, streams)?.into_iter().enumerate() {
-            let rtp = format!("frames_{}", streams[stream].name);
+        let gmios = counted_outputs(kernel, streams)?
+            .into_iter()
+            .filter(|counted| counted.plio.is_none());
+        for (inout, counted) in gmios.enumerate() {
+            let rtp = format!("frames_{}", streams[counted.stream].name);
             let _ = writeln!(self.members, "  adf::port<adf::inout> {rtp};");
             let _ = writeln!(
                 self.body,
@@ -928,6 +994,7 @@ mod tests {
             words: 4,
             frame: None,
             kind: AieStreamKind::Plio { input, width: 128 },
+            ring: None,
         };
         let net = |name: &str| AieStream {
             name: name.into(),
@@ -935,6 +1002,7 @@ mod tests {
             words: 4,
             frame: None,
             kind: AieStreamKind::Net { depth_words: 32 },
+            ring: None,
         };
         AiePartition {
             kernels: vec![
@@ -1001,6 +1069,7 @@ mod tests {
             words: width / 32,
             frame: None,
             kind: AieStreamKind::Plio { input, width },
+            ring: None,
         };
         let memory = tapa_ir::AieMemoryPort {
             memory: "buf".into(),
@@ -1194,6 +1263,7 @@ mod tests {
             words: 4,
             frame: Some(16),
             kind: AieStreamKind::Gmio { input },
+            ring: None,
         };
         let partition = AiePartition {
             kernels: vec![AieKernel {
@@ -1246,6 +1316,76 @@ mod tests {
                  int32 frames_out = 0;\n  \
                  tapa::aie::invoke(Pass, in, tapa::aie::count(out, frames_out));\n  \
                  tapa_frames_out = frames_out;\n}"
+            ),
+            "{kernel}"
+        );
+    }
+
+    /// Where only PL drives the graph, a PL-less top's arguments are PLIOs
+    /// to the rings of a PL kernel, and the writer sends its frame count on
+    /// the output's count PLIO once its task returns: no drain run.
+    #[test]
+    fn a_ring_feeds_a_frame_buffer_and_its_writer_sends_the_count() {
+        let ring = |name: &str, fifo: &str, input, frame, role| AieStream {
+            name: name.into(),
+            fifo: fifo.into(),
+            words: 1,
+            frame,
+            kind: AieStreamKind::Plio { input, width: 32 },
+            ring: Some(role),
+        };
+        let partition = AiePartition {
+            kernels: vec![AieKernel {
+                name: "Pass_0".into(),
+                task: "Pass".into(),
+                call: "Pass".into(),
+                ports: vec![
+                    port("in", streams(true, vec![0], Some(16))),
+                    port("out", streams(false, vec![1], Some(16))),
+                ],
+                location: None,
+                stack_bytes: None,
+                ordered: false,
+            }],
+            streams: vec![
+                ring("src_plio", "src", true, Some(16), RingPlio::Frames),
+                ring("dst_plio", "dst", false, Some(16), RingPlio::Frames),
+                ring("dst_count", "dst", false, None, RingPlio::Count),
+            ],
+            run_forever: false,
+            pl_less: true,
+        };
+        let options = GraphOptions {
+            sources: BTreeMap::from([(
+                "Pass".into(),
+                KernelSource {
+                    tu: "design.cpp".into(),
+                    defines: Vec::new(),
+                },
+            )]),
+            pl_control: true,
+            ..GraphOptions::default()
+        };
+        let files = render_graph(&partition, &options).expect("render");
+        let graph = &files["graph.cpp"];
+        for line in [
+            "p_dst_count = adf::output_plio::create(\"dst_count\", adf::plio_32_bits,",
+            "adf::connect n_src_plio(p_src_plio.out[0], k_Pass_0.in[0]);",
+            "adf::connect n_dst_plio(k_Pass_0.out[0], p_dst_plio.in[0]);",
+            "adf::connect<adf::stream> n_dst_count(k_Pass_0.out[1], p_dst_count.in[0]);",
+        ] {
+            assert!(graph.contains(line), "{line}\n{graph}");
+        }
+        assert!(!graph.contains("drain_"), "{graph}");
+        assert!(!graph.contains("inout"), "{graph}");
+        let kernel = &files["kernels/Pass_0.cc"];
+        assert!(
+            kernel.contains(
+                "tapa::aie::output_frame<int32, 64>& out, \
+                 output_stream<int32>* tapa_count_out) {\n  \
+                 int32 frames_out = 0;\n  \
+                 tapa::aie::invoke(Pass, in, tapa::aie::count(out, frames_out));\n  \
+                 writeincr(tapa_count_out, frames_out, true);\n}"
             ),
             "{kernel}"
         );

@@ -70,6 +70,17 @@ int frt_instance_host_stream(const void *handle,
                              uintptr_t name_len,
                              int *kernel_reads);
 
+/// Whether the `nth` stream argument the host binds is a PLIO of the ring
+/// of an AI Engine top's stream argument (see `HostStream::ring`): 1 with
+/// that argument's index in `*arg`, 1 in `*count` for the frame-count PLIO,
+/// and the frame's elements in `*frame`; 0 when it is not; -1 when `nth` is
+/// out of range or the handle is invalid.
+int frt_instance_host_stream_ring(const void *handle,
+                                  uint32_t nth,
+                                  int *arg,
+                                  int *count,
+                                  int *frame);
+
 /// The number of upper task instances the instance was built with inlined,
 /// which [`frt_instance_inlined`] enumerates; -1 on an invalid handle.
 int frt_instance_inlined_count(const void *handle);

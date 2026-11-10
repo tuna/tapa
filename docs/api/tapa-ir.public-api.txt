@@ -105,6 +105,51 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::AieStreamKind where T: core
 pub unsafe fn tapa_ir::aie::AieStreamKind::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::AieStreamKind
 pub fn tapa_ir::aie::AieStreamKind::from(T) -> T
+pub enum tapa_ir::aie::RingPlio
+pub tapa_ir::aie::RingPlio::Count
+pub tapa_ir::aie::RingPlio::Frames
+impl core::clone::Clone for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::clone(&self) -> tapa_ir::aie::RingPlio
+impl core::cmp::Eq for tapa_ir::aie::RingPlio
+impl core::cmp::PartialEq for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::eq(&self, &tapa_ir::aie::RingPlio) -> bool
+impl core::fmt::Debug for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::aie::RingPlio
+impl core::marker::StructuralPartialEq for tapa_ir::aie::RingPlio
+impl core::marker::Freeze for tapa_ir::aie::RingPlio
+impl core::marker::Send for tapa_ir::aie::RingPlio
+impl core::marker::Sync for tapa_ir::aie::RingPlio
+impl core::marker::Unpin for tapa_ir::aie::RingPlio
+impl core::marker::UnsafeUnpin for tapa_ir::aie::RingPlio
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::RingPlio
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::RingPlio
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::RingPlio where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::RingPlio where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::RingPlio where U: core::convert::From<T>
+pub fn tapa_ir::aie::RingPlio::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::RingPlio where U: core::convert::Into<T>
+pub type tapa_ir::aie::RingPlio::Error = core::convert::Infallible
+pub fn tapa_ir::aie::RingPlio::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::RingPlio where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::RingPlio::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::RingPlio::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::RingPlio where T: core::clone::Clone
+pub type tapa_ir::aie::RingPlio::Owned = T
+pub fn tapa_ir::aie::RingPlio::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::RingPlio::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::RingPlio where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::RingPlio where T: ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::RingPlio where T: ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::RingPlio where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::RingPlio::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::from(T) -> T
 pub enum tapa_ir::aie::ScalarBinding
 pub tapa_ir::aie::ScalarBinding::Constant(tapa_ir::instance::WireValue)
 pub tapa_ir::aie::ScalarBinding::Runtime(alloc::string::String)
@@ -149,6 +194,51 @@ impl<T> core::clone::CloneToUninit for tapa_ir::aie::ScalarBinding where T: core
 pub unsafe fn tapa_ir::aie::ScalarBinding::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::aie::ScalarBinding
 pub fn tapa_ir::aie::ScalarBinding::from(T) -> T
+pub enum tapa_ir::aie::TopFrames
+pub tapa_ir::aie::TopFrames::Gmio
+pub tapa_ir::aie::TopFrames::Rings
+impl core::clone::Clone for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::clone(&self) -> tapa_ir::aie::TopFrames
+impl core::cmp::Eq for tapa_ir::aie::TopFrames
+impl core::cmp::PartialEq for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::eq(&self, &tapa_ir::aie::TopFrames) -> bool
+impl core::fmt::Debug for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::aie::TopFrames
+impl core::marker::StructuralPartialEq for tapa_ir::aie::TopFrames
+impl core::marker::Freeze for tapa_ir::aie::TopFrames
+impl core::marker::Send for tapa_ir::aie::TopFrames
+impl core::marker::Sync for tapa_ir::aie::TopFrames
+impl core::marker::Unpin for tapa_ir::aie::TopFrames
+impl core::marker::UnsafeUnpin for tapa_ir::aie::TopFrames
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::TopFrames
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::TopFrames
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::TopFrames where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::TopFrames where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::TopFrames where U: core::convert::From<T>
+pub fn tapa_ir::aie::TopFrames::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::TopFrames where U: core::convert::Into<T>
+pub type tapa_ir::aie::TopFrames::Error = core::convert::Infallible
+pub fn tapa_ir::aie::TopFrames::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::TopFrames where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::TopFrames::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::TopFrames::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::TopFrames where T: core::clone::Clone
+pub type tapa_ir::aie::TopFrames::Owned = T
+pub fn tapa_ir::aie::TopFrames::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::TopFrames::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::TopFrames where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::TopFrames where T: ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::TopFrames where T: ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::TopFrames where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::TopFrames::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::from(T) -> T
 pub struct tapa_ir::aie::AieError(pub alloc::string::String)
 impl core::clone::Clone for tapa_ir::aie::AieError
 pub fn tapa_ir::aie::AieError::clone(&self) -> tapa_ir::aie::AieError
@@ -430,7 +520,8 @@ pub tapa_ir::aie::AiePartition::pl_less: bool
 pub tapa_ir::aie::AiePartition::run_forever: bool
 pub tapa_ir::aie::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition
-pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
+pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph, tapa_ir::aie::TopFrames) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
+pub fn tapa_ir::aie::AiePartition::has_rings(&self) -> bool
 pub fn tapa_ir::aie::AiePartition::pl_projection(&self, &tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::aie::AieError>
 impl core::clone::Clone for tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::clone(&self) -> tapa_ir::aie::AiePartition
@@ -478,6 +569,7 @@ pub tapa_ir::aie::AieStream::fifo: alloc::string::String
 pub tapa_ir::aie::AieStream::frame: core::option::Option<u32>
 pub tapa_ir::aie::AieStream::kind: tapa_ir::aie::AieStreamKind
 pub tapa_ir::aie::AieStream::name: alloc::string::String
+pub tapa_ir::aie::AieStream::ring: core::option::Option<tapa_ir::aie::RingPlio>
 pub tapa_ir::aie::AieStream::words: u32
 impl core::clone::Clone for tapa_ir::aie::AieStream
 pub fn tapa_ir::aie::AieStream::clone(&self) -> tapa_ir::aie::AieStream
@@ -2057,6 +2149,8 @@ impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
 pub const tapa_ir::graph::SCHEMA_VERSION: u32
+pub fn tapa_ir::graph::ring_count_plio(&str) -> alloc::string::String
+pub fn tapa_ir::graph::ring_plio(&str) -> alloc::string::String
 pub fn tapa_ir::graph::ring_registers(&str) -> [tapa_ir::graph::RingRegister; 3]
 pub mod tapa_ir::instance
 pub enum tapa_ir::instance::ArgSource
@@ -2872,6 +2966,7 @@ pub tapa_ir::task::Task::defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
 pub tapa_ir::task::Task::include_dirs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::level: tapa_ir::task::TaskLevel
+pub tapa_ir::task::Task::pl_kernel_defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::task::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::task::Task::readable_name: alloc::string::String
 pub tapa_ir::task::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
@@ -3810,6 +3905,51 @@ impl<T> core::clone::CloneToUninit for tapa_ir::floorplan::Resource where T: cor
 pub unsafe fn tapa_ir::floorplan::Resource::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::floorplan::Resource
 pub fn tapa_ir::floorplan::Resource::from(T) -> T
+pub enum tapa_ir::RingPlio
+pub tapa_ir::RingPlio::Count
+pub tapa_ir::RingPlio::Frames
+impl core::clone::Clone for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::clone(&self) -> tapa_ir::aie::RingPlio
+impl core::cmp::Eq for tapa_ir::aie::RingPlio
+impl core::cmp::PartialEq for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::eq(&self, &tapa_ir::aie::RingPlio) -> bool
+impl core::fmt::Debug for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::aie::RingPlio
+impl core::marker::StructuralPartialEq for tapa_ir::aie::RingPlio
+impl core::marker::Freeze for tapa_ir::aie::RingPlio
+impl core::marker::Send for tapa_ir::aie::RingPlio
+impl core::marker::Sync for tapa_ir::aie::RingPlio
+impl core::marker::Unpin for tapa_ir::aie::RingPlio
+impl core::marker::UnsafeUnpin for tapa_ir::aie::RingPlio
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::RingPlio
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::RingPlio
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::RingPlio where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::RingPlio where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::RingPlio where U: core::convert::From<T>
+pub fn tapa_ir::aie::RingPlio::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::RingPlio where U: core::convert::Into<T>
+pub type tapa_ir::aie::RingPlio::Error = core::convert::Infallible
+pub fn tapa_ir::aie::RingPlio::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::RingPlio where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::RingPlio::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::RingPlio::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::RingPlio where T: core::clone::Clone
+pub type tapa_ir::aie::RingPlio::Owned = T
+pub fn tapa_ir::aie::RingPlio::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::RingPlio::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::RingPlio where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::RingPlio where T: ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::RingPlio where T: ?core::marker::Sized
+pub fn tapa_ir::aie::RingPlio::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::RingPlio where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::RingPlio::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::RingPlio
+pub fn tapa_ir::aie::RingPlio::from(T) -> T
 pub enum tapa_ir::RoutedChannel
 pub tapa_ir::RoutedChannel::Axi
 pub tapa_ir::RoutedChannel::Axi::bank: tapa_ir::connectivity::MemoryBank
@@ -4074,6 +4214,51 @@ pub unsafe fn tapa_ir::task::TaskLevel::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::task::TaskLevel
 pub fn tapa_ir::task::TaskLevel::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::task::TaskLevel where T: for<'de> serde_core::de::Deserialize<'de>
+pub enum tapa_ir::TopFrames
+pub tapa_ir::TopFrames::Gmio
+pub tapa_ir::TopFrames::Rings
+impl core::clone::Clone for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::clone(&self) -> tapa_ir::aie::TopFrames
+impl core::cmp::Eq for tapa_ir::aie::TopFrames
+impl core::cmp::PartialEq for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::eq(&self, &tapa_ir::aie::TopFrames) -> bool
+impl core::fmt::Debug for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::marker::Copy for tapa_ir::aie::TopFrames
+impl core::marker::StructuralPartialEq for tapa_ir::aie::TopFrames
+impl core::marker::Freeze for tapa_ir::aie::TopFrames
+impl core::marker::Send for tapa_ir::aie::TopFrames
+impl core::marker::Sync for tapa_ir::aie::TopFrames
+impl core::marker::Unpin for tapa_ir::aie::TopFrames
+impl core::marker::UnsafeUnpin for tapa_ir::aie::TopFrames
+impl core::panic::unwind_safe::RefUnwindSafe for tapa_ir::aie::TopFrames
+impl core::panic::unwind_safe::UnwindSafe for tapa_ir::aie::TopFrames
+impl<Q, K> equivalent::Equivalent<K> for tapa_ir::aie::TopFrames where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::equivalent(&self, &K) -> bool
+impl<Q, K> hashbrown::Equivalent<K> for tapa_ir::aie::TopFrames where Q: core::cmp::Eq + ?core::marker::Sized, K: core::borrow::Borrow<Q> + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::equivalent(&self, &K) -> bool
+impl<T, U> core::convert::Into<U> for tapa_ir::aie::TopFrames where U: core::convert::From<T>
+pub fn tapa_ir::aie::TopFrames::into(self) -> U
+impl<T, U> core::convert::TryFrom<U> for tapa_ir::aie::TopFrames where U: core::convert::Into<T>
+pub type tapa_ir::aie::TopFrames::Error = core::convert::Infallible
+pub fn tapa_ir::aie::TopFrames::try_from(U) -> core::result::Result<T, <T as core::convert::TryFrom<U>>::Error>
+impl<T, U> core::convert::TryInto<U> for tapa_ir::aie::TopFrames where U: core::convert::TryFrom<T>
+pub type tapa_ir::aie::TopFrames::Error = <U as core::convert::TryFrom<T>>::Error
+pub fn tapa_ir::aie::TopFrames::try_into(self) -> core::result::Result<U, <U as core::convert::TryFrom<T>>::Error>
+impl<T> alloc::borrow::ToOwned for tapa_ir::aie::TopFrames where T: core::clone::Clone
+pub type tapa_ir::aie::TopFrames::Owned = T
+pub fn tapa_ir::aie::TopFrames::clone_into(&self, &mut T)
+pub fn tapa_ir::aie::TopFrames::to_owned(&self) -> T
+impl<T> core::any::Any for tapa_ir::aie::TopFrames where T: 'static + ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::type_id(&self) -> core::any::TypeId
+impl<T> core::borrow::Borrow<T> for tapa_ir::aie::TopFrames where T: ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::borrow(&self) -> &T
+impl<T> core::borrow::BorrowMut<T> for tapa_ir::aie::TopFrames where T: ?core::marker::Sized
+pub fn tapa_ir::aie::TopFrames::borrow_mut(&mut self) -> &mut T
+impl<T> core::clone::CloneToUninit for tapa_ir::aie::TopFrames where T: core::clone::Clone
+pub unsafe fn tapa_ir::aie::TopFrames::clone_to_uninit(&self, *mut u8)
+impl<T> core::convert::From<T> for tapa_ir::aie::TopFrames
+pub fn tapa_ir::aie::TopFrames::from(T) -> T
 pub enum tapa_ir::TransformError
 pub tapa_ir::TransformError::FifoNameCollision(alloc::string::String)
 pub tapa_ir::TransformError::Inline
@@ -4444,7 +4629,8 @@ pub tapa_ir::AiePartition::pl_less: bool
 pub tapa_ir::AiePartition::run_forever: bool
 pub tapa_ir::AiePartition::streams: alloc::vec::Vec<tapa_ir::aie::AieStream>
 impl tapa_ir::aie::AiePartition
-pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
+pub fn tapa_ir::aie::AiePartition::derive(&tapa_ir::graph::TaskGraph, tapa_ir::aie::TopFrames) -> core::result::Result<core::option::Option<Self>, tapa_ir::aie::AieError>
+pub fn tapa_ir::aie::AiePartition::has_rings(&self) -> bool
 pub fn tapa_ir::aie::AiePartition::pl_projection(&self, &tapa_ir::graph::TaskGraph) -> core::result::Result<tapa_ir::graph::TaskGraph, tapa_ir::aie::AieError>
 impl core::clone::Clone for tapa_ir::aie::AiePartition
 pub fn tapa_ir::aie::AiePartition::clone(&self) -> tapa_ir::aie::AiePartition
@@ -4492,6 +4678,7 @@ pub tapa_ir::AieStream::fifo: alloc::string::String
 pub tapa_ir::AieStream::frame: core::option::Option<u32>
 pub tapa_ir::AieStream::kind: tapa_ir::aie::AieStreamKind
 pub tapa_ir::AieStream::name: alloc::string::String
+pub tapa_ir::AieStream::ring: core::option::Option<tapa_ir::aie::RingPlio>
 pub tapa_ir::AieStream::words: u32
 impl core::clone::Clone for tapa_ir::aie::AieStream
 pub fn tapa_ir::aie::AieStream::clone(&self) -> tapa_ir::aie::AieStream
@@ -5993,6 +6180,7 @@ pub tapa_ir::Task::defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::fifos: alloc::collections::btree::map::BTreeMap<alloc::string::String, tapa_ir::interconnect::InterconnectDefinition>
 pub tapa_ir::Task::include_dirs: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::level: tapa_ir::task::TaskLevel
+pub tapa_ir::Task::pl_kernel_defines: alloc::vec::Vec<alloc::string::String>
 pub tapa_ir::Task::ports: alloc::vec::Vec<tapa_ir::port::Port>
 pub tapa_ir::Task::readable_name: alloc::string::String
 pub tapa_ir::Task::self_area: core::option::Option<tapa_ir::floorplan::Area>
@@ -6282,5 +6470,7 @@ pub const fn tapa_ir::global_controller_instance_name() -> &'static str
 pub fn tapa_ir::inlined_instances(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::InlinedInstance>, tapa_ir::aie::AieError>
 pub fn tapa_ir::local_controller_instance_name(&str) -> alloc::string::String
 pub fn tapa_ir::memory_crossings(&tapa_ir::graph::TaskGraph) -> core::result::Result<alloc::vec::Vec<tapa_ir::aie::MemoryCrossing>, tapa_ir::aie::AieError>
+pub fn tapa_ir::ring_count_plio(&str) -> alloc::string::String
+pub fn tapa_ir::ring_plio(&str) -> alloc::string::String
 pub fn tapa_ir::ring_registers(&str) -> [tapa_ir::graph::RingRegister; 3]
 pub fn tapa_ir::scope_controller_instance_name(&str) -> alloc::string::String

@@ -55,7 +55,10 @@ fn vadd(add: &Value, add_width: u32) -> TaskGraph {
 #[test]
 fn a_pl_only_graph_has_no_partition() {
     let g = vadd(&leaf(&json!([]), "hls"), 32);
-    assert_eq!(AiePartition::derive(&g).expect("derive"), None);
+    assert_eq!(
+        AiePartition::derive(&g, TopFrames::Gmio).expect("derive"),
+        None
+    );
 }
 
 #[test]
@@ -68,7 +71,7 @@ fn boundary_streams_become_plios_and_scalars_runtime_parameters() {
         ]),
         "aie",
     );
-    let partition = AiePartition::derive(&vadd(&add, 32))
+    let partition = AiePartition::derive(&vadd(&add, 32), TopFrames::Gmio)
         .expect("derive")
         .expect("aie");
     assert_eq!(
@@ -83,6 +86,7 @@ fn boundary_streams_become_plios_and_scalars_runtime_parameters() {
                     input: true,
                     width: 128
                 },
+                ring: None,
             },
             AieStream {
                 name: "c_q".into(),
@@ -93,6 +97,7 @@ fn boundary_streams_become_plios_and_scalars_runtime_parameters() {
                     input: false,
                     width: 32
                 },
+                ring: None,
             },
         ]
     );
@@ -176,7 +181,9 @@ fn an_upper_task_flattens_into_kernels_and_nets() {
                                       "consumed_by": ["Store", 1]}))
         .expect("PL fifo"),
     );
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     assert!(partition.run_forever, "the detached invoke runs forever");
     assert_eq!(
         partition
@@ -231,7 +238,7 @@ fn an_upper_task_rejects_sequential_children() {
         .get_mut("Inc")
         .expect("inc")[0]
         .step = 1;
-    let err = AiePartition::derive(&g).expect_err("sequential AIE child");
+    let err = AiePartition::derive(&g, TopFrames::Gmio).expect_err("sequential AIE child");
     assert!(err.0.contains("invoked sequentially"), "{err}");
 }
 
@@ -245,7 +252,8 @@ fn unsupported_shapes_are_rejected_with_the_reason() {
         ]),
         "aie",
     );
-    let err = AiePartition::derive(&vadd(&wide, 256)).expect_err("256-bit boundary");
+    let err =
+        AiePartition::derive(&vadd(&wide, 256), TopFrames::Gmio).expect_err("256-bit boundary");
     assert!(err.0.contains("at most 128 bits"), "{err}");
 }
 
@@ -281,7 +289,9 @@ fn vadd_below(step: i64) -> TaskGraph {
 #[test]
 fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
     let g = vadd_below(0);
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     assert_eq!(
         partition
             .kernels
@@ -332,7 +342,8 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
         ["Mid_0__a_q", "Mid_0__c_q"]
     );
 
-    let err = AiePartition::derive(&vadd_below(1)).expect_err("sequential mixed upper");
+    let err =
+        AiePartition::derive(&vadd_below(1), TopFrames::Gmio).expect_err("sequential mixed upper");
     assert!(err.0.contains("invoked sequentially (step 1)"), "{err}");
 
     // A host program finds each inlined instance by where its parent
@@ -393,7 +404,9 @@ fn a_pl_leaf_in_an_aie_upper_task_runs_on_the_pl() {
         "Inc": leaf(&json!([stream("istream", "in", 32), stream("ostream", "out", 64)]), "aie"),
         "Dbl": leaf(&json!([stream("istream", "in", 64), stream("ostream", "out", 32)]), "hls"),
     }));
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     assert_eq!(
         partition
             .kernels
@@ -449,7 +462,9 @@ fn the_pl_projection_turns_plios_into_top_axis_ports() {
         "aie",
     );
     let g = vadd(&add, 32);
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     let pl = partition.pl_projection(&g).expect("project");
     assert!(!pl.tasks.contains_key("Add"), "the AI Engine task is gone");
     let top = &pl.tasks["Top"];
@@ -504,13 +519,15 @@ fn a_hybrid_stream_only_top_is_rejected_for_lacking_kernel_control() {
     };
 
     let g = stream_only("aie");
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     let err = partition.pl_projection(&g).expect_err("stream-only top");
     assert!(err.0.contains("the top task `Top`"), "{err}");
     assert!(err.0.contains("ap_ctrl_hs"), "{err}");
 
     assert_eq!(
-        AiePartition::derive(&stream_only("hls")).expect("derive"),
+        AiePartition::derive(&stream_only("hls"), TopFrames::Gmio).expect("derive"),
         None,
         "a PL-only stream top is unaffected"
     );
@@ -524,7 +541,7 @@ fn kernels_on_a_stream_cycle_are_ordered() {
         &json!([stream("istream", "a", 32), stream("ostream", "c", 32)]),
         "aie",
     );
-    let chain = AiePartition::derive(&vadd(&add, 32))
+    let chain = AiePartition::derive(&vadd(&add, 32), TopFrames::Gmio)
         .expect("derive")
         .expect("aie");
     assert!(!chain.kernels[0].ordered);
@@ -546,7 +563,7 @@ fn kernels_on_a_stream_cycle_are_ordered() {
                             stream("ostream", "c", 32)]), "aie"),
         "Echo": leaf(&json!([stream("istream", "in", 32), stream("ostream", "out", 32)]), "hls"),
     }));
-    let partition = AiePartition::derive(&through_pl)
+    let partition = AiePartition::derive(&through_pl, TopFrames::Gmio)
         .expect("derive")
         .expect("aie");
     assert!(partition.kernels[0].ordered);
@@ -562,7 +579,9 @@ fn kernels_on_a_stream_cycle_are_ordered() {
                 "y": {"depth": 2, "produced_by": ["Pe", 1], "consumed_by": ["Pe", 0]}}},
         "Pe": leaf(&json!([stream("ostream", "out", 32), stream("istream", "in", 32)]), "aie"),
     }));
-    let partition = AiePartition::derive(&ring).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&ring, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     assert!(partition.kernels.iter().all(|kernel| kernel.ordered));
 }
 
@@ -598,7 +617,9 @@ fn memory_graph(also_on_pl: bool) -> TaskGraph {
 #[test]
 fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
     let g = memory_graph(false);
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     let kernel = &partition.kernels[0];
     assert!(kernel.ordered, "a memory round trip orders the kernel");
     let AiePortKind::Memory(memory) = &kernel.ports[0].kind else {
@@ -669,7 +690,9 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
     );
 
     let g = memory_graph(true);
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     let err = partition
         .pl_projection(&g)
         .expect_err("shared with a PL task");
@@ -742,7 +765,9 @@ fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
         ]
     );
     // Each Scale gets its own movers on the one memory.
-    let partition = AiePartition::derive(&g).expect("derive").expect("aie");
+    let partition = AiePartition::derive(&g, TopFrames::Gmio)
+        .expect("derive")
+        .expect("aie");
     let pl = partition.pl_projection(&g).expect("projection");
     let reads = &pl.tasks["Top"].tasks["Reads"];
     assert_eq!(reads.len(), 2);
@@ -773,7 +798,7 @@ fn gmio_graph(in_frame: Option<u32>, detached: bool) -> TaskGraph {
 
 #[test]
 fn a_top_on_the_ai_engine_moves_its_stream_arguments_over_gmio() {
-    let partition = AiePartition::derive(&gmio_graph(Some(16), false))
+    let partition = AiePartition::derive(&gmio_graph(Some(16), false), TopFrames::Gmio)
         .expect("derive")
         .expect("aie");
     assert!(partition.pl_less);
@@ -790,8 +815,101 @@ fn a_top_on_the_ai_engine_moves_its_stream_arguments_over_gmio() {
         ]
     );
 
-    let error = AiePartition::derive(&gmio_graph(None, false)).expect_err("a stream port");
+    let error =
+        AiePartition::derive(&gmio_graph(None, false), TopFrames::Gmio).expect_err("a stream port");
     assert!(error.0.contains("bind it to a frame port"), "{error}");
-    let error = AiePartition::derive(&gmio_graph(Some(16), true)).expect_err("detached");
+    let error =
+        AiePartition::derive(&gmio_graph(Some(16), true), TopFrames::Gmio).expect_err("detached");
     assert!(error.0.contains("invoke each task joined"), "{error}");
+}
+
+#[test]
+fn where_only_pl_drives_the_graph_a_pl_less_top_gets_rings() {
+    let mut g = gmio_graph(Some(16), false);
+    for port in &mut g.tasks.get_mut("Top").expect("top").ports {
+        if port.cat.is_stream() {
+            port.ring = Some(4);
+        }
+    }
+    let partition = AiePartition::derive(&g, TopFrames::Rings)
+        .expect("derive")
+        .expect("aie");
+    let streams: Vec<_> = partition
+        .streams
+        .iter()
+        .map(|s| {
+            (
+                s.name.as_str(),
+                s.fifo.as_str(),
+                s.words,
+                s.frame,
+                s.kind,
+                s.ring,
+            )
+        })
+        .collect();
+    let plio = |input, width| AieStreamKind::Plio { input, width };
+    assert_eq!(
+        streams,
+        [
+            (
+                "src_plio",
+                "src",
+                1,
+                Some(16),
+                plio(true, 32),
+                Some(RingPlio::Frames)
+            ),
+            (
+                "dst_plio",
+                "dst",
+                2,
+                Some(8),
+                plio(false, 64),
+                Some(RingPlio::Frames)
+            ),
+            (
+                "dst_count",
+                "dst",
+                1,
+                None,
+                plio(false, 32),
+                Some(RingPlio::Count)
+            ),
+        ]
+    );
+
+    // The PL kernel: the rings and the scalar, then one AXIS port per PLIO.
+    let pl = partition.pl_projection(&g).expect("project");
+    let top = &pl.tasks["Top"];
+    assert!(top.tasks.is_empty());
+    assert_eq!(top.synth, SynthTarget::Hls);
+    let ports: Vec<_> = top
+        .ports
+        .iter()
+        .map(|p| (p.name.as_str(), p.cat, p.aie_plio))
+        .collect();
+    assert_eq!(
+        ports,
+        [
+            ("src", ArgCategory::Istream, None),
+            ("dst", ArgCategory::Ostream, None),
+            ("n", ArgCategory::Scalar, None),
+            ("src_plio", ArgCategory::Ostream, Some(32)),
+            ("dst_plio", ArgCategory::Istream, Some(64)),
+            ("dst_count", ArgCategory::Istream, Some(32)),
+        ]
+    );
+    let rings: Vec<_> = pl
+        .rings()
+        .into_iter()
+        .map(|r| (r.port, r.input, r.frame, r.slots))
+        .collect();
+    assert_eq!(
+        rings,
+        [
+            ("src".to_string(), true, 16, 4),
+            ("dst".to_string(), false, 8, 4)
+        ]
+    );
 }

@@ -333,6 +333,47 @@ pub extern "C" fn frt_instance_host_stream(
     c_int::try_from(stream.index).unwrap_or(-1)
 }
 
+/// Whether the `nth` stream argument the host binds is a PLIO of the ring
+/// of an AI Engine top's stream argument (see `HostStream::ring`): 1 with
+/// that argument's index in `*arg`, 1 in `*count` for the frame-count PLIO,
+/// and the frame's elements in `*frame`; 0 when it is not; -1 when `nth` is
+/// out of range or the handle is invalid.
+#[no_mangle]
+pub extern "C" fn frt_instance_host_stream_ring(
+    handle: *const std::ffi::c_void,
+    nth: u32,
+    arg: *mut c_int,
+    count: *mut c_int,
+    frame: *mut c_int,
+) -> c_int {
+    clear_last_error();
+    let Some(h) = with_handle_ref(handle) else {
+        return -1;
+    };
+    let streams = h.device.host_streams();
+    let Some(stream) = streams.get(nth as usize) else {
+        set_last_error(format!(
+            "host stream {nth} out of range ({} declared)",
+            streams.len()
+        ));
+        return -1;
+    };
+    let Some(ring) = stream.ring else {
+        return 0;
+    };
+    for (out, value) in [
+        (arg, c_int::try_from(ring.arg).unwrap_or(-1)),
+        (count, c_int::from(ring.count)),
+        (frame, c_int::try_from(ring.frame).unwrap_or(-1)),
+    ] {
+        if !out.is_null() {
+            // SAFETY: the caller provides a writable `c_int`.
+            unsafe { *out = value };
+        }
+    }
+    1
+}
+
 /// The number of upper task instances the instance was built with inlined,
 /// which [`frt_instance_inlined`] enumerates; -1 on an invalid handle.
 #[no_mangle]

@@ -444,6 +444,7 @@ mod tests {
             words: 1,
             frame: None,
             kind: AieStreamKind::Plio { input, width },
+            ring: None,
         }
     }
 

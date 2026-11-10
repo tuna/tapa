@@ -261,6 +261,9 @@ every frame it released is in memory.
 - Every Vitis flow runs the ring: xosim, Verilator cosimulation, hardware
   emulation and hardware. A stream argument that reaches no frame port
   stays an AXIS port, which only simulation can feed.
+- An AI Engine top with no PL task gets the same rings on a VCK5000, in a
+  PL kernel TAPA builds for it ([AI Engine
+  Tasks](../howto/aie.md#on-a-vck5000)).
 - In `kernel.xml` the argument is a memory argument (its own `m_axi` port,
   placed by connectivity like any other), followed after every argument
   of the top by three registers per ring: the host's and the kernel's frame

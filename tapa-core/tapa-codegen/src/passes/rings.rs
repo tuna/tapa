@@ -5,10 +5,18 @@
 //! belong to the control slave (see `s_axi`). An output ring holds the
 //! top's done until every frame released into its channel is in memory
 //! (its `drained` net joins the children's `is_done` nets).
+//!
+//! The PL kernel of an AI Engine top (see [`tapa_ir::TopFrames::Rings`])
+//! has no channel: each ring moves its frames to or from the argument's
+//! PLIO ([`tapa_ir::ring_plio`]), and an output ring's `drained` net is a
+//! `ring_count`'s, which ends a run once the frame count the AI Engine
+//! sends on [`tapa_ir::ring_count_plio`] is in memory.
 
 use tapa_ir::port::ArgCategory;
 use tapa_ir::{Ring, RingRegister};
-use tapa_protocol::{AXI_ADDR_WIDTH, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PREFIX};
+use tapa_protocol::{
+    AXI_ADDR_WIDTH, HANDSHAKE_CLK, HANDSHAKE_IDLE, HANDSHAKE_RST, HANDSHAKE_START, M_AXI_PREFIX,
+};
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::mutation::{wide_wire, wire};
@@ -53,22 +61,10 @@ pub(super) fn instantiate_rings(
     }
     let task = &graph.tasks[task_name];
     for ring in graph.rings() {
-        let fifo = task
-            .fifos
-            .get(&ring.port)
-            .ok_or_else(|| CodegenError::FifoWidthUnresolved(ring.port.clone()))?;
-        let width = frame_channel(graph, modules, task, &ring.port, fifo)?
-            .ok_or_else(|| CodegenError::FifoWidthUnresolved(ring.port.clone()))?
-            .data_width();
-        if !(8..=512).contains(&width) || !width.is_power_of_two() {
-            return Err(CodegenError::FrameChannel {
-                fifo: ring.port.clone(),
-                problem: format!(
-                    "a ring in device memory moves elements of 8 to 512 bits, a \
-                     power of two, and this argument's are {width} bits"
-                ),
-            });
-        }
+        // The argument's frame channel, or for an AI Engine top's PL kernel
+        // the argument's PLIO.
+        let plio = (!task.fifos.contains_key(&ring.port)).then(|| tapa_ir::ring_plio(&ring.port));
+        let width = ring_width(graph, modules, task, &ring, plio.is_some())?;
         let Some(mm) = modules.get_mut(task_name) else {
             continue;
         };
@@ -98,6 +94,9 @@ pub(super) fn instantiate_rings(
         if !ring.input {
             let _ = mm.add_signal(wire(&drained));
         }
+        if let Some(plio) = &plio {
+            super::fifos::add_plio_adapter(mm, plio, width, !ring.input);
+        }
         let mut ports = vec![
             PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
             PortArg::new("rst", Expr::ident(HANDSHAKE_RST)),
@@ -112,7 +111,26 @@ pub(super) fn instantiate_rings(
             let _ = mm.add_signal(wide_wire(&register.name, &msb, "0"));
             ports.push(PortArg::new(port, Expr::ident(register.name)));
         }
-        ports.extend(channel_ports(&ring, &name, &drained));
+        ports.extend(match &plio {
+            // No producer releases frames into a PLIO: the ring's own
+            // `drained` goes unused (see `add_ring_count`).
+            Some(plio) => channel_ports(
+                &ring,
+                &sanitize_array_name(plio),
+                Expr::lit("1'b0"),
+                Expr::lit(""),
+            ),
+            None => channel_ports(
+                &ring,
+                &name,
+                Expr::ident(frame_wire(
+                    &ring.port,
+                    ArgCategory::Oframes,
+                    "_release_write",
+                )),
+                Expr::ident(&drained),
+            ),
+        });
         ports.extend(async_mmap::user_portargs(&bridge, &tags));
         mm.add_instance(
             ModuleInstance::new("frame_ring", format!("{name}_ring"))
@@ -126,14 +144,72 @@ pub(super) fn instantiate_rings(
                 ])
                 .with_ports(ports),
         );
+        if let (Some(_), false) = (&plio, ring.input) {
+            add_ring_count(mm, &ring, &drained);
+        }
     }
     Ok(())
 }
 
-/// The ring's side of the argument's frame channel: the channel's element
-/// stream, which the ring writes (input) or reads (output), and for an
-/// output the producer's release tokens it counts.
-fn channel_ports(ring: &Ring, name: &str, drained: &str) -> Vec<PortArg> {
+/// The count PLIO of an AI Engine top's output ring, and the `ring_count`
+/// driving the ring's `drained` net from it.
+fn add_ring_count(mm: &mut tapa_rtl::mutation::MutableModule, ring: &Ring, drained: &str) {
+    let count = tapa_ir::ring_count_plio(&ring.port);
+    super::fifos::add_plio_adapter(mm, &count, 32, true);
+    let count = sanitize_array_name(&count);
+    let [_, kernel_frames, _] = tapa_ir::ring_registers(&ring.port);
+    let name = sanitize_array_name(&ring.port);
+    mm.add_instance(
+        ModuleInstance::new("ring_count", format!("{name}_ring_count")).with_ports(vec![
+            PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
+            PortArg::new("rst", Expr::ident(HANDSHAKE_RST)),
+            PortArg::new(
+                "start",
+                Expr::lit(format!("{HANDSHAKE_START} & {HANDSHAKE_IDLE}")),
+            ),
+            PortArg::new("kernel_frames", Expr::ident(kernel_frames.name)),
+            PortArg::new("count_dout", Expr::ident(format!("{count}_dout"))),
+            PortArg::new("count_empty_n", Expr::ident(format!("{count}_empty_n"))),
+            PortArg::new("count_read", Expr::ident(format!("{count}_read"))),
+            PortArg::new("ended", Expr::ident(drained)),
+        ]),
+    );
+}
+
+/// The bits of an element of `ring`: its frame channel's, or for an AI
+/// Engine top's PL kernel (`plio`) its argument's.
+fn ring_width(
+    graph: &tapa_ir::TaskGraph,
+    modules: &ModuleTable<'_>,
+    task: &tapa_ir::Task,
+    ring: &Ring,
+    plio: bool,
+) -> Result<u32, CodegenError> {
+    let unresolved = || CodegenError::FifoWidthUnresolved(ring.port.clone());
+    let width = match (plio, task.fifos.get(&ring.port)) {
+        (true, _) => task.port(&ring.port).map_or(0, |port| port.width),
+        (false, Some(fifo)) => frame_channel(graph, modules, task, &ring.port, fifo)?
+            .ok_or_else(unresolved)?
+            .data_width(),
+        (false, None) => return Err(unresolved()),
+    };
+    if !(8..=512).contains(&width) || !width.is_power_of_two() {
+        return Err(CodegenError::FrameChannel {
+            fifo: ring.port.clone(),
+            problem: format!(
+                "a ring in device memory moves elements of 8 to 512 bits, a \
+                 power of two, and this argument's are {width} bits"
+            ),
+        });
+    }
+    Ok(width)
+}
+
+/// The ring's side of the stream `name` it writes (input) or reads
+/// (output): the argument's frame channel, or its PLIO's adapter (see
+/// `fifos::add_plio_adapter`). An output ring counts the producer's
+/// `released` tokens and drives `drained`.
+fn channel_ports(ring: &Ring, name: &str, released: Expr, drained: Expr) -> Vec<PortArg> {
     let wire = |suffix: &str| Expr::ident(format!("{name}{suffix}"));
     if ring.input {
         vec![
@@ -147,7 +223,6 @@ fn channel_ports(ring: &Ring, name: &str, drained: &str) -> Vec<PortArg> {
             PortArg::new("drained", Expr::lit("")),
         ]
     } else {
-        let released = frame_wire(&ring.port, ArgCategory::Oframes, "_release_write");
         vec![
             PortArg::new("out_din", Expr::lit("")),
             PortArg::new("out_full_n", Expr::lit("1'b0")),
@@ -155,8 +230,8 @@ fn channel_ports(ring: &Ring, name: &str, drained: &str) -> Vec<PortArg> {
             PortArg::new("in_dout", wire("_dout")),
             PortArg::new("in_empty_n", wire("_empty_n")),
             PortArg::new("in_read", wire("_read")),
-            PortArg::new("released", Expr::ident(released)),
-            PortArg::new("drained", Expr::ident(drained)),
+            PortArg::new("released", released),
+            PortArg::new("drained", drained),
         ]
     }
 }

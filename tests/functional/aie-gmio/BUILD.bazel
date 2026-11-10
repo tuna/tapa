@@ -43,6 +43,34 @@ aie_sim_test(
     top_name = "Pipeline",
 )
 
+# VCK5000 hybrid cosimulation: the PL kernel TAPA builds for the top, whose
+# frame arguments move through rings in device memory to PLIOs, in xsim,
+# against the AI Engine tasks in software, which send each output's frame
+# count when they return.
+sh_test(
+    name = "aie-gmio-vck5000-hybrid",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath //tests/functional/aie-vadd:run_hybrid.sh)",
+        "$(rootpath //tapa-core:tapa)",
+        "$(rootpath :aie-gmio-host)",
+        "$(rootpath gmio.cpp)",
+        "xilinx_vck5000_gen4x8_qdma_2_202220_1",
+        "Pipeline",
+    ],
+    data = [
+        "gmio.cpp",
+        "gmio.h",
+        ":aie-gmio-host",
+        "//fpga-runtime:cargo_release_artifacts",
+        "//tapa-core:tapa",
+        "//tests/functional/aie-vadd:run_hybrid.sh",
+    ],
+    # The host keeps a run's frames in its streams: at most 16.
+    env = {"HYBRID_HOST_ARG": "6"},
+)
+
 # VCK190 system emulation: the graph in QEMU's AI Engine model, driven by
 # the aarch64 host through XRT's graph API and GMIO. Run with
 # --test_env=VERSAL_COMMON=<extracted xilinx-versal-common directory>.

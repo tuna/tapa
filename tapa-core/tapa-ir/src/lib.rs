@@ -28,7 +28,7 @@ mod error;
 pub use aie::{
     inlined_instances, memory_crossings, AieError, AieKernel, AieKernelPort, AieMemoryPort,
     AieMemoryReads, AieMemoryWrites, AiePartition, AiePortKind, AieStream, AieStreamKind,
-    InlinedInstance, MemoryCrossing, ScalarBinding,
+    InlinedInstance, MemoryCrossing, RingPlio, ScalarBinding, TopFrames,
 };
 pub use bindings::{FifoEndpoint, PortBinding};
 pub use clock::ClockPeriod;
@@ -43,7 +43,9 @@ pub use floorplan::{
     scope_controller_instance_name, Area, AxiChannel, AxiChannelWidths, AxiEndpoint,
     ControlChannel, Coor, FloorplanResult, PipelineRoute, PipelineScheme, Resource, RoutedChannel,
 };
-pub use graph::{ring_registers, FrameChannel, Ring, RingRegister, TaskGraph};
+pub use graph::{
+    ring_count_plio, ring_plio, ring_registers, FrameChannel, Ring, RingRegister, TaskGraph,
+};
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
 pub use memory::MemoryGeometry;

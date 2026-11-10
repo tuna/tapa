@@ -9,7 +9,9 @@
 //! into kernels and classifies every stream they touch: a FIFO between two AI
 //! Engine tasks is an AI Engine net, and a FIFO between a PL task and an AI
 //! Engine task is a PLIO. When the top itself is on the AI Engine, a stream
-//! argument of the top is a GMIO, whose frames the host moves.
+//! argument of the top is a GMIO, whose frames the host moves, or where only
+//! PL drives the graph a PLIO to a ring in a PL kernel TAPA builds for the
+//! top ([`TopFrames`]).
 
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
@@ -37,10 +39,22 @@ pub struct AiePartition {
     /// until the host ends it.
     pub run_forever: bool,
     /// The top itself is on the AI Engine: no task runs on the PL and the
-    /// top takes no memory, so there is no PL kernel (tapacc keeps an AI
-    /// Engine top there only then). Its stream arguments are GMIOs and its
-    /// scalars runtime parameters.
+    /// top takes no memory, so there is no PL kernel of the user's (tapacc
+    /// keeps an AI Engine top there only then). Its stream arguments move
+    /// frames as [`TopFrames`] says, and its scalars are runtime parameters.
     pub pl_less: bool,
+}
+
+/// How a PL-less top's stream arguments reach the host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopFrames {
+    /// By GMIO, where the board's own processor drives the graph.
+    Gmio,
+    /// Through rings in device memory, where only PL drives the graph (a
+    /// VCK5000): TAPA builds a PL kernel named after the top holding one
+    /// ring per argument (see [`crate::Ring`]), each with a PLIO to the
+    /// graph ([`RingPlio`]).
+    Rings,
 }
 
 /// One AI Engine leaf instance.
@@ -187,6 +201,22 @@ pub struct AieStream {
     /// Elements per frame on the AIE side, or `None` for a stream port.
     pub frame: Option<u32>,
     pub kind: AieStreamKind,
+    /// A PLIO of a PL-less top's ring ([`TopFrames::Rings`]), for the
+    /// top's stream argument [`Self::fifo`].
+    pub ring: Option<RingPlio>,
+}
+
+/// What a PLIO of a PL-less top's ring carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RingPlio {
+    /// The argument's frames, between its ring and the kernel port the
+    /// argument reaches.
+    Frames,
+    /// For an output argument: the frames a run released on it, one 32-bit
+    /// word from the kernel writing them once its task returns. The PL
+    /// kernel is done once every count is in and that many frames are in
+    /// memory.
+    Count,
 }
 
 /// The two kinds of AI Engine stream.
@@ -216,7 +246,7 @@ enum Node {
 impl AiePartition {
     /// The AI Engine partition of `graph`, or `None` when no task is on the
     /// AI Engine.
-    pub fn derive(graph: &TaskGraph) -> Result<Option<Self>, AieError> {
+    pub fn derive(graph: &TaskGraph, top_frames: TopFrames) -> Result<Option<Self>, AieError> {
         if !graph
             .tasks
             .values()
@@ -236,6 +266,7 @@ impl AiePartition {
                 pl_less,
             },
             top_streams: BTreeMap::new(),
+            top_frames,
         };
         for (child, instances) in &top.tasks {
             if task(graph, child)?.synth != SynthTarget::Aie {
@@ -252,9 +283,16 @@ impl AiePartition {
             }
         }
         builder.check_locations()?;
-        builder.partition.check_gmios(&graph.top)?;
+        builder.partition.check_top_frames(&graph.top)?;
         builder.partition.mark_cycles(graph, top);
         Ok(Some(builder.partition))
+    }
+
+    /// TAPA builds a PL kernel for this PL-less top, holding its rings
+    /// ([`TopFrames::Rings`]).
+    #[must_use]
+    pub fn has_rings(&self) -> bool {
+        self.streams.iter().any(|stream| stream.ring.is_some())
     }
 
     /// The PL half of `graph`, the design `tapa synth` builds as RTL: the AI
@@ -268,7 +306,11 @@ impl AiePartition {
     pub fn pl_projection(&self, graph: &TaskGraph) -> Result<TaskGraph, AieError> {
         let graph = &*by_fabric(graph)?;
         let mut pl = graph.clone();
-        pl.tasks.retain(|_, task| task.synth != SynthTarget::Aie);
+        // A PL-less top with rings is itself the PL kernel: its HLS stub, a
+        // shell around the rings (see `TopFrames::Rings`).
+        let rings = self.has_rings();
+        pl.tasks
+            .retain(|name, task| task.synth != SynthTarget::Aie || (rings && *name == graph.top));
         let pl_tasks: BTreeSet<String> = pl.tasks.keys().cloned().collect();
         let original = task(graph, &graph.top)?;
         let top = pl
@@ -276,6 +318,10 @@ impl AiePartition {
             .get_mut(&graph.top)
             .ok_or_else(|| AieError(format!("the task graph has no task `{}`", graph.top)))?;
         top.tasks.retain(|child, _| pl_tasks.contains(child));
+        if rings {
+            top.synth = SynthTarget::Hls;
+            top.defines = std::mem::take(&mut top.pl_kernel_defines);
+        }
         for stream in &self.streams {
             let (input, width) = match stream.kind {
                 AieStreamKind::Plio { input, width } => (input, width),
@@ -293,6 +339,10 @@ impl AiePartition {
                     continue;
                 }
             };
+            if let Some(role) = stream.ring {
+                project_ring_plio(top, stream, role, input, width)?;
+                continue;
+            }
             let Some(fifo) = top.fifos.get_mut(&stream.fifo) else {
                 continue;
             };
@@ -318,24 +368,13 @@ impl AiePartition {
                     endpoint.0
                 ))
             })?;
-            top.ports.push(crate::Port {
-                cat: if input {
-                    ArgCategory::Ostream
-                } else {
-                    ArgCategory::Istream
-                },
-                name: stream.fifo.clone(),
-                ctype: pl_port.ctype.clone(),
-                width: pl_port.width,
-                chan_count: None,
-                chan_size: None,
-                frame: None,
-                aie_plio: Some(width),
-                stream_depth: None,
-                mmap_addr_width: None,
-                aie_movers: None,
-                ring: None,
-            });
+            top.ports.push(plio_port(
+                stream.fifo.clone(),
+                input,
+                pl_port.ctype.clone(),
+                pl_port.width,
+                width,
+            ));
         }
         for kernel in &self.kernels {
             for port in &kernel.ports {
@@ -345,11 +384,11 @@ impl AiePartition {
             }
         }
         // The same rule `kernel.xml` applies: `has_s_axi_control` exists only
-        // beside a scalar or memory argument, never a stream.
+        // beside a scalar or memory argument (a ring is one), never a stream.
         if !top
             .ports
             .iter()
-            .any(|port| port.cat.is_scalar() || port.cat.is_mmap_like())
+            .any(|port| port.cat.is_scalar() || port.cat.is_mmap_like() || port.ring.is_some())
         {
             return Err(AieError(format!(
                 "the top task `{}` keeps only stream ports beside the AI Engine graph; a \
@@ -472,11 +511,16 @@ impl AiePartition {
         Ok(())
     }
 
-    /// A GMIO moves the frames of the kernel port it reaches, which may sit
-    /// below an upper task, so it takes that port's frame size; the port
-    /// must be a frame port. The host counts a run's output frames once
-    /// every kernel returns, so none may run forever.
-    fn check_gmios(&mut self, top: &str) -> Result<(), AieError> {
+    /// A PL-less top's stream argument moves the frames of the kernel port
+    /// it reaches, which may sit below an upper task, so its GMIO or ring
+    /// takes that port's frame size; the port must be a frame port. The
+    /// host counts a run's output frames once every kernel returns, so none
+    /// may run forever.
+    fn check_top_frames(&mut self, top: &str) -> Result<(), AieError> {
+        let top_frames = |stream: &AieStream| {
+            matches!(stream.kind, AieStreamKind::Gmio { .. })
+                || stream.ring == Some(RingPlio::Frames)
+        };
         for kernel in &self.kernels {
             for port in &kernel.ports {
                 let AiePortKind::Streams {
@@ -489,22 +533,23 @@ impl AiePartition {
                 };
                 for &index in streams {
                     let stream = &mut self.streams[index];
-                    if matches!(stream.kind, AieStreamKind::Gmio { .. }) {
+                    if top_frames(stream) {
                         stream.frame = Some(*frame);
                     }
                 }
             }
         }
         for stream in &self.streams {
-            if !matches!(stream.kind, AieStreamKind::Gmio { .. }) {
+            if !top_frames(stream) {
                 continue;
             }
             if stream.frame.is_none() {
                 return Err(AieError(format!(
                     "the stream argument `{}` of the top task `{top}` reaches a stream port of \
                      an AI Engine task; with no task on the PL, the top's stream arguments \
-                     move frames over GMIO, so bind it to a frame port (`tapa::iframes`, \
-                     `tapa::oframes`, or `[[tapa::frame(N)]]`)",
+                     move whole frames (over GMIO, or through rings where only PL drives the \
+                     graph), so bind it to a frame port (`tapa::iframes`, `tapa::oframes`, or \
+                     `[[tapa::frame(N)]]`)",
                     stream.fifo
                 )));
             }
@@ -679,7 +724,8 @@ pub struct MemoryCrossing {
 ///
 /// No valid partition.
 pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieError> {
-    let Some(partition) = AiePartition::derive(graph)? else {
+    // A design with memory has a PL kernel of its own: no GMIO, no ring.
+    let Some(partition) = AiePartition::derive(graph, TopFrames::Gmio)? else {
         return Ok(Vec::new());
     };
     // Kernel name -> where the host invokes it, walking the bodies the host
@@ -899,6 +945,7 @@ struct Builder<'g> {
     partition: AiePartition,
     /// Top-level FIFO name → stream index, created on first use.
     top_streams: BTreeMap<String, usize>,
+    top_frames: TopFrames,
 }
 
 impl Builder<'_> {
@@ -924,15 +971,18 @@ impl Builder<'_> {
                 let top_port = top.port(name).filter(|port| port.cat.is_stream());
                 if let (None, Some(top_port), true) = (fifo, top_port, self.partition.pl_less) {
                     let frame = task(graph, child)?.port(port).and_then(|port| port.frame);
-                    let index = self.push_stream(
-                        sanitize_identifier_name(name),
-                        name,
-                        stream_words(graph, child, port)?,
-                        frame,
-                        AieStreamKind::Gmio {
-                            input: top_port.cat.is_input_stream(),
-                        },
-                    );
+                    let words = stream_words(graph, child, port)?;
+                    let input = top_port.cat.is_input_stream();
+                    let index = match self.top_frames {
+                        TopFrames::Gmio => self.push_stream(
+                            sanitize_identifier_name(name),
+                            name,
+                            words,
+                            frame,
+                            AieStreamKind::Gmio { input },
+                        ),
+                        TopFrames::Rings => self.push_ring(child, name, words, frame, input)?,
+                    };
                     self.top_streams.insert(name.clone(), index);
                     return Ok(Binding::Stream(index));
                 }
@@ -1060,8 +1110,58 @@ impl Builder<'_> {
             words,
             frame,
             kind,
+            ring: None,
         });
         self.partition.streams.len() - 1
+    }
+
+    /// The PLIOs of the ring of the PL-less top's stream argument `name`,
+    /// which the AI Engine task `child` reads (`input`) or writes: its
+    /// frames, and for an output its count. The index of the frames'.
+    fn push_ring(
+        &mut self,
+        child: &str,
+        name: &str,
+        words: u32,
+        frame: Option<u32>,
+        input: bool,
+    ) -> Result<usize, AieError> {
+        let bits = words * 32;
+        if bits > MAX_PLIO_BITS {
+            return Err(AieError(format!(
+                "the stream argument `{name}` of the top carries {bits}-bit elements to the AI \
+                 Engine task `{child}`; a PLIO carries at most {MAX_PLIO_BITS} bits per element, \
+                 so split it into tapa::vec_t<T, 4> elements of 32-bit T"
+            )));
+        }
+        let mut push = |plio: String, words, frame, kind, role| {
+            let index = self.push_stream(plio, name, words, frame, kind);
+            self.partition.streams[index].ring = Some(role);
+            index
+        };
+        let frames = push(
+            crate::ring_plio(name),
+            words,
+            frame,
+            AieStreamKind::Plio {
+                input,
+                width: plio_width(bits),
+            },
+            RingPlio::Frames,
+        );
+        if !input {
+            push(
+                crate::ring_count_plio(name),
+                1,
+                None,
+                AieStreamKind::Plio {
+                    input: false,
+                    width: 32,
+                },
+                RingPlio::Count,
+            );
+        }
+        Ok(frames)
     }
 
     /// Flattens one AI Engine task instance whose ports are bound by `scope`.
@@ -1270,6 +1370,62 @@ impl Builder<'_> {
 }
 
 /// The child port of `parent`'s instance `child[index]` bound to `fifo`.
+/// A PL-less top's ring PLIO in its PL kernel `top`: an AXIS port beside
+/// the ring of the argument, which takes the frame of the kernel port the
+/// argument reaches. The argument's stream to that kernel is gone with it.
+fn project_ring_plio(
+    top: &mut Task,
+    stream: &AieStream,
+    role: RingPlio,
+    input: bool,
+    width: u32,
+) -> Result<(), AieError> {
+    top.fifos.remove(&stream.fifo);
+    let arg = top
+        .ports
+        .iter_mut()
+        .find(|port| port.name == stream.fifo)
+        .ok_or_else(|| AieError(format!("the top has no argument `{}`", stream.fifo)))?;
+    let (ctype, port_width) = match role {
+        RingPlio::Frames => {
+            arg.frame = stream.frame;
+            (arg.ctype.clone(), arg.width)
+        }
+        RingPlio::Count => ("uint32_t".to_string(), 32),
+    };
+    top.ports.push(plio_port(
+        stream.name.clone(),
+        input,
+        ctype,
+        port_width,
+        width,
+    ));
+    Ok(())
+}
+
+/// The PL top's AXIS port of a PLIO `width` bits wide, named `name`: an
+/// output when the PL produces the stream (`input` to the AI Engine).
+fn plio_port(name: String, input: bool, ctype: String, width: u32, plio: u32) -> crate::Port {
+    crate::Port {
+        cat: if input {
+            ArgCategory::Ostream
+        } else {
+            ArgCategory::Istream
+        },
+        name,
+        ctype,
+        width,
+        chan_count: None,
+        chan_size: None,
+        frame: None,
+        aie_plio: Some(plio),
+        stream_depth: None,
+        mmap_addr_width: None,
+        aie_movers: None,
+        ring: None,
+    }
+}
+
 fn child_port_for(parent: &Task, child: &str, index: u32, fifo: &str) -> Option<String> {
     parent
         .tasks

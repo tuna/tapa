@@ -171,6 +171,60 @@ fn build_axis_adapter(fifo_name: &str, data_width: u32, is_input: bool) -> Modul
         .with_ports(ports)
 }
 
+/// A lone 32-bit word without TLAST waits in the AI Engine interface's
+/// 32-to-64-bit upsizer for a second one. AI Engine streams carry no
+/// end-of-transmission token, so every beat of the PLIO `name` into the AI
+/// Engine asserts TLAST and the `adapter`'s own TLAST goes unused.
+fn assert_tlast_toward_aie(
+    mm: &mut tapa_rtl::mutation::MutableModule,
+    adapter: &mut ModuleInstance,
+    name: &str,
+) {
+    let unused = format!("{name}_eot_unused");
+    for port in &mut adapter.ports {
+        if port.port_name == "m_axis_tlast" {
+            port.connection = Expr::ident(&unused);
+        }
+    }
+    let _ = mm.add_signal(tapa_rtl::mutation::wire(&unused));
+    mm.add_assign(ContinuousAssign::new(
+        Expr::ident(format!("{name}_TLAST")),
+        Expr::lit("1'b1"),
+    ));
+}
+
+/// The AXIS ports of the PLIO `name`, `width` bits, in the top `mm`, and its
+/// adapter onto a stream of the same name: `{name}_dout/_empty_n/_read`
+/// from the AI Engine, `{name}_din/_full_n/_write` toward it.
+pub(super) fn add_plio_adapter(
+    mm: &mut tapa_rtl::mutation::MutableModule,
+    name: &str,
+    width: u32,
+    from_aie: bool,
+) {
+    let name = sanitize_array_name(name);
+    let msb = width.to_string();
+    let suffixes = if from_aie {
+        ["_dout", "_empty_n", "_read"]
+    } else {
+        ["_din", "_full_n", "_write"]
+    };
+    let _ = mm.add_signal(tapa_rtl::mutation::wide_wire(
+        format!("{name}{}", suffixes[0]),
+        &msb,
+        "0",
+    ));
+    for suffix in &suffixes[1..] {
+        let _ = mm.add_signal(tapa_rtl::mutation::wire(format!("{name}{suffix}")));
+    }
+    add_plio_axis_ports(mm, &name, width, from_aie);
+    let mut adapter = build_axis_adapter(&name, width, from_aie);
+    if !from_aie {
+        assert_tlast_toward_aie(mm, &mut adapter, &name);
+    }
+    mm.add_instance(adapter);
+}
+
 /// The AXIS ports of a top-level stream wired to an AI Engine PLIO; the
 /// kernel reads the stream when `is_input`.
 fn add_plio_axis_ports(
@@ -435,23 +489,8 @@ pub fn connect_fifos(
                 let is_input = has_consumer;
                 let mut adapter = build_axis_adapter(fifo_name, stream_width, is_input);
                 if to_aie && !is_input {
-                    // A lone 32-bit word without TLAST waits in the AI
-                    // Engine interface's 32-to-64-bit upsizer for a second
-                    // one. AI Engine streams carry no end-of-transmission
-                    // token, so every beat into the AI Engine asserts TLAST
-                    // and the adapter's own TLAST goes unused.
-                    let unused = format!("{sanitized_fifo_name}_eot_unused");
-                    for port in &mut adapter.ports {
-                        if port.port_name == "m_axis_tlast" {
-                            port.connection = Expr::ident(&unused);
-                        }
-                    }
                     if let Some(mm) = modules.get_mut(task_name) {
-                        let _ = mm.add_signal(tapa_rtl::mutation::wire(&unused));
-                        mm.add_assign(ContinuousAssign::new(
-                            Expr::ident(format!("{sanitized_fifo_name}_TLAST")),
-                            Expr::lit("1'b1"),
-                        ));
+                        assert_tlast_toward_aie(mm, &mut adapter, &sanitized_fifo_name);
                     }
                 }
                 if let Some(mm) = modules.get_mut(task_name) {
