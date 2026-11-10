@@ -23,6 +23,12 @@ pub struct AiePlControlJob {
 }
 
 pub fn compile(runner: &dyn ToolRunner, job: &AiePlControlJob) -> Result<()> {
+    // v++ runs in the work directory, where a relative path would land.
+    let job = &AiePlControlJob {
+        work_dir: crate::util::absolutize(&job.work_dir),
+        output: crate::util::absolutize(&job.output),
+        ..job.clone()
+    };
     fs_err::create_dir_all(&job.work_dir)?;
     if let Some(parent) = job.output.parent() {
         fs_err::create_dir_all(parent)?;
@@ -93,5 +99,23 @@ mod tests {
             assert!(args.iter().any(|arg| arg == expected), "missing {expected}");
         }
         assert_eq!(fs_err::read(job.output).expect("output"), b"controller");
+    }
+
+    #[test]
+    fn compile_hands_v_plus_plus_an_absolute_output() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let job = AiePlControlJob::builder()
+            .platform("xilinx_vck5000_gen4x8_qdma_2_202220_1".into())
+            .target_mhz(300)
+            .work_dir(crate::util::utf8(dir.path()))
+            .output("vadd.aie_control.xo".into())
+            .build();
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        compile(&runner, &job).expect("compile");
+        let args = runner.calls()[0].local_args();
+        let output = args.iter().skip_while(|arg| *arg != "--output").nth(1);
+        let output = output.expect("--output");
+        assert!(camino::Utf8Path::new(output).is_absolute(), "{output}");
     }
 }

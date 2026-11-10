@@ -37,6 +37,14 @@ pub fn xsa(xclbin: &Utf8Path) -> Utf8PathBuf {
 
 /// Links, packages and annotates the graph, returning the xclbin.
 pub fn link(runner: &dyn ToolRunner, job: &AieLinkJob) -> Result<LinkOutput> {
+    // The tools run in the work directory, where a relative path would land.
+    let job = &AieLinkJob {
+        libadf: crate::util::absolutize(&job.libadf),
+        arguments: crate::util::absolutize(&job.arguments),
+        work_dir: crate::util::absolutize(&job.work_dir),
+        output_xclbin: crate::util::absolutize(&job.output_xclbin),
+        ..job.clone()
+    };
     validate_input(&job.libadf, "AI Engine graph", XilinxError::VitisLink)?;
     validate_input(&job.arguments, "argument list", XilinxError::VitisLink)?;
     fs_err::create_dir_all(&job.work_dir)?;
@@ -130,4 +138,33 @@ pub fn link(runner: &dyn ToolRunner, job: &AieLinkJob) -> Result<LinkOutput> {
         stdout,
         stderr,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::MockToolRunner;
+
+    #[test]
+    fn link_hands_v_plus_plus_absolute_paths() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let root = crate::util::utf8(dir.path());
+        fs_err::write(root.join("libadf.a"), "graph").expect("graph");
+        fs_err::write(root.join("arguments.json"), "[]").expect("arguments");
+        let job = AieLinkJob::builder()
+            .platform("xilinx_vck190_base_202520_1".into())
+            .emulation(false)
+            .libadf(root.join("libadf.a"))
+            .arguments(root.join("arguments.json"))
+            .work_dir(root.join("work"))
+            .output_xclbin("aie-link-test.xclbin".into())
+            .build();
+        let runner = MockToolRunner::new();
+        runner.push_failure("v++", 1, "stop after the first step");
+        link(&runner, &job).expect_err("the link step fails");
+        let args = runner.calls()[0].local_args();
+        let output = args.iter().skip_while(|arg| *arg != "--output").nth(1);
+        let output = output.expect("--output");
+        assert!(Utf8Path::new(output).is_absolute(), "{output}");
+    }
 }
