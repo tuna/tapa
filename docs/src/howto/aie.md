@@ -437,9 +437,11 @@ its tasks start again from the top. The reported kernel time is still the PL
 kernel's, from start to done.
 
 VCK190 uses XRT's native graph API. On VCK5000, FRT instead sends register
-writes to `tapa_aie_pl_control` in the PL: runtime parameters and the iteration
-count before the PL kernel starts, then core-disable after it completes. No
-APU control program or host `xrtGraphOpen` call is used. The control packets
-broadcast to per-kernel packet controllers. FRT writes every distinct
-iteration-register address, requires single-buffered RTPs, and rejects
-colliding register addresses rather than controlling an ambiguous layout.
+writes to `tapa_aie_pl_control` in the PL: runtime parameters, the iteration
+count and core-enable before the PL kernel starts, then core-disable after it
+completes. The graph does not run before that: `tapa link` packages it with its
+start deferred to the controller. No APU control program or host `xrtGraphOpen`
+call is used. The control packets broadcast to per-kernel packet controllers.
+FRT writes every distinct iteration-register address, requires single-buffered
+RTPs, and rejects colliding register addresses rather than controlling an
+ambiguous layout.

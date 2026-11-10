@@ -414,7 +414,13 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg(job.platform.clone())
         .arg("--save-temps")
         .arg("--temp_dir")
-        .arg(ToolValue::path(&resolved.package_temp_dir))
+        .arg(ToolValue::path(&resolved.package_temp_dir));
+    if aie.pl_control.is_some() {
+        // The PL controller starts the graph once it has set the RTPs;
+        // otherwise the xclbin's load starts it, with every RTP at 0.
+        inv = inv.arg("--package.defer_aie_run");
+    }
+    inv = inv
         .arg("--output")
         .arg(ToolValue::path(&resolved.output_xclbin))
         .arg(ToolValue::path(&resolved.link_output))
@@ -810,6 +816,7 @@ packaged"
         assert!(!package_args.iter().any(|arg| arg.contains("kernel_image")));
         assert!(!package_args.iter().any(|arg| arg.contains("rootfs")));
         assert!(!package_args.iter().any(|arg| arg.contains("sd_file")));
+        assert!(!package_args.iter().any(|arg| arg.contains("defer_aie_run")));
     }
 
     #[test]
@@ -845,10 +852,13 @@ packaged"
             .windows(2)
             .any(|args| args == [fixture.job.xo.as_str(), control.as_str()]));
         assert!(calls[0].uploads.contains(&control));
-        assert!(calls[1]
-            .local_args()
+        let package_args = calls[1].local_args();
+        assert!(package_args
             .windows(2)
             .any(|args| args == ["--output", fixture.job.output_xclbin.as_str()]));
+        assert!(package_args
+            .iter()
+            .any(|arg| arg == "--package.defer_aie_run"));
     }
 
     #[test]
