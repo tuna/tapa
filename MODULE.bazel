@@ -116,6 +116,9 @@ vck190_sysroot = use_repo_rule("//bazel:vck190_sysroot.bzl", "vck190_sysroot")
 
 vck190_sysroot(name = "vck190_sysroot")
 
+# The aarch64 `multiarch` and `stdc++-` version are the names
+# @vck190_sysroot presents any Vitis release's GCC triple and libstdc++
+# under, not one release's own.
 llvm.toolchain(
     cxx_include_layout = {"linux-aarch64": "yocto"},
     llvm_version = "23.1.2",

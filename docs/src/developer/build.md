@@ -127,7 +127,8 @@ selected by `toolchains_llvm`. The LLVM source dependency used to build
 [toolchain details](https://github.com/tuna/tapa/tree/main/tools/llvm-toolchain)
 for archive provenance and the optional source build. `--config=vck190`
 cross-builds for the VCK190's Arm processor against the aarch64 sysroot that
-ships with Vitis.
+ships with the configured Vitis, 2022.2 or newer, in either install layout.
+Vitis 2022.1's sysroot has no static libstdc++, which the cross build links.
 
 Hardware-emulation builds explicitly select XSIM's bundled Clang for generated
 simulation code, rather than relying on the host GCC's default C standard.
