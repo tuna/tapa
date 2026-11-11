@@ -8,6 +8,7 @@ tapa_app_test(
         "*.cpp",
         "*.h",
     ]),
+    hw_test_timeout = "long",  # xosim alone takes ~320 s
     top_name = "Fft2d",
 )
 
