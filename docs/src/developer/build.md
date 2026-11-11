@@ -17,7 +17,7 @@ or file a [feature request on GitHub](https://github.com/tuna/tapa/issues).
 
 To build TAPA from source, you need:
 
-- [Bazel](https://bazel.build) 7.3.2 or later
+- [Bazel](https://bazel.build) 9.1.0 or later
 - [Binutils](https://www.gnu.org/software/binutils/) 2.30 or later
 - [Git](https://git-scm.com)
 - C library headers, startup files, and libraries for your system

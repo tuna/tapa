@@ -161,8 +161,8 @@ cargo run -p frt --example gen_c_api > ../tapa-lib/tapa/host/frt/c_api.h
 - Keep unit tests next to implementation, functional behavior in
   `tests/functional/`, and larger design regressions in `tests/regression/`.
   Golden outputs are semantic references and require semantic review.
-- Treat the roughly 800-line file budget and small-module goal as review
-  guidance, not as a reason to add new abstractions.
+- Keep files and functions small, but treat that as review guidance, not as
+  a reason to add new abstractions.
 
 ## Public API surface audit
 
