@@ -18,17 +18,16 @@ pub(super) struct PackageMetadata {
 }
 
 /// Extract `impl/ip` and the metadata location slashkit infers from the
-/// extracted component path. Only the package layout is interpreted here;
-/// packaging and register-map generation belong to K5.
+/// extracted component path, replacing what an earlier link extracted. Only
+/// the package layout is interpreted here; packaging and register-map
+/// generation belong to K5.
 pub(super) fn extract_package(
     package: &Utf8Path,
     ip_dir: &Utf8Path,
     hls_data_path: &Utf8Path,
 ) -> Result<PackageMetadata> {
     if ip_dir.exists() {
-        return Err(slash_error(format!(
-            "SLASH IP directory `{ip_dir}` already exists; use a fresh link work directory"
-        )));
+        fs_err::remove_dir_all(ip_dir)?;
     }
     fs_err::create_dir_all(ip_dir)?;
     let file = fs_err::File::open(package)?;
@@ -207,6 +206,9 @@ mod tests {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = crate::util::utf8(temp.path());
         let work = root.join("work").join("link");
+        let stale = work.join("ip").join("Stale.v");
+        fs_err::create_dir_all(work.join("ip")).expect("earlier link's IP");
+        fs_err::write(&stale, "").expect("earlier link's file");
         let metadata = extract_package(
             &Utf8PathBuf::from(concat!(
                 env!("CARGO_MANIFEST_DIR"),
@@ -224,6 +226,7 @@ mod tests {
         );
         assert!(work.join("ip").join("component.xml").is_file());
         assert!(work.join("ip").join("VecAdd.v").is_file());
+        assert!(!stale.exists(), "a new link replaces the earlier IP");
         assert!(root.join("work").join("hls_data.json").is_file());
 
         let config = include_str!(concat!(
