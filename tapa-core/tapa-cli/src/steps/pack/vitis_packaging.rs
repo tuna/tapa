@@ -56,14 +56,21 @@ pub(super) fn pack_vitis(args: &PackArgs, ctx: &CliContext, state: &WorkState) -
     ctx.with_tool_runner(|runner| {
         package_prepared_vitis_rtl(runner, state, &hdl_dir, &output_path, Some(&ctx.work_dir))?;
         let platform = state.flow.platform.as_deref().unwrap_or_default();
-        if write_aie_sidecars(
+        if let Some(partition) = write_aie_sidecars(
             &ctx.work_dir,
             design,
             state.flow.skip_aie,
             platform,
             &output_path,
         )? {
-            write_aie_pl_control(runner, &ctx.work_dir, platform, target_mhz, &output_path)?;
+            write_aie_pl_control(
+                runner,
+                &ctx.work_dir,
+                platform,
+                target_mhz,
+                partition.run_forever,
+                &output_path,
+            )?;
         } else {
             remove_aie_control(&output_path)?;
         }
@@ -540,47 +547,57 @@ fn remove_aie_sidecars(xo: &Path) -> Result<()> {
     remove_aie_control(xo)
 }
 
+/// The VCK5000's PL controller, built for the graph `tapa synth` compiled:
+/// a `run_forever` one restarts its buffers too at each start.
 fn write_aie_pl_control(
     runner: &dyn ToolRunner,
     work_dir: &Path,
     platform: &str,
     target_mhz: u32,
+    run_forever: bool,
     xo: &Path,
 ) -> Result<()> {
-    if !tapa_xilinx::tools::aie::pl_control::required(platform) {
+    use tapa_xilinx::tools::aie::pl_control;
+    if !pl_control::required(platform) {
         remove_aie_control(xo)?;
         return Ok(());
     }
     let output = crate::aie::pl_control_sidecar(xo);
-    let tiles =
-        tapa_xilinx::tools::aie::pl_control::control_tiles(&crate::aie::dir(work_dir, "hw"))?;
-    let job = tapa_xilinx::tools::aie::pl_control::AiePlControlJob::builder()
+    let graph_dir = crate::aie::dir(work_dir, "hw");
+    let tiles = pl_control::control_tiles(&graph_dir)?;
+    let reset = if run_forever {
+        pl_control::reset_steps(&graph_dir, &tiles)?
+    } else {
+        Vec::new()
+    };
+    let job = pl_control::AiePlControlJob::builder()
         .platform(platform.to_string())
         .target_mhz(target_mhz)
         .work_dir(crate::aie::dir(work_dir, "pl-control"))
         .output(crate::util::utf8(&output))
         .tiles(tiles)
+        .reset(reset)
         .build();
-    tapa_xilinx::tools::aie::pl_control::compile(runner, &job)?;
+    pl_control::compile(runner, &job)?;
     log::info!("AI Engine PL control: {}", output.display());
     Ok(())
 }
 
 /// Copy the AI Engine graph `tapa synth` compiled next to the `.xo` as
 /// `<name>.libadf.a`, with its link connectivity as `<name>.aie.cfg`;
-/// returns whether the graph was packaged.
+/// returns the partition packaged, if any.
 fn write_aie_sidecars(
     work_dir: &Path,
     design: &Design,
     skip_aie: bool,
     platform: &str,
     xo: &Path,
-) -> Result<bool> {
+) -> Result<Option<tapa_ir::AiePartition>> {
     let Some(partition) =
         tapa_ir::AiePartition::derive(design, crate::aie::top_frames(Some(platform)))?
     else {
         remove_aie_sidecars(xo)?;
-        return Ok(false);
+        return Ok(None);
     };
     let libadf = crate::aie::dir(work_dir, "hw").join("libadf.a");
     if !libadf.is_file() {
@@ -590,7 +607,7 @@ fn write_aie_sidecars(
                 "no AI Engine graph to package (synthesized with `--skip-aie`): the .xo serves \
                  hybrid cosimulation only"
             );
-            return Ok(false);
+            return Ok(None);
         }
         return Err(CliError::MissingState {
             name: "AI Engine graph (run `tapa synth` without `--skip-aie`)".to_string(),
@@ -612,7 +629,7 @@ fn write_aie_sidecars(
         libadf_out.display(),
         cfg_out.display()
     );
-    Ok(true)
+    Ok(Some(partition))
 }
 
 #[cfg(test)]
@@ -734,7 +751,7 @@ mod tests {
             let state = aie_state(skip_aie);
             let result = write_aie_sidecars(dir.path(), &state.graph, skip_aie, "", &xo);
             if skip_aie {
-                assert!(!result.expect("intentional skip"));
+                assert!(result.expect("intentional skip").is_none());
             } else {
                 assert!(matches!(result, Err(CliError::MissingState { .. })));
             }
@@ -747,9 +764,9 @@ mod tests {
         let xo = dir.path().join("k.xo");
         write_stale_sidecars(&xo);
         let state = pl_only_state();
-        assert!(
-            !write_aie_sidecars(dir.path(), &state.graph, false, "", &xo).expect("PL-only package")
-        );
+        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
+            .expect("PL-only package")
+            .is_none());
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert!(!libadf.exists() && !cfg.exists(), "stale sidecars remain");
         assert_no_aie_control(&xo);
@@ -763,9 +780,9 @@ mod tests {
         fs_err::write(graph_dir.join("libadf.a"), "current graph").expect("write graph");
         let xo = dir.path().join("k.xo");
         let state = aie_state(false);
-        assert!(
-            write_aie_sidecars(dir.path(), &state.graph, false, "", &xo).expect("package graph")
-        );
+        assert!(write_aie_sidecars(dir.path(), &state.graph, false, "", &xo)
+            .expect("package graph")
+            .is_some());
         let (libadf, cfg) = crate::aie::sidecars(&xo);
         assert_eq!(
             fs_err::read_to_string(libadf).expect("read graph"),
@@ -793,13 +810,15 @@ mod tests {
             "xilinx_vck5000_gen4x8_qdma_2_202220_1",
             &xo,
         )
-        .expect("package graph"));
+        .expect("package graph")
+        .is_some());
         let (_, cfg) = crate::aie::sidecars(&xo);
         assert_eq!(
             fs_err::read_to_string(cfg).expect("read connectivity"),
             "[connectivity]\n\
              nk=tapa_aie_pl_control:1:controller_1\n\
-             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n"
+             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n\
+             stream_connect=ai_engine_0.tapa_ctrl_ret:controller_1.response\n"
         );
     }
 

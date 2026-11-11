@@ -109,15 +109,13 @@ pub fn render_graph(
     partition: &AiePartition,
     options: &GraphOptions,
 ) -> Result<BTreeMap<String, String>> {
-    if options.pl_control
-        && partition
-            .streams
-            .iter()
-            .any(|stream| stream.name == "tapa_ctrl")
-    {
-        return Err(XilinxError::AieGraph(
-            "`tapa_ctrl` is reserved for PL graph control".into(),
-        ));
+    if let Some(stream) = partition.streams.iter().find(|stream| {
+        options.pl_control && (stream.name == "tapa_ctrl" || stream.name == "tapa_ctrl_ret")
+    }) {
+        return Err(XilinxError::AieGraph(format!(
+            "`{}` is reserved for PL graph control",
+            stream.name
+        )));
     }
     let mut files = BTreeMap::new();
     let mut decls = String::from(
@@ -444,23 +442,31 @@ struct End {
     frame: bool,
 }
 
-/// `graph.cpp` as it accumulates: class members, constructor body, and the
-/// two ends of every stream by stream index.
+/// `graph.cpp` as it accumulates: class members, constructor body, the
+/// buffer placements that follow the connections, and the two ends of every
+/// stream by stream index.
 #[derive(Default)]
 struct GraphText {
     members: String,
     body: String,
+    pins: String,
     producers: BTreeMap<usize, End>,
     consumers: BTreeMap<usize, End>,
 }
 
 impl GraphText {
+    /// With `pin_frames`, each frame port to a PLIO or GMIO keeps its
+    /// buffers, their locks and DMA in the kernel's tile, where the PL
+    /// controller resets them (`pl_control::reset_steps`). A buffer two
+    /// kernels share is left where the compiler puts it: pinning each end to
+    /// its own kernel's tile could ask for one buffer in two tiles.
     fn kernel(
         &mut self,
         kernel: &AieKernel,
         streams: &[AieStream],
         options: &GraphOptions,
         drain: bool,
+        pin_frames: bool,
     ) -> Result<()> {
         let k = format!("k_{}", kernel.name);
         let _ = writeln!(self.members, "  adf::kernel {k};");
@@ -486,29 +492,27 @@ impl GraphText {
         }
         // ADF numbers a kernel's inputs (streams, buffers, runtime
         // parameters) and outputs separately, in parameter order.
-        let (mut inputs, mut outputs) = (0, 0);
+        let mut ports = [0, 0];
         for port in &kernel.ports {
             match &port.kind {
                 AiePortKind::Streams {
                     input,
-                    streams,
+                    streams: channels,
                     frame,
                     ..
                 } => {
-                    for stream in streams {
-                        let (table, dir, index) = if *input {
-                            (&mut self.consumers, "in", &mut inputs)
-                        } else {
-                            (&mut self.producers, "out", &mut outputs)
-                        };
-                        table.insert(
-                            *stream,
-                            End {
-                                port: format!("{k}.{dir}[{index}]"),
-                                frame: frame.is_some(),
-                            },
-                        );
-                        *index += 1;
+                    for &stream in channels {
+                        let port = self.end(&k, *input, stream, frame.is_some(), &mut ports);
+                        if pin_frames
+                            && frame.is_some()
+                            && !matches!(streams[stream].kind, AieStreamKind::Net { .. })
+                        {
+                            let _ = writeln!(
+                                self.pins,
+                                "    adf::location<adf::buffer>({port}) = \
+                                 adf::location<adf::kernel>({k});"
+                            );
+                        }
                     }
                 }
                 AiePortKind::Scalar {
@@ -520,6 +524,7 @@ impl GraphText {
                         &kernel.name,
                         &port.name,
                     );
+                    let inputs = ports[0];
                     let _ = writeln!(self.members, "  adf::port<adf::input> {rtp};");
                     let _ = writeln!(
                         self.body,
@@ -533,30 +538,46 @@ impl GraphText {
                              adf::location<adf::kernel>({k});"
                         );
                     }
-                    inputs += 1;
+                    ports[0] += 1;
                 }
                 AiePortKind::Scalar { .. } => {}
                 AiePortKind::Memory(memory) => {
                     for (_, stream, input) in memory_channels(memory) {
-                        let (table, dir, index) = if input {
-                            (&mut self.consumers, "in", &mut inputs)
-                        } else {
-                            (&mut self.producers, "out", &mut outputs)
-                        };
-                        table.insert(
-                            stream,
-                            End {
-                                port: format!("{k}.{dir}[{index}]"),
-                                frame: false,
-                            },
-                        );
-                        *index += 1;
+                        self.end(&k, input, stream, false, &mut ports);
                     }
                 }
             }
         }
+        let [inputs, outputs] = ports;
         self.ring_counts(kernel, streams, outputs)?;
         self.gmio_parameters(kernel, streams, drain, inputs)
+    }
+
+    /// Records `stream` at kernel `k`'s next input or output, counted in
+    /// `ports` ([inputs, outputs]), and returns that ADF port.
+    fn end(
+        &mut self,
+        k: &str,
+        input: bool,
+        stream: usize,
+        frame: bool,
+        ports: &mut [usize; 2],
+    ) -> String {
+        let (table, dir, index) = if input {
+            (&mut self.consumers, "in", &mut ports[0])
+        } else {
+            (&mut self.producers, "out", &mut ports[1])
+        };
+        let port = format!("{k}.{dir}[{index}]");
+        table.insert(
+            stream,
+            End {
+                port: port.clone(),
+                frame,
+            },
+        );
+        *index += 1;
+        port
     }
 
     /// The count each ring the kernel writes leaves on, an output after
@@ -662,21 +683,29 @@ impl GraphText {
 
     /// TAPA's PL controller writes each kernel's tile through the packet
     /// controller there, `control_<kernel>`: a split routes each packet id
-    /// to one tile (`pl_control::control_tiles`). The kernel's stack, and
-    /// ADF's iteration count beside it, stay on that tile.
+    /// to one tile (`pl_control::control_tiles`). Each packet controller
+    /// answers a read on its own packet id, merged into `tapa_ctrl_ret`.
+    /// The kernel's stack, and ADF's iteration count beside it, stay on that
+    /// tile.
     fn pl_control(&mut self, kernels: &[AieKernel], freq: &str) {
         let n = kernels.len();
         let _ = writeln!(
             self.members,
-            "  adf::input_plio p_tapa_ctrl;\n  adf::pktsplit<{n}> tapa_ctrl_split;"
+            "  adf::input_plio p_tapa_ctrl;\n  adf::output_plio p_tapa_ctrl_ret;\n  \
+             adf::pktsplit<{n}> tapa_ctrl_split;\n  adf::pktmerge<{n}> tapa_ctrl_merge;"
         );
         let _ = writeln!(
             self.body,
             "    p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", \
              adf::plio_32_bits, \"data/tapa_ctrl.txt\"{freq});\n    \
+             p_tapa_ctrl_ret = adf::output_plio::create(\"tapa_ctrl_ret\", \
+             adf::plio_32_bits, \"data/tapa_ctrl_ret.txt\"{freq});\n    \
              tapa_ctrl_split = adf::pktsplit<{n}>::create();\n    \
+             tapa_ctrl_merge = adf::pktmerge<{n}>::create();\n    \
              adf::connect<adf::pktstream> n_tapa_ctrl\
-             (p_tapa_ctrl.out[0], tapa_ctrl_split.in[0]);"
+             (p_tapa_ctrl.out[0], tapa_ctrl_split.in[0]);\n    \
+             adf::connect<adf::pktstream> n_tapa_ctrl_ret\
+             (tapa_ctrl_merge.out[0], p_tapa_ctrl_ret.in[0]);"
         );
         for (index, kernel) in kernels.iter().enumerate() {
             let control = format!("control_{}", kernel.name);
@@ -684,12 +713,15 @@ impl GraphText {
             let _ = writeln!(self.members, "  adf::pktcontrol {control};");
             let _ = writeln!(
                 self.body,
-                "    {control} = adf::pktcontrol::create();\n    \
+                "    {control} = adf::pktcontrol::create(true);\n    \
                  adf::connect<adf::pktstream, adf::pktstream> n_{control}\
                  (tapa_ctrl_split.out[{index}], {control}.in[0]);\n    \
+                 adf::connect<adf::pktstream, adf::pktstream> n_ret_{name}\
+                 ({control}.out[0], tapa_ctrl_merge.in[{index}]);\n    \
                  adf::location<adf::interconnect>({control}) = \
                  adf::location<adf::kernel>({k});\n    \
-                 adf::location<adf::stack>({k}) = adf::location<adf::kernel>({k});"
+                 adf::location<adf::stack>({k}) = adf::location<adf::kernel>({k});",
+                name = kernel.name
             );
         }
     }
@@ -721,8 +753,17 @@ impl GraphText {
 
 fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
     let mut text = GraphText::default();
+    // The PL controller restarts a run-forever graph's buffers at each
+    // start (`pl_control::reset_steps`).
+    let pin_frames = options.pl_control && partition.run_forever;
     for kernel in &partition.kernels {
-        text.kernel(kernel, &partition.streams, options, drains(partition))?;
+        text.kernel(
+            kernel,
+            &partition.streams,
+            options,
+            drains(partition),
+            pin_frames,
+        )?;
     }
     let freq = options
         .plio_mhz
@@ -741,6 +782,7 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
     for (index, stream) in partition.streams.iter().enumerate() {
         text.connect(index, stream)?;
     }
+    text.body.push_str(&text.pins);
     let graph = graph_instance(partition.run_forever);
     let mut out = format!(
         "// Generated by TAPA: the AI Engine graph of this design.\n\
@@ -1144,7 +1186,11 @@ mod tests {
         );
     }
 
-    fn render_with_control(sim: Option<SimMain>, pl_control: bool) -> BTreeMap<String, String> {
+    fn render_with_control(
+        partition: &AiePartition,
+        sim: Option<SimMain>,
+        pl_control: bool,
+    ) -> BTreeMap<String, String> {
         let source = |task: &str| KernelSource {
             tu: "design.cpp".into(),
             defines: vec![format!("TAPA_TASK_DEF_{task}")],
@@ -1159,11 +1205,11 @@ mod tests {
             pl_control,
             sim,
         };
-        render_graph(&partition(), &options).expect("render")
+        render_graph(partition, &options).expect("render")
     }
 
     fn render(sim: Option<SimMain>) -> BTreeMap<String, String> {
-        render_with_control(sim, false)
+        render_with_control(&partition(), sim, false)
     }
 
     #[test]
@@ -1215,16 +1261,21 @@ mod tests {
 
     #[test]
     fn pl_control_reaches_each_kernel_tile_through_its_own_packet_id() {
-        let graph = &render_with_control(None, true)["graph.cpp"];
+        let graph = &render_with_control(&partition(), None, true)["graph.cpp"];
         for line in [
             "p_tapa_ctrl = adf::input_plio::create(\"tapa_ctrl\", adf::plio_32_bits, \
              \"data/tapa_ctrl.txt\", 312.5);",
+            "p_tapa_ctrl_ret = adf::output_plio::create(\"tapa_ctrl_ret\", adf::plio_32_bits, \
+             \"data/tapa_ctrl_ret.txt\", 312.5);",
             "adf::pktsplit<2> tapa_ctrl_split;",
+            "adf::pktmerge<2> tapa_ctrl_merge;",
             "n_tapa_ctrl(p_tapa_ctrl.out[0], tapa_ctrl_split.in[0]);",
-            "control_Fan_0 = adf::pktcontrol::create();",
-            "control_Join_0 = adf::pktcontrol::create();",
+            "n_tapa_ctrl_ret(tapa_ctrl_merge.out[0], p_tapa_ctrl_ret.in[0]);",
+            "control_Fan_0 = adf::pktcontrol::create(true);",
+            "control_Join_0 = adf::pktcontrol::create(true);",
             "n_control_Fan_0(tapa_ctrl_split.out[0], control_Fan_0.in[0]);",
             "n_control_Join_0(tapa_ctrl_split.out[1], control_Join_0.in[0]);",
+            "n_ret_Join_0(control_Join_0.out[0], tapa_ctrl_merge.in[1]);",
             "adf::location<adf::interconnect>(control_Join_0) = \
              adf::location<adf::kernel>(k_Join_0);",
             "adf::location<adf::stack>(k_Join_0) = adf::location<adf::kernel>(k_Join_0);",
@@ -1234,19 +1285,49 @@ mod tests {
         ] {
             assert!(graph.contains(line), "missing `{line}` in:\n{graph}");
         }
+        assert!(
+            !graph.contains("adf::location<adf::buffer>(k_Fan_0"),
+            "{graph}"
+        );
         assert!(!render(None)["graph.cpp"].contains("tapa_ctrl"));
 
-        let mut reserved = partition();
-        reserved.streams[0].name = "tapa_ctrl".into();
-        let error = render_graph(
-            &reserved,
-            &GraphOptions {
-                pl_control: true,
-                ..GraphOptions::default()
-            },
-        )
-        .expect_err("reserved PLIO name");
-        assert!(error.to_string().contains("reserved for PL graph control"));
+        for name in ["tapa_ctrl", "tapa_ctrl_ret"] {
+            let mut reserved = partition();
+            reserved.streams[0].name = name.into();
+            let error = render_graph(
+                &reserved,
+                &GraphOptions {
+                    pl_control: true,
+                    ..GraphOptions::default()
+                },
+            )
+            .expect_err("reserved PLIO name");
+            assert!(error.to_string().contains("reserved for PL graph control"));
+        }
+    }
+
+    /// The PL controller resets a run-forever graph's frame buffers, so each
+    /// frame port to a PLIO keeps its buffers in the kernel's tile; a buffer
+    /// two kernels share stays where the compiler puts it.
+    #[test]
+    fn a_run_forever_graph_under_pl_control_pins_its_plio_frame_buffers() {
+        let mut forever = partition();
+        forever.run_forever = true;
+        forever.kernels[0].ports[1].kind = streams(false, vec![1, 2], Some(8));
+        let graph = &render_with_control(&forever, None, true)["graph.cpp"];
+        let pins: Vec<&str> = graph
+            .lines()
+            .filter(|line| line.contains("adf::location<adf::buffer>"))
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            pins,
+            [
+                "adf::location<adf::buffer>(k_Join_0.in[2]) = adf::location<adf::kernel>(k_Join_0);",
+                "adf::location<adf::buffer>(k_Fan_0.in[0]) = adf::location<adf::kernel>(k_Fan_0);",
+            ],
+            "{graph}"
+        );
     }
 
     #[test]

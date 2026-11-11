@@ -10,8 +10,6 @@ const KERNEL_NAME: &str = "tapa_aie_pl_control:{controller_1}";
 const CORE_CONTROL: u32 = 0x32000;
 const CORE_ENABLE: u32 = 1;
 const CORE_DISABLE: u32 = 0;
-/// `CORE_CONTROL`'s reset bit, with the core disabled.
-const CORE_RESET: u32 = 2;
 
 pub(super) struct PlControl {
     api: &'static Api,
@@ -41,7 +39,10 @@ impl PlControl {
         Ok(this)
     }
 
-    pub(super) fn execute(&self, commands: &[u8]) -> Result<()> {
+    /// Runs the controller on `commands`. With `reset`, it first restarts
+    /// the graph: it resets the cores, and the DMA channels and locks of
+    /// the buffers `tapa pack` compiled into it.
+    pub(super) fn execute(&self, commands: &[u8], reset: bool) -> Result<()> {
         if commands.is_empty() {
             return Err(FrtError::Xrt("empty AIE PL control command".into()));
         }
@@ -63,6 +64,10 @@ impl PlControl {
             // SAFETY: live run and BO handles; argument one is the command BO.
             let rc = unsafe { (self.api.run_set_arg)(self.run, 1, bo) };
             check(rc, "bind the AIE PL command buffer")?;
+            // SAFETY: live run handle; argument two is a 32-bit scalar,
+            // which XRT reads as one.
+            let rc = unsafe { (self.api.run_set_arg)(self.run, 2, u32::from(reset)) };
+            check(rc, "set the AIE PL control reset")?;
             // SAFETY: live run handle with its argument set.
             let rc = unsafe { (self.api.run_start)(self.run) };
             check(rc, "start the AIE PL control kernel")?;
@@ -157,17 +162,14 @@ fn core_control(graph: &AieGraph, value: u32) -> impl Iterator<Item = Write> + '
         .map(move |tile| (*tile, CORE_CONTROL, value))
 }
 
-/// A run-forever graph's cores are reset first, as an earlier run (in this
-/// process or another one on the same loaded xclbin) left them stopped
-/// mid-run: they restart from their entry, as in software simulation. A
-/// terminating graph's cores halted at their end and restart on enable.
+/// The program that starts `graph`. The controller runs it after restarting
+/// a run-forever graph (see [`PlControl::execute`]), as an earlier run (in
+/// this process or another one on the same loaded xclbin) left it stopped
+/// mid-run: its tasks restart from their entry, as in software simulation.
+/// A terminating graph's cores halted at their end and restart on enable.
 pub(super) fn start(graph: &AieGraph, values: &HashMap<u32, Vec<u8>>) -> Result<Vec<u8>> {
     validate(graph)?;
     let mut writes = Vec::new();
-    if graph.run_forever {
-        writes.extend(core_control(graph, CORE_RESET));
-        writes.extend(core_control(graph, CORE_DISABLE));
-    }
     for rtp in &graph.rtps {
         let value = rtp.scalar_value(values)?;
         for (index, chunk) in value.chunks(4).enumerate() {
@@ -237,25 +239,13 @@ mod tests {
     }
 
     #[test]
-    fn start_encodes_reset_rtp_iterations_and_core_enable() {
+    fn forever_start_encodes_rtp_endless_iterations_and_core_enable() {
         let program =
             start(&graph(true), &HashMap::from([(3, vec![64, 0, 0, 0])])).expect("encode start");
         assert_eq!(
             words(&program),
             [
-                24,
-                K0,
-                CORE_CONTROL,
-                CORE_RESET,
-                K1,
-                CORE_CONTROL,
-                CORE_RESET,
-                K0,
-                CORE_CONTROL,
-                CORE_DISABLE,
-                K1,
-                CORE_CONTROL,
-                CORE_DISABLE,
+                12,
                 K0,
                 0x1fe0,
                 64,

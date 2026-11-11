@@ -313,12 +313,15 @@ pub fn report_crossings(partition: &AiePartition) {
 /// The `v++ --link` connectivity of the PLIOs: each PL kernel AXIS port is
 /// wired to the PLIO of the same name. The compute unit is named after the
 /// top task, matching the `--connectivity.nk` naming `tapa link` uses.
+/// Under PL control, TAPA's controller drives `tapa_ctrl` and reads the
+/// graph's answers on `tapa_ctrl_ret`.
 pub fn link_config(top: &str, partition: &AiePartition, pl_control: bool) -> String {
     let mut out = String::from("[connectivity]\n");
     if pl_control {
         out.push_str(
             "nk=tapa_aie_pl_control:1:controller_1\n\
-             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n",
+             stream_connect=controller_1.output:ai_engine_0.tapa_ctrl\n\
+             stream_connect=ai_engine_0.tapa_ctrl_ret:controller_1.response\n",
         );
     }
     for stream in &partition.streams {

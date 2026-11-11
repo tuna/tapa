@@ -58,7 +58,8 @@ pub struct AieKernelReport {
     pub program_bytes: u64,
 }
 
-/// Read a graph report, excluding the reserved PL-control PLIO when present.
+/// Read a graph report, excluding the reserved PL-control PLIOs (`tapa_ctrl`
+/// and its return `tapa_ctrl_ret`) when present.
 pub fn read_report_with_control(graph_dir: &Utf8Path, pl_control: bool) -> Result<AieReport> {
     let reports = graph_dir.join("Work").join("reports");
     let compiler_path = reports.join("compiler_report.json");
@@ -229,7 +230,7 @@ fn parse_compiler(
             }
             "plio" => {
                 let name = required_name(instance.logical_name, "logicalName", &id)?;
-                if pl_control && name == "tapa_ctrl" {
+                if pl_control && (name == "tapa_ctrl" || name == "tapa_ctrl_ret") {
                     continue;
                 }
                 let mapping = report
@@ -430,25 +431,33 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn pl_control_report_excludes_only_its_reserved_plio() {
+    fn pl_control_report_excludes_only_its_reserved_plios() {
         let compiler = COMPILER
             .replace(
                 "\"ps_i10\"",
-                "\"ctrl\": {\"blockType\": \"in\", \"logicalName\": \"tapa_ctrl\"},\n        \"ps_i10\"",
+                "\"ctrl\": {\"blockType\": \"in\", \"logicalName\": \"tapa_ctrl\"},\n        \
+                 \"ret\": {\"blockType\": \"out\", \"logicalName\": \"tapa_ctrl_ret\"},\n        \
+                 \"ps_i10\"",
             )
             .replace(
                 "\"i7\": {\"plioInfo\": {\"column\": 26, \"direction\": \"pl2aie\"}}",
-                "\"i7\": {\"plioInfo\": {\"column\": 26, \"direction\": \"pl2aie\"}},\n        \"ctrl\": {\"plioInfo\": {\"column\": 6, \"direction\": \"pl2aie\"}}",
+                "\"i7\": {\"plioInfo\": {\"column\": 26, \"direction\": \"pl2aie\"}},\n        \
+                 \"ctrl\": {\"plioInfo\": {\"column\": 6, \"direction\": \"pl2aie\"}},\n        \
+                 \"ret\": {\"plioInfo\": {\"column\": 6, \"direction\": \"aie2pl\"}}",
             );
         let temp = write_reports(
             &compiler,
             &[("25_1", &linker_map(11668)), ("23_0", &linker_map(0))],
         );
         let report = read_report_with_control(graph_dir(&temp), true).expect("control report");
-        assert!(!report.plio_map.contains_key("tapa_ctrl"));
-        assert_eq!(report.plio_map.len(), 2);
+        assert_eq!(
+            report.plio_map.keys().collect::<Vec<_>>(),
+            ["a_q", "c_q"],
+            "the control PLIOs are TAPA's, not the design's"
+        );
         let native = read_report_with_control(graph_dir(&temp), false).expect("native report");
         assert!(native.plio_map.contains_key("tapa_ctrl"));
+        assert!(native.plio_map.contains_key("tapa_ctrl_ret"));
     }
 
     #[test]

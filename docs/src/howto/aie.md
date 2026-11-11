@@ -267,9 +267,9 @@ ring's frames, unused where GMIO moves them.
 it, which `tapa link` links like a hybrid design's. Each output argument
 takes two AI Engine-to-PL PLIOs, its frames and its count: two of the six
 64-bit channels an interface column has in that direction, or three when its
-elements are wider than 64 bits. With `--skip-aie`
-the kernel runs in hybrid cosimulation, the AI Engine tasks in software
-([Hybrid cosimulation](#hybrid-cosimulation));
+elements are wider than 64 bits; the PL controller takes one more. With
+`--skip-aie` the kernel runs in hybrid cosimulation, the AI Engine tasks in
+software ([Hybrid cosimulation](#hybrid-cosimulation));
 `//tests/functional/aie-gmio:aie-gmio-vck5000-hybrid` runs it.
 
 ## Knobs
@@ -420,8 +420,10 @@ tapa link --package vadd.xo -o vadd.xclbin
   (named after the top task) and `ai_engine_0`. A VCK5000 build (on a
   platform whose name contains `vck5000`, such as
   `xilinx_vck5000_gen4x8_qdma_2_202220_1`) also writes
-  `vadd.aie_control.xo`, a PL kernel that controls the graph through a
-  dedicated PLIO; no APU control program is needed.
+  `vadd.aie_control.xo`, a PL kernel that controls the graph through two
+  32-bit PLIOs of its own, `tapa_ctrl` into the graph and `tapa_ctrl_ret`
+  back, one 64-bit channel in each direction; no APU control program is
+  needed.
 - `tapa link` finds the sidecars next to the `.xo`, links the graph, PL XOs and
   connectivity into an `.xsa`, and packages that into the `.xclbin`.
 
@@ -485,3 +487,14 @@ pack` compiles into the controller from the compiled graph's reports. Each
 kernel's stack, and the iteration count beside it, stays on the kernel's tile;
 FRT requires single-buffered RTPs and rejects a runtime parameter or iteration
 count outside the kernels' tiles.
+
+On VCK5000, the next `tapa::invoke` restarts a graph with a detached task
+through the controller too, before the writes above: it resets the cores,
+then the DMA channels and locks of the buffers behind its frame ports, so
+each task starts again at its first frame whatever number of frames the
+last invoke moved. Such a graph keeps the buffers of a frame port to the PL
+in its kernel's tile. A frame port joined to another AI Engine task's shares
+a buffer the compiler places, and `tapa pack` rejects the graph if that
+buffer lies outside the kernels' tiles. An AI Engine tile performs a lock
+operation when it is read, so the controller reads each lock and takes the
+answers on `tapa_ctrl_ret`.

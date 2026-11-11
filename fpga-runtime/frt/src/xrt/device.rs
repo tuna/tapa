@@ -38,7 +38,7 @@ struct Graph {
     meta: AieGraph,
     /// Whether it ran since this process opened it: under XRT's graph API a
     /// run-forever graph is reset before it runs again, so its kernels
-    /// restart from their entry (the PL controller resets one at every
+    /// restart from their entry (the PL controller restarts one at every
     /// start).
     has_run: bool,
 }
@@ -241,7 +241,8 @@ impl XrtDevice {
             return Ok(());
         };
         if let Some(control) = &graph.pl_control {
-            control.execute(&pl_control::start(&graph.meta, values)?)?;
+            let program = pl_control::start(&graph.meta, values)?;
+            control.execute(&program, graph.meta.run_forever)?;
             graph.has_run = true;
             return Ok(());
         }
@@ -281,7 +282,7 @@ impl XrtDevice {
             return Ok(());
         };
         if let Some(control) = &graph.pl_control {
-            return control.execute(&pl_control::stop(&graph.meta)?);
+            return control.execute(&pl_control::stop(&graph.meta)?, false);
         }
         let cycles = u64::from(graph.meta.run_forever);
         // SAFETY: live graph handle.
@@ -297,7 +298,7 @@ impl XrtDevice {
             return Ok(());
         };
         if let Some(control) = &graph.pl_control {
-            return control.execute(&pl_control::abort(&graph.meta)?);
+            return control.execute(&pl_control::abort(&graph.meta)?, false);
         }
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_reset)(graph.handle) };

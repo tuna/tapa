@@ -15,7 +15,8 @@ The `--target` selected during analysis determines the output format.
 an AI Engine design, pack also writes `<name>.libadf.a` and `<name>.aie.cfg`
 next to the XO, and `tapa link` links and packages all three. A VCK5000 build
 also writes `<name>.aie_control.xo`, a PL kernel that controls the AI Engine
-graph through a dedicated PLIO; link includes it in the same hardware image.
+graph through two PLIOs of its own; link includes it in the same hardware
+image.
 
 A design whose top runs on the AI Engine has no PL kernel, so `tapa pack`
 writes a `.zip` instead: `tapa.json`, the graph as `libadf.a`, and
