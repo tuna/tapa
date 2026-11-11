@@ -509,6 +509,9 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   }
 };
 
+// An hmap hands the kernel one buffer per channel, once its constructor has
+// checked the size as software simulation does. The bitstream access takes
+// any instance with `SetBufferArg`, so a test can record the buffers.
 #define TAPA_DEFINE_ACCESSOR(tag, tag_ref, buffer_tag)                        \
   template <typename T>                                                       \
   struct accessor<mmap<T>, tag##mmap<T> tag_ref> {                            \
@@ -531,10 +534,12 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   };                                                                          \
   template <typename T, int chan_count, int64_t chan_size>                    \
   struct accessor<hmap<T, chan_count, chan_size>, tag##mmap<T tag_ref>> {     \
-    static void access(frt::Instance& instance, int& idx,                     \
+    template <typename Instance>                                              \
+    static void access(Instance& instance, int& idx,                          \
                        tag##mmap<T> tag_ref arg) {                            \
+      const hmap<T, chan_count, chan_size> mem(arg);                          \
       for (int i = 0; i < chan_count; ++i) {                                  \
-        instance.SetBufferArg(idx++, &arg[i * chan_size],                     \
+        instance.SetBufferArg(idx++, mem.data() + i * chan_size,              \
                               chan_size * sizeof(T), buffer_tag);             \
       }                                                                       \
     }                                                                         \

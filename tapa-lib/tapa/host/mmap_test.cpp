@@ -1,6 +1,7 @@
 #include "tapa/host/mmap.h"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 
 #include <type_traits>
@@ -88,6 +89,35 @@ TEST(MmapsTest, SlicesPreserveRegionsAndIncludeTheLastChannel) {
   }
   tail[1][2] = 99;
   EXPECT_EQ(buffers[3][2], 99);
+}
+
+// Stands in for frt::Instance: records the buffers an accessor binds.
+struct BufferRecorder {
+  struct Buffer {
+    int index;
+    const void* ptr;
+    size_t bytes;
+    BufferAccess access;
+  };
+  std::vector<Buffer> buffers;
+
+  void SetBufferArg(int index, const void* ptr, size_t bytes,
+                    BufferAccess access) {
+    buffers.push_back({index, ptr, bytes, access});
+  }
+};
+
+// With a bitstream the kernel reads every channel of an hmap, so a short
+// buffer must fail the same size check as in software simulation rather
+// than be read past its end.
+TEST(HmapAccessorDeathTest, BitstreamChecksTheSize) {
+  std::vector<int> buffer(7);
+  BufferRecorder instance;
+  int idx = 0;
+  EXPECT_DEATH(
+      (internal::accessor<hmap<int, 2, 4>, read_only_mmap<int>>::access(
+          instance, idx, read_only_mmap<int>(buffer))),
+      "hmap<T, 2, 4> must have size = 8, got 7");
 }
 
 // An async_mmap moves data only through its channels: a pointer step would
