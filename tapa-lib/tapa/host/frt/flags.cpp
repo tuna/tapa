@@ -67,8 +67,9 @@ const char* SimulatorFlag() {
                                        : FLAGS_cosim_simulator.c_str();
 }
 
-// Forwarded unconditionally: every one of these is read only by the cosim
-// backend, so no forwarding decision has to know the execution mode.
+// Forwarded unconditionally: each backend reads only its own variables (VRT
+// `FRT_VRT_BDF`, XRT `FRT_XOCL_BDF`, cosim the rest), so no forwarding
+// decision has to know the execution mode.
 void ForwardFlagsToEnv() {
   SetEnvIf("FRT_VRT_BDF", FLAGS_vrt_bdf);
   SetEnvIf("FRT_XOCL_BDF", FLAGS_xocl_bdf);
