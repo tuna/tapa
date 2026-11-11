@@ -268,9 +268,37 @@ class mmaps;
 regions. The range may end at `N`; each region retains its buffer address and
 element count, so writes through the slice update the original buffer.
 
+### `tapa::hmap<T, chan_count, chan_size>`
+
+One buffer of `chan_count * chan_size` elements, spread over `chan_count`
+memory channels of `chan_size` elements each. Passed by value. Only an upper
+task takes one: `tapa synth` rejects a leaf task's `hmap` parameter. The upper
+task hands it to its tasks' `tapa::mmap<T>` parameters, which index the whole
+buffer from 0; element `k` lives in channel `k / chan_size`.
+
+```cpp
+template <typename T, int chan_count, int64_t chan_size>
+class hmap : public mmap<T> {
+ public:
+  hmap(const mmap<T>& mem);  // mem.size() must be chan_count * chan_size
+};
+```
+
+The host passes the whole buffer in a directional wrapper, as for
+`tapa::mmap<T>`, and `tapa::invoke` hands the kernel one buffer argument per
+channel. It checks the size first, in software simulation and with a
+bitstream alike (`hmap<T, 2, 1024> must have size = 2048, got ...`). The
+kernel has one M-AXI port per channel, `<name>_0` to
+`<name>_<chan_count - 1>`, behind a crossbar that every task taking the hmap
+shares. `tapa analyze` rejects a `chan_size` of 2^32 or more, and `tapa synth`
+requires `chan_size * sizeof(T)` to be a power of two of at least 4096 bytes,
+the smallest channel the crossbar decodes. `tapa floorplan` rejects an hmap,
+and an AI Engine task cannot take one. `tests/apps/gemv` spreads its matrix
+over two channels this way.
+
 ### Directional mmap wrappers (host-side only)
 
-Used in the top-level `tapa::invoke()` call to express direction hints. The kernel task signature uses plain `tapa::mmap<T>` or `tapa::mmaps<T, N>`.
+Used in the top-level `tapa::invoke()` call to express direction hints. The kernel task signature uses plain `tapa::mmap<T>`, `tapa::mmaps<T, N>` or `tapa::hmap<T, chan_count, chan_size>`.
 
 Wrappers may be temporary expressions or named mutable or const variables.
 Each form passes the same buffer addresses, element counts, and direction hints.

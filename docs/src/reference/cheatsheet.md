@@ -106,6 +106,7 @@ observations and the synthesis resource report.
 |------|-----------|-------------|
 | `tapa::mmap<T>` | by value | synchronous, pointer-like |
 | `tapa::async_mmap<T>` | by reference `&` | decoupled AXI channels |
+| `tapa::hmap<T, chan_count, chan_size>` | by value | one buffer over `chan_count` memory channels; upper tasks only |
 
 ```cpp
 // mmap — simple loop
