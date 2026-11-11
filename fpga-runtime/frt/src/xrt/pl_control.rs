@@ -10,6 +10,8 @@ const KERNEL_NAME: &str = "tapa_aie_pl_control:{controller_1}";
 const CORE_CONTROL: u32 = 0x32000;
 const CORE_ENABLE: u32 = 1;
 const CORE_DISABLE: u32 = 0;
+/// `CORE_CONTROL`'s reset bit, with the core disabled.
+const CORE_RESET: u32 = 2;
 
 pub(super) struct PlControl {
     api: &'static Api,
@@ -155,14 +157,15 @@ fn core_control(graph: &AieGraph, value: u32) -> impl Iterator<Item = Write> + '
         .map(move |tile| (*tile, CORE_CONTROL, value))
 }
 
-pub(super) fn start(
-    graph: &AieGraph,
-    values: &HashMap<u32, Vec<u8>>,
-    reset: bool,
-) -> Result<Vec<u8>> {
+/// A run-forever graph's cores are reset first, as an earlier run (in this
+/// process or another one on the same loaded xclbin) left them stopped
+/// mid-run: they restart from their entry, as in software simulation. A
+/// terminating graph's cores halted at their end and restart on enable.
+pub(super) fn start(graph: &AieGraph, values: &HashMap<u32, Vec<u8>>) -> Result<Vec<u8>> {
     validate(graph)?;
     let mut writes = Vec::new();
-    if reset {
+    if graph.run_forever {
+        writes.extend(core_control(graph, CORE_RESET));
         writes.extend(core_control(graph, CORE_DISABLE));
     }
     for rtp in &graph.rtps {
@@ -235,12 +238,18 @@ mod tests {
 
     #[test]
     fn start_encodes_reset_rtp_iterations_and_core_enable() {
-        let program = start(&graph(true), &HashMap::from([(3, vec![64, 0, 0, 0])]), true)
-            .expect("encode start");
+        let program =
+            start(&graph(true), &HashMap::from([(3, vec![64, 0, 0, 0])])).expect("encode start");
         assert_eq!(
             words(&program),
             [
-                18,
+                24,
+                K0,
+                CORE_CONTROL,
+                CORE_RESET,
+                K1,
+                CORE_CONTROL,
+                CORE_RESET,
                 K0,
                 CORE_CONTROL,
                 CORE_DISABLE,
@@ -265,8 +274,7 @@ mod tests {
 
     #[test]
     fn bounded_start_and_stop_have_exact_programs() {
-        let program =
-            start(&graph(false), &HashMap::from([(3, vec![7])]), false).expect("encode start");
+        let program = start(&graph(false), &HashMap::from([(3, vec![7])])).expect("encode start");
         assert_eq!(
             words(&program),
             [
@@ -303,8 +311,7 @@ mod tests {
         let mut graph = graph(false);
         graph.rtps[0].bytes = 8;
         graph.cores.pop();
-        let program =
-            start(&graph, &HashMap::from([(3, vec![1, 2])]), false).expect("encode wide RTP");
+        let program = start(&graph, &HashMap::from([(3, vec![1, 2])])).expect("encode wide RTP");
         assert_eq!(
             words(&program),
             [
@@ -329,8 +336,8 @@ mod tests {
     fn each_iteration_count_goes_to_its_own_tile() {
         let mut graph = graph(false);
         graph.iterations.push((T1, 0x2004));
-        let program = start(&graph, &HashMap::from([(3, vec![64])]), false)
-            .expect("encode multi-kernel start");
+        let program =
+            start(&graph, &HashMap::from([(3, vec![64])])).expect("encode multi-kernel start");
         assert_eq!(
             &words(&program)[4..10],
             [K0, 0x2004, 1, K1, 0x2004, 1],
@@ -340,11 +347,7 @@ mod tests {
 
     #[test]
     fn parameters_outside_the_kernels_tiles_or_double_buffered_are_rejected() {
-        let error = |graph: &AieGraph| {
-            start(graph, &HashMap::new(), false)
-                .unwrap_err()
-                .to_string()
-        };
+        let error = |graph: &AieGraph| start(graph, &HashMap::new()).unwrap_err().to_string();
         let mut double = graph(false);
         double.rtps[0].pong_address = 0x2000;
         assert!(error(&double).contains("single-buffered"));
@@ -362,7 +365,7 @@ mod tests {
 
     #[test]
     fn missing_scalars_are_errors() {
-        let error = start(&graph(false), &HashMap::new(), false).unwrap_err();
+        let error = start(&graph(false), &HashMap::new()).unwrap_err();
         assert!(error.to_string().contains("not a scalar"), "{error}");
     }
 }

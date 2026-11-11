@@ -36,8 +36,10 @@ struct Graph {
     handle: Handle,
     pl_control: Option<PlControl>,
     meta: AieGraph,
-    /// Whether it ran since the xclbin was loaded: a run-forever graph is
-    /// reset before it runs again, so its kernels restart from their entry.
+    /// Whether it ran since this process opened it: under XRT's graph API a
+    /// run-forever graph is reset before it runs again, so its kernels
+    /// restart from their entry (the PL controller resets one at every
+    /// start).
     has_run: bool,
 }
 
@@ -238,14 +240,12 @@ impl XrtDevice {
         let Some(graph) = &mut self.graph else {
             return Ok(());
         };
-        let reset = graph.meta.run_forever && graph.has_run;
         if let Some(control) = &graph.pl_control {
-            let command = pl_control::start(&graph.meta, values, reset)?;
-            control.execute(&command)?;
+            control.execute(&pl_control::start(&graph.meta, values)?)?;
             graph.has_run = true;
             return Ok(());
         }
-        if reset {
+        if graph.meta.run_forever && graph.has_run {
             // SAFETY: live graph handle.
             let rc = unsafe { (self.api.graph_reset)(graph.handle) };
             check(rc, "reset the AI Engine graph")?;
