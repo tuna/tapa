@@ -298,6 +298,19 @@ pub fn instantiate_fifos(
                     ));
                 }
             }
+        } else if let Some(width) =
+            super::rings::ring_fifo_width(design.design(), task_name, task, fifo_name)
+        {
+            if let Some(mm) = modules.get_mut(task_name) {
+                mm.add_instance(build_internal_fifo_instance(
+                    fifo_name,
+                    Expr::ident(HANDSHAKE_RST),
+                    Expr::int(u64::from(tapa_protocol::stream_data_wire_width(width))),
+                    super::rings::RING_FIFO_DEPTH,
+                    design.floorplan().is_some(),
+                    None,
+                ));
+            }
         } else if let Some(depth) = fifo.depth {
             // Buffered internal FIFOs must have a producer to size the buffer.
             let producer = producer
@@ -410,13 +423,24 @@ pub fn connect_fifos(
                 declare_frame_channel_wires(mm, fifo_name, channel, split);
             }
         }
-        if channel.is_none() && fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some() {
+        let internal =
+            channel.is_none() && fifo.depth.is_some() && has_consumer && fifo.produced_by.is_some();
+        // A ring's ordinary FIFO has the mover at its other end.
+        let ring_fifo = channel
+            .is_none()
+            .then(|| super::rings::ring_fifo_width(design_data, task_name, task, fifo_name))
+            .flatten();
+        if internal || ring_fifo.is_some() {
             // Internal FIFO: declare wires for both read and write sides.
             // A produced+consumed internal FIFO always has a producer endpoint.
-            let producer = producer
-                .as_ref()
-                .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
-            let width = resolve_fifo_width(modules, producer, fifo_name)?;
+            let width = if let Some(width) = ring_fifo {
+                tapa_protocol::stream_data_wire_width(width)
+            } else {
+                let producer = producer
+                    .as_ref()
+                    .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?;
+                resolve_fifo_width(modules, producer, fifo_name)?
+            };
             if let Some(mm) = modules.get_mut(task_name) {
                 // Declare wires for both read and write sides; the data
                 // suffixes (`_dout`/`_din`) carry the FIFO width.

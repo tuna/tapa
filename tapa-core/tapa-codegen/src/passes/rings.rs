@@ -1,10 +1,12 @@
 //! Rings: a frame argument of a Vitis top, carried by a ring of frame slots
 //! in device memory in place of an AXIS port (see [`tapa_ir::Ring`]). The
-//! `frame_ring` mover sits between the argument's frame channel and an
+//! `frame_ring` mover sits between the argument's channel and an
 //! `async_mmap` bridge onto the argument's own M-AXI port; its registers
-//! belong to the control slave (see `s_axi`). An output ring holds the
-//! top's done until every frame released into its channel is in memory
-//! (its `drained` net joins the children's `is_done` nets).
+//! belong to the control slave (see `s_axi`). The channel is the frame
+//! channel of a view, or an ordinary FIFO before a leaf's
+//! `[[tapa::frame(N)]]` stream port (see [`ring_fifo_width`]). An output
+//! ring holds the top's done until everything released into its channel is
+//! in memory (its `drained` net joins the children's `is_done` nets).
 //!
 //! The PL kernel of an AI Engine top (see [`tapa_ir::TopFrames::Rings`])
 //! has no channel: each ring moves its frames to or from the argument's
@@ -28,6 +30,28 @@ use crate::state::views::{DesignView, ModuleTable};
 
 /// Bits of a ring request's element count (`frame_ring`'s `LEN_WIDTH`).
 const LEN_WIDTH: u32 = 32;
+
+/// Elements the ordinary FIFO of a ring holds: the mover moves elements as
+/// they come, so it needs no whole frame.
+pub(super) const RING_FIFO_DEPTH: u32 = 2;
+
+/// The element bits of the ordinary FIFO that carries the top's ring
+/// argument `fifo_name` between its mover and a leaf's `[[tapa::frame(N)]]`
+/// stream port, or `None` when the argument has no ring or a view's frame
+/// channel carries it.
+#[must_use]
+pub(super) fn ring_fifo_width(
+    graph: &tapa_ir::TaskGraph,
+    task_name: &str,
+    task: &tapa_ir::Task,
+    fifo_name: &str,
+) -> Option<u32> {
+    let port = task.port(fifo_name)?;
+    (task_name == graph.top
+        && port.ring.is_some()
+        && graph.frame_channel(task, fifo_name).is_none())
+    .then_some(port.width)
+}
 
 /// The control registers of the ring of the top's port `ring`: its base
 /// address, then [`tapa_ir::ring_registers`].
@@ -94,6 +118,7 @@ pub(super) fn instantiate_rings(
         if !ring.input {
             let _ = mm.add_signal(wire(&drained));
         }
+        let plain = plio.is_none() && ring_fifo_width(graph, task_name, task, &ring.port).is_some();
         if let Some(plio) = &plio {
             super::fifos::add_plio_adapter(mm, plio, width, !ring.input);
         }
@@ -120,6 +145,13 @@ pub(super) fn instantiate_rings(
                 Expr::lit("1'b0"),
                 Expr::lit(""),
             ),
+            // An ordinary FIFO releases each element the producer writes.
+            None if plain => channel_ports(
+                &ring,
+                &name,
+                Expr::lit(format!("{name}_write & {name}_full_n")),
+                Expr::ident(&drained),
+            ),
             None => channel_ports(
                 &ring,
                 &name,
@@ -134,14 +166,7 @@ pub(super) fn instantiate_rings(
         ports.extend(async_mmap::user_portargs(&bridge, &tags));
         mm.add_instance(
             ModuleInstance::new("frame_ring", format!("{name}_ring"))
-                .with_params(vec![
-                    ParamArg::new("DATA_WIDTH", Expr::int(u64::from(width))),
-                    ParamArg::new("FRAME", Expr::int(u64::from(ring.frame))),
-                    ParamArg::new("SLOTS", Expr::int(u64::from(ring.slots))),
-                    ParamArg::new("INPUT", Expr::int(u64::from(ring.input))),
-                    ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(AXI_ADDR_WIDTH))),
-                    ParamArg::new("LEN_WIDTH", Expr::int(u64::from(LEN_WIDTH))),
-                ])
+                .with_params(ring_params(&ring, width, plain))
                 .with_ports(ports),
         );
         if let (Some(_), false) = (&plio, ring.input) {
@@ -149,6 +174,23 @@ pub(super) fn instantiate_rings(
         }
     }
     Ok(())
+}
+
+/// The parameters of `ring`'s `frame_ring` mover; `plain` when its channel
+/// is an ordinary FIFO (see [`ring_fifo_width`]).
+fn ring_params(ring: &Ring, width: u32, plain: bool) -> Vec<ParamArg> {
+    let mut params = vec![
+        ParamArg::new("DATA_WIDTH", Expr::int(u64::from(width))),
+        ParamArg::new("FRAME", Expr::int(u64::from(ring.frame))),
+        ParamArg::new("SLOTS", Expr::int(u64::from(ring.slots))),
+        ParamArg::new("INPUT", Expr::int(u64::from(ring.input))),
+        ParamArg::new("ADDR_WIDTH", Expr::int(u64::from(AXI_ADDR_WIDTH))),
+        ParamArg::new("LEN_WIDTH", Expr::int(u64::from(LEN_WIDTH))),
+    ];
+    if plain && !ring.input {
+        params.push(ParamArg::new("RELEASED_ELEMENTS", Expr::int(1)));
+    }
+    params
 }
 
 /// The count PLIO of an AI Engine top's output ring, and the `ring_count`
@@ -176,8 +218,8 @@ fn add_ring_count(mm: &mut tapa_rtl::mutation::MutableModule, ring: &Ring, drain
     );
 }
 
-/// The bits of an element of `ring`: its frame channel's, or for an AI
-/// Engine top's PL kernel (`plio`) its argument's.
+/// The bits of an element of `ring`: its channel's, or for an AI Engine
+/// top's PL kernel (`plio`) its argument's.
 fn ring_width(
     graph: &tapa_ir::TaskGraph,
     modules: &ModuleTable<'_>,
@@ -188,9 +230,10 @@ fn ring_width(
     let unresolved = || CodegenError::FifoWidthUnresolved(ring.port.clone());
     let width = match (plio, task.fifos.get(&ring.port)) {
         (true, _) => task.port(&ring.port).map_or(0, |port| port.width),
-        (false, Some(fifo)) => frame_channel(graph, modules, task, &ring.port, fifo)?
-            .ok_or_else(unresolved)?
-            .data_width(),
+        (false, Some(fifo)) => match frame_channel(graph, modules, task, &ring.port, fifo)? {
+            Some(channel) => channel.data_width(),
+            None => ring_fifo_width(graph, &graph.top, task, &ring.port).ok_or_else(unresolved)?,
+        },
         (false, None) => return Err(unresolved()),
     };
     if !(8..=512).contains(&width) || !width.is_power_of_two() {

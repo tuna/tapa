@@ -243,14 +243,14 @@ impl TaskGraph {
         self.reached_frame(task, port, false)
     }
 
-    /// [`Self::view_frame`], or with `aie_streams` also the frame of an AI
-    /// Engine leaf's `[[tapa::frame(N)]]` stream port, which the AI Engine
-    /// moves whole as it does a view's.
-    fn reached_frame(&self, task: &str, port: &str, aie_streams: bool) -> Option<u32> {
+    /// [`Self::view_frame`], or with `leaf_streams` also the frame of a
+    /// leaf's `[[tapa::frame(N)]]` stream port, on the PL or the AI Engine,
+    /// which a ring moves whole as it does a view's.
+    fn reached_frame(&self, task: &str, port: &str, leaf_streams: bool) -> Option<u32> {
         let def = self.tasks.get(task)?;
         let own = def.port(port)?;
         let leaf = def.level != crate::task::TaskLevel::Upper;
-        if own.cat.is_frames() || (aie_streams && leaf && def.synth == crate::SynthTarget::Aie) {
+        if own.cat.is_frames() || (leaf_streams && leaf) {
             return own.frame;
         }
         if leaf || !matches!(own.cat, ArgCategory::Istream | ArgCategory::Ostream) {
@@ -261,7 +261,7 @@ impl TaskGraph {
                 .iter()
                 .flat_map(|instance| &instance.args)
                 .find(|(_, arg)| arg.arg.name() == Some(port))
-                .and_then(|(child_port, _)| self.reached_frame(child, child_port, aie_streams))
+                .and_then(|(child_port, _)| self.reached_frame(child, child_port, leaf_streams))
         })
     }
 
@@ -704,6 +704,73 @@ mod tests {
         );
         assert!(message.contains("`Mid.out` moves frames of 8"), "{message}");
         TaskGraph::from_json(&graph(8)).expect("depth 8 holds a frame of 8");
+    }
+
+    #[test]
+    fn a_ring_reaches_a_pl_leafs_frame_port_through_upper_tasks() {
+        // What tapacc emits for a Vitis top whose stream arguments reach a PL
+        // leaf's `[[tapa::frame(64)]]` stream ports through `Mid`.
+        let task = |level: &str, ports: &str, tasks: &str| {
+            format!(
+                r#"{{"level": "{level}", "srcs": [], "include_dirs": [], "defines": [],
+                    "synth": "hls", "readable_name": "", "ports": [{ports}],
+                    "tasks": {{{tasks}}}, "fifos": {{}}}}"#
+            )
+        };
+        let port = |cat: &str, name: &str, extra: &str| {
+            format!(r#"{{"cat": "{cat}", "name": "{name}", "type": "float", "width": 32{extra}}}"#)
+        };
+        let invoke = |child: &str, input: &str, output: &str| {
+            format!(
+                r#""{child}": [{{"step": 0, "args": {{
+                    "in": {{"arg": "{input}", "cat": "istream"}},
+                    "out": {{"arg": "{output}", "cat": "ostream"}}}}}}]"#
+            )
+        };
+        let top = task(
+            "upper",
+            &format!(
+                "{}, {}",
+                port("istream", "rows", r#", "ring": 4"#),
+                port("ostream", "cols", r#", "ring": 8"#)
+            ),
+            &invoke("Mid", "rows", "cols"),
+        );
+        let mid = task(
+            "upper",
+            &format!(
+                "{}, {}",
+                port("istream", "in", ""),
+                port("ostream", "out", "")
+            ),
+            &invoke("Turn", "in", "out"),
+        );
+        let turn = task(
+            "lower",
+            &format!(
+                "{}, {}",
+                port("istream", "in", r#", "frame": 64"#),
+                port("ostream", "out", r#", "frame": 64"#)
+            ),
+            "",
+        );
+        let graph = TaskGraph::from_json(&format!(
+            r#"{{"schema_version": {SCHEMA_VERSION}, "top": "Top", "target": "xilinx-vitis",
+                "cflags": [], "tasks": {{"Top": {top}, "Mid": {mid}, "Turn": {turn}}}}}"#
+        ))
+        .expect("graph");
+        let rings: Vec<_> = graph
+            .rings()
+            .into_iter()
+            .map(|r| (r.port, r.input, r.frame, r.slots))
+            .collect();
+        assert_eq!(
+            rings,
+            [
+                ("rows".to_string(), true, 64, 4),
+                ("cols".to_string(), false, 64, 8)
+            ]
+        );
     }
 
     #[test]

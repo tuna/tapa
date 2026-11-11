@@ -69,8 +69,8 @@ frame, reads or writes its elements in any order through a view, and
 releases it. On PL its stream becomes a frame channel of
 `max(2, depth / N)` banks in one memory; on the AI Engine it is a kernel
 buffer port. On Vitis, a stream argument of the top that reaches a frame
-port travels through a ring of frame slots in device memory
-(`[[tapa::ring(S)]]`).
+port, or a leaf's `[[tapa::frame(N)]]` stream port, travels through a ring
+of frame slots in device memory (`[[tapa::ring(S)]]`).
 
 ---
 

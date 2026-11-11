@@ -516,7 +516,7 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 | `[[tapa::bind_op(op, impl, latency)]]` | `bind_op` | Bind an operation to a specific implementation, e.g. `("mul", "dsp")`. |
 | `[[tapa::array_map(instance, offset, orient)]]` | `array_map` | Map an array into a larger physical instance. `offset` is positional and optional — `-1` omits it. |
 | `[[tapa::frame(N)]]` | — | On a stream parameter of a leaf task: the port moves whole frames of `N` elements, and `tapa analyze` rejects a stream that holds fewer, on every target. On the AI Engine the frames arrive in tile memory; final partial output frames are zero-padded. See [AI Engine Tasks](../howto/aie.md). |
-| `[[tapa::ring(S)]]` | — | On a stream parameter of the top that reaches a frame port, `S >= 1`: on Vitis the ring in device memory that carries it holds `S` frames instead of 4; on an AI Engine top's, the ring it gets on a VCK5000 (unused under GMIO); the other flows have no ring. Anywhere else an error. See [Streams: frames from and to the host](../concepts/streams.md#frames-from-and-to-the-host). |
+| `[[tapa::ring(S)]]` | — | On a stream parameter of the top that reaches a frame port or a `[[tapa::frame(N)]]` stream port, `S >= 1`: on Vitis the ring in device memory that carries it holds `S` frames instead of 4; on an AI Engine top's, the ring it gets on a VCK5000 (unused under GMIO); the other flows have no ring. Anywhere else an error. See [Streams: frames from and to the host](../concepts/streams.md#frames-from-and-to-the-host). |
 
 **On a function.**
 

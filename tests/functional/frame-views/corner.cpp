@@ -5,7 +5,8 @@
 // frame port inside an upper task; the third from an element stream into a
 // frame port, read as elements again inside an upper task, which declares
 // that frame channel itself. TurnStream turns between the top's own stream
-// arguments.
+// arguments, and TurnElemStream does so through `[[tapa::frame(N)]]` stream
+// ports.
 
 void Load(tapa::mmap<const float> src, tapa::ostream<float>& out, int n) {
   [[tapa::pipeline(1)]] for (int i = 0; i < n * kFrame; ++i) {
@@ -82,4 +83,28 @@ void CornerTurn(tapa::mmap<const float> src, tapa::mmap<float> dst, int n) {
 // elements from or gives them to the stream argument.
 void TurnStream(tapa::istream<float>& rows, tapa::ostream<float>& cols, int n) {
   tapa::task().invoke(Turn, rows, cols, n);
+}
+
+// Frames as elements: on PL these frame ports are ordinary streams, so the
+// task buffers each frame to turn it.
+void TurnElems([[tapa::frame(kFrame)]] tapa::istream<float>& in,
+               [[tapa::frame(kFrame)]] tapa::ostream<float>& out, int n) {
+  float frame[kFrame];
+  for (int f = 0; f < n; ++f) {
+    [[tapa::pipeline(1)]] for (int i = 0; i < kFrame; ++i) {
+      frame[i] = in.read();
+    }
+    for (int c = 0; c < kEdge; ++c) {
+      [[tapa::pipeline(1)]] for (int r = 0; r < kEdge; ++r) {
+        out.write(frame[r * kEdge + c]);
+      }
+    }
+  }
+}
+
+// The stream arguments reach TurnElems's ordinary stream ports: on Vitis
+// each ring moves its frames through a FIFO rather than a frame channel.
+void TurnElemStream(tapa::istream<float>& rows, tapa::ostream<float>& cols,
+                    int n) {
+  tapa::task().invoke(TurnElems, rows, cols, n);
 }

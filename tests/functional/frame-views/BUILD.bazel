@@ -74,6 +74,33 @@ sh_test(
     tags = ["cpu:2"],
 )
 
+# TurnElemStream: the top's stream arguments reach `[[tapa::frame(N)]]`
+# stream ports, so each ring moves its frames through an ordinary FIFO.
+tapa_xo(
+    name = "frame-views-elem-xo",
+    srcs = ["corner.cpp"],
+    hdrs = ["corner.h"],
+    top_name = "TurnElemStream",
+)
+
+sh_test(
+    name = "frame-views-elem-xosim",
+    size = "enormous",
+    srcs = ["//bazel:v++_env.sh"],
+    args = [
+        "$(rootpath frame-views-host)",
+        "--bitstream=$(rootpath frame-views-elem-xo)",
+        "--elem_top",
+        "8",
+    ],
+    data = [
+        ":frame-views-elem-xo",
+        ":frame-views-host",
+        "//fpga-runtime:cargo_release_artifacts",
+    ],
+    tags = ["cpu:2"],
+)
+
 # TurnStream on XRT hardware emulation: its arguments are rings in device
 # memory, which the host fills and drains while the kernel runs. Manual:
 # hw_emu's scheduler polls the kernel under the device lock the host's

@@ -249,18 +249,21 @@ Rules:
 ### Frames from and to the host
 
 XRT has no streams between host and kernel, so on Vitis a stream argument
-of the top that reaches a frame port moves through device memory: a ring
-of frame slots, 4 unless the top's parameter says otherwise,
+of the top that reaches a frame port, or a leaf's `[[tapa::frame(N)]]`
+stream port, moves through device memory: a ring of frame slots, 4 unless
+the top's parameter says otherwise,
 `[[tapa::ring(S)]] tapa::istream<float>& rows`. The host program is the
 same as in software simulation: it passes a `tapa::stream`, and TAPA's
 runtime moves each frame between it and a free slot while the kernel runs.
 In the kernel a mover streams each frame between its slot and the
-argument's frame channel; for an output, the kernel is done only once
-every frame it released is in memory.
+argument's frame channel, or for a `[[tapa::frame(N)]]` stream port on PL
+an ordinary FIFO; for an output, the kernel is done only once everything
+it released into that channel (every frame, or every element written into
+the FIFO) is in memory.
 
 - Every Vitis flow runs the ring: xosim, Verilator cosimulation, hardware
-  emulation and hardware. A stream argument that reaches no frame port
-  stays an AXIS port, which only simulation can feed.
+  emulation and hardware. A stream argument that reaches neither stays an
+  AXIS port, which only simulation can feed.
 - An AI Engine top with no PL task gets the same rings on a VCK5000, in a
   PL kernel TAPA builds for it ([AI Engine
   Tasks](../howto/aie.md#on-a-vck5000)).

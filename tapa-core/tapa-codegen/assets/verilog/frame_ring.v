@@ -19,7 +19,9 @@
 // kernel_frames once memory has acknowledged them all; the host then reads
 // the frame and raises host_frames past it. `drained` holds while every
 // frame released into the channel (one `released` pulse each) is in
-// memory: the top is done only then.
+// memory: the top is done only then. With RELEASED_ELEMENTS, the channel is
+// an ordinary FIFO and `released` pulses for each element written into it,
+// so `drained` holds while every one of them is in memory.
 //
 // The ring follows host_frames only forward (by less than 2^31): XRT
 // writes every argument register when it starts a run, host_frames among
@@ -35,7 +37,8 @@ module frame_ring #(
   parameter SLOTS      = 4,
   parameter INPUT      = 1,
   parameter ADDR_WIDTH = 64,
-  parameter LEN_WIDTH  = 32     // of a request's element count
+  parameter LEN_WIDTH  = 32,    // of a request's element count
+  parameter RELEASED_ELEMENTS = 0  // !INPUT: `released` counts elements
 ) (
   input wire clk,
   input wire rst,  // active high
@@ -143,7 +146,7 @@ generate
     end
   end else begin : writes
     reg [31:0] opened;    // frames whose write was requested
-    reg [31:0] released_frames;
+    reg [31:0] released_count;  // frames, or elements with RELEASED_ELEMENTS
     reg        open;      // the frame moving now has its write requested
     reg [31:0] acked;     // elements memory acknowledged, over all frames
     reg [31:0] frame_end; // acked once the oldest unacknowledged frame is in
@@ -161,7 +164,8 @@ generate
     assign write_data_write = move;
     assign write_resp_read  = write_resp_empty_n;
     assign in_read          = move;
-    assign drained          = released_frames == frames;
+    assign drained          = released_count ==
+                              (RELEASED_ELEMENTS != 0 ? acked : frames);
 
     assign read_addr_din   = {(LEN_WIDTH + ADDR_WIDTH){1'b0}};
     assign read_addr_write = 1'b0;
@@ -172,7 +176,7 @@ generate
     always @(posedge clk) begin
       if (rst) begin
         opened          <= 32'd0;
-        released_frames <= 32'd0;
+        released_count  <= 32'd0;
         open            <= 1'b0;
         acked           <= 32'd0;
         frame_end       <= FRAME_WORD;
@@ -188,7 +192,7 @@ generate
           open <= 1'b0;
         end
         if (move) index <= last ? {INDEX_WIDTH{1'b0}} : index + 1'b1;
-        if (released) released_frames <= released_frames + 32'd1;
+        if (released) released_count <= released_count + 32'd1;
         if (write_resp_empty_n) acked <= acked + {24'd0, write_resp_dout} + 32'd1;
         // One frame a cycle: a response may complete several small ones.
         if (!lead[31]) begin

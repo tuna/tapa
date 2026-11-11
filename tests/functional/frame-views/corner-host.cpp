@@ -10,6 +10,8 @@
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 DEFINE_bool(stream_top, false,
             "with --bitstream, the bitstream's top is TurnStream");
+DEFINE_bool(elem_top, false,
+            "with --bitstream, the bitstream's top is TurnElemStream");
 
 // Whether `dst` holds each frame of `src` transposed; logs the first errors.
 bool Check(const std::vector<float>& src, const std::vector<float>& dst,
@@ -38,7 +40,8 @@ bool RunCornerTurn(const std::vector<float>& src, int n) {
   return Check(src, dst, n);
 }
 
-bool RunTurnStream(const std::vector<float>& src, int n) {
+template <typename Top>
+bool RunTurnStream(Top& top, const std::vector<float>& src, int n) {
   std::vector<float> dst(n * kFrame, -1.f);
   tapa::stream<float> rows("rows");
   tapa::stream<float> cols("cols");
@@ -48,7 +51,7 @@ bool RunTurnStream(const std::vector<float>& src, int n) {
             for (float x : src) rows.write(x);
           },
           rows)
-      .invoke(TurnStream, tapa::executable(FLAGS_bitstream), rows, cols, n)
+      .invoke(top, tapa::executable(FLAGS_bitstream), rows, cols, n)
       .invoke(
           [&](tapa::istream<float>& cols) {
             for (float& x : dst) x = cols.read();
@@ -65,13 +68,19 @@ int main(int argc, char* argv[]) {
   for (int i = 0; i < n * kFrame; ++i) src[i] = static_cast<float>(i);
   // Software simulation runs both tops; a bitstream holds one.
   bool ok = true;
-  if (FLAGS_bitstream.empty() || !FLAGS_stream_top) {
+  if (FLAGS_bitstream.empty() || !(FLAGS_stream_top || FLAGS_elem_top)) {
     ok = RunCornerTurn(src, n) && ok;
   }
+  // Twice: on XRT the second invoke's frames continue the counts of the
+  // rings that carry the stream top's arguments.
   if (FLAGS_bitstream.empty() || FLAGS_stream_top) {
-    // Twice: on XRT the second invoke's frames continue the counts of the
-    // rings that carry TurnStream's arguments.
-    for (int run = 0; run < 2; ++run) ok = RunTurnStream(src, n) && ok;
+    for (int run = 0; run < 2; ++run)
+      ok = RunTurnStream(TurnStream, src, n) && ok;
+  }
+  if (FLAGS_bitstream.empty() || FLAGS_elem_top) {
+    for (int run = 0; run < 2; ++run) {
+      ok = RunTurnStream(TurnElemStream, src, n) && ok;
+    }
   }
   std::clog << (ok ? "PASS!" : "FAIL!") << std::endl;
   return ok ? 0 : 1;
