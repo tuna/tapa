@@ -120,6 +120,27 @@ TEST(HmapAccessorDeathTest, BitstreamChecksTheSize) {
       "hmap<T, 2, 4> must have size = 8, got 7");
 }
 
+// A named untagged mmap binds to an hmap parameter as it does to an mmap
+// one: read-write, here one buffer per channel.
+TEST(HmapAccessorTest, NamedMmapBindsEachChannelReadWrite) {
+  std::vector<int> buffer(8);
+  mmap<int> mem(buffer);
+  using Accessor = internal::accessor<hmap<int, 2, 4>, mmap<int>&>;
+  EXPECT_EQ(Accessor::access(mem, false).data(), buffer.data());
+
+  BufferRecorder instance;
+  int idx = 0;
+  Accessor::access(instance, idx, mem);
+  EXPECT_EQ(idx, 2);
+  ASSERT_EQ(instance.buffers.size(), 2u);
+  for (int i = 0; i < 2; ++i) {
+    EXPECT_EQ(instance.buffers[i].index, i);
+    EXPECT_EQ(instance.buffers[i].ptr, buffer.data() + 4 * i);
+    EXPECT_EQ(instance.buffers[i].bytes, 4 * sizeof(int));
+    EXPECT_EQ(instance.buffers[i].access, BufferAccess::ReadWrite);
+  }
+}
+
 // An async_mmap moves data only through its channels: a pointer step would
 // move a copy of the pointer that the channels never see, so it must not
 // compile, while the plain mmap it extends keeps its steps.

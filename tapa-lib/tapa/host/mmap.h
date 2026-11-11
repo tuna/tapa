@@ -533,7 +533,11 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
     }                                                                         \
   };                                                                          \
   template <typename T, int chan_count, int64_t chan_size>                    \
-  struct accessor<hmap<T, chan_count, chan_size>, tag##mmap<T tag_ref>> {     \
+  struct accessor<hmap<T, chan_count, chan_size>, tag##mmap<T> tag_ref> {     \
+    static hmap<T, chan_count, chan_size> access(tag##mmap<T> tag_ref arg,    \
+                                                 bool) {                      \
+      return arg;                                                             \
+    }                                                                         \
     template <typename Instance>                                              \
     static void access(Instance& instance, int& idx,                          \
                        tag##mmap<T> tag_ref arg) {                            \
@@ -553,7 +557,7 @@ TAPA_DEFINE_ACCESSOR(read_only_, , BufferAccess::ReadOnly);
 TAPA_DEFINE_ACCESSOR(write_only_, , BufferAccess::WriteOnly);
 TAPA_DEFINE_ACCESSOR(read_write_, , BufferAccess::ReadWrite);
 
-// mmaps accessors
+// A named untagged mmap or mmaps, which the kernel may read and write.
 TAPA_DEFINE_ACCESSOR(, &, BufferAccess::ReadWrite);
 
 #undef TAPA_DEFINE_ACCESSOR
@@ -561,27 +565,21 @@ TAPA_DEFINE_ACCESSOR(, &, BufferAccess::ReadWrite);
 // Named directional handles use the same buffer lowering as temporaries.
 // Keep this forwarding specific to mmap handles: stream and seq arguments
 // carry reference identity in their accessor specializations.
-#define TAPA_FORWARD_TAGGED_MMAP_ACCESSOR(tag, qualifier)                     \
-  template <typename T>                                                       \
-  struct accessor<mmap<T>, tag##_mmap<T> qualifier>                           \
-      : accessor<mmap<T>, tag##_mmap<T>> {};                                  \
-  template <typename T, uint64_t S>                                           \
-  struct accessor<mmaps<T, S>, tag##_mmaps<T, S> qualifier>                   \
-      : accessor<mmaps<T, S>, tag##_mmaps<T, S>> {                            \
-    using accessor<mmaps<T, S>, tag##_mmaps<T, S>>::access;                   \
-    static mmaps<T, S> access(tag##_mmaps<T, S> qualifier arg, bool) {        \
-      return arg;                                                             \
-    }                                                                         \
-  };                                                                          \
-  template <typename T, int chan_count, int64_t chan_size>                    \
-  struct accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T> qualifier>    \
-      : accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T>> {             \
-    using accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T>>::access;    \
-    static hmap<T, chan_count, chan_size> access(tag##_mmap<T> qualifier arg, \
-                                                 bool) {                      \
-      return arg;                                                             \
-    }                                                                         \
-  }
+#define TAPA_FORWARD_TAGGED_MMAP_ACCESSOR(tag, qualifier)                  \
+  template <typename T>                                                    \
+  struct accessor<mmap<T>, tag##_mmap<T> qualifier>                        \
+      : accessor<mmap<T>, tag##_mmap<T>> {};                               \
+  template <typename T, uint64_t S>                                        \
+  struct accessor<mmaps<T, S>, tag##_mmaps<T, S> qualifier>                \
+      : accessor<mmaps<T, S>, tag##_mmaps<T, S>> {                         \
+    using accessor<mmaps<T, S>, tag##_mmaps<T, S>>::access;                \
+    static mmaps<T, S> access(tag##_mmaps<T, S> qualifier arg, bool) {     \
+      return arg;                                                          \
+    }                                                                      \
+  };                                                                       \
+  template <typename T, int chan_count, int64_t chan_size>                 \
+  struct accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T> qualifier> \
+      : accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T>> {}
 
 #define TAPA_FORWARD_TAGGED_MMAP_FAMILY(tag)      \
   TAPA_FORWARD_TAGGED_MMAP_ACCESSOR(tag, &);      \
