@@ -235,6 +235,10 @@ pub(crate) fn resolve_suffix_width(suffix: &str, data_width: u32) -> u32 {
 }
 
 /// Validate an mmap connection before crossbar generation.
+/// Address bits of the smallest region `axi_crossbar_addr.v` decodes: it
+/// rejects an `M_ADDR_WIDTH` below 12, and one of 0 disables the region.
+const CROSSBAR_MIN_ADDR_WIDTH: u32 = 12;
+
 pub(crate) fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), CodegenError> {
     if conn.slaves.iter().any(|slave| slave.threads == 0) {
         return Err(CodegenError::InvalidMmapConnection(format!(
@@ -247,6 +251,18 @@ pub(crate) fn validate_mmap_connection(conn: &MMapConnection) -> Result<(), Code
             "crossbar has no downstream connections for argument `{}`",
             conn.arg_name
         )));
+    }
+    // The crossbar decodes each hmap channel as one region.
+    if let Some(width) = conn.geometry.channel_addr_width() {
+        if width < CROSSBAR_MIN_ADDR_WIDTH {
+            return Err(CodegenError::InvalidMmapConnection(format!(
+                "hmap `{}` has {}-byte channels; its M-AXI crossbar decodes \
+                 channels of at least {} bytes (chan_size * sizeof(T))",
+                conn.arg_name,
+                1u64 << width,
+                1u64 << CROSSBAR_MIN_ADDR_WIDTH
+            )));
+        }
     }
     Ok(())
 }

@@ -1826,6 +1826,49 @@ fn test_generate_rtl_single_channel_hmap_keeps_indexed_channel() {
     );
 }
 
+/// An hmap's crossbar decodes each channel as an address region, and the
+/// crossbar (`axi_crossbar_addr.v`) takes no region under 4 KiB: a smaller
+/// channel is a codegen error, never RTL whose crossbar cannot route it.
+#[test]
+fn test_generate_rtl_rejects_hmap_channels_below_the_crossbar_region() {
+    for (chan_size, bytes) in [(1, 1), (2048, 2048)] {
+        let top = task("top", "upper", |t| {
+            t["ports"] = serde_json::json!([
+                {
+                    "cat": "mmap",
+                    "name": "mem",
+                    "type": "char*",
+                    "width": 8,
+                    "chan_count": 2,
+                    "chan_size": chan_size
+                }
+            ]);
+            t["tasks"] =
+                serde_json::json!({"worker": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]});
+        });
+        let worker = task("worker", "lower", |t| {
+            t["ports"] =
+                serde_json::json!([{"cat": "mmap", "name": "data", "type": "char*", "width": 8}]);
+        });
+        let mut state = TopologyWithRtl::new(design(
+            "top",
+            "xilinx-hls",
+            &[("top", top), ("worker", worker)],
+        ));
+        attach_basic_modules(&mut state, &["top", "worker"]);
+
+        let Err(error) = generate_rtl(&mut state) else {
+            panic!("a {bytes}-byte hmap channel must be rejected");
+        };
+        let diagnostic = error.to_string();
+        assert!(
+            diagnostic.contains(&format!("`mem` has {bytes}-byte channels"))
+                && diagnostic.contains("4096"),
+            "{diagnostic}"
+        );
+    }
+}
+
 #[test]
 fn test_generate_rtl_sanitizes_indexed_mmap_names() {
     let top = task("top", "upper", |t| {
