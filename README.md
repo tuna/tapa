@@ -45,7 +45,7 @@ and updates your shell `PATH`.
 Linux 2023) and `g++` 7.5.0+ for software simulation. Floorplanning also needs
 the [CBC](https://github.com/coin-or/Cbc) ILP solver (`coinor-cbc` on
 Ubuntu/Debian, `coin-or-Cbc` on Fedora/EPEL). RTL synthesis and bitstream
-generation need Vitis 2022.1 or newer; hardware emulation and on-board
+generation need Vitis 2022.2 or newer; hardware emulation and on-board
 execution need XRT. None of these additional tools is needed for software
 simulation.
 

@@ -47,8 +47,6 @@ jobs:
             xilinx_version: "2023.1"
           - os: ubuntu-24
             xilinx_version: "2022.2"
-          - os: ubuntu-24
-            xilinx_version: "2022.1"
           # Test all OS versions with the latest Vitis version. Of the EOL
           # releases, only the earliest supported one is kept per distro.
           - os: ubuntu-26

@@ -9,7 +9,7 @@
 | Dependency | Version | Notes |
 |------------|---------|-------|
 | GNU C++ Compiler (`g++`) | 7.5.0 or newer | Required for software simulation and host builds |
-| Xilinx Vitis | 2022.1 or newer | Required for RTL synthesis and bitstream generation, not software simulation |
+| Xilinx Vitis | 2022.2 or newer | Required for RTL synthesis and bitstream generation, not software simulation |
 | CBC | Any compatible release | Required only for floorplanning; install the `cbc` binary on `PATH` |
 | XRT | Match your platform | Required for hardware emulation and on-board execution, not software simulation or fast cosimulation |
 | Verilator | 5.044 or newer | Optional fast-cosimulation backend; xsim is the default |

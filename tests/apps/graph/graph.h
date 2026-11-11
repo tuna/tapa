@@ -11,7 +11,7 @@
 
 #include <tapa.h>
 
-// TODO: remove `__has_include` guards when we drop support for 2022.1.
+// Software simulation builds without the Vitis HLS headers.
 #if __has_include(<hls_fence.h>)
 #include <hls_fence.h>
 #endif

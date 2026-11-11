@@ -11,7 +11,7 @@ simulation.
 ## What you need
 
 - TAPA installed — see [Installation](installation.md)
-- Xilinx Vitis 2022.1 or newer
+- Xilinx Vitis 2022.2 or newer
 - A compatible Alveo platform (the examples below use the U55C)
 - The vadd source files and a host executable built as described in
   [Your First Run](first-run.md)

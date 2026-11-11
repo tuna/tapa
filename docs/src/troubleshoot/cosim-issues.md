@@ -60,7 +60,7 @@ xsim is part of the Vivado installation, and fast cosim drives it through the
 `vivado` on `PATH`. Source the Vivado environment script before running cosim:
 
 ```bash
-source /opt/Xilinx/Vivado/2022.1/settings64.sh
+source /opt/Xilinx/Vivado/2024.2/settings64.sh
 ./vadd --bitstream=vadd.xo ...
 ```
 
