@@ -304,6 +304,14 @@ pub struct FloorplanArgs {
     /// multi-kernel synthesis; lower it on memory-constrained hosts.
     #[arg(long = "vivado-threads", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..))]
     pub vivado_threads: u32,
+
+    /// SLASH executable on the tool host, for implementing `xilinx-slash`.
+    #[arg(long, default_value = "slashkit")]
+    pub slashkit: String,
+
+    /// Vivado executable on the tool host, for implementing `xilinx-slash`.
+    #[arg(long, default_value = "vivado")]
+    pub vivado: String,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -427,7 +435,7 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
     // Completed-synthesis validation lives in `PipelineStep::check`
     // (chain.rs).
     let implementation_target = (args.run_impl || args.dse)
-        .then(|| implementation::validate_target(&state, args.vivado_threads))
+        .then(|| implementation::validate_target(&state, args))
         .transpose()?;
 
     // Derive placement and controller ownership together. Parse RTL interfaces
@@ -529,7 +537,7 @@ mod tests {
     use crate::testutil::{ctx_at, state_from_json};
 
     /// The default flag surface every `run` test starts from.
-    fn test_args() -> FloorplanArgs {
+    pub(super) fn test_args() -> FloorplanArgs {
         FloorplanArgs {
             usage_limit: 0.7,
             partition_strategy: PartitionMode::Auto,
@@ -543,6 +551,8 @@ mod tests {
             dse_step: 0.03,
             dse_jobs: 1,
             vivado_threads: 2,
+            slashkit: "slashkit".to_string(),
+            vivado: "vivado".to_string(),
         }
     }
 

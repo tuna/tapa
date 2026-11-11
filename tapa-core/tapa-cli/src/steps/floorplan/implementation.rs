@@ -122,6 +122,8 @@ pub(super) struct ImplementationTarget {
     platform: String,
     target_mhz: u32,
     vivado_threads: u32,
+    slashkit: String,
+    vivado: String,
     flow: Target,
 }
 
@@ -134,7 +136,7 @@ impl ImplementationTarget {
 /// Validate the implementation-only parts of the persisted synthesis target.
 pub(super) fn validate_target(
     state: &WorkState,
-    vivado_threads: u32,
+    args: &super::FloorplanArgs,
 ) -> Result<ImplementationTarget> {
     let flow = state.graph.target;
     if !matches!(flow, Target::XilinxVitis | Target::XilinxSlash) {
@@ -174,7 +176,9 @@ pub(super) fn validate_target(
     Ok(ImplementationTarget {
         platform: platform.to_string(),
         target_mhz,
-        vivado_threads,
+        vivado_threads: args.vivado_threads,
+        slashkit: args.slashkit.clone(),
+        vivado: args.vivado.clone(),
         flow,
     })
 }
@@ -356,8 +360,8 @@ fn try_implement_one(
                 config: crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY)),
                 output: crate::util::utf8(paths.vbin.clone()),
                 work_dir: crate::util::utf8(paths.link.clone()),
-                slashkit: "slashkit".to_string(),
-                vivado: "vivado".to_string(),
+                slashkit: target.slashkit.clone(),
+                vivado: target.vivado.clone(),
                 jobs: target.vivado_threads,
                 target_mhz: target.target_mhz,
                 floorplan_xdc: Some(crate::util::utf8(paths.constraints.join(FLOORPLAN_XDC))),
@@ -1238,39 +1242,49 @@ ap_clk              0.400        0.000
         state.flow.part_num = Some("xcu280-fsvh2892-2L-e".to_string());
         state.flow.platform = Some("xilinx_u280_test".to_string());
         state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
-        let target = validate_target(&state, 2).expect("valid target");
+        let args = super::super::tests::test_args();
+        let target = validate_target(&state, &args).expect("valid target");
         assert_eq!(target.platform, "xilinx_u280_test");
         assert_eq!(target.target_mhz, 300);
 
         for platform in ["", "/opt/xilinx/platform", "platform.xpfm"] {
             state.flow.platform = Some(platform.to_string());
-            validate_target(&state, 2).expect_err("platform path must fail");
+            validate_target(&state, &args).expect_err("platform path must fail");
         }
 
         state.flow.platform = Some("xilinx_u280_test".to_string());
         // A non-numeric period is no longer representable; zero is the one
         // unusable value the typed field still admits.
         state.flow.clock_period = Some(ClockPeriod::ZERO);
-        validate_target(&state, 2).expect_err("invalid clock must fail");
+        validate_target(&state, &args).expect_err("invalid clock must fail");
         state.flow.clock_period = Some(ClockPeriod::from_picoseconds(3330));
 
         state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
         state.flow.platform = Some("slash_v80_service".to_string());
-        let target = validate_target(&state, 2).expect("Vitis implementation accepts V80");
+        let target = validate_target(&state, &args).expect("Vitis implementation accepts V80");
         assert_eq!(target.flow, Target::XilinxVitis);
         assert_eq!(target.platform, "slash_v80_service");
         assert_eq!(target.target_mhz, 300);
 
         state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
         state.flow.platform = Some("xilinx_vck190_base_202410_1".to_string());
-        let target = validate_target(&state, 2).expect("Vitis implementation accepts Versal");
+        let target = validate_target(&state, &args).expect("Vitis implementation accepts Versal");
         assert_eq!(target.flow, Target::XilinxVitis);
 
         state.graph.target = Target::XilinxSlash;
         state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
         state.flow.platform = Some("slash_v80_service".to_string());
-        let target = validate_target(&state, 2).expect("SLASH implementation target");
+        let args = super::super::FloorplanArgs {
+            slashkit: "slash-custom".to_string(),
+            vivado: "vivado-custom".to_string(),
+            ..args
+        };
+        let target = validate_target(&state, &args).expect("SLASH implementation target");
         assert_eq!(target.flow, Target::XilinxSlash);
+        assert_eq!(
+            (&*target.slashkit, &*target.vivado),
+            ("slash-custom", "vivado-custom")
+        );
         assert_eq!(target.platform, "slash_v80_service");
         assert_eq!(target.target_mhz, 300);
     }

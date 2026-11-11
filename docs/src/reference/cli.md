@@ -274,6 +274,8 @@ These run the floorplanned design through the device's implementation backend to
 | `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (defaults `0.55` / `0.9` / `0.03`; require `--dse`). The sweep starts at `--dse-max` and steps down. |
 | `--dse-jobs N` | Max candidate package/link jobs to run concurrently (default `1`; requires `--dse`). |
 | `--vivado-threads N` | Per-link Vivado synthesis jobs (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `2`). Lower it on memory-constrained hosts. |
+| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; `xilinx-slash` only). |
+| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; `xilinx-slash` only). |
 
 ### Example
 
