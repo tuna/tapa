@@ -10,7 +10,6 @@ const KERNEL_NAME: &str = "tapa_aie_pl_control:{controller_1}";
 const CORE_CONTROL: u32 = 0x32000;
 const CORE_ENABLE: u32 = 1;
 const CORE_DISABLE: u32 = 0;
-const MAX_PROGRAM_WORDS: usize = 1024;
 
 pub(super) struct PlControl {
     api: &'static Api,
@@ -103,10 +102,10 @@ fn encode(writes: &[Write]) -> Result<Vec<u8>> {
     let words = writes
         .len()
         .checked_mul(3)
-        .filter(|words| *words <= MAX_PROGRAM_WORDS)
+        .and_then(|words| u32::try_from(words).ok())
         .ok_or_else(|| FrtError::Xrt("AIE PL control program is too large".into()))?;
-    let mut out = Vec::with_capacity((words + 1) * 4);
-    out.extend_from_slice(&(words as u32).to_le_bytes());
+    let mut out = Vec::with_capacity((words as usize + 1) * 4);
+    out.extend_from_slice(&words.to_le_bytes());
     for (tile, address, value) in writes {
         for word in [(tile.column << 16) | tile.row, *address, *value] {
             out.extend_from_slice(&word.to_le_bytes());
@@ -362,9 +361,8 @@ mod tests {
     }
 
     #[test]
-    fn missing_scalars_and_oversized_programs_are_errors() {
+    fn missing_scalars_are_errors() {
         let error = start(&graph(false), &HashMap::new(), false).unwrap_err();
         assert!(error.to_string().contains("not a scalar"), "{error}");
-        encode(&vec![(T0, 0, 0); MAX_PROGRAM_WORDS / 3 + 1]).unwrap_err();
     }
 }

@@ -36,6 +36,8 @@ void write_register(hls::stream<Packet>& output, ap_uint<32> id,
 
 // `program[0]` counts the words after it: (tile, address, value) triples,
 // each written to the named tile only. The host names controlled tiles only.
+// The program is copied in chunks of whole triples, so its length is bounded
+// only by the 32-bit count.
 extern "C" void tapa_aie_pl_control(hls::stream<Packet>& output,
                                     ap_uint<32>* program) {
 #pragma HLS interface axis port = output
@@ -43,18 +45,23 @@ extern "C" void tapa_aie_pl_control(hls::stream<Packet>& output,
 #pragma HLS interface s_axilite port = program bundle = control
 #pragma HLS interface s_axilite port = return bundle = control
 
-  ap_uint<32> commands[1024];
-  const ap_uint<32> words = program[0];
-  for (ap_uint<32> i = 0; i < 1024; ++i) {
+  constexpr int kChunk = 1023;
+  ap_uint<32> commands[kChunk];
+  const ap_uint<33> words = program[0];
+  for (ap_uint<33> base = 0; base < words; base += kChunk) {
+    const ap_uint<33> left = words - base;
+    const ap_uint<11> count = left < kChunk ? left : ap_uint<33>(kChunk);
+    for (ap_uint<11> i = 0; i < kChunk; ++i) {
 #pragma HLS pipeline II = 1
-    if (i < words) commands[i] = program[i + 1];
-  }
-  for (ap_uint<32> pc = 0; pc + 2 < words; pc += 3) {
-    const ap_uint<32> tile = commands[pc];
-    for (int i = 0; i < kTiles; ++i) {
-      if (kTileKeys[i] == tile) {
-        write_register(output, kTilePackets[i], commands[pc + 1],
-                       commands[pc + 2]);
+      if (i < count) commands[i] = program[base + i + 1];
+    }
+    for (ap_uint<11> pc = 0; pc + 2 < count; pc += 3) {
+      const ap_uint<32> tile = commands[pc];
+      for (int i = 0; i < kTiles; ++i) {
+        if (kTileKeys[i] == tile) {
+          write_register(output, kTilePackets[i], commands[pc + 1],
+                         commands[pc + 2]);
+        }
       }
     }
   }
