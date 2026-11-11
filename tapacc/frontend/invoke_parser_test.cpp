@@ -361,11 +361,15 @@ TEST(InvokeParser, RuntimeScalarBindingsRequireBitPreservingTypes) {
       {test_support::VirtualTu{"/proj/scalar_conversion.cpp", kConvert}}, "Top",
       testing::TempDir() + "/scalar_conversion", {"-std=c++17"});
   EXPECT_FALSE(run.ok);
-  ASSERT_EQ(run.diags.size(), 11u);
-  for (const auto& diag : run.diags) {
-    EXPECT_NE(diag.find("unsupported runtime scalar conversion"),
+  // The local copy `runtime` is reported first: hardware would drop it.
+  ASSERT_EQ(run.diags.size(), 12u);
+  EXPECT_NE(run.diags.front().find("computes outside its invokes"),
+            std::string::npos)
+      << run.diags.front();
+  for (size_t i = 1; i < run.diags.size(); ++i) {
+    EXPECT_NE(run.diags[i].find("unsupported runtime scalar conversion"),
               std::string::npos)
-        << diag;
+        << run.diags[i];
   }
 }
 
@@ -421,10 +425,15 @@ TEST(InvokeParser, RuntimeScalarsMustReferToParentParameters) {
       {test_support::VirtualTu{"/proj/scalar_origin.cpp", kCode}}, "Top",
       testing::TempDir() + "/scalar_origin", {"-std=c++17"});
   EXPECT_FALSE(run.ok);
-  ASSERT_EQ(run.diags.size(), 2u);
-  for (const auto& diag : run.diags) {
-    EXPECT_NE(diag.find("must name a parent task parameter"), std::string::npos)
-        << diag;
+  // The local copy `runtime` is reported first: hardware would drop it.
+  ASSERT_EQ(run.diags.size(), 3u);
+  EXPECT_NE(run.diags.front().find("computes outside its invokes"),
+            std::string::npos)
+      << run.diags.front();
+  for (size_t i = 1; i < run.diags.size(); ++i) {
+    EXPECT_NE(run.diags[i].find("must name a parent task parameter"),
+              std::string::npos)
+        << run.diags[i];
   }
   const TaskModel* top = run.builder.FindTask("Top");
   ASSERT_NE(top, nullptr);
@@ -447,6 +456,63 @@ TEST(InvokeParser, NestedScopeStreamDeclIsAnErrorNotSilence) {
     }
   )cpp";
   EXPECT_GE(CountUpperTaskErrors(kCode, "Top"), 1u);
+}
+
+TEST(InvokeParser, AnUpperTaskHoldsOnlyChannelsConstantsAndInvokes) {
+  // Hardware keeps only these, so anything else would silently vanish from
+  // the RTL; each computing statement is its own error.
+  constexpr char kCode[] = R"cpp(
+#define assert(condition) ((void)(condition))
+    void Producer(tapa::ostream<int>& out, int n) {}
+    void Consumer(tapa::istream<int>& in, int n) {}
+    int Twice(int n) { return 2 * n; }
+    void Top(int n) {
+      using Word = int;
+      static_assert(sizeof(Word) == 4, "");
+      assert(n > 0);
+      constexpr int kDepth = 8;
+      const int kCopies = kDepth / 2;
+      tapa::stream<Word, kDepth> q;
+      ;
+      int m = n + kCopies;
+      for (int i = 0; i < n; ++i) m += i;
+      Twice(m);
+      tapa::task().invoke(Producer, q, n).invoke(Consumer, q, n);
+      return;
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/upper_body.cpp", kCode}}, "Top",
+      testing::TempDir() + "/upper_body", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 3u);
+  for (const std::string& diag : run.diags) {
+    EXPECT_NE(diag.find("upper task 'Top' computes outside its invokes"),
+              std::string::npos)
+        << diag;
+  }
+}
+
+TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
+  constexpr char kCode[] = R"cpp(
+    template <int N>
+    void Fill(tapa::ostream<int>& out) {}
+    void Drain(tapa::istream<int>& in) {}
+    template <int N>
+    void Pipe(tapa::ostream<int>& out) {
+      tapa::task().invoke(Fill<N>, out);
+    }
+    void Top() {
+      tapa::stream<int> q;
+      tapa::task().invoke(Pipe<4>, q).invoke(Drain, q);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/upper_template.cpp", kCode}}, "Top",
+      testing::TempDir() + "/upper_template", {"-std=c++17"});
+  ASSERT_FALSE(run.diags.empty());
+  EXPECT_NE(run.diags.front().find("upper task 'Pipe' is a template"),
+            std::string::npos)
+      << run.diags.front();
 }
 
 TEST(InvokeParser, AnAsyncMmapGoesToOneTask) {

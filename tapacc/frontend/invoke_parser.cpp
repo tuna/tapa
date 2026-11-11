@@ -9,6 +9,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/Mangle.h"
+#include "clang/Lex/Lexer.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"
 
@@ -257,6 +258,64 @@ void DiagnoseNestedStreamDecls(UpperTaskContext& uc, const clang::Stmt* stmt) {
   }
   for (const clang::Stmt* child : stmt->children()) {
     DiagnoseNestedStreamDecls(uc, child);
+  }
+}
+
+// --- 0. The body's shape. ---
+// Hardware keeps only an upper task's channel declarations and invokes, so a
+// statement that computes would run in software simulation and silently
+// vanish from the RTL; a template upper task is not lowered at all. Report
+// both. Constants (constexpr, or const with a constant initializer),
+// declarations that declare no variable, and `assert`s, which hardware drops
+// as an NDEBUG build does, compute nothing and stay allowed.
+bool IsPassiveDecl(clang::ASTContext& ctx, const clang::Decl* decl) {
+  const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
+  if (var == nullptr) return true;
+  if (ClassifyTapaType(var->getType()) != TapaKind::kNotTapa) return true;
+  if (var->isConstexpr()) return true;
+  const clang::Expr* init = var->getInit();
+  return var->getType().isConstQualified() && init != nullptr &&
+         init->isEvaluatable(ctx);
+}
+
+bool IsPassiveStmt(clang::ASTContext& ctx, const clang::Stmt* stmt) {
+  if (llvm::isa<clang::NullStmt>(stmt)) return true;
+  const clang::SourceLocation begin = stmt->getBeginLoc();
+  if (begin.isMacroID() &&
+      clang::Lexer::getImmediateMacroName(begin, ctx.getSourceManager(),
+                                          ctx.getLangOpts()) == "assert") {
+    return true;
+  }
+  if (const auto* ret = llvm::dyn_cast<clang::ReturnStmt>(stmt)) {
+    return ret->getRetValue() == nullptr;
+  }
+  if (const auto* decls = llvm::dyn_cast<clang::DeclStmt>(stmt)) {
+    for (const clang::Decl* decl : decls->decls()) {
+      if (!IsPassiveDecl(ctx, decl)) return false;
+    }
+    return true;
+  }
+  const auto* expr = llvm::dyn_cast<clang::Expr>(stmt);
+  return expr != nullptr &&
+         ClassifyTapaType(expr->getType()) == TapaKind::kTask;
+}
+
+void DiagnoseUpperBody(UpperTaskContext& uc, const clang::FunctionDecl* func) {
+  if (func->isTemplateInstantiation()) {
+    ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                     func->getLocation(),
+                     "upper task '%0' is a template; only a leaf task may be "
+                     "a template")
+        .AddString(func->getNameAsString());
+  }
+  for (const clang::Stmt* child : func->getBody()->children()) {
+    if (IsPassiveStmt(uc.ctx, child)) continue;
+    ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                     child->getBeginLoc(),
+                     "upper task '%0' computes outside its invokes; hardware "
+                     "keeps only its channel declarations and invokes, so "
+                     "move this into a leaf task")
+        .AddString(func->getNameAsString());
   }
 }
 
@@ -576,6 +635,7 @@ void ParseUpperTask(
   if (task_obj == nullptr) return;  // leaf task
 
   UpperTaskContext uc(ctx, task, is_top);
+  DiagnoseUpperBody(uc, func);
   CollectStreamDecls(uc, func);
   ParseInvocations(uc, task_obj, parameter_name);
   ValidateStreams(uc);

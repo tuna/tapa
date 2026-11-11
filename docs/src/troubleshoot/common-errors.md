@@ -86,9 +86,9 @@ void Task(tapa::async_mmap<int>& mem) { ... }
 
 ## Computation in upper-level task body
 
-**Symptom:** `tapacc` reports `cannot bind a <Clang expression kind> here; each invoke argument after the task must be a stream or mmap channel, a scalar naming a parent task parameter, or an integer constant`, or the design fails synthesis unexpectedly.
+**Symptom:** `tapacc` reports `upper task '<name>' computes outside its invokes; hardware keeps only its channel declarations and invokes, so move this into a leaf task`, or, for computation inside an invoke argument, `cannot bind a <Clang expression kind> here; each invoke argument after the task must be a stream or mmap channel, a scalar naming a parent task parameter, or an integer constant`.
 
-**Cause:** Upper-level tasks (tasks that invoke other tasks) may only contain stream declarations and `.invoke()` chains. Any arithmetic, conditionals, or other function calls belong in leaf tasks. For example, computing `n * 2` directly in `TopLevel` is not allowed:
+**Cause:** Upper-level tasks (tasks that invoke other tasks) may only contain channel declarations, constants, `assert`s, and `.invoke()` chains. Any arithmetic, conditionals, or other function calls belong in leaf tasks. For example, computing `n * 2` directly in `TopLevel` is not allowed:
 
 ```cpp
 // Wrong

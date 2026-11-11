@@ -285,10 +285,13 @@ void MidTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   const TreePipelineRun run = test_support::RunTreePipeline(
       {VirtualTu{"/proj/src/overlap.cpp", code}}, "MidTop",
       TempRoot("macro_rewrite", "overlap"), {"-std=c++17"});
-  ASSERT_FALSE(run.diags.empty());
-  const std::string& error = run.diags.front();
-  // The error carries the construct, the reason, and the user-source
-  // location of the invocation.
+  // The loop is also reported as computation in an upper task, ahead of the
+  // overlap; the overlap error carries the construct, the reason, and the
+  // user-source location of the invocation.
+  ASSERT_EQ(run.diags.size(), 2u);
+  EXPECT_TRUE(Contains(run.diags[0], "computes outside its invokes"))
+      << run.diags[0];
+  const std::string& error = run.diags[1];
   EXPECT_TRUE(Contains(error, "macro expansion")) << error;
   EXPECT_TRUE(Contains(error, "overlaps another replacement")) << error;
 }

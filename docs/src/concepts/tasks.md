@@ -94,15 +94,17 @@ terminate on program completion.
 
 - Leaf tasks receive streams by reference (`istream<T>&`, `ostream<T>&`) and
   mmap interfaces by value (`mmap<T>`).
-- An upper-level task body must contain only channel declarations and
-  `.invoke(...)` calls — no loops, arithmetic, or other computation.
+- An upper-level task body must contain only channel declarations,
+  constants, `assert`s, and `.invoke(...)` calls — no loops, arithmetic, or
+  other computation. `tapa analyze` rejects any other statement; hardware
+  drops the `assert`s, as an `NDEBUG` build does.
 - `async_mmap` channel operations (`read_addr`, `read_data`, etc.) are
   leaf-task-only.
 - For the `xilinx-vitis` target (the default), the top-level task must be an
   upper-level task — it cannot be a leaf task.
 - Leaf templated tasks (template functions that compute directly) are
-  supported. Non-leaf templated tasks that invoke other tasks are not
-  supported.
+  supported. `tapa analyze` rejects a templated task that invokes other
+  tasks.
 
 ---
 
@@ -111,8 +113,8 @@ terminate on program completion.
 **Wrong** — computation inside an upper-level task body:
 
 ```cpp
-// Wrong: hardware keeps only the invokes of an upper-level task, so the loop
-// never runs there; `tapa analyze` reports `q` as consumed but never produced
+// Wrong: hardware keeps only the channels and invokes of an upper-level task,
+// so the loop would never run there; `tapa analyze` rejects it
 void BadUpper(tapa::mmap<float> mem, uint64_t n) {
   tapa::stream<float> q("q");
   for (uint64_t i = 0; i < n; ++i) {  // <-- computation here
