@@ -21,10 +21,6 @@ namespace tapa {
 
 template <typename T>
 class mmap;
-template <typename T>
-class immap;
-template <typename T>
-class ommap;
 template <typename T, uint64_t S>
 class mmaps;
 template <typename T, int chan_count, int64_t chan_size>

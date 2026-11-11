@@ -28,7 +28,7 @@ mod custom_rtl;
 mod kernel_xml_ports;
 pub(crate) mod vitis_packaging;
 
-use cosim_compat::{check_cosim_supported_categories, stamp_cosim_port_metadata};
+use cosim_compat::stamp_cosim_port_metadata;
 use custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use vitis_packaging::{pack_slash, pack_vitis};
 
@@ -251,11 +251,6 @@ fn add_dir_to_zip(
 /// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
 /// CWD and is always normalized to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
-    // Frontier first: the zip is the cosim package, so anything the cosim
-    // runtime cannot bind must be rejected before a single archive byte —
-    // or any custom-RTL overlay touching the canonical RTL tree — is
-    // written.
-    check_cosim_supported_categories(state)?;
     let work_dir = ctx.work_dir.as_path();
     let rtl_dir = work_dir.join("rtl");
     if !rtl_dir.is_dir() {
@@ -582,42 +577,6 @@ mod tests {
         assert!(
             rpt.contains("Date:           Tue Jan 01 00:00:00 1980"),
             "csynth Date not redacted: {rpt}"
-        );
-    }
-
-    #[test]
-    fn immap_ommap_ports_are_rejected_before_the_archive_is_written() {
-        let dir = tempfile::tempdir().expect("tempdir");
-        write_state(dir.path(), Target::XilinxHls);
-        let mut state = work_io::load(dir.path()).expect("load");
-        let top = state.graph.tasks.get_mut("Top").expect("top task");
-        for (name, cat) in [
-            ("ro_bank", ArgCategory::Immap),
-            ("wo_bank", ArgCategory::Ommap),
-        ] {
-            top.ports.push(port(name, cat, "int*", 512));
-        }
-        work_io::store(dir.path(), &state).expect("store");
-
-        let output_path = dir.path().join("work.zip");
-        let output_str = output_path.to_str().expect("utf-8 output");
-        let ctx = ctx_at(dir.path());
-        let err = run(&parse_pack(&["--output", output_str]), &ctx)
-            .expect_err("cosim-unbindable ports must not ship in the archive");
-        assert!(
-            matches!(err, CliError::InvalidArg(_)),
-            "the frontier is a usage-level rejection; got {err:?}",
-        );
-        let text = err.to_string();
-        for needle in ["ro_bank", "wo_bank", "immap", "ommap", "xilinx-vitis"] {
-            assert!(
-                text.contains(needle),
-                "error must name the port, its category, and the remediation; missing {needle} in {text}",
-            );
-        }
-        assert!(
-            !output_path.exists(),
-            "nothing may be written once the frontier rejects the pack",
         );
     }
 

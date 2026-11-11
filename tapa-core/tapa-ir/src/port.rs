@@ -64,8 +64,6 @@ pub enum ArgCategory {
     Oframes,
     Scalar,
     Mmap,
-    Immap,
-    Ommap,
     AsyncMmap,
 }
 
@@ -120,21 +118,10 @@ impl ArgCategory {
         matches!(self, Self::Scalar)
     }
 
-    /// Whether this is a memory-mapped port that binds directly to a
-    /// top-level M-AXI interface (`mmap`/`async_mmap`), as opposed to
-    /// `immap`/`ommap`, which connect two tasks inside the design.
-    #[must_use]
-    pub const fn is_direct_mmap(self) -> bool {
-        matches!(self, Self::Mmap | Self::AsyncMmap)
-    }
-
-    /// Whether this is any memory-mapped port.
+    /// Whether this is a memory-mapped port (`mmap` or `async_mmap`).
     #[must_use]
     pub const fn is_mmap_like(self) -> bool {
-        matches!(
-            self,
-            Self::Mmap | Self::Immap | Self::Ommap | Self::AsyncMmap
-        )
+        matches!(self, Self::Mmap | Self::AsyncMmap)
     }
 }
 
@@ -230,13 +217,7 @@ impl Port {
             (XilinxHls, ArgCategory::Istreams | ArgCategory::Ostreams) => {
                 Some(self.chan_count.unwrap_or(1))
             }
-            (
-                XilinxHls,
-                ArgCategory::Mmap
-                | ArgCategory::AsyncMmap
-                | ArgCategory::Immap
-                | ArgCategory::Ommap,
-            ) => self.chan_count,
+            (XilinxHls, ArgCategory::Mmap | ArgCategory::AsyncMmap) => self.chan_count,
             (XilinxVitis | XilinxSlash, _) => self.chan_count.filter(|count| *count > 0),
         };
         match channels {
@@ -268,8 +249,6 @@ mod tests {
             ("oframes", ArgCategory::Oframes),
             ("scalar", ArgCategory::Scalar),
             ("mmap", ArgCategory::Mmap),
-            ("immap", ArgCategory::Immap),
-            ("ommap", ArgCategory::Ommap),
             ("async_mmap", ArgCategory::AsyncMmap),
         ];
         for (s, expected) in cases {
@@ -318,8 +297,6 @@ mod tests {
     #[test]
     fn is_mmap_like_predicate() {
         assert!(ArgCategory::Mmap.is_mmap_like());
-        assert!(ArgCategory::Immap.is_mmap_like());
-        assert!(ArgCategory::Ommap.is_mmap_like());
         assert!(ArgCategory::AsyncMmap.is_mmap_like());
         assert!(!ArgCategory::Scalar.is_mmap_like());
         assert!(!ArgCategory::Istream.is_mmap_like());

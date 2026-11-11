@@ -98,7 +98,7 @@ void LoopTask(tapa::istream<float>& q, tapa::mmap<float> c,
       Contains(file,
                "  for ( bool valid_f ; ! f . eot ( valid_f ) || ! valid_f ; ) "
                "_Pragma(\"HLS pipeline II = 1\") if ( valid_f )\n"
-               "#line 107 \"/proj/src/loop.cpp\"\n"
+               "#line 103 \"/proj/src/loop.cpp\"\n"
                " { q.read(); } FLUSH(f);"))
       << file;
   // The same-line neighbor stays spelled.
@@ -135,7 +135,7 @@ void Top(tapa::mmap<const float> a, tapa::mmap<float> c,
   EXPECT_TRUE(Contains(file,
                        "#ifdef TAPA_TASK_DEF_MacroTask\n"
                        "\n"
-                       "#line 81 \"/proj/src/body.cpp\"\n"
+                       "#line 77 \"/proj/src/body.cpp\"\n"
                        "void MacroTask(tapa::istream<float>& q, "
                        "tapa::mmap<float> c,\n"
                        "               unsigned long long n) { \n"))

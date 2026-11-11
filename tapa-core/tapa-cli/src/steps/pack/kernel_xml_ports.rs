@@ -25,10 +25,7 @@ pub(super) fn build_kernel_xml_ports(
             // A ring in device memory, at the argument's own M-AXI port.
             _ if port.ring.is_some() => PortCategory::MAxi,
             ArgCategory::Scalar => PortCategory::Scalar,
-            ArgCategory::Mmap
-            | ArgCategory::Immap
-            | ArgCategory::Ommap
-            | ArgCategory::AsyncMmap => PortCategory::MAxi,
+            ArgCategory::Mmap | ArgCategory::AsyncMmap => PortCategory::MAxi,
             // A frame port never reaches a kernel boundary (graph validation).
             ArgCategory::Istream | ArgCategory::Istreams | ArgCategory::Iframes => {
                 PortCategory::IStream

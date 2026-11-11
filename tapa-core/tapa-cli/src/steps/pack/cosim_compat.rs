@@ -1,30 +1,15 @@
-//! Cosim-compatibility frontier for the `xilinx-hls` zip archive.
+//! Cosim port metadata for the `xilinx-hls` zip archive.
 //!
 //! The zip `tapa pack` emits for the `xilinx-hls` target is the
 //! hardware-cosimulation package: it embeds `tapa.json`, which
 //! `frt-cosim` — a separate Cargo workspace under `fpga-runtime/` —
-//! projects into the simulator's argument list. Two archive-level
-//! contracts are therefore enforced here, at pack time, where a precise
-//! error can still reach the user *before* the archive ships:
-//!
-//! * [`stamp_cosim_port_metadata`] fills the optional per-port cosim
-//!   metadata (`stream_depth` / `mmap_addr_width` on
-//!   [`tapa_ir::port::Port`]) on the archive's embedded state copy, so
-//!   the runtime reads the values out of the schema instead of assuming
-//!   them.
-//! * [`check_cosim_supported_categories`] rejects top-level ports the
-//!   cosim projection cannot bind.
-//!
-//! Two-workspace seam: the cosim-consumable category set is enforced
-//! twice — here (pack time, the frontier) and in
-//! `fpga-runtime/frt-cosim/src/metadata/zip_pkg.rs` (projection time,
-//! the backstop for legacy or hand-built archives). Keep the two in
-//! sync when the supported set changes; the `frt-cbindgen` drift guard
-//! covers generated headers, not this seam.
+//! projects into the simulator's argument list.
+//! [`stamp_cosim_port_metadata`] fills the optional per-port cosim
+//! metadata (`stream_depth` / `mmap_addr_width` on
+//! [`tapa_ir::port::Port`]) on the archive's embedded state copy, so the
+//! runtime reads the values out of the schema instead of assuming them.
 
-use tapa_ir::{ArgCategory, WorkState};
-
-use crate::error::{CliError, Result};
+use tapa_ir::WorkState;
 
 /// FIFO depth stamped onto every top-level stream port in the archive.
 ///
@@ -49,42 +34,6 @@ pub const DEFAULT_STREAM_DEPTH: u32 = 16;
 /// size its model from the archive instead of assuming 64 itself.
 pub const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
 
-/// Reject top-level ports the cosim runtime cannot bind, before any
-/// archive byte (or custom-RTL overlay) is written.
-///
-/// `immap` / `ommap` are read-only / write-only mmaps; the `xilinx-hls`
-/// cosim flow has never wired them up. They remain supported on the
-/// `xilinx-vitis` (bitstream) path, which projects them as `m_axi`
-/// ports — so the error names the offending port(s), their category,
-/// and both remediations rather than just failing late inside the
-/// simulator projection.
-pub fn check_cosim_supported_categories(state: &WorkState) -> Result<()> {
-    let Some(top_task) = state.graph.tasks.get(&state.graph.top) else {
-        // A missing top task stays the archive reader's error to report
-        // (`top task '<top>' missing from tasks`); this frontier only
-        // owns the category check.
-        return Ok(());
-    };
-    let unsupported: Vec<String> = top_task
-        .ports
-        .iter()
-        .filter(|port| matches!(port.cat, ArgCategory::Immap | ArgCategory::Ommap))
-        .map(|port| format!("`{}` ({})", port.name, port.cat.as_str()))
-        .collect();
-    if unsupported.is_empty() {
-        return Ok(());
-    }
-    Err(CliError::InvalidArg(format!(
-        "unsupported port category for top-level port {}: the xilinx-hls \
-         (hardware cosimulation) flow binds only scalar, stream, mmap, and \
-         async_mmap arguments; change {} to `tapa::mmap` / \
-         `tapa::async_mmap`, or package with the xilinx-vitis target, \
-         where read-only / write-only mmaps are supported",
-        unsupported.join(", "),
-        if unsupported.len() == 1 { "it" } else { "them" },
-    )))
-}
-
 /// Return `state` with the cosim port metadata stamped on the top
 /// task's applicable ports, for the archive's embedded `tapa.json`
 /// copy.
@@ -103,7 +52,7 @@ pub fn stamp_cosim_port_metadata(state: &WorkState) -> WorkState {
         for port in &mut top_task.ports {
             if port.cat.is_stream() {
                 port.stream_depth.get_or_insert(DEFAULT_STREAM_DEPTH);
-            } else if port.cat.is_direct_mmap() {
+            } else if port.cat.is_mmap_like() {
                 port.mmap_addr_width.get_or_insert(DEFAULT_MMAP_ADDR_WIDTH);
             }
         }
@@ -158,8 +107,6 @@ mod tests {
             port("si", ArgCategory::Istream, "int", 32),
             port("so", ArgCategory::Ostreams, "int", 32),
             port("n", ArgCategory::Scalar, "int", 32),
-            port("ro", ArgCategory::Immap, "int", 32),
-            port("wo", ArgCategory::Ommap, "int", 32),
         ]);
         let stamped = stamp_cosim_port_metadata(&state);
         let ports = stamped_ports(&stamped);
@@ -171,16 +118,6 @@ mod tests {
             (ports[4].stream_depth, ports[4].mmap_addr_width),
             (None, None),
             "scalar carries neither field",
-        );
-        assert_eq!(
-            (ports[5].mmap_addr_width, ports[6].mmap_addr_width),
-            (None, None),
-            "immap/ommap are not direct mmaps and are not stamped",
-        );
-        assert_eq!(
-            (ports[5].stream_depth, ports[6].stream_depth),
-            (None, None),
-            "immap/ommap are not streams either",
         );
         for port in ports {
             if port.cat.is_stream() {
@@ -213,46 +150,5 @@ mod tests {
         state.graph.top = "Gone".to_owned();
         let stamped = stamp_cosim_port_metadata(&state);
         assert_eq!(stamped.graph.top, "Gone", "stamping is a no-op");
-    }
-
-    #[test]
-    fn frontier_accepts_every_supported_category() {
-        let state = state_with_ports(vec![
-            port("gmem", ArgCategory::Mmap, "int", 32),
-            port("amap", ArgCategory::AsyncMmap, "int", 32),
-            port("si", ArgCategory::Istream, "int", 32),
-            port("so", ArgCategory::Ostreams, "int", 32),
-            port("qi", ArgCategory::Istreams, "int", 32),
-            port("qo", ArgCategory::Ostream, "int", 32),
-            port("n", ArgCategory::Scalar, "int", 32),
-        ]);
-        check_cosim_supported_categories(&state).expect("all supported");
-    }
-
-    #[test]
-    fn frontier_rejects_immap_and_ommap_with_names_and_remediation() {
-        let state = state_with_ports(vec![
-            port("gmem", ArgCategory::Mmap, "int", 32),
-            port("ro_bank", ArgCategory::Immap, "int", 32),
-            port("wo_bank", ArgCategory::Ommap, "int", 32),
-        ]);
-        let err = check_cosim_supported_categories(&state)
-            .expect_err("immap/ommap must be rejected before the archive ships");
-        let text = err.to_string();
-        for needle in [
-            "unsupported port category",
-            "ro_bank",
-            "wo_bank",
-            "immap",
-            "ommap",
-            "xilinx-hls",
-            "xilinx-vitis",
-            "async_mmap",
-        ] {
-            assert!(
-                text.contains(needle),
-                "error must mention {needle}; got {text}"
-            );
-        }
     }
 }

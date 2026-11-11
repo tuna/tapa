@@ -38,10 +38,6 @@ TEST(Classify, MmapInterfaces) {
             TapaKind::kAsyncMmap);
   EXPECT_EQ(ClassifyFirstParam("void probe(tapa::hmap<float, 2, 8> m);"),
             TapaKind::kHmap);
-  EXPECT_EQ(ClassifyFirstParam("void probe(tapa::immap<float> m);"),
-            TapaKind::kImmap);
-  EXPECT_EQ(ClassifyFirstParam("void probe(tapa::ommap<float> m);"),
-            TapaKind::kOmmap);
 }
 
 TEST(Classify, ScalarAndReferencePeeling) {

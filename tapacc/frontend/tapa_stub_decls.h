@@ -53,10 +53,6 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   struct mmaps {};
   struct burst { template <typename O, typename N> burst(O, N); }; struct request_ostream { void write(long long); void write(const burst&); };
   template <typename T> struct async_mmap { request_ostream read_addr, write_addr; istream<T> read_data; ostream<T> write_data; istream<unsigned char> write_resp; };
-  template <typename T>
-  struct immap {};
-  template <typename T>
-  struct ommap {};
   template <typename T, int N, int S>
   struct hmap {};
   // The same overload set the real headers (tapa-lib/tapa/stub/task.h)

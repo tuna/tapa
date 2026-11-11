@@ -596,7 +596,7 @@ fn control_launch_width(
                     .to_string(),
             });
         }
-        if argument.cat.is_direct_mmap() {
+        if argument.cat.is_mmap_like() {
             width = width
                 .checked_add(64)
                 .ok_or_else(|| GraphError::ControlWidthOverflow {

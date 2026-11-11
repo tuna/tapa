@@ -128,18 +128,6 @@ class mmap {
   uint64_t size_;
 };
 
-template <typename T>
-class immap : public mmap<T> {
- public:
-  using mmap<T>::mmap;
-};
-
-template <typename T>
-class ommap : public mmap<T> {
- public:
-  using mmap<T>::mmap;
-};
-
 inline std::ostream& operator<<(std::ostream& os, const burst& value) {
   return os << value.offset << "+" << value.n;
 }
@@ -445,36 +433,30 @@ class hmap : public mmap<T> {
   }
 };
 
-// Every buffer-access tag gets a subclass of each single-buffer handle, and
-// they differ only in which handle they extend.
-#define TAPA_DEFINE_TAGGED_MMAP(tag, kind)                        \
-  template <typename T>                                           \
-  class tag##_##kind : public kind<T> {                           \
-   public:                                                        \
-    using kind<T>::kind;                                          \
-    tag##_##kind(const kind<T>& base) : kind<T>(base) {}          \
-                                                                  \
-    template <uint64_t N>                                         \
-    tag##_##kind<vec_t<T, N>> vectorized() const {                \
-      const auto view = kind<T>::template vectorized<N>();        \
-      return tag##_##kind<vec_t<T, N>>(view.data(), view.size()); \
-    }                                                             \
-    template <typename U>                                         \
-    tag##_##kind<U> reinterpret() const {                         \
-      const auto view = kind<T>::template reinterpret<U>();       \
-      return tag##_##kind<U>(view.data(), view.size());           \
-    }                                                             \
+// Every buffer-access tag gets a subclass of `mmap` that keeps the tag
+// through `vectorized()` and `reinterpret()`.
+#define TAPA_DEFINE_TAGGED_MMAP(tag)                            \
+  template <typename T>                                         \
+  class tag##_mmap : public mmap<T> {                           \
+   public:                                                      \
+    using mmap<T>::mmap;                                        \
+    tag##_mmap(const mmap<T>& base) : mmap<T>(base) {}          \
+                                                                \
+    template <uint64_t N>                                       \
+    tag##_mmap<vec_t<T, N>> vectorized() const {                \
+      const auto view = mmap<T>::template vectorized<N>();      \
+      return tag##_mmap<vec_t<T, N>>(view.data(), view.size()); \
+    }                                                           \
+    template <typename U>                                       \
+    tag##_mmap<U> reinterpret() const {                         \
+      const auto view = mmap<T>::template reinterpret<U>();     \
+      return tag##_mmap<U>(view.data(), view.size());           \
+    }                                                           \
   }
-
-#define TAPA_DEFINE_TAGGED_MMAP_FAMILY(kind)  \
-  TAPA_DEFINE_TAGGED_MMAP(placeholder, kind); \
-  TAPA_DEFINE_TAGGED_MMAP(read_only, kind);   \
-  TAPA_DEFINE_TAGGED_MMAP(write_only, kind);  \
-  TAPA_DEFINE_TAGGED_MMAP(read_write, kind)
-TAPA_DEFINE_TAGGED_MMAP_FAMILY(mmap);
-TAPA_DEFINE_TAGGED_MMAP_FAMILY(immap);
-TAPA_DEFINE_TAGGED_MMAP_FAMILY(ommap);
-#undef TAPA_DEFINE_TAGGED_MMAP_FAMILY
+TAPA_DEFINE_TAGGED_MMAP(placeholder);
+TAPA_DEFINE_TAGGED_MMAP(read_only);
+TAPA_DEFINE_TAGGED_MMAP(write_only);
+TAPA_DEFINE_TAGGED_MMAP(read_write);
 #undef TAPA_DEFINE_TAGGED_MMAP
 
 // `mmaps` carries an extra size parameter, so it does not fit the macro above.
@@ -666,26 +648,6 @@ template <typename T, typename Arg>
 struct accessor<mmap<T>&&, Arg> {
   using Self = mmap<T>&&;
   TAPA_DISALLOWED_VALUE_PARAM_BODY("mmap<T>")
-};
-template <typename T, typename Arg>
-struct accessor<immap<T>&, Arg> {
-  using Self = immap<T>&;
-  TAPA_DISALLOWED_VALUE_PARAM_BODY("immap<T>")
-};
-template <typename T, typename Arg>
-struct accessor<immap<T>&&, Arg> {
-  using Self = immap<T>&&;
-  TAPA_DISALLOWED_VALUE_PARAM_BODY("immap<T>")
-};
-template <typename T, typename Arg>
-struct accessor<ommap<T>&, Arg> {
-  using Self = ommap<T>&;
-  TAPA_DISALLOWED_VALUE_PARAM_BODY("ommap<T>")
-};
-template <typename T, typename Arg>
-struct accessor<ommap<T>&&, Arg> {
-  using Self = ommap<T>&&;
-  TAPA_DISALLOWED_VALUE_PARAM_BODY("ommap<T>")
 };
 template <typename T, uint64_t S, typename Arg>
 struct accessor<mmaps<T, S>&, Arg> {

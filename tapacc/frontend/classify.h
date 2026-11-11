@@ -29,8 +29,6 @@ enum class TapaKind {
   kMmap,
   kMmaps,
   kAsyncMmap,
-  kImmap,
-  kOmmap,
   kHmap,
 
   // special markers
@@ -68,11 +66,10 @@ constexpr bool IsInputStream(TapaKind k) {
 constexpr bool IsStreamInstance(TapaKind k) {
   return k == TapaKind::kStream || k == TapaKind::kStreams;
 }
-// mmap / mmaps / async_mmap / immap / ommap / hmap.
+// mmap / mmaps / async_mmap / hmap.
 constexpr bool IsMmapInterface(TapaKind k) {
   return k == TapaKind::kMmap || k == TapaKind::kMmaps ||
-         k == TapaKind::kAsyncMmap || k == TapaKind::kImmap ||
-         k == TapaKind::kOmmap || k == TapaKind::kHmap;
+         k == TapaKind::kAsyncMmap || k == TapaKind::kHmap;
 }
 constexpr bool IsAsyncMmap(TapaKind k) { return k == TapaKind::kAsyncMmap; }
 // mmaps / hmap (the array forms of mmap interfaces).

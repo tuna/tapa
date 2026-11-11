@@ -254,13 +254,6 @@ pub(super) fn build_child_instance_with_reset(
                     );
                 }
             }
-            ArgCategory::Immap | ArgCategory::Ommap => {
-                // Other categories: direct connection
-                port_args.push(PortArg::new(
-                    sanitize_array_name(child_port),
-                    Expr::ident(sanitize_array_name(parent)),
-                ));
-            }
         }
     }
 

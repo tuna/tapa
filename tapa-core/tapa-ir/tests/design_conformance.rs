@@ -219,8 +219,6 @@ fn all_category_variants_in_fixture() {
     assert!(cats.contains(&ArgCategory::AsyncMmap), "has async_mmap");
     assert!(cats.contains(&ArgCategory::Istreams), "has istreams");
     assert!(cats.contains(&ArgCategory::Ostreams), "has ostreams");
-    assert!(cats.contains(&ArgCategory::Immap), "has immap");
-    assert!(cats.contains(&ArgCategory::Ommap), "has ommap");
 }
 
 #[test]

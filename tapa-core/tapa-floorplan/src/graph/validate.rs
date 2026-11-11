@@ -308,7 +308,7 @@ pub(super) fn expected_memory_interfaces(
             .ok_or_else(|| GraphError::MissingTaskDef(definition.clone()))?;
         let task_vertex = task_endpoints[&(definition.clone(), endpoint_index)];
         for (child_port, argument) in &instance.args {
-            if !argument.cat.is_direct_mmap() {
+            if !argument.cat.is_mmap_like() {
                 continue;
             }
             let parent_port =

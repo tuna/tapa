@@ -265,23 +265,12 @@ fn stamped_metadata_survives_the_archive_json_round_trip() {
     );
 }
 
-/// `async_mmap` binds exactly like `mmap`; `immap` / `ommap` have never been
-/// wired up and must stay a loud error rather than silently binding as one.
+/// `async_mmap` binds exactly like `mmap`.
 #[test]
-fn mmap_categories_are_bound_or_rejected_explicitly() {
+fn async_mmap_binds_as_an_mmap() {
     let graph = task_graph(vec![port("a", ArgCategory::AsyncMmap, 32, None)]);
     let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("async_mmap projects");
     assert!(matches!(spec.args[0].kind, ArgKind::Mmap { .. }));
-
-    for cat in [ArgCategory::Immap, ArgCategory::Ommap] {
-        let graph = task_graph(vec![port("a", cat, 32, None)]);
-        let err = metadata::zip_pkg::spec_from_task_graph(&graph)
-            .expect_err("immap/ommap must be rejected");
-        assert!(
-            err.to_string().contains(cat.as_str()),
-            "error must name the unsupported category; got {err}",
-        );
-    }
 }
 
 /// An `hmap<T, N, S>` is a single host buffer that the host splits into `N`

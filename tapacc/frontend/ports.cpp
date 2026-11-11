@@ -44,10 +44,6 @@ const char* KindSpelling(TapaKind k) {
       return "tapa::mmap";
     case TapaKind::kMmaps:
       return "tapa::mmaps";
-    case TapaKind::kImmap:
-      return "tapa::immap";
-    case TapaKind::kOmmap:
-      return "tapa::ommap";
     case TapaKind::kHmap:
       return "tapa::hmap";
     default:
@@ -98,8 +94,6 @@ void CheckParamShape(const clang::ASTContext& ctx,
     }
     case TapaKind::kMmap:
     case TapaKind::kMmaps:
-    case TapaKind::kImmap:
-    case TapaKind::kOmmap:
     case TapaKind::kHmap:
       if (param->getType()->isReferenceType()) {
         auto builder = ReportCustomDiag(
@@ -140,8 +134,6 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
     switch (kind) {
       case TapaKind::kMmap:
-      case TapaKind::kImmap:
-      case TapaKind::kOmmap:
       case TapaKind::kAsyncMmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width, std::nullopt,
                              std::nullopt, std::nullopt, std::nullopt,

@@ -33,18 +33,6 @@
                     "name": "out",
                     "type": "float",
                     "width": 32
-                },
-                {
-                    "cat": "immap",
-                    "name": "ro",
-                    "type": "const int*",
-                    "width": 32
-                },
-                {
-                    "cat": "ommap",
-                    "name": "wo",
-                    "type": "int*",
-                    "width": 32
                 }
             ],
             "readable_name": "Top",

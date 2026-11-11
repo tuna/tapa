@@ -181,7 +181,7 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
             ArgCategory::AsyncMmap => {
                 add_async_mmap_ports(&mut ports, &task_port.name, task_port.width);
             }
-            ArgCategory::Mmap | ArgCategory::Immap | ArgCategory::Ommap => add_mmap_ports(
+            ArgCategory::Mmap => add_mmap_ports(
                 &mut ports,
                 &task_port.name,
                 task_port.width,

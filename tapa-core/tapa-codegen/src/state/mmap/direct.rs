@@ -237,7 +237,7 @@ fn validate_direct_child_mmap(
         )
     })?;
     let child_location = format!("child port `{}.{}`", slave.task, slave.port);
-    if !binding.cat.is_direct_mmap() {
+    if !binding.cat.is_mmap_like() {
         return Err(invalid_direct_mmap(
             interface,
             &format!(

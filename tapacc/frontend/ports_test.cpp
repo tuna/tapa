@@ -84,15 +84,12 @@ TEST(Ports, StreamsCarryChanCountNotExpanded) {
   EXPECT_FALSE(ports[0].chan_size.has_value());
 }
 
-TEST(Ports, AsyncMmapAndOmmap) {
-  auto b =
-      ParseProbe("void probe(tapa::async_mmap<int>& a, tapa::ommap<float> o);");
+TEST(Ports, AsyncMmap) {
+  auto b = ParseProbe("void probe(tapa::async_mmap<int>& a);");
   const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
-  ASSERT_EQ(ports.size(), 2u);
+  ASSERT_EQ(ports.size(), 1u);
   EXPECT_STREQ(TapaKindCat(ports[0].kind), "async_mmap");
   EXPECT_EQ(ports[0].ctype, "int*");
-  EXPECT_STREQ(TapaKindCat(ports[1].kind), "ommap");
-  EXPECT_EQ(ports[1].ctype, "float*");
 }
 
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
@@ -154,10 +151,6 @@ TEST(Ports, MmapFamilyRequiresValue) {
       "void probe(tapa::mmap<int>&& m);",
       "void probe(tapa::mmaps<int, 2>& m);",
       "void probe(tapa::mmaps<int, 2>&& m);",
-      "void probe(tapa::immap<int>& m);",
-      "void probe(tapa::immap<int>&& m);",
-      "void probe(tapa::ommap<int>& m);",
-      "void probe(tapa::ommap<int>&& m);",
       "void probe(tapa::hmap<int, 4, 8>& m);",
       "void probe(tapa::hmap<int, 4, 8>&& m);",
   };

@@ -459,7 +459,7 @@ pub(crate) fn add_crossbar_slave_id_padding(
 ) {
     let mut assigns = Vec::new();
     for arg in args.values() {
-        if !arg.cat.is_direct_mmap() {
+        if !arg.cat.is_mmap_like() {
             continue;
         }
         let Some(parent) = arg.name() else {

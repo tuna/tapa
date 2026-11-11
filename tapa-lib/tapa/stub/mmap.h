@@ -37,18 +37,6 @@ class mmap {
   mmap<U> reinterpret() const;
 };
 
-template <typename T>
-class immap : public mmap<T> {
- public:
-  using mmap<T>::mmap;
-};
-
-template <typename T>
-class ommap : public mmap<T> {
- public:
-  using mmap<T>::mmap;
-};
-
 namespace internal {
 
 // An address channel of an async_mmap: an element index or a burst.

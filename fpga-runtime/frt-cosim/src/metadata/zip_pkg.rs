@@ -54,13 +54,9 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                 dir: stream_dir(port),
                 protocol: StreamProtocol::ApFifo,
             },
-            // The pack-time category check also rejects these; retain the
-            // runtime backstop for legacy or hand-built archives. A frame
-            // port never reaches a kernel boundary (graph validation).
-            ArgCategory::Immap
-            | ArgCategory::Ommap
-            | ArgCategory::Iframes
-            | ArgCategory::Oframes => {
+            // A frame port never reaches a kernel boundary (graph
+            // validation); this backstops hand-built archives.
+            ArgCategory::Iframes | ArgCategory::Oframes => {
                 return Err(CosimError::Metadata(format!(
                     "unsupported port category '{}'",
                     port.cat.as_str()

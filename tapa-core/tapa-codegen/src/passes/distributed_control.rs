@@ -963,7 +963,7 @@ fn build_payload_fields(
                 scalar_driver(&arg.arg),
                 resolve_scalar_width(state, child_name, port_name)?,
             )
-        } else if arg.cat.is_direct_mmap() {
+        } else if arg.cat.is_mmap_like() {
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
             (

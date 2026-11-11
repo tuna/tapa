@@ -187,7 +187,7 @@ impl TopologyWithRtl {
         for (child_task_name, instances) in &task.tasks {
             for (inst_idx, instance) in instances.iter().enumerate() {
                 for (child_port_name, arg) in &instance.args {
-                    if !arg.cat.is_direct_mmap() {
+                    if !arg.cat.is_mmap_like() {
                         continue;
                     }
 

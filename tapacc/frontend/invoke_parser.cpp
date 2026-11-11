@@ -484,8 +484,7 @@ void ParseInvocations(
                               BitWidth(uc.ctx, type), TapaKind::kNotTapa);
           };
 
-          if (pk == TapaKind::kMmap || pk == TapaKind::kImmap ||
-              pk == TapaKind::kOmmap || pk == TapaKind::kAsyncMmap) {
+          if (pk == TapaKind::kMmap || pk == TapaKind::kAsyncMmap) {
             if (decl_ref != nullptr &&
                 llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) &&
                 ClassifyTapaType(decl_ref->getType()) == TapaKind::kAsyncMmap) {

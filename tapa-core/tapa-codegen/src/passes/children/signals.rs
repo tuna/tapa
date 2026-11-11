@@ -355,8 +355,8 @@ fn pipeline_instance_signals(
     args: &BTreeMap<String, Arg>,
 ) {
     for (port_name, arg) in args {
-        // Streams and Immap/Ommap contribute no pipeline stage or portargs.
-        let is_mmap = arg.cat.is_direct_mmap();
+        // Streams contribute no pipeline stage or portargs.
+        let is_mmap = arg.cat.is_mmap_like();
         let width = if arg.cat.is_scalar() {
             resolve_child_scalar_width(stage, child_name, port_name)
         } else if is_mmap {
@@ -450,7 +450,7 @@ fn build_mmap_bindings(
     // One per-instance binding per mmap argument for crossbar routing.
     let mut mmap_bindings = ChildMmapBindings::default();
     for (child_port, arg) in inst.args {
-        if arg.cat.is_direct_mmap() {
+        if arg.cat.is_mmap_like() {
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
             let binding = if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
