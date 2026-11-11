@@ -276,6 +276,7 @@ These run the floorplanned design through the device's implementation backend to
 | `--vivado-threads N` | Per-link Vivado synthesis jobs (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `2`). Lower it on memory-constrained hosts. |
 | `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; `xilinx-slash` only). |
 | `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; `xilinx-slash` only). |
+| `--vpp PROGRAM` | Vitis linker on the tool host (default `v++`; `xilinx-vitis` only). |
 
 ### Example
 

@@ -312,6 +312,11 @@ pub struct FloorplanArgs {
     /// Vivado executable on the tool host, for implementing `xilinx-slash`.
     #[arg(long, default_value = "vivado")]
     pub vivado: String,
+
+    /// Vitis linker executable on the tool host, for implementing
+    /// `xilinx-vitis`.
+    #[arg(long, default_value = "v++")]
+    pub vpp: String,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -553,6 +558,7 @@ mod tests {
             vivado_threads: 2,
             slashkit: "slashkit".to_string(),
             vivado: "vivado".to_string(),
+            vpp: "v++".to_string(),
         }
     }
 

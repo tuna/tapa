@@ -124,6 +124,7 @@ pub(super) struct ImplementationTarget {
     vivado_threads: u32,
     slashkit: String,
     vivado: String,
+    vpp: String,
     flow: Target,
 }
 
@@ -179,6 +180,7 @@ pub(super) fn validate_target(
         vivado_threads: args.vivado_threads,
         slashkit: args.slashkit.clone(),
         vivado: args.vivado.clone(),
+        vpp: args.vpp.clone(),
         flow,
     })
 }
@@ -381,6 +383,7 @@ fn try_implement_one(
         .platform(target.platform.clone())
         .target_mhz(target.target_mhz)
         .vivado_threads(target.vivado_threads)
+        .vpp(target.vpp.clone())
         .mode(VitisLinkMode::PostRouteTiming)
         .work_dir(crate::util::utf8(&paths.link))
         .artifacts_dir(crate::util::utf8(&paths.artifacts))
@@ -1245,6 +1248,7 @@ ap_clk              0.400        0.000
         let args = super::super::tests::test_args();
         let target = validate_target(&state, &args).expect("valid target");
         assert_eq!(target.platform, "xilinx_u280_test");
+        assert_eq!(target.vpp, "v++");
         assert_eq!(target.target_mhz, 300);
 
         for platform in ["", "/opt/xilinx/platform", "platform.xpfm"] {
