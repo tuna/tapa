@@ -19,8 +19,6 @@ pub const FRT_VERILATOR_BUILD_LOCK: &str = "FRT_VERILATOR_BUILD_LOCK";
 
 pub const FRT_STREAM_DEBUG: &str = "FRT_STREAM_DEBUG";
 
-pub const FRT_SHM_MIN_DEPTH: &str = "FRT_SHM_MIN_DEPTH";
-
 pub const FRT_XOCL_BDF: &str = "FRT_XOCL_BDF";
 
 // VRT board selection and optional hardware/simulation loader overrides.

@@ -50,15 +50,8 @@ pub extern "C" fn frt_shmq_create(
     out_path: *mut c_char,
     out_path_len: usize,
 ) -> *mut c_void {
-    static MIN_DEPTH: std::sync::OnceLock<u32> = std::sync::OnceLock::new();
     clear_last_error();
-    let min = *MIN_DEPTH.get_or_init(|| {
-        std::env::var(frt_shm::env::FRT_SHM_MIN_DEPTH)
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(1)
-    });
-    let depth = depth.max(min);
+    let depth = depth.max(1);
     let width = width.max(1);
     let queue = match SharedMemoryQueue::create("stream", depth, width) {
         Ok(queue) => queue,
