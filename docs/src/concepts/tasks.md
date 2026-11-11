@@ -100,8 +100,8 @@ terminate on program completion.
   drops the `assert`s, as an `NDEBUG` build does.
 - `async_mmap` channel operations (`read_addr`, `read_data`, etc.) are
   leaf-task-only.
-- For the `xilinx-vitis` target (the default), the top-level task must be an
-  upper-level task — it cannot be a leaf task.
+- For the `xilinx-vitis` target (the default) and `xilinx-slash`, the
+  top-level task must be an upper-level task — it cannot be a leaf task.
 - Leaf templated tasks (template functions that compute directly) are
   supported. `tapa analyze` rejects a templated task that invokes other
   tasks.

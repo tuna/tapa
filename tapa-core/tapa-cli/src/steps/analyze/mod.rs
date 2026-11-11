@@ -32,6 +32,19 @@ mod run_tapacc;
 use aie_pins::{parse_aie_location, parse_aie_plio, AieLocationArg, AiePlioArg};
 use run_tapacc::run_tapacc;
 
+/// Vitis and SLASH package TAPA's generated top, which a leaf top lacks;
+/// only `xilinx-hls` builds one.
+fn check_leaf_top(graph: &Graph, top: &str, flow: AnalyzeTarget) -> Result<()> {
+    if is_top_leaf(graph, top) && flow != AnalyzeTarget::XilinxHls {
+        return Err(CliError::InvalidArg(format!(
+            "the top task is a leaf task; target `{}` is not supported \
+             (it packages an upper top). Rerun with `--target xilinx-hls`.",
+            flow.as_str()
+        )));
+    }
+    Ok(())
+}
+
 /// True when the top task in `graph` is a leaf-level task.
 fn is_top_leaf(graph: &Graph, top: &str) -> bool {
     graph
@@ -289,14 +302,7 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
         crate::aie::report_crossings(&partition);
     }
 
-    if is_top_leaf(&graph, &args.top) && flow == AnalyzeTarget::XilinxVitis {
-        return Err(CliError::InvalidArg(
-            "the top task is a leaf task; target `xilinx-vitis` is not supported \
-             (Vitis requires an upper top for kernel.xml generation). \
-             Rerun with `--target xilinx-hls`."
-                .to_string(),
-        ));
-    }
+    check_leaf_top(&graph, &args.top, flow)?;
 
     // Seed the work dir's one state file. `synth` annotates the graph in
     // place with post-synthesis results and fills in `flow`.
@@ -324,6 +330,16 @@ mod tests {
         assert!(!is_top_leaf(&g, "T"));
         // Missing top is treated as upper for safety.
         assert!(!is_top_leaf(&g, "DoesNotExist"));
+    }
+
+    #[test]
+    fn only_xilinx_hls_takes_a_leaf_top() {
+        let g: Graph = serde_json::from_value(json!({"target": "xilinx-hls", "tasks": {"T": {"level": "lower", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "T", "ports": [], "tasks": {}, "fifos": {}}}, "top": "T"})).unwrap();
+        check_leaf_top(&g, "T", AnalyzeTarget::XilinxHls).expect("xilinx-hls builds a leaf top");
+        for flow in [AnalyzeTarget::XilinxVitis, AnalyzeTarget::XilinxSlash] {
+            let error = check_leaf_top(&g, "T", flow).expect_err("needs an upper top");
+            assert!(error.to_string().contains(flow.as_str()), "{error}");
+        }
     }
 
     #[test]
