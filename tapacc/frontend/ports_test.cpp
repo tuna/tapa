@@ -92,6 +92,27 @@ TEST(Ports, AsyncMmap) {
   EXPECT_EQ(ports[0].ctype, "int*");
 }
 
+// The graph records an hmap's chan_size in 32 bits: the largest that fits
+// passes through, and one past it is an error rather than a wrapped value.
+TEST(Ports, HmapChanSizeFitsIn32Bits) {
+  auto fits = ParseProbe("void probe(tapa::hmap<char, 2, 4294967295LL> h);");
+  const std::vector<Port> ports =
+      BuildPorts(fits.ast->getASTContext(), fits.fn);
+  ASSERT_EQ(ports.size(), 1u);
+  ASSERT_TRUE(ports[0].chan_size.has_value());
+  EXPECT_EQ(*ports[0].chan_size, 4294967295u);
+
+  for (const char* signature : {
+           "void probe(tapa::hmap<char, 2, 4294967296LL> h);",
+           "void probe(tapa::hmap<char, 2, -1> h);",
+       }) {
+    auto b = ParseProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",

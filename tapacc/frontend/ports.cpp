@@ -1,5 +1,7 @@
 #include "ports.h"
 
+#include <cstdint>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -21,6 +23,22 @@ std::optional<uint32_t> IntArg(const clang::ParmVarDecl* param, unsigned idx) {
     return static_cast<uint32_t>(*n);
   }
   return std::nullopt;
+}
+
+// An hmap parameter's channel size, which the graph records in 32 bits;
+// one that does not fit is an error rather than a wrapped value.
+std::optional<uint32_t> ChanSize(const clang::ASTContext& ctx,
+                                 const clang::ParmVarDecl* param) {
+  const auto n = IntTemplateArg(param->getType(), 2);
+  if (!n) return std::nullopt;
+  if (*n < 0 || *n > std::numeric_limits<uint32_t>::max()) {
+    ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+                     "tapa::hmap parameter '%0' has chan_size %1; a channel "
+                     "holds at most 2^32 - 1 elements")
+        << param->getNameAsString() << std::to_string(*n);
+    return std::nullopt;
+  }
+  return static_cast<uint32_t>(*n);
 }
 
 // Exact `tapa::` spelling of a port kind, for diagnostics.
@@ -154,8 +172,9 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       case TapaKind::kHmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width,
-                             IntArg(param, 1), IntArg(param, 2), std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt});
+                             IntArg(param, 1), ChanSize(ctx, param),
+                             std::nullopt, std::nullopt, std::nullopt,
+                             std::nullopt});
         break;
 
       case TapaKind::kIStream:
