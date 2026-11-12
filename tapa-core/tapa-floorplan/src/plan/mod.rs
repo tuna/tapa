@@ -316,6 +316,9 @@ fn finish_plan(
     })
 }
 
+/// The table for the synthesized part, refined to a SLASH shell when the
+/// platform names one (`slash_v80_service` → `service`). Other platforms
+/// leave the part-only default: the service shell on V80.
 fn device_for_state(state: &WorkState) -> Result<crate::device::model::Device, PlanError> {
     let part = state.flow.part_num.as_deref().ok_or(PlanError::NoPartNum)?;
     let shell = state

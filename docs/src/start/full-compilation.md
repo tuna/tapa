@@ -102,11 +102,11 @@ tapa -w work link --package vecadd.zip \
 
 `slash_v80_service` supplies part `xcv80-lsva4737-2MHP-e-S` and a 3.33 ns
 (300 MHz) default clock. Use `slash_v80_compute` for the compute shell, with
-the same 3.33 ns (300 MHz) default and `DDR0`–`DDR11` connectivity. This runs HLS,
-optionally TAPA's SLR placement and crossing-pipeline insertion, then
-SLASH/Vivado implementation. If routing
-misses the requested clock, the link warns and records the achieved frequency
-in the vbin instead of failing. Run the resulting `.vbin` through VRT with
+the same 3.33 ns (300 MHz) default and `DDR0`–`DDR11` connectivity. This
+runs HLS, optionally TAPA's SLR placement and crossing-pipeline insertion,
+then SLASH/Vivado implementation. If routing misses the requested clock, the
+link warns and records the achieved frequency in the vbin instead of
+failing. Run the resulting `.vbin` through VRT with
 `--vrt_bdf`; see [Alveo V80 with SLASH](../howto/v80.md) for prerequisites
 and the full flow.
 

@@ -2,7 +2,8 @@
 //!
 //! The per-part tables are checked-in JSON, embedded with `include_str!` so
 //! selection never depends on the source tree being present at runtime. Adding
-//! a device is a new `*.json` plus one [`TABLES`] entry.
+//! a device is a new `*.json` plus one [`TABLES`] entry; the V80 file is the
+//! exception, holding one table per SLASH shell.
 
 use crate::device::model::{Device, DeviceValidationError};
 
@@ -20,6 +21,7 @@ const TABLES: &[(&str, &str)] = &[
     ("v80", include_str!("tables/v80.json")),
 ];
 
+/// The V80 table file: one device per SLASH shell, keyed `service`/`compute`.
 #[derive(serde::Deserialize)]
 struct V80Shells {
     service: Device,
