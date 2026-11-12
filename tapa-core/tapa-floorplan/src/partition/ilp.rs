@@ -67,9 +67,8 @@ pub enum PartitionStrategy {
 /// rather than once per (vertex, region, rung).
 type RegionAreas = BTreeMap<Coor, Area>;
 
-/// Per-region, per-resource fractional limits.  Region names use
-/// `SLOT_X..._TO_SLOT_X...`.
-type RegionResourceLimits = BTreeMap<String, BTreeMap<Resource, f64>>;
+/// Per-region, per-resource fractional limits.
+type RegionResourceLimits = BTreeMap<Coor, BTreeMap<Resource, f64>>;
 
 /// Constraints that narrow candidate domains or override resource limits.
 ///
@@ -223,7 +222,7 @@ fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> Placemen
     let max_resource_limits = row_regions(device)
         .into_iter()
         .chain(atomic_regions(device))
-        .map(|region| (region.region_name(), by_resource.clone()))
+        .map(|region| (region, by_resource.clone()))
         .collect();
     PlacementConstraints {
         max_resource_limits,
@@ -350,7 +349,7 @@ fn validate_config(config: &PlacementConfig) -> Result<(), IlpError> {
     }
     for (region, by_resource) in &config.constraints.max_resource_limits {
         for &value in by_resource.values() {
-            validate_limit("maximum", region, value, true)?;
+            validate_limit("maximum", &region.region_name(), value, true)?;
         }
     }
     Ok(())
@@ -1265,7 +1264,8 @@ fn add_resource_constraints(
             .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
         for resource in Resource::ALL {
             if !device.plans_resource(resource) {
-                // V80 BRAM/URAM legality is delegated to Vivado.
+                // Resource classes excluded by this table are not placement
+                // constraints; Vivado remains the final legality authority.
                 continue;
             }
             let mut terms = SparseRow::new();
@@ -1338,7 +1338,7 @@ fn add_crossing_head_terms(
 
 fn lookup_limit(limits: &RegionResourceLimits, region: &Coor, resource: Resource) -> Option<f64> {
     limits
-        .get(&region.region_name())
+        .get(region)
         .and_then(|by_resource| by_resource.get(&resource))
         .copied()
 }

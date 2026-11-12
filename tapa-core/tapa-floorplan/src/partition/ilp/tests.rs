@@ -1041,7 +1041,7 @@ fn resource_overrides_use_total_region_capacity() {
     let mut constraints = PlacementConstraints::default();
     constraints
         .max_resource_limits
-        .insert(region.region_name(), BTreeMap::from([(Resource::Lut, 0.5)]));
+        .insert(region, BTreeMap::from([(Resource::Lut, 0.5)]));
     let model = FloorplanModel::build(
         &graph,
         &device,
@@ -1504,7 +1504,7 @@ fn invalid_usage_limit_is_rejected_before_model_building() {
     let zero_override = PlacementConfig {
         constraints: PlacementConstraints {
             max_resource_limits: BTreeMap::from([(
-                Coor::slot(0, 0).region_name(),
+                Coor::slot(0, 0),
                 BTreeMap::from([(Resource::Lut, 0.0)]),
             )]),
         },
