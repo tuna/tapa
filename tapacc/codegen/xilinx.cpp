@@ -511,8 +511,8 @@ void XilinxBackend::LowerPipeline(int ii, const std::string& style,
     AddPragmaToBody(edits, body, "HLS pipeline off");
     return;
   }
-  // stp = stable (flushable) pipeline, flp = free-running: a real
-  // scheduling-semantics difference, never dropped.
+  // Pass the documented style through unchanged: stp = stall, flp =
+  // flushable, frp = free-running.
   if (!style.empty()) pragma += " style = " + style;
   // The omitted sentinel (0xFFFFFFFF) arrives here as -1, leaving the
   // vendor its default initiation interval.

@@ -119,7 +119,7 @@ class ProgramBuilder {
   // Materializes the guarded mirror accumulated by RewriteTreeTu.
   bool WriteTree(std::string* error);
 
-  // The single merged task graph, in today's field order and spelling.
+  // The single merged task graph, in the stable field order and spelling.
   nlohmann::json EmitJson() const;
 
   const std::string& top() const { return top_; }

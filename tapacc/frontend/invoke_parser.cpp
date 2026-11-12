@@ -1,14 +1,12 @@
 #include "invoke_parser.h"
 
 #include <map>
-#include <memory>
 #include <optional>
 #include <set>
 #include <string>
 
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "clang/AST/Mangle.h"
 #include "clang/Lex/Lexer.h"
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APSInt.h"

@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "clang/AST/ASTContext.h"
-#include "clang/Basic/FileManager.h"
 #include "clang/Basic/LangOptions.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"

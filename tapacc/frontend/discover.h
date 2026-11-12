@@ -4,11 +4,9 @@
 #include <utility>
 #include <vector>
 
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "llvm/ADT/StringRef.h"
 
 #include "program.h"
 

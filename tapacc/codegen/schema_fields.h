@@ -25,10 +25,9 @@ inline constexpr const char* kFieldTasks = "tasks";
 inline constexpr int kSchemaVersion = 4;
 
 // ── Task ────────────────────────────────────────────────────────────
-// The per-task source manifest (schema v3). `srcs` names rewritten-tree
-// files relative to the `-emit-dir` tapacc writes them into;
-// `include_dirs` and `defines` are tree-relative include paths and the
-// task's guard macros, both empty until the rewritten tree lands.
+// The per-task source manifest. `srcs` names rewritten-tree files relative
+// to the `-emit-dir` tapacc writes them into; `include_dirs` and `defines`
+// are tree-relative include paths and the task's guard macros.
 inline constexpr const char* kFieldSrcs = "srcs";
 inline constexpr const char* kFieldIncludeDirs = "include_dirs";
 inline constexpr const char* kFieldDefines = "defines";

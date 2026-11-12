@@ -73,8 +73,7 @@ const char* QualifiedSuggestion(llvm::StringRef name, llvm::StringRef rest,
   if (name.equals_insensitive("pipeline")) {
     // `off` disables pipelining, spelled the way flatten(false) is.
     if (has("off")) return "[[tapa::pipeline(false)]]";
-    // Vitis deprecated `enable_flush` in favour of `style = flp`, which the
-    // attribute carries as its style argument.
+    // Map the vendor's `enable_flush` qualifier to the flushable style.
     if (has("enable_flush")) return "[[tapa::pipeline(II, \"flp\")]]";
   }
   if (name.equals_insensitive("stream") && has("off")) {
