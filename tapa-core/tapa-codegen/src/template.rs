@@ -28,17 +28,23 @@ fn add_m_axi_ports(ports: &mut Vec<Port>, name: &str, data_width: u32) {
     ));
 }
 
-fn stream_names(name: &str, cat: ArgCategory, chan_count: Option<u32>) -> Vec<String> {
+/// The streams of a stream port, each as its name and the base of its peek
+/// ports. Vitis HLS spells channel `idx` of a multi-channel port's peek
+/// ports `{name}_peek_{idx}`, which is where a parent binds them.
+fn stream_names(name: &str, cat: ArgCategory, chan_count: Option<u32>) -> Vec<(String, String)> {
     let name = sanitize_array_name(name);
     let chan_count = chan_count.unwrap_or(1);
     if matches!(cat, ArgCategory::Istreams | ArgCategory::Ostreams) && chan_count > 1 {
-        (0..chan_count).map(|idx| format!("{name}_{idx}")).collect()
+        (0..chan_count)
+            .map(|idx| (format!("{name}_{idx}"), format!("{name}_peek_{idx}")))
+            .collect()
     } else {
-        vec![name]
+        let peek = stream_peek_port_name(&name, "");
+        vec![(name, peek)]
     }
 }
 
-fn add_istream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
+fn add_istream_ports(ports: &mut Vec<Port>, name: &str, peek: &str, width: u32) {
     let stream_width = stream_data_wire_width(width);
     ports.extend([
         port_with_width(
@@ -48,17 +54,13 @@ fn add_istream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
         ),
         simple_port(stream_port_name(name, "_empty_n"), Direction::Input),
         simple_port(stream_port_name(name, "_read"), Direction::Output),
-        port_with_width(
-            stream_peek_port_name(name, "_dout"),
-            Direction::Input,
-            stream_width,
-        ),
-        simple_port(stream_peek_port_name(name, "_empty_n"), Direction::Input),
-        simple_port(stream_peek_port_name(name, "_read"), Direction::Output),
+        port_with_width(format!("{peek}_dout"), Direction::Input, stream_width),
+        simple_port(format!("{peek}_empty_n"), Direction::Input),
+        simple_port(format!("{peek}_read"), Direction::Output),
     ]);
 }
 
-fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
+fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, peek: &str, width: u32) {
     let stream_width = stream_data_wire_width(width);
     ports.extend([
         port_with_width(
@@ -68,11 +70,7 @@ fn add_ostream_ports(ports: &mut Vec<Port>, name: &str, width: u32) {
         ),
         simple_port(stream_port_name(name, "_full_n"), Direction::Input),
         simple_port(stream_port_name(name, "_write"), Direction::Output),
-        port_with_width(
-            stream_peek_port_name(name, ""),
-            Direction::Input,
-            stream_width,
-        ),
+        port_with_width(peek, Direction::Input, stream_width),
     ]);
 }
 
@@ -109,11 +107,19 @@ fn add_addr_ostream_ports(ports: &mut Vec<Port>, name: &str) {
 
 fn add_async_mmap_ports(ports: &mut Vec<Port>, name: &str, data_width: u32) {
     let name = sanitize_array_name(name);
+    let channel = |tag: &str| {
+        let stream = format!("{name}_{tag}");
+        let peek = stream_peek_port_name(&stream, "");
+        (stream, peek)
+    };
     add_addr_ostream_ports(ports, &format!("{name}_read_addr"));
-    add_istream_ports(ports, &format!("{name}_read_data"), data_width);
+    let (stream, peek) = channel("read_data");
+    add_istream_ports(ports, &stream, &peek, data_width);
     add_addr_ostream_ports(ports, &format!("{name}_write_addr"));
-    add_ostream_ports(ports, &format!("{name}_write_data"), data_width);
-    add_istream_ports(ports, &format!("{name}_write_resp"), 8);
+    let (stream, peek) = channel("write_data");
+    add_ostream_ports(ports, &stream, &peek, data_width);
+    let (stream, peek) = channel("write_resp");
+    add_istream_ports(ports, &stream, &peek, 8);
 }
 
 fn add_mmap_ports(ports: &mut Vec<Port>, name: &str, width: u32, chan_count: Option<u32>) {
@@ -167,8 +173,10 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
                 } else {
                     add_ostream_ports
                 };
-                for stream in stream_names(&task_port.name, task_port.cat, task_port.chan_count) {
-                    add_stream_ports(&mut ports, &stream, task_port.width);
+                for (stream, peek) in
+                    stream_names(&task_port.name, task_port.cat, task_port.chan_count)
+                {
+                    add_stream_ports(&mut ports, &stream, &peek, task_port.width);
                 }
             }
             ArgCategory::Iframes | ArgCategory::Oframes => add_frames_ports(

@@ -337,6 +337,68 @@ fn test_generate_rtl_template_task() {
     );
 }
 
+/// A custom-RTL task's template declares the peek ports of each channel of
+/// a stream array where its parent binds them, as Vitis HLS spells them:
+/// a peeking implementation would otherwise read unconnected inputs.
+#[test]
+fn test_generate_rtl_template_stream_array_peek_ports_are_bound() {
+    let ignored = |name: &str, cat: &str, port: &str| {
+        task(name, "lower", |t| {
+            t["synth"] = serde_json::json!("ignore");
+            t["ports"] = serde_json::json!([
+                {"cat": cat, "name": port, "type": "int", "width": 32, "chan_count": 2}
+            ]);
+        })
+    };
+    let top = task("top", "upper", |t| {
+        t["tasks"] = serde_json::json!({
+            "prod": [{"args": {
+                "o[0]": {"arg": "q[0]", "cat": "ostream"},
+                "o[1]": {"arg": "q[1]", "cat": "ostream"}
+            }}],
+            "cons": [{"args": {
+                "i[0]": {"arg": "q[0]", "cat": "istream"},
+                "i[1]": {"arg": "q[1]", "cat": "istream"}
+            }}]
+        });
+        t["fifos"] = serde_json::json!({
+            "q[0]": {"depth": 2, "produced_by": ["prod", 0], "consumed_by": ["cons", 0]},
+            "q[1]": {"depth": 2, "produced_by": ["prod", 0], "consumed_by": ["cons", 0]}
+        });
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[
+            ("top", top),
+            ("prod", ignored("prod", "ostreams", "o")),
+            ("cons", ignored("cons", "istreams", "i")),
+        ],
+    );
+
+    let manifest = run_manifest(prog, &[], &[("top", &handshake_module_src("top"))]);
+
+    check(
+        &manifest.files()["template/cons.v"],
+        &[
+            "input wire [32:0] i_peek_1_dout",
+            "input wire i_peek_1_empty_n",
+        ],
+        &[],
+    );
+    check(
+        rtl_file(&manifest, "top.v"),
+        &[
+            ".i_peek_0_dout(q_0_dout)",
+            ".i_peek_0_empty_n(q_0_empty_n)",
+            ".i_peek_1_dout(q_1_dout)",
+            ".i_peek_1_empty_n(q_1_empty_n)",
+            ".o_peek_1('d0)",
+        ],
+        &[],
+    );
+}
+
 // ------------------------------------------------------------------
 // 3. Top task removes peek ports from istream
 // ------------------------------------------------------------------
