@@ -25,15 +25,8 @@ pub struct LinkArgs {
     /// Hardware bitstream (`.xclbin`) or SLASH hardware/simulation VBIN output.
     #[arg(short, long)]
     pub output: PathBuf,
-    /// SLASH executable on the tool host.
-    #[arg(long, default_value = "slashkit")]
-    pub slashkit: String,
-    /// Vivado executable on the tool host.
-    #[arg(long, default_value = "vivado")]
-    pub vivado: String,
-    /// Vitis linker/packager executable on the tool host.
-    #[arg(long, default_value = "v++")]
-    pub vpp: String,
+    #[command(flatten)]
+    pub programs: ToolPrograms,
     /// Requested clock in MHz; defaults to the packaged flow's synthesized clock.
     #[arg(long)]
     pub clock_mhz: Option<u32>,
@@ -47,6 +40,59 @@ pub struct LinkArgs {
     /// a top on the AI Engine.
     #[arg(long)]
     pub sim: bool,
+}
+
+/// The tool-host programs a link runs. Each belongs to one backend, and
+/// naming one for the other backend is an error rather than a flag that is
+/// silently ignored.
+#[derive(Debug, Clone, Default, clap::Args)]
+pub struct ToolPrograms {
+    /// SLASH linker on the tool host [default: slashkit]; `xilinx-slash` only.
+    #[arg(long)]
+    pub slashkit: Option<String>,
+    /// Vivado on the tool host [default: vivado]; `xilinx-slash` only.
+    #[arg(long)]
+    pub vivado: Option<String>,
+    /// Vitis linker/packager on the tool host [default: v++]; `xilinx-vitis` only.
+    #[arg(long)]
+    pub vpp: Option<String>,
+}
+
+impl ToolPrograms {
+    /// The `v++` of a Vitis link; SLASH's programs are rejected.
+    pub(crate) fn vitis(&self) -> Result<String> {
+        for (flag, value) in [("--slashkit", &self.slashkit), ("--vivado", &self.vivado)] {
+            if value.is_some() {
+                return Err(wrong_target(flag, Target::XilinxSlash, Target::XilinxVitis));
+            }
+        }
+        Ok(self.vpp.clone().unwrap_or_else(|| "v++".to_string()))
+    }
+
+    /// The `slashkit` and `vivado` of a SLASH link; `--vpp` is rejected.
+    pub(crate) fn slash(&self) -> Result<(String, String)> {
+        if self.vpp.is_some() {
+            return Err(wrong_target(
+                "--vpp",
+                Target::XilinxVitis,
+                Target::XilinxSlash,
+            ));
+        }
+        Ok((
+            self.slashkit
+                .clone()
+                .unwrap_or_else(|| "slashkit".to_string()),
+            self.vivado.clone().unwrap_or_else(|| "vivado".to_string()),
+        ))
+    }
+}
+
+fn wrong_target(flag: &str, applies_to: Target, target: Target) -> CliError {
+    CliError::InvalidArg(format!(
+        "`{flag}` names a `{}` program, but this design targets `{}`",
+        applies_to.as_str(),
+        target.as_str(),
+    ))
 }
 
 #[derive(Debug)]
@@ -168,7 +214,7 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                     .temp_dir(link_work.join("vitis.tmp"))
                     .vivado_threads(args.jobs)
                     .mode(VitisLinkMode::Full)
-                    .vpp(args.vpp.clone())
+                    .vpp(args.programs.vitis()?)
                     .floorplan_xdc(args.floorplan_xdc.as_ref().map(crate::util::utf8))
                     .connectivity_config(args.connectivity.as_ref().map(crate::util::utf8))
                     .build(),
@@ -180,14 +226,15 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
             let connectivity = args.connectivity.as_ref().ok_or_else(|| {
                 CliError::InvalidArg("SLASH link requires `--connectivity <config.cfg>`".into())
             })?;
+            let (slashkit, vivado) = args.programs.slash()?;
             Ok(LinkPlan::Slash(SlashLinkJob {
                 platform: slash_platform(state)?,
                 package: crate::util::utf8(&args.package),
                 config: crate::util::utf8(connectivity),
                 output: crate::util::utf8(&args.output),
                 work_dir: link_work,
-                slashkit: args.slashkit.clone(),
-                vivado: args.vivado.clone(),
+                slashkit,
+                vivado,
                 jobs: args.jobs,
                 target_mhz,
                 floorplan_xdc: args.floorplan_xdc.as_ref().map(crate::util::utf8),
@@ -237,7 +284,7 @@ fn plan_aie_link(
             .arguments(work.join(crate::aie::PACKAGE_ARGUMENTS))
             .work_dir(work)
             .output_xclbin(crate::util::utf8(&args.output))
-            .vpp(args.vpp.clone())
+            .vpp(args.programs.vitis()?)
             .build(),
     ))
 }
@@ -330,7 +377,11 @@ mod tests {
     use tapa_ir::ClockPeriod;
 
     fn args(package: &str, output: &str) -> LinkArgs {
-        LinkArgs::try_parse_from([
+        args_with(package, output, &[])
+    }
+
+    fn args_with(package: &str, output: &str, programs: &[&str]) -> LinkArgs {
+        let mut argv = vec![
             "link",
             "--package",
             package,
@@ -340,17 +391,15 @@ mod tests {
             output,
             "--clock-mhz",
             "300",
-            "--vpp",
-            "vpp-custom",
-            "--slashkit",
-            "slash-custom",
-            "--vivado",
-            "vivado-custom",
             "--jobs",
             "3",
-        ])
-        .expect("parse link args")
+        ];
+        argv.extend_from_slice(programs);
+        LinkArgs::try_parse_from(argv).expect("parse link args")
     }
+
+    const VITIS_PROGRAMS: &[&str] = &["--vpp", "vpp-custom"];
+    const SLASH_PROGRAMS: &[&str] = &["--slashkit", "slash-custom", "--vivado", "vivado-custom"];
 
     fn state(target: Target) -> WorkState {
         let mut state = crate::testutil::state_from_json(&format!(
@@ -378,13 +427,47 @@ mod tests {
 
     #[test]
     fn parses_vitis_and_slash_tool_flags() {
-        let parsed = args("Top.xo", "Top.xclbin");
+        let parsed = args_with(
+            "Top.xo",
+            "Top.xclbin",
+            &[VITIS_PROGRAMS, SLASH_PROGRAMS].concat(),
+        );
         assert_eq!(parsed.package, PathBuf::from("Top.xo"));
         assert_eq!(parsed.clock_mhz, Some(300));
-        assert_eq!(parsed.vpp, "vpp-custom");
-        assert_eq!(parsed.slashkit, "slash-custom");
-        assert_eq!(parsed.vivado, "vivado-custom");
+        assert_eq!(parsed.programs.vpp.as_deref(), Some("vpp-custom"));
+        assert_eq!(parsed.programs.slashkit.as_deref(), Some("slash-custom"));
+        assert_eq!(parsed.programs.vivado.as_deref(), Some("vivado-custom"));
         assert_eq!(parsed.jobs, 3);
+    }
+
+    /// v80.md: a mismatch between the program flags and the target is an
+    /// error in either direction, never a silently ignored flag.
+    #[test]
+    fn a_program_flag_for_the_other_backend_is_an_error() {
+        let error = plan_link(
+            &args_with("Top.xo", "Top.xclbin", &["--slashkit", "slash-custom"]),
+            Path::new("/work"),
+            &state(Target::XilinxVitis),
+        )
+        .expect_err("--slashkit on a Vitis link");
+        assert!(error.to_string().contains("`--slashkit`"), "{error}");
+        let error = plan_link(
+            &args_with("Top.zip", "Top.vbin", VITIS_PROGRAMS),
+            Path::new("/work"),
+            &state(Target::XilinxSlash),
+        )
+        .expect_err("--vpp on a SLASH link");
+        assert!(error.to_string().contains("`--vpp`"), "{error}");
+
+        let LinkPlan::Vitis(job) = plan_link(
+            &args("Top.xo", "Top.xclbin"),
+            Path::new("/work"),
+            &state(Target::XilinxVitis),
+        )
+        .expect("defaults") else {
+            panic!("expected Vitis plan");
+        };
+        assert_eq!(job.vpp, "v++");
     }
 
     #[test]
@@ -420,7 +503,7 @@ mod tests {
 
     #[test]
     fn vitis_plan_uses_packaged_flow_metadata_and_full_mode() {
-        let mut parsed = args("Top.xo", "Top.xclbin");
+        let mut parsed = args_with("Top.xo", "Top.xclbin", VITIS_PROGRAMS);
         parsed.clock_mhz = None;
         let plan = plan_link(&parsed, Path::new("/work"), &state(Target::XilinxVitis))
             .expect("Vitis plan");
@@ -437,7 +520,7 @@ mod tests {
 
     #[test]
     fn slash_plan_preserves_sim_and_rejects_it_for_vitis() {
-        let mut parsed = args("Top.zip", "Top.sim.vbin");
+        let mut parsed = args_with("Top.zip", "Top.sim.vbin", SLASH_PROGRAMS);
         parsed.sim = true;
         let plan = plan_link(&parsed, Path::new("/work"), &state(Target::XilinxSlash))
             .expect("SLASH plan");

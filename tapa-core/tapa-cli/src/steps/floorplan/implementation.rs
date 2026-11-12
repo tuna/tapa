@@ -180,13 +180,20 @@ pub(super) fn validate_target(
     let target_mhz = target_frequency_mhz(clock_period.nanoseconds())
         .map_err(|error| CliError::InvalidArg(error.to_string()))?;
 
+    let (slashkit, vivado, vpp) = if flow == Target::XilinxSlash {
+        let (slashkit, vivado) = args.programs.slash()?;
+        (slashkit, vivado, String::new())
+    } else {
+        (String::new(), String::new(), args.programs.vitis()?)
+    };
+
     Ok(ImplementationTarget {
         platform: platform.to_string(),
         target_mhz,
         vivado_threads: args.vivado_threads,
-        slashkit: args.slashkit.clone(),
-        vivado: args.vivado.clone(),
-        vpp: args.vpp.clone(),
+        slashkit,
+        vivado,
+        vpp,
         flow,
     })
 }
@@ -1287,8 +1294,11 @@ ap_clk              0.400        0.000
         state.flow.part_num = Some("xcv80-lsva4737-2MHP-e-S".to_string());
         state.flow.platform = Some("slash_v80_service".to_string());
         let args = super::super::FloorplanArgs {
-            slashkit: "slash-custom".to_string(),
-            vivado: "vivado-custom".to_string(),
+            programs: crate::steps::link::ToolPrograms {
+                slashkit: Some("slash-custom".to_string()),
+                vivado: Some("vivado-custom".to_string()),
+                vpp: None,
+            },
             ..args
         };
         let target = validate_target(&state, &args).expect("SLASH implementation target");

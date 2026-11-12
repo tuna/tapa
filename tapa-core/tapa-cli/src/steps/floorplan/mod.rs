@@ -305,18 +305,8 @@ pub struct FloorplanArgs {
     #[arg(long = "vivado-threads", default_value_t = 2, value_parser = clap::value_parser!(u32).range(1..))]
     pub vivado_threads: u32,
 
-    /// SLASH executable on the tool host, for implementing `xilinx-slash`.
-    #[arg(long, default_value = "slashkit")]
-    pub slashkit: String,
-
-    /// Vivado executable on the tool host, for implementing `xilinx-slash`.
-    #[arg(long, default_value = "vivado")]
-    pub vivado: String,
-
-    /// Vitis linker executable on the tool host, for implementing
-    /// `xilinx-vitis`.
-    #[arg(long, default_value = "v++")]
-    pub vpp: String,
+    #[command(flatten)]
+    pub programs: crate::steps::link::ToolPrograms,
 }
 
 fn parse_usage_limit(value: &str) -> std::result::Result<f64, String> {
@@ -438,7 +428,14 @@ pub fn run(args: &FloorplanArgs, ctx: &CliContext) -> Result<()> {
 
     let mut state = work_io::load(&ctx.work_dir)?;
     // Completed-synthesis validation lives in `PipelineStep::check`
-    // (chain.rs).
+    // (chain.rs). A program flag for the other backend is an error whether
+    // or not this run implements.
+    match state.graph.target {
+        tapa_ir::Target::XilinxSlash => drop(args.programs.slash()?),
+        tapa_ir::Target::XilinxVitis | tapa_ir::Target::XilinxHls => {
+            drop(args.programs.vitis()?);
+        }
+    }
     let implementation_target = (args.run_impl || args.dse)
         .then(|| implementation::validate_target(&state, args))
         .transpose()?;
@@ -561,9 +558,7 @@ mod tests {
             dse_step: 0.03,
             dse_jobs: 1,
             vivado_threads: 2,
-            slashkit: "slashkit".to_string(),
-            vivado: "vivado".to_string(),
-            vpp: "v++".to_string(),
+            programs: crate::steps::link::ToolPrograms::default(),
         }
     }
 

@@ -276,9 +276,9 @@ These run the floorplanned design through the device's implementation backend to
 | `--dse-min FRAC` / `--dse-max FRAC` / `--dse-step FRAC` | DSE cap range and step (defaults `0.55` / `0.9` / `0.03`; require `--dse`). The sweep starts at `--dse-max` and steps down. |
 | `--dse-jobs N` | Max candidate package/link jobs to run concurrently (default `1`; requires `--dse`). |
 | `--vivado-threads N` | Per-link Vivado synthesis jobs (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `2`). Lower it on memory-constrained hosts. |
-| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; `xilinx-slash` only). |
-| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; `xilinx-slash` only). |
-| `--vpp PROGRAM` | Vitis linker on the tool host (default `v++`; `xilinx-vitis` only). |
+| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; `xilinx-slash` only, an error for another target). |
+| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; `xilinx-slash` only, an error for another target). |
+| `--vpp PROGRAM` | Vitis linker on the tool host (default `v++`; `xilinx-vitis` only, an error for another target). |
 
 ### Example
 
@@ -358,9 +358,9 @@ for the guided workflows.
 | `--floorplan-xdc FILE` | Floorplan constraints (`tapa floorplan`'s `floorplan.xdc`) applied during implementation. |
 | `-j N` / `--jobs N` | Vivado parallelism per link (`--vivado.synth.jobs` for Vitis, `--jobs` for slashkit; default `8`). |
 | `--sim` | Produce a simulation image instead of a hardware one: a SLASH simulation vbin, or the hardware emulation (`hw_emu`) xclbin of a top on the AI Engine. A PL kernel's `.xo` has no `--sim` link. |
-| `--vpp PROGRAM` | Vitis linker/packager on the tool host (default `v++`; Vitis links only). |
-| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; SLASH links only). |
-| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; SLASH links only). |
+| `--vpp PROGRAM` | Vitis linker/packager on the tool host (default `v++`; Vitis links only, an error for a SLASH link). |
+| `--slashkit PROGRAM` | SLASH linker on the tool host (default `slashkit`; SLASH links only, an error for a Vitis link). |
+| `--vivado PROGRAM` | Vivado on the tool host (default `vivado`; SLASH links only, an error for a Vitis link). |
 
 A SLASH link succeeds whenever slashkit produces a vbin: a missed kernel
 clock derates the recorded frequency with a warning instead of failing, and
