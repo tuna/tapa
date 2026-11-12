@@ -116,15 +116,17 @@ struct elem_io<vec_t<E, N>> {
 
 // One frame-buffer walk, shared by `iframe` and `oframe` below: the buffer
 // is acquired when a frame starts (position 0) and released when it fills
-// (position N). The buffer's `data()` return type fixes the direction:
-// `const int32*` for an input frame, `int32*` for an output frame. With
-// `released`, each release counts there.
+// (position N * the stream element's words). The position is in words, so a
+// bulk walk of values narrower than an element keeps the boundary exactly.
+// The buffer's `data()` return type fixes the direction: `const int32*` for
+// an input frame, `int32*` for an output frame. With `released`, each
+// release counts there.
 template <typename Buffer, int N>
 struct frame_cursor {
   Buffer& buf_;
   int32* released_;
   decltype(std::declval<Buffer&>().data()) ptr_ = nullptr;
-  int pos_ = 0;
+  int pos_ = 0;  // words into the frame
 
   TAPA_AIE_INLINE explicit frame_cursor(Buffer& buf, int32* released = nullptr)
       : buf_(buf), released_(released) {}
@@ -146,27 +148,24 @@ struct frame_cursor {
       acquire();
     }
   }
-  TAPA_AIE_INLINE void release_at_end() {
-    if (pos_ == N) [[unlikely]] {
-      release();
-    }
-  }
 
   // Steps past one stream element of `elem_words` words.
   TAPA_AIE_INLINE void advance_element(int elem_words) {
     ptr_ += elem_words;
-    ++pos_;
-    release_at_end();
+    pos_ += elem_words;
+    if (pos_ == N * elem_words) [[unlikely]] {
+      release();
+    }
   }
   // The most values of `value_words` words that still fit in the frame, for
   // a stream element of `elem_words` words.
   TAPA_AIE_INLINE int values_left(int elem_words, int value_words) const {
-    return (N - pos_) * elem_words / value_words;
+    return (N * elem_words - pos_) / value_words;
   }
   // Accounts for `m` stepped values at the end of a bulk copy.
   TAPA_AIE_INLINE void advance_values(int m, int elem_words, int value_words) {
-    pos_ += m * value_words / elem_words;
-    if (pos_ == N) release();
+    pos_ += m * value_words;
+    if (pos_ == N * elem_words) release();
   }
 };
 
@@ -473,8 +472,8 @@ class oframe {
   ~oframe() {
     if (cursor_.pos_ != 0) {
       std::memset(
-          cursor_.buf_.data() + cursor_.pos_ * internal::aie::kWords<T>, 0,
-          (N - cursor_.pos_) * internal::aie::kWords<T> * sizeof(int32));
+          cursor_.buf_.data() + cursor_.pos_, 0,
+          (N * internal::aie::kWords<T> - cursor_.pos_) * sizeof(int32));
       cursor_.release();
     }
   }
