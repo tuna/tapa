@@ -10,7 +10,6 @@ namespace internal {
 enum class InvokeMode {
   kJoin = 0,
   kDetach = -1,
-  kSequential = 1,
 };
 }  // namespace internal
 

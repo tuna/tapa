@@ -41,12 +41,10 @@ TEST(TaskTest, YieldingWithoutCoroutineWorks) {
   tapa::stream<int, 2> data_q;
   auto data_out_q_out =
       tapa::internal::template accessor<tapa::ostream<int>&,
-                                        tapa::stream<int, 2>&>::access(data_q,
-                                                                       false);
+                                        tapa::stream<int, 2>&>::access(data_q);
   auto data_out_q_in =
       tapa::internal::template accessor<tapa::istream<int>&,
-                                        tapa::stream<int, 2>&>::access(data_q,
-                                                                       false);
+                                        tapa::stream<int, 2>&>::access(data_q);
   std::thread t1(DataSource, std::ref(data_out_q_out), kN);
   std::thread t2(DataSink, std::ref(data_out_q_in), kN);
   t1.join();

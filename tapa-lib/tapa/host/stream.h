@@ -1007,7 +1007,7 @@ constexpr bool dependent_false() {
 // More specialized allowed accessors (param = lvalue reference) win by
 // partial ordering.
 #define TAPA_DISALLOWED_REFERENCE_PARAM_BODY(name)                          \
-  static Self access(Arg&&, bool) {                                         \
+  static Self access(Arg&&) {                                               \
     static_assert(dependent_false<Arg>(),                                   \
                   "tapa::" name                                             \
                   " must be passed by reference as a TAPA task parameter"); \
@@ -1260,9 +1260,7 @@ struct stream_uses<ostreams<T, S>> {
 #define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref)                             \
   template <typename T, uint64_t N, typename U>                              \
   struct accessor<io##stream<T>&, stream<U, N> arg_ref> {                    \
-    static io##stream<T> access(stream<U, N> arg_ref arg, bool sequential) { \
-      return arg;                                                            \
-    }                                                                        \
+    static io##stream<T> access(stream<U, N> arg_ref arg) { return arg; }    \
     static void access(frt::Instance& instance, int& idx,                    \
                        stream<U, N> arg_ref arg) {                           \
       return instance.SetStreamArg(idx++,                                    \
@@ -1277,12 +1275,12 @@ TAPA_DEFINE_DEVICE_ACCESSOR(o, &)
 #undef TAPA_DEFINE_DEVICE_ACCESSOR
 
 // param = i/oframes, arg = stream: a frame port of a leaf task.
-#define TAPA_DEFINE_FRAMES_ACCESSOR(io, arg_ref)                         \
-  template <typename T, uint64_t F, uint64_t D, uint64_t SD>             \
-  struct accessor<io##frames<T, F>&, stream<T, D, SD> arg_ref> {         \
-    static io##frames<T, F> access(stream<T, D, SD> arg_ref arg, bool) { \
-      return io##frames<T, F>(arg);                                      \
-    }                                                                    \
+#define TAPA_DEFINE_FRAMES_ACCESSOR(io, arg_ref)                   \
+  template <typename T, uint64_t F, uint64_t D, uint64_t SD>       \
+  struct accessor<io##frames<T, F>&, stream<T, D, SD> arg_ref> {   \
+    static io##frames<T, F> access(stream<T, D, SD> arg_ref arg) { \
+      return io##frames<T, F>(arg);                                \
+    }                                                              \
   };
 
 TAPA_DEFINE_FRAMES_ACCESSOR(i, )
@@ -1293,12 +1291,12 @@ TAPA_DEFINE_FRAMES_ACCESSOR(o, &)
 
 // param = i/oframes, arg = an upper task's own stream port: a frame port
 // whose stream the upper task takes from its invoker.
-#define TAPA_DEFINE_PORT_FRAMES_ACCESSOR(io)                   \
-  template <typename T, uint64_t F>                            \
-  struct accessor<io##frames<T, F>&, io##stream<T>&> {         \
-    static io##frames<T, F> access(io##stream<T>& arg, bool) { \
-      return io##frames<T, F>(arg);                            \
-    }                                                          \
+#define TAPA_DEFINE_PORT_FRAMES_ACCESSOR(io)             \
+  template <typename T, uint64_t F>                      \
+  struct accessor<io##frames<T, F>&, io##stream<T>&> {   \
+    static io##frames<T, F> access(io##stream<T>& arg) { \
+      return io##frames<T, F>(arg);                      \
+    }                                                    \
   };
 
 TAPA_DEFINE_PORT_FRAMES_ACCESSOR(i)
@@ -1309,7 +1307,7 @@ TAPA_DEFINE_PORT_FRAMES_ACCESSOR(o)
 
 template <typename T>
 struct accessor<istream<T>&, istream<T>&> {
-  static istream<T> access(istream<T>& arg, bool sequential) { return arg; }
+  static istream<T> access(istream<T>& arg) { return arg; }
   static void access(frt::Instance& instance, int& idx, istream<T>& arg) {
     instance.SetStreamArg(idx++, arg.get_queue().get_frt_stream().path());
   }
@@ -1317,7 +1315,7 @@ struct accessor<istream<T>&, istream<T>&> {
 
 template <typename T>
 struct accessor<ostream<T>&, ostream<T>&> {
-  static ostream<T> access(ostream<T>& arg, bool sequential) { return arg; }
+  static ostream<T> access(ostream<T>& arg) { return arg; }
   static void access(frt::Instance& instance, int& idx, ostream<T>& arg) {
     instance.SetStreamArg(idx++, arg.get_queue().get_frt_stream().path());
   }
@@ -1327,8 +1325,7 @@ struct accessor<ostream<T>&, ostream<T>&> {
   /* param = i/ostream, arg = streams */                                       \
   template <typename T, uint64_t length, uint64_t depth>                       \
   struct accessor<io##stream<T> reference, streams<T, length, depth>&> {       \
-    static io##stream<T> access(streams<T, length, depth>& arg,                \
-                                bool sequential) {                             \
+    static io##stream<T> access(streams<T, length, depth>& arg) {              \
       return arg.access_as_##io##stream();                                     \
     }                                                                          \
     static void access(frt::Instance& instance, int& idx,                      \
@@ -1342,7 +1339,7 @@ struct accessor<ostream<T>&, ostream<T>&> {
   /* param = i/ostream, arg = i/ostreams */                                    \
   template <typename T, uint64_t length>                                       \
   struct accessor<io##stream<T> reference, io##streams<T, length>&> {          \
-    static io##stream<T> access(io##streams<T, length>& arg, bool) {           \
+    static io##stream<T> access(io##streams<T, length>& arg) {                 \
       return arg.access();                                                     \
     }                                                                          \
   };                                                                           \
@@ -1353,7 +1350,7 @@ struct accessor<ostream<T>&, ostream<T>&> {
   struct accessor<io##streams<T, param_length> reference,                      \
                   streams<T, arg_length, depth>&> {                            \
     static io##streams<T, param_length> access(                                \
-        streams<T, arg_length, depth>& arg, bool sequential) {                 \
+        streams<T, arg_length, depth>& arg) {                                  \
       return arg.template access_as_##io##streams<param_length>();             \
     }                                                                          \
     static void access(frt::Instance& instance, int& idx,                      \
@@ -1370,7 +1367,7 @@ struct accessor<ostream<T>&, ostream<T>&> {
   struct accessor<io##streams<T, param_length> reference,                      \
                   io##streams<T, arg_length>&> {                               \
     static io##streams<T, param_length> access(                                \
-        io##streams<T, arg_length>& arg, bool) {                               \
+        io##streams<T, arg_length>& arg) {                                     \
       return arg.template access<param_length>();                              \
     }                                                                          \
   };

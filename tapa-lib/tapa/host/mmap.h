@@ -490,7 +490,7 @@ bool recording_invokes();
 
 template <typename T>
 struct accessor<async_mmap<T>&, mmap<T>&> {
-  static async_mmap<T> access(mmap<T>& arg, bool) {
+  static async_mmap<T> access(mmap<T>& arg) {
     return recording_invokes() ? async_mmap<T>::unscheduled(arg)
                                : async_mmap<T>::schedule(arg);
   }
@@ -498,12 +498,12 @@ struct accessor<async_mmap<T>&, mmap<T>&> {
 
 template <typename T, uint64_t S>
 struct accessor<mmap<T>, mmaps<T, S>&> {
-  static mmap<T> access(mmaps<T, S>& arg, bool) { return arg.access(); }
+  static mmap<T> access(mmaps<T, S>& arg) { return arg.access(); }
 };
 
 template <typename T, uint64_t S>
 struct accessor<async_mmap<T>&, mmaps<T, S>&> {
-  static async_mmap<T> access(mmaps<T, S>& arg, bool) {
+  static async_mmap<T> access(mmaps<T, S>& arg) {
     return recording_invokes() ? async_mmap<T>::unscheduled(arg.access())
                                : async_mmap<T>::schedule(arg.access());
   }
@@ -515,7 +515,7 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
 #define TAPA_DEFINE_ACCESSOR(tag, tag_ref, buffer_tag)                        \
   template <typename T>                                                       \
   struct accessor<mmap<T>, tag##mmap<T> tag_ref> {                            \
-    static mmap<T> access(tag##mmap<T> tag_ref arg, bool) { return arg; }     \
+    static mmap<T> access(tag##mmap<T> tag_ref arg) { return arg; }           \
     static void access(frt::Instance& instance, int& idx,                     \
                        tag##mmap<T> tag_ref arg) {                            \
       instance.SetBufferArg(idx++, arg.get(), arg.size() * sizeof(T),         \
@@ -534,8 +534,7 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   };                                                                          \
   template <typename T, int chan_count, int64_t chan_size>                    \
   struct accessor<hmap<T, chan_count, chan_size>, tag##mmap<T> tag_ref> {     \
-    static hmap<T, chan_count, chan_size> access(tag##mmap<T> tag_ref arg,    \
-                                                 bool) {                      \
+    static hmap<T, chan_count, chan_size> access(tag##mmap<T> tag_ref arg) {  \
       return arg;                                                             \
     }                                                                         \
     template <typename Instance>                                              \
@@ -565,20 +564,18 @@ TAPA_DEFINE_ACCESSOR(, &, BufferAccess::ReadWrite);
 // Named directional handles use the same buffer lowering as temporaries.
 // Keep this forwarding specific to mmap handles: stream and seq arguments
 // carry reference identity in their accessor specializations.
-#define TAPA_FORWARD_TAGGED_MMAP_ACCESSOR(tag, qualifier)                  \
-  template <typename T>                                                    \
-  struct accessor<mmap<T>, tag##_mmap<T> qualifier>                        \
-      : accessor<mmap<T>, tag##_mmap<T>> {};                               \
-  template <typename T, uint64_t S>                                        \
-  struct accessor<mmaps<T, S>, tag##_mmaps<T, S> qualifier>                \
-      : accessor<mmaps<T, S>, tag##_mmaps<T, S>> {                         \
-    using accessor<mmaps<T, S>, tag##_mmaps<T, S>>::access;                \
-    static mmaps<T, S> access(tag##_mmaps<T, S> qualifier arg, bool) {     \
-      return arg;                                                          \
-    }                                                                      \
-  };                                                                       \
-  template <typename T, int chan_count, int64_t chan_size>                 \
-  struct accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T> qualifier> \
+#define TAPA_FORWARD_TAGGED_MMAP_ACCESSOR(tag, qualifier)                      \
+  template <typename T>                                                        \
+  struct accessor<mmap<T>, tag##_mmap<T> qualifier>                            \
+      : accessor<mmap<T>, tag##_mmap<T>> {};                                   \
+  template <typename T, uint64_t S>                                            \
+  struct accessor<mmaps<T, S>, tag##_mmaps<T, S> qualifier>                    \
+      : accessor<mmaps<T, S>, tag##_mmaps<T, S>> {                             \
+    using accessor<mmaps<T, S>, tag##_mmaps<T, S>>::access;                    \
+    static mmaps<T, S> access(tag##_mmaps<T, S> qualifier arg) { return arg; } \
+  };                                                                           \
+  template <typename T, int chan_count, int64_t chan_size>                     \
+  struct accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T> qualifier>     \
       : accessor<hmap<T, chan_count, chan_size>, tag##_mmap<T>> {}
 
 #define TAPA_FORWARD_TAGGED_MMAP_FAMILY(tag)      \
@@ -600,7 +597,7 @@ TAPA_FORWARD_TAGGED_MMAP_FAMILY(read_write);
 // at the offending `tapa::task().invoke(...)` site.
 template <typename T, typename Arg>
 struct accessor<async_mmap<T>, Arg> {
-  static async_mmap<T> access(Arg&&, bool) {
+  static async_mmap<T> access(Arg&&) {
     static_assert(dependent_false<Arg>(),
                   "tapa::async_mmap<T>& must be passed by reference as a "
                   "TAPA task parameter");
@@ -613,7 +610,7 @@ struct accessor<async_mmap<T>, Arg> {
 };
 template <typename T, typename Arg>
 struct accessor<async_mmap<T>&&, Arg> {
-  static async_mmap<T>&& access(Arg&&, bool) {
+  static async_mmap<T>&& access(Arg&&) {
     static_assert(dependent_false<Arg>(),
                   "tapa::async_mmap<T>& must be passed by reference as a "
                   "TAPA task parameter");
@@ -629,7 +626,7 @@ struct accessor<async_mmap<T>&&, Arg> {
 // base address by value. A formal task parameter by (rvalue or lvalue)
 // reference is rejected here for every arg kind.
 #define TAPA_DISALLOWED_VALUE_PARAM_BODY(name)                          \
-  static Self access(Arg&&, bool) {                                     \
+  static Self access(Arg&&) {                                           \
     static_assert(dependent_false<Arg>(),                               \
                   "tapa::" name                                         \
                   " must be passed by value as a TAPA task parameter"); \

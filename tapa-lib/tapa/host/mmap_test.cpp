@@ -126,7 +126,7 @@ TEST(HmapAccessorTest, NamedMmapBindsEachChannelReadWrite) {
   std::vector<int> buffer(8);
   mmap<int> mem(buffer);
   using Accessor = internal::accessor<hmap<int, 2, 4>, mmap<int>&>;
-  EXPECT_EQ(Accessor::access(mem, false).data(), buffer.data());
+  EXPECT_EQ(Accessor::access(mem).data(), buffer.data());
 
   BufferRecorder instance;
   int idx = 0;

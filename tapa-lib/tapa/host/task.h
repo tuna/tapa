@@ -37,7 +37,7 @@ extern "C" void kill_frt_sync_kernel(int);
 
 template <typename Param, typename Arg>
 struct accessor {
-  static Param access(Arg&& arg, bool) { return arg; }
+  static Param access(Arg&& arg) { return arg; }
   static void access(frt::Instance& instance, int& idx, Arg&& arg) {
     Param val = static_cast<Param>(arg);
     instance.SetScalarArg(idx++, &val, sizeof(val));
@@ -46,7 +46,7 @@ struct accessor {
 
 template <typename T>
 struct accessor<T, seq> {
-  static T access(seq&& arg, bool) { return arg.pos++; }
+  static T access(seq&& arg) { return arg.pos++; }
   static void access(frt::Instance& instance, int& idx, seq&& arg) {
     T val = static_cast<T>(arg.pos++);
     instance.SetScalarArg(idx++, &val, sizeof(val));
@@ -340,13 +340,9 @@ struct invoker {
       return;
     }
     auto functor = invoker::functor_with_accessors(
-        mode == InvokeMode::kSequential, std::forward<F>(f),
-        std::index_sequence_for<Args...>{}, std::forward<Args>(args)...);
-    if (mode == InvokeMode::kSequential) {
-      std::move(functor)();
-    } else {
-      schedule(mode == InvokeMode::kDetach, std::move(functor));
-    }
+        std::forward<F>(f), std::index_sequence_for<Args...>{},
+        std::forward<Args>(args)...);
+    schedule(mode == InvokeMode::kDetach, std::move(functor));
   }
 
   template <typename... Args>
@@ -461,7 +457,7 @@ struct invoker {
     // Braced initialization evaluates the accessors left to right.
     std::tuple<std::decay_t<std::tuple_element_t<Is, Params>>...> values{
         accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-            std::forward<CapturedArgs>(args), /*sequential=*/false)...};
+            std::forward<CapturedArgs>(args))...};
     recorded_invoke invoke;
     invoke.detach = mode == InvokeMode::kDetach;
     (stream_uses<std::decay_t<std::tuple_element_t<Is, Params>>>::collect(
@@ -477,13 +473,12 @@ struct invoker {
   }
 
   template <typename Func, size_t... Is, typename... CapturedArgs>
-  static auto functor_with_accessors(bool is_sequential, Func&& func,
-                                     std::index_sequence<Is...>,
+  static auto functor_with_accessors(Func&& func, std::index_sequence<Is...>,
                                      CapturedArgs&&... args) {
     // Aggregate initialization evaluates args left-to-right; std::bind copies.
     return binder{
         func, accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-                  std::forward<CapturedArgs>(args), is_sequential)...}
+                  std::forward<CapturedArgs>(args))...}
         .result;
   }
 };
