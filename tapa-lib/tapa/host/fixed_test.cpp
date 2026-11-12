@@ -8,7 +8,6 @@
 #include "tapa/host/fixed.h"
 
 #include <sstream>
-#include <string>
 
 #include "gtest/gtest.h"
 

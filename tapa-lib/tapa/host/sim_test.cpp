@@ -2,7 +2,7 @@
 
 #include "tapa/host/tapa.h"
 
-#include <cstdint>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>

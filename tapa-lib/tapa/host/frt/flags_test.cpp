@@ -1,5 +1,4 @@
 #include <cstdlib>
-#include <string>
 
 #include <gflags/gflags.h>
 #include <gtest/gtest.h>
