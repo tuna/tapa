@@ -1,7 +1,7 @@
 // Semantics contract for tapa::u/i: the portable stand-ins for the vendor
 // arbitrary-precision integers. Every expectation below is hand-computed
 // from the vendor rules (widened arithmetic, truncating assignment,
-// C-conversion comparisons, pattern equality at max(W, 64), C-division,
+// C-conversion comparisons, pattern equality at the wider width, C-division,
 // reversing shifts with 32-bit-truncated counts).
 
 #include "tapa/base/int.h"
@@ -162,10 +162,15 @@ TEST(IntTest, ComparisonFollowsCConversions) {
   EXPECT_TRUE(wider_neg < wide_zero);
 
   // Equality compares the widened bit patterns after sign/zero-extension
-  // into max(width, 64) bits: at 64 bits and wider a negative signed value
-  // equals the all-ones unsigned pattern, while at narrower widths the
-  // widened patterns differ (the vendor's native 64-bit path), even though
-  // C would convert and call `-1 == 0xffffffffu` true.
+  // into the wider width, at least 32 bits: a negative signed value equals
+  // the unsigned pattern it extends to. Two operands of one width up to 64
+  // bits extend into 64 bits instead (the vendor's native path), so there
+  // the patterns differ, even though C would convert and call
+  // `-1 == 0xffffffffu` true.
+  EXPECT_TRUE(tapa::u<33>(0x1ffffffffu) == -1);
+  EXPECT_TRUE(tapa::u<32>(0xffffff80u) == tapa::i<8>(-128));
+  EXPECT_FALSE(tapa::u<40>(0xffffffffffu) != tapa::i<20>(-1));
+  EXPECT_FALSE(tapa::u<31>(0x7fffffffu) == tapa::i<8>(-1));
   EXPECT_FALSE(wide_neg == tapa::u<32>(0xffffffffu));
   EXPECT_TRUE(tapa::i<64>(-1) == tapa::u<64>(~uint64_t(0)));
   EXPECT_FALSE(tapa::i<8>(-1) == tapa::u<8>(255));

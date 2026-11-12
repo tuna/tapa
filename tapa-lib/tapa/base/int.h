@@ -5,7 +5,8 @@
 //     (rtype below); narrowing assignments truncate the bit pattern;
 //   * comparisons follow C's usual conversions with the width standing in
 //     for the rank (mixed equal-width compares go unsigned, as in C);
-//     equality compares the sign/zero-extended bit patterns at max(W, 64);
+//     equality compares the sign/zero-extended bit patterns at the wider
+//     width, at least 32 bits (64 for two operands of one width);
 //   * shifting by a negative amount shifts the other way; shift counts
 //     truncate to 32 bits, matching the vendor's 32-bit count accessors;
 //   * `if (x)` tests the FULL width (the vendor truncates its contextual
@@ -537,13 +538,19 @@ class int_base {
 
   // Equality compares bit patterns the way the vendor does: each operand
   // is sign-extended (when signed) or zero-extended (when unsigned) into
-  // max(W, W2, 64) bits, and the patterns compare. The 64-bit floor is the
-  // vendor's native path: `i<64>(-1) == u<64>(~0)` is true, but
+  // the wider width, at least 32 bits, and the patterns compare, so
+  // `u<33>(0x1ffffffff) == i<32>(-1)` is true. Two operands of one width up
+  // to 64 bits take the vendor's native path instead, which extends both
+  // into 64 bits: `i<64>(-1) == u<64>(~0)` is true, but
   // `i<32>(-1) == u<32>(0xffffffff)` is false, because the widened
   // patterns (0xff..ff vs 0xffffffff) differ.
   template <int W2, bool S2>
   int compare_values(const int_base<W2, S2>& x) const {
-    constexpr int EW = (W > W2 ? W : W2) < 64 ? 64 : (W > W2 ? W : W2);
+    constexpr int kWider = W > W2 ? W : W2;
+    constexpr int EW = kWider > 64   ? kWider
+                       : W == W2     ? 64
+                       : kWider < 32 ? 32
+                                     : kWider;
     constexpr int n = (EW + 63) / 64;
     uint64_t a[n] = {};
     uint64_t b[n] = {};

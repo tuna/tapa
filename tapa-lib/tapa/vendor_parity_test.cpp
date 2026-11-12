@@ -327,7 +327,7 @@ void CheckBinaryOps(uint64_t& state, int rounds) {
     EXPECT_EQ(a.or_reduce(), va.or_reduce()) << "or_reduce, " << where;
     EXPECT_EQ(a.xor_reduce(), va.xor_reduce()) << "xor_reduce, " << where;
 
-    // Equality compares the sign/zero-extended patterns at max(W, 64);
+    // Equality compares the sign/zero-extended patterns at the wider width;
     // ordering follows C's conversions with the width as the rank.
     EXPECT_EQ(a == b, va == vb) << "eq, " << where;
     EXPECT_EQ(a < b, va < vb) << "lt, " << where;
@@ -447,6 +447,31 @@ void CheckMixedCompare(uint64_t& state, int rounds) {
   }
 }
 
+// An unsigned operand holding exactly the pattern a narrower negative
+// operand sign-extends to: random bits almost never draw it, and equality
+// depends on how far the vendor extends the two.
+template <int WU, int WS>
+void CheckExtendedEquality(uint64_t& state, int rounds) {
+  for (int r = 0; r < rounds; ++r) {
+    std::vector<bool> bits = RandomBits(WS, state);
+    bits[WS - 1] = true;  // negative
+    std::vector<bool> extended(bits);
+    extended.resize(WU, true);
+    u<WU> a;
+    i<WS> b;
+    ap_uint<WU> va;
+    ap_int<WS> vb;
+    SetTapa(a, extended);
+    SetTapa(b, bits);
+    SetVendor(va, extended);
+    SetVendor(vb, bits);
+    const std::string where = "u" + std::to_string(WU) + " vs i" +
+                              std::to_string(WS) + " b=" + TapaBits(b);
+    EXPECT_EQ(a == b, va == vb) << "eq " << where;
+    EXPECT_EQ(b != a, vb != va) << "ne " << where;
+  }
+}
+
 TEST(VendorParity, MixedComparison) {
   uint64_t state = 0x77;
   // Both below 32 bits, where C promotes to int and the comparison goes
@@ -472,6 +497,15 @@ TEST(VendorParity, MixedComparison) {
   CheckMixedCompare<12, true, 20, true>(state, 40);
   CheckMixedCompare<12, false, 20, false>(state, 40);
   CheckMixedCompare<96, true, 40, true>(state, 40);
+  // Patterns a wider unsigned shares with a narrower negative operand.
+  CheckExtendedEquality<8, 5>(state, 4);
+  CheckExtendedEquality<31, 8>(state, 4);
+  CheckExtendedEquality<32, 8>(state, 4);
+  CheckExtendedEquality<32, 31>(state, 4);
+  CheckExtendedEquality<33, 32>(state, 4);
+  CheckExtendedEquality<48, 40>(state, 4);
+  CheckExtendedEquality<64, 32>(state, 4);
+  CheckExtendedEquality<96, 40>(state, 4);
 }
 
 // ----------------------------------------------------------- bit access

@@ -413,7 +413,7 @@ Semantics mirror the vendor types:
 
 - Mixed-width arithmetic widens so the exact result fits (`tapa::u<8>(200) + tapa::u<8>(100)` is a `tapa::u<9>` holding 300); narrowing assignment truncates the bit pattern.
 - Ordering follows C's usual arithmetic conversions with the declared width as the conversion rank: below 32 bits the comparison is signed however it is spelled (C promotes both operands to `int`), and at 32 bits and above the wider-or-equal operand's signedness wins, with an equal-width tie going unsigned, as in C. So `tapa::u<8>(255) > tapa::i<8>(-1)` is true, and `tapa::i<32>(-1) < tapa::u<32>(0)` is false.
-- Equality compares bit patterns, not converted values: each operand is sign- or zero-extended into `max(width, 64)` bits and the patterns compare. So `tapa::i<64>(-1) == tapa::u<64>(~0)` is true, while `tapa::i<32>(-1) == tapa::u<32>(0xffffffff)` is false — unlike C, which would convert the signed operand and call it true.
+- Equality compares bit patterns, not converted values: each operand is sign- or zero-extended into the wider width, at least 32 bits, and the patterns compare; two operands of the same width up to 64 bits extend into 64 bits. So `tapa::i<64>(-1) == tapa::u<64>(~0)` and `tapa::u<33>(0x1ffffffff) == -1` are true, while `tapa::i<32>(-1) == tapa::u<32>(0xffffffff)` is false — unlike C, which would convert the signed operand and call it true.
 - Mixed-sign division and remainder convert at one bit above the wider width, using the wider operand's signedness (signed on an equal-width tie). Division then truncates toward zero, and the remainder takes the converted dividend's sign.
 - Shifting by a negative amount shifts the other way.
 
