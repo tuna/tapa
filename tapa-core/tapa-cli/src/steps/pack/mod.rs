@@ -420,9 +420,7 @@ mod tests {
 
     #[test]
     fn unsupported_target_is_rejected_with_the_supported_flows() {
-        // The flow target now has exactly one home, so an unsupported value
-        // is caught when the state parses rather than by a settings-vs-design
-        // reconciliation. The user must still be told which flows do work.
+        // State parsing rejects an unsupported flow and lists the valid ones.
         let dir = tempfile::tempdir().expect("tempdir");
         write_state(dir.path(), Target::XilinxHls);
         let path = crate::state::work::path_in(dir.path());

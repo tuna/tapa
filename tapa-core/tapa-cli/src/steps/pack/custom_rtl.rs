@@ -45,10 +45,9 @@ pub(super) fn load_templates_info(work_dir: &Path) -> Result<TemplatesInfo> {
 /// what will be packaged.
 ///
 /// The shell has an empty module body, so an artifact containing one is a
-/// stub: it elaborates but does nothing. Packaging used to accept that
-/// silently, and the omission only surfaced as wrong results in simulation.
-/// A file that still matches `<work_dir>/template/<module>.v` byte for byte
-/// was not overlaid by `--custom-rtl`.
+/// stub: it elaborates but does nothing, so warn that simulation will not
+/// compute the task. A file that matches `<work_dir>/template/<module>.v`
+/// byte for byte was not overlaid by `--custom-rtl`.
 pub(super) fn warn_unimplemented_templates(
     work_dir: &Path,
     rtl_dir: &Path,

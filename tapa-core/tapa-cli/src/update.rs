@@ -354,9 +354,9 @@ fn sibling(root: &Path, suffix: &str) -> Result<PathBuf> {
 /// The archive is unpacked into a staging sibling and checked for the
 /// release layout *before* anything is removed: `download_tarball`
 /// validates nothing, so a body that transfers completely but is not a
-/// valid gzip tar (a CDN error page, a corrupted mirror) used to be
-/// discovered only after `remove_dir_all(root)` had already emptied the
-/// installation, leaving no `tapa` binary to retry with. The swap is
+/// valid gzip tar (a CDN error page, a corrupted mirror) is rejected before
+/// touching the installed tree. Without this staging, extraction could empty
+/// the installation, leaving no `tapa` binary to retry with. The swap is
 /// two renames with a rollback, so an *error return* leaves either the
 /// old tree or the new one; a crash between the two renames leaves the
 /// root absent, recoverable by renaming `.tapa.old` back by hand.

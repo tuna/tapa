@@ -11,8 +11,7 @@
 use camino::Utf8PathBuf;
 use std::path::Path;
 use tapa_ir::{ClockPeriod, Design, WorkState};
-// The one M-AXI suffix vocabulary lives in tapa-protocol; a private
-// copy here once drifted from it (`_AWREGION`/`_ARREGION`).
+// Share the M-AXI suffix vocabulary with the other protocol readers.
 use tapa_protocol::m_axi_suffixes;
 use tapa_xilinx::{
     emit_kernel_xml, emit_slash_hls_data, normalize_hls_report_text, pack_ip,
@@ -822,10 +821,8 @@ mod tests {
         );
     }
 
-    /// The base projection reads the shared protocol suffix vocabulary;
-    /// a base whose only surviving port carries the optional REGION
-    /// attribute must still be recognized (a private copy of the table
-    /// once disagreed with the shared one exactly here).
+    /// A base whose only surviving port carries the optional REGION
+    /// attribute must still be recognized through the shared vocabulary.
     #[test]
     fn m_axi_base_projection_recognizes_region_suffixes() {
         let dir = tempfile::tempdir().expect("tempdir");

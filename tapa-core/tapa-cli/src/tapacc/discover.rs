@@ -55,8 +55,9 @@ impl Resource {
     }
 }
 
-/// Override the search anchor for tests: when the override is set, we
-/// walk its parents instead of the binary's parents.
+/// Resolve the resource-search anchor. The Bazel wrapper exports
+/// `TAPA_CLI_SEARCH_ANCHOR` so searches start at the wrapped binary's runfiles
+/// location; tests use the same override to isolate resource trees.
 pub(super) fn search_anchor() -> PathBuf {
     static OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
     OVERRIDE

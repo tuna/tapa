@@ -1,8 +1,8 @@
 //! File I/O for the single work-directory state file, `<work_dir>/tapa.json`.
 //!
-//! `analyze` writes it, `synth` annotates it in place, `pack` consumes it —
-//! and copies it verbatim into the `.zip` archive, where `frt-cosim` reads it
-//! back. It is the **only schema-bearing state file**: the unified
+//! `analyze` writes it, `synth` annotates it in place, and `pack` consumes
+//! it for the package's embedded state, where `frt-cosim` reads it back. It is
+//! the **only schema-bearing state file**: the unified
 //! [`tapa_ir::TaskGraph`] plus the small typed [`FlowSettings`] block, behind a
 //! [`VERSION`] stamp so a work dir written by a different tapa fails with a
 //! clear message instead of a field-level serde diagnostic. Pipeline steps may
@@ -61,9 +61,8 @@ pub fn load(work_dir: &Path) -> Result<WorkState> {
 
 /// Serialize `state` to the exact bytes [`store`] writes.
 ///
-/// `pack` copies these same bytes into the archive, so the archive's
-/// `tapa.json` entry and `<work_dir>/tapa.json` are byte-identical and there
-/// is only one serialization to keep in step with the schema.
+/// Packaging uses this one serializer for both unchanged state snapshots and
+/// snapshots annotated with cosim port metadata.
 pub fn to_bytes(state: &WorkState) -> Result<Vec<u8>> {
     let mut bytes = serde_json::to_vec_pretty(state)?;
     bytes.push(b'\n');
@@ -139,10 +138,8 @@ mod tests {
     }
 
     #[test]
-    fn stored_bytes_are_the_packed_bytes() {
-        // `pack` puts `to_bytes` into the archive; if it ever diverged from
-        // what `store` writes, the archive and the work dir would carry two
-        // different serializations of one schema.
+    fn to_bytes_matches_the_stored_state() {
+        // Store and pack share this serialization of the state schema.
         let dir = tempfile::tempdir().expect("tempdir");
         let state = sample_state();
         store(dir.path(), &state).expect("store");
@@ -150,7 +147,7 @@ mod tests {
         assert_eq!(
             on_disk,
             to_bytes(&state).expect("to_bytes"),
-            "the archive entry and the work-dir file must be the same bytes",
+            "serialization must match the stored bytes",
         );
     }
 
