@@ -265,6 +265,32 @@ void SpecTop(tapa::mmap<float> c, unsigned long long n) {
       << out;
 }
 
+// A macro spelling a parameter type of an upper task: the offset rewrite
+// lands in the macro's splice, which the session flushes only at its end.
+// The guard's signature stub, read before then, used to keep the original
+// spelling (`void Mid(MMAP(int) m_offset, ...)`), declaring a different
+// function than the definition it stands in for.
+TEST(MacroRewrite, SignatureMacroRewriteReachesTheStub) {
+  const std::string code = std::string(R"tapa(
+#define MMAP(T) tapa::mmap<T>
+void Fill(tapa::mmap<int> m, int n) { m[0] = n; }
+void Mid(MMAP(int) m, int n) {
+  tapa::task().invoke(Fill, m, n);
+}
+void MidTop(tapa::mmap<int> m, int n) {
+  tapa::task().invoke(Mid, m, n);
+}
+)tapa");
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/sig.cpp", code}}, "MidTop",
+      TempRoot("macro_rewrite", "sig"), {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const std::string& out = run.files.at("sig.cpp");
+  EXPECT_TRUE(Contains(out, "void Mid(uint64_t m_offset, int n) {")) << out;
+  EXPECT_TRUE(Contains(out, "void Mid(uint64_t m_offset, int n) ;")) << out;
+  EXPECT_FALSE(Contains(out, "MMAP(int) m_offset")) << out;
+}
+
 // (a) A task invocation wrapped in a user macro (the multi-file app's
 // INVOKE_CONSUME shape): the graph sees through the macro, and the top's
 // rewritten shell needs no splice.

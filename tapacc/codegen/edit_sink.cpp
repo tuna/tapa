@@ -255,7 +255,36 @@ std::string EditSink::getRewrittenText(clang::SourceRange range) const {
 }
 
 std::string EditSink::getRewrittenText(clang::CharSourceRange range) const {
-  return rewriter_.getRewrittenText(range);
+  if (splices_ == nullptr) return rewriter_.getRewrittenText(range);
+  // An edit inside a macro invocation waits in its splice until the session
+  // flushes it, so text read before then -- a guard's signature stub --
+  // takes each edited invocation wholly in range as its splice renders it.
+  const clang::SourceManager& sm = rewriter_.getSourceMgr();
+  const clang::LangOptions& lang = rewriter_.getLangOpts();
+  const auto end_of = [&](const clang::CharSourceRange& r) {
+    return r.isTokenRange()
+               ? clang::Lexer::getLocForEndOfToken(r.getEnd(), 0, sm, lang)
+               : r.getEnd();
+  };
+  const clang::SourceLocation end = end_of(range);
+  clang::SourceLocation cursor = range.getBegin();
+  std::string text;
+  for (ExpansionSplice* splice : splices_->Edited()) {
+    const clang::CharSourceRange invocation = splice->invocation();
+    const clang::SourceLocation invocation_end = end_of(invocation);
+    if (!cursor.isFileID() || !invocation.getBegin().isFileID() ||
+        sm.getFileID(invocation.getBegin()) != sm.getFileID(cursor) ||
+        sm.isBeforeInTranslationUnit(invocation.getBegin(), cursor) ||
+        sm.isBeforeInTranslationUnit(end, invocation_end)) {
+      continue;
+    }
+    text += rewriter_.getRewrittenText(
+        clang::CharSourceRange::getCharRange(cursor, invocation.getBegin()));
+    text += splice->Render();
+    cursor = invocation_end;
+  }
+  return text + rewriter_.getRewrittenText(
+                    clang::CharSourceRange::getCharRange(cursor, end));
 }
 
 clang::SourceManager& EditSink::getSourceMgr() const {
