@@ -632,6 +632,27 @@ mod tests {
         assert_eq!(out.exit_code, 0, "{}", out.stderr);
     }
 
+    /// A terminal delivers Ctrl+C to tapa's process group, so a tool must be
+    /// in that group to be interrupted with tapa: in a group of its own, an
+    /// hours-long `v++` link outlived the Ctrl+C that ended tapa.
+    #[cfg(unix)]
+    #[test]
+    fn local_runner_keeps_tools_in_the_callers_process_group() {
+        let inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("ps -o pgid= -p $$ -p \"$1\"")
+            .arg("dummy")
+            .arg(std::process::id().to_string());
+        let out = LocalToolRunner::new().run(&inv).expect("run");
+        assert_eq!(out.exit_code, 0, "{}", out.stderr);
+        let groups: Vec<&str> = out.stdout.split_whitespace().collect();
+        assert_eq!(groups.len(), 2, "{}", out.stdout);
+        assert_eq!(
+            groups[0], groups[1],
+            "the tool must share the caller's process group"
+        );
+    }
+
     #[test]
     fn local_runner_preserves_args_with_single_quotes() {
         let runner = LocalToolRunner::new();
