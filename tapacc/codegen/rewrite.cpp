@@ -125,6 +125,11 @@ void LowerFuncAttrs(const clang::FunctionDecl* func, const Backend& backend,
                     EditSink& edits) {
   if (!func->isThisDeclarationADefinition()) {
     for (const clang::Attr* attr : func->attrs()) {
+      // Discovery reads a target through every declaration; consumed, it
+      // must not precede the `extern "C"` a Vitis top's declaration gets.
+      if (attr->getKind() == clang::attr::TapaTarget) {
+        RemoveLoweredAttr(edits, attr->getRange());
+      }
       if (attr->getKind() != clang::attr::TapaPipeline) continue;
       ReportCustomDiag(func->getASTContext(), clang::DiagnosticsEngine::Error,
                        attr->getRange().getBegin(),

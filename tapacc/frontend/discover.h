@@ -4,6 +4,7 @@
 #include <utility>
 #include <vector>
 
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -40,6 +41,26 @@ std::vector<std::pair<unsigned, const clang::Expr*>> InvokePortArgs(
 
 // The body of a loop statement, or nullptr if it is not a loop.
 const clang::Stmt* LoopBody(const clang::Stmt* stmt);
+
+// The `[[tapa::target]]` written on any declaration of a function, the
+// definition's first: the attribute does not inherit across redeclarations,
+// and a header declaring a task is where it is usually written.
+const clang::TapaTargetAttr* TargetAttr(const clang::FunctionDecl* func);
+
+// Attribute `A` written on parameter `index` of any declaration of `func`,
+// the definition's first.
+template <typename A>
+const A* ParamAttr(const clang::FunctionDecl* func, unsigned index) {
+  const clang::FunctionDecl* def = func->getDefinition();
+  if (def != nullptr && index < def->getNumParams()) {
+    if (const A* attr = def->getParamDecl(index)->getAttr<A>()) return attr;
+  }
+  for (const clang::FunctionDecl* decl : func->redecls()) {
+    if (index >= decl->getNumParams()) continue;
+    if (const A* attr = decl->getParamDecl(index)->getAttr<A>()) return attr;
+  }
+  return nullptr;
+}
 
 // Whether a function is marked `[[tapa::target("ignore")]]`.
 bool IsIgnored(const clang::FunctionDecl* func);

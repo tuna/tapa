@@ -572,6 +572,9 @@ These C++ attributes are recognised by TAPA and lowered to vendor pragmas during
 | `[[tapa::target("ignore")]]` | Mark a task for custom RTL replacement. TAPA generates a port-signature template but does not synthesize the task body. |
 | `[[tapa::target("aie")]]` | Run the task on the Versal AI Engine array. On an upper task it is the default for the tasks below it that have no target of their own. See [AI Engine Tasks](../howto/aie.md). |
 
+A target may be written on any declaration of the task, such as the one in a
+shared header; declarations that carry one must agree.
+
 ```admonish note
 The `-1` sentinel in `partition` and `array_map` exists because the arguments are positional and zero is a meaningful value (`dim = 0` means *all* dimensions). Passing a dim where a factor is expected is silently accepted by the vendor and partitions the wrong dimension, so spell the sentinel rather than dropping the argument.
 ```

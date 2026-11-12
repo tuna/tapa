@@ -93,8 +93,18 @@ const clang::Stmt* LoopBody(const clang::Stmt* stmt) {
   return nullptr;
 }
 
+const clang::TapaTargetAttr* TargetAttr(const clang::FunctionDecl* func) {
+  if (const clang::FunctionDecl* def = func->getDefinition()) {
+    if (const auto* attr = def->getAttr<clang::TapaTargetAttr>()) return attr;
+  }
+  for (const clang::FunctionDecl* decl : func->redecls()) {
+    if (const auto* attr = decl->getAttr<clang::TapaTargetAttr>()) return attr;
+  }
+  return nullptr;
+}
+
 bool IsIgnored(const clang::FunctionDecl* func) {
-  if (const auto* attr = func->getAttr<clang::TapaTargetAttr>()) {
+  if (const auto* attr = TargetAttr(func)) {
     return attr->getTarget() == clang::TapaTargetAttr::TargetType::Ignore;
   }
   return false;
@@ -109,7 +119,7 @@ TaskLevel LevelOf(const clang::FunctionDecl* func) {
 
 SynthTarget ResolveTarget(const clang::FunctionDecl* func,
                           SynthTarget default_target) {
-  const auto* attr = func->getAttr<clang::TapaTargetAttr>();
+  const auto* attr = TargetAttr(func);
   if (attr == nullptr) return default_target;
   // `hls` builds the task in the design's flow, as a `--target TASK:hls`
   // mapping does; the flow itself is chosen once, on the command line.

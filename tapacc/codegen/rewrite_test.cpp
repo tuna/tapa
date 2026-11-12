@@ -573,6 +573,60 @@ TEST(Rewrite, TargetTakesTheCliMappingValues) {
       << run.diags.front();
 }
 
+// `[[tapa::target]]` does not inherit across redeclarations, and a header
+// declaring a task is where a multi-file design writes it: written there
+// only, it used to be ignored, and the task was synthesized from its
+// software model. A Vitis top's declaration must also lose the text, which
+// would otherwise precede its `extern "C"`.
+TEST(Rewrite, TargetOnADeclarationApplies) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/decl.cpp", R"cpp(
+#include "decl.h"
+                   void Model(tapa::istream<float>& in,
+                              tapa::ostream<float>& out) {
+                     out.write(in.read());
+                   }
+                   void Top(tapa::istream<float>& in, tapa::ostream<float>& out) {
+                     tapa::task().invoke(Model, in, out);
+                   }
+                 )cpp"}},
+      "Top", TempRoot("rewrite", "decl_target"), {"-std=c++17"},
+      {{"/proj/src/decl.h", R"cpp(
+          [[tapa::target("ignore")]] void Model(tapa::istream<float>& in,
+                                                tapa::ostream<float>& out);
+          [[tapa::target("hls")]] void Top(tapa::istream<float>& in,
+                                           tapa::ostream<float>& out);
+        )cpp"}},
+      {}, SynthTarget::kXilinxVitis);
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const nlohmann::json graph = nlohmann::json::parse(run.json);
+  EXPECT_EQ(graph["tasks"]["Model"]["synth"], "ignore");
+  EXPECT_FALSE(Contains(run.files.at("decl.h"), "tapa::target"))
+      << run.files.at("decl.h");
+}
+
+TEST(Rewrite, ConflictingTargetsOnDeclarationsAreAnError) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{
+          "/proj/src/conflict.cpp", R"cpp(
+            [[tapa::target("ignore")]] void Model(tapa::istream<float>& in,
+                                                  tapa::ostream<float>& out);
+            [[tapa::target("hls")]] void Model(tapa::istream<float>& in,
+                                               tapa::ostream<float>& out) {
+              out.write(in.read());
+            }
+            void Top(tapa::istream<float>& in, tapa::ostream<float>& out) {
+              tapa::task().invoke(Model, in, out);
+            }
+          )cpp"}},
+      "Top", TempRoot("rewrite", "conflict_target"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_FALSE(run.diags.empty());
+  EXPECT_TRUE(
+      Contains(run.diags.front(), "[[tapa::target]] of 'Model' differs"))
+      << run.diags.front();
+}
+
 // A misspelled or retired TAPA attribute is an error even through a macro,
 // whose body the leaked-attribute scan leaves alone.
 TEST(Rewrite, UnknownTapaAttributeIsAnError) {

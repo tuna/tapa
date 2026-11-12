@@ -291,6 +291,7 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.plain_name = def->getNameAsString();
   sighting.signature = CanonicalSignature(def);
   for (const clang::ParmVarDecl* param : def->parameters()) {
+    const unsigned index = param->getFunctionScopeIndex();
     sighting.parameter_names.push_back(param->getNameAsString());
     const TapaKind kind = ClassifyTapaType(param);
     if (IsMmapInterface(kind)) sighting.takes_memory = true;
@@ -299,11 +300,11 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
     sighting.stream_params.push_back(stream);
     sighting.frame_params.push_back(
         IsFramesPort(kind) ||
-        (stream && param->hasAttr<clang::TapaFrameAttr>()));
-    if (const auto* ring = param->getAttr<clang::TapaRingAttr>()) {
-      const int index = static_cast<int>(sighting.parameter_names.size()) - 1;
-      sighting.ring_slots[index] = ring->getSlots();
-      sighting.ring_locs[index] = PresumedLocString(ctx, ring->getLocation());
+        (stream && ParamAttr<clang::TapaFrameAttr>(def, index) != nullptr));
+    if (const auto* ring = ParamAttr<clang::TapaRingAttr>(def, index)) {
+      sighting.ring_slots[static_cast<int>(index)] = ring->getSlots();
+      sighting.ring_locs[static_cast<int>(index)] =
+          PresumedLocString(ctx, ring->getLocation());
     }
   }
   sighting.is_spec = def->isFunctionTemplateSpecialization();
@@ -322,7 +323,18 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.readable_name = ReadableTaskName(ctx, def);
   sighting.task_shaped = GetTapaTaskObject(def->getBody()) != nullptr;
   sighting.ignored = IsIgnored(def);
-  sighting.explicit_target = def->hasAttr<clang::TapaTargetAttr>();
+  sighting.explicit_target = TargetAttr(def) != nullptr;
+  for (const clang::FunctionDecl* decl : def->redecls()) {
+    const auto* attr = decl->getAttr<clang::TapaTargetAttr>();
+    if (attr != nullptr && attr->getTarget() != TargetAttr(def)->getTarget()) {
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                       attr->getLocation(),
+                       "[[tapa::target]] of '%0' differs from the one at %1; "
+                       "give every declaration of a task the same target")
+          << sighting.fqn
+          << PresumedLocString(ctx, TargetAttr(def)->getLocation());
+    }
+  }
   sighting.internal = !def->isGlobal();
   sighting.level = LevelOf(def);
   sighting.target = ResolveTarget(def, default_target_);
