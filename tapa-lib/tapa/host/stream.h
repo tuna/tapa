@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <thread>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -802,12 +803,28 @@ class oframes : virtual public internal::basic_stream<T> {
 
 namespace internal {
 struct stream_factory;
+
+// A finite stream is a shared-memory queue that copies each element byte for
+// byte, so an element that owns resources, such as a std::string, would be
+// freed under the copy; only an infinite one keeps elements as objects.
+template <typename T, uint64_t SimulationDepth>
+struct simulated_element {
+  static_assert(SimulationDepth == kStreamInfiniteDepth ||
+                    std::is_trivially_destructible<T>::value,
+                "a finite tapa::stream copies its elements byte for byte in "
+                "software simulation, so its element type must be trivially "
+                "destructible: no std::string, std::vector or smart pointer "
+                "(tapa::hls::stream takes any type)");
+  static constexpr bool checked = true;
+};
 }  // namespace internal
 
 /// Communication channel between two task instances.
 template <typename T, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class stream : public internal::unbound_stream<T> {
+  static_assert(internal::simulated_element<T, SimulationDepth>::checked);
+
  public:
   constexpr static uint64_t depth = N;
 
@@ -926,6 +943,8 @@ class ostreams : virtual public internal::basic_streams<T> {
 template <typename T, uint64_t S, uint64_t N = kStreamDefaultDepth,
           uint64_t SimulationDepth = N>
 class streams : public internal::unbound_streams<T, S> {
+  static_assert(internal::simulated_element<T, SimulationDepth>::checked);
+
  public:
   constexpr static uint64_t length = S;
   constexpr static uint64_t depth = N;

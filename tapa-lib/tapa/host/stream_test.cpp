@@ -216,6 +216,16 @@ void CheckEmptyStreamReads(const T& value) {
   EXPECT_EQ(data_q.read(nullptr), T{});
 }
 
+// Only a finite stream copies its elements byte for byte; an infinite one,
+// as `tapa::hls::stream` declares, keeps them as objects and takes any type.
+TEST(StreamElementTest, InfiniteStreamsTakeElementsThatOwnMemory) {
+  tapa::stream<std::string, 2, kStreamInfiniteDepth> words("words");
+  words.write(std::string(100, 'a'));
+  words.write(std::string(100, 'b'));
+  EXPECT_EQ(words.read(), std::string(100, 'a'));
+  EXPECT_EQ(words.read(), std::string(100, 'b'));
+}
+
 TEST(StreamReadTest, EmptyReadsReturnValueInitializedElements) {
   CheckEmptyStreamReads(2333);
   CheckEmptyStreamReads(std::array<int, 3>{1, 2, 3});

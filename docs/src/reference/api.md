@@ -120,7 +120,9 @@ For direct integer elements (`tapa::u<W>`, `tapa::i<W>`, `ap_uint<W>` and `ap_in
 
 Owner type for a point-to-point FIFO. Declare inter-task channels inside an
 upper-level task and pass directional views to children as `istream<T>&`
-(read end) or `ostream<T>&` (write end). The default depth is 2.
+(read end) or `ostream<T>&` (write end). The default depth is 2. `T` must be
+trivially destructible, since software simulation copies elements byte for
+byte; `tapa::hls::stream` takes any type.
 
 ```cpp
 template <typename T, uint64_t Depth = 2>

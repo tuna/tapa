@@ -299,6 +299,10 @@ the FIFO) is in memory.
   stream blocks the writer, matching hardware behavior. The compatibility
   alias `tapa::hls::stream<T, Depth>` is the exception: its simulation depth is
   effectively infinite while its hardware depth remains `Depth`.
+- Software simulation copies the elements of a `tapa::stream` byte for byte,
+  so `T` must be trivially destructible, as every synthesizable type is: a
+  `std::string`, `std::vector` or smart pointer is a compile error. Only
+  `tapa::hls::stream` takes any type.
 - Stream depth affects FPGA resource usage. Start with the default depth of
   2 and increase it only when a measured burst or rate mismatch requires
   more storage. Check the synthesis resource report after changing it. A
