@@ -97,8 +97,15 @@ fn port(name: &str, cat: ArgCategory, width: u32, chan_count: Option<u32>) -> Po
         chan_size: None,
         frame: None,
         aie_plio: None,
-        stream_depth: None,
-        mmap_addr_width: None,
+        stream_depth: matches!(
+            cat,
+            ArgCategory::Istream
+                | ArgCategory::Ostream
+                | ArgCategory::Istreams
+                | ArgCategory::Ostreams
+        )
+        .then_some(16),
+        mmap_addr_width: matches!(cat, ArgCategory::Mmap | ArgCategory::AsyncMmap).then_some(64),
         aie_movers: None,
         ring: None,
     }
@@ -145,41 +152,33 @@ fn arg_ids_are_dense_and_in_declaration_order() {
     assert_eq!(spec.args[4].name, "n", "the scalar keeps its own name");
 }
 
-/// Archives written before the schema grew per-port cosim metadata carry no
-/// `depth` / `addr_width`; projection must keep giving their streams and
-/// mmaps the values those archives have always been simulated with, so the
-/// argument shape is bit-for-bit stable for old artifacts.
+/// Every packed port must carry the cosim metadata that determines its
+/// kernel argument shape. Silently substituting defaults would bind an old
+/// archive against an interface its metadata does not describe.
 #[test]
-fn legacy_archive_ports_fall_back_to_the_historical_16_and_64() {
-    let graph = task_graph(vec![
-        port("a", ArgCategory::Mmap, 512, None),
-        port("s", ArgCategory::Istream, 32, None),
-    ]);
-    let spec = metadata::zip_pkg::spec_from_task_graph(&graph).expect("project");
-    assert_eq!(
-        spec.args[0].kind,
-        ArgKind::Mmap {
-            data_width: 512,
-            addr_width: 64,
-        },
-    );
-    assert_eq!(
-        spec.args[1].kind,
-        ArgKind::Stream {
-            width: 32,
-            depth: 16,
-            dir: StreamDir::In,
-            protocol: StreamProtocol::ApFifo,
-        },
-    );
+fn missing_cosim_port_metadata_is_an_archive_error() {
+    for (mut port, field) in [
+        (port("a", ArgCategory::Mmap, 512, None), "mmap_addr_width"),
+        (port("s", ArgCategory::Istream, 32, None), "stream_depth"),
+    ] {
+        port.stream_depth = None;
+        port.mmap_addr_width = None;
+        let graph = task_graph(vec![port]);
+        let err = metadata::zip_pkg::spec_from_task_graph(&graph)
+            .expect_err("unstamped archive must be rejected");
+        assert!(err.to_string().contains(field), "got {err}");
+        assert!(
+            err.to_string()
+                .contains("archive predates cosim port metadata; re-run `tapa pack`"),
+            "got {err}"
+        );
+    }
 }
 
-/// Mixed archives keep the two paths side by side: a stamped port projects
-/// its schema value while an unstamped one keeps the legacy fallback, and a
-/// fan-out (`hmap` / plural streams) carries the port's value to every
-/// channel it spawns.
+/// A fan-out (`hmap` / plural streams) carries the port's stamped metadata
+/// to every channel it spawns.
 #[test]
-fn stamped_and_unstamped_ports_mix_across_fanout() {
+fn stamped_metadata_propagates_across_fanout() {
     let mut hmap = port("mat_a", ArgCategory::Mmap, 512, Some(2));
     hmap.mmap_addr_width = Some(48);
     let mut streams = port("q", ArgCategory::Ostreams, 32, Some(2));
@@ -226,7 +225,7 @@ fn stamped_and_unstamped_ports_mix_across_fanout() {
                 protocol: StreamProtocol::ApFifo,
             },
         ],
-        "every fan-out channel inherits its port's stamped value; unstamped ports keep the fallback",
+        "every fan-out channel inherits its port's stamped value",
     );
 }
 
@@ -331,8 +330,9 @@ fn hmap_fans_out_when_read_from_archive_json() {
             "readable_name": "Gemv",
             "ports": [
                 {"cat": "mmap", "name": "mat_a", "type": "int*", "width": 512,
-                 "chan_count": 2, "chan_size": 131072},
-                {"cat": "mmap", "name": "vec_x", "type": "int*", "width": 512}
+                 "chan_count": 2, "chan_size": 131072, "mmap_addr_width": 64},
+                {"cat": "mmap", "name": "vec_x", "type": "int*", "width": 512,
+                 "mmap_addr_width": 64}
             ]}}
     }"#;
     let graph: TaskGraph = serde_json::from_str(json).expect("parse task graph");

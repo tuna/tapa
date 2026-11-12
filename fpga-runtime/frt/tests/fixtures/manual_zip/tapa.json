@@ -15,6 +15,7 @@
                 "ports": [
                     {
                         "cat": "mmap",
+                        "mmap_addr_width": 64,
                         "name": "a",
                         "type": "uint32_t*",
                         "width": 32
@@ -22,18 +23,21 @@
                     {
                         "cat": "istream",
                         "name": "s",
+                        "stream_depth": 16,
                         "type": "uint32_t",
                         "width": 32
                     },
                     {
                         "cat": "istream",
                         "name": "end",
+                        "stream_depth": 16,
                         "type": "tapa::u<7>",
                         "width": 8
                     },
                     {
                         "cat": "ostream",
                         "name": "result",
+                        "stream_depth": 16,
                         "type": "tapa::u<17>",
                         "width": 32
                     }

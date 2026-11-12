@@ -5,16 +5,6 @@ use std::collections::HashMap;
 use tapa_ir::port::{sanitize_array_name, ArgCategory, Port};
 use tapa_ir::{Target, TaskGraph};
 
-/// Legacy-archive fallback for [`tapa_ir::Port::stream_depth`]: archives
-/// written before the field existed carry no depth, and 16 is what those
-/// archives were always simulated with (the removed `STREAM_DEPTH`).
-const LEGACY_STREAM_DEPTH: u32 = 16;
-
-/// Legacy-archive fallback for [`tapa_ir::Port::mmap_addr_width`]: archives
-/// written before the field existed were always simulated with a 64-bit
-/// address (the removed `MMAP_ADDR_WIDTH`).
-const LEGACY_MMAP_ADDR_WIDTH: u32 = 64;
-
 /// Project the packed task graph into the flat kernel argument list.
 ///
 /// The top task's `ports` expand into one or more kernel arguments each,
@@ -42,7 +32,11 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
                 }
                 ArgKind::Mmap {
                     data_width: width,
-                    addr_width: port.mmap_addr_width.unwrap_or(LEGACY_MMAP_ADDR_WIDTH),
+                    addr_width: required_cosim_metadata(
+                        port.mmap_addr_width,
+                        port,
+                        "mmap_addr_width",
+                    )?,
                 }
             }
             ArgCategory::Istream
@@ -50,7 +44,7 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
             | ArgCategory::Istreams
             | ArgCategory::Ostreams => ArgKind::Stream {
                 width,
-                depth: port.stream_depth.unwrap_or(LEGACY_STREAM_DEPTH),
+                depth: required_cosim_metadata(port.stream_depth, port, "stream_depth")?,
                 dir: stream_dir(port),
                 protocol: StreamProtocol::ApFifo,
             },
@@ -86,6 +80,15 @@ pub fn spec_from_task_graph(graph: &TaskGraph) -> Result<KernelSpec> {
         inlined: Vec::new(),
         memories: Vec::new(),
         rings: Vec::new(),
+    })
+}
+
+fn required_cosim_metadata<T>(value: Option<T>, port: &Port, field: &str) -> Result<T> {
+    value.ok_or_else(|| {
+        CosimError::Metadata(format!(
+            "port '{}' has no {field}; archive predates cosim port metadata; re-run `tapa pack`",
+            sanitize_array_name(&port.name)
+        ))
     })
 }
 
