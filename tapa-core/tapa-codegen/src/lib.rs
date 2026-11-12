@@ -10,7 +10,6 @@ mod passes;
 mod program;
 mod state;
 pub mod support_assets;
-mod target;
 mod template;
 
 pub use artifact::ArtifactManifest;

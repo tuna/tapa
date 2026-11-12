@@ -3,7 +3,7 @@
 use crate::error::CodegenError;
 use crate::rtl_state::routing_id_bits;
 use crate::state::views::{DesignView, ModuleTable};
-use tapa_ir::floorplanned_fifo_storage_depth;
+use tapa_ir::{floorplanned_fifo_storage_depth, Target};
 
 use super::floorplans::stream_crossing_body_level;
 use super::frames::{
@@ -468,7 +468,10 @@ pub fn connect_fifos(
                 .ok_or_else(|| CodegenError::FifoWidthUnresolved(fifo_name.clone()))?
                 .width;
             let is_vitis_top_axis = task_name == design_data.top
-                && crate::target::top_stream_needs_axis_adapter(design_data.target);
+                && matches!(
+                    design_data.target,
+                    Target::XilinxVitis | Target::XilinxSlash
+                );
             if let Some(mm) = modules.get_mut(task_name) {
                 let suffixes: &[&str] = if has_consumer {
                     ISTREAM_SUFFIXES
