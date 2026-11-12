@@ -29,24 +29,36 @@ pub fn top_frames(platform: Option<&str>) -> TopFrames {
     }
 }
 
-/// The device an AI Engine graph compiles for: a platform's `.xpfm`, or a
-/// part number when no platform is known.
+/// The device an AI Engine graph compiles for. A platform installed here
+/// wins: its `.xpfm` carries the part, and every `aiecompiler` takes
+/// `--platform`, while older ones have no `--part` (2022.2, the only Vitis
+/// that targets the VCK5000, rejects it). A part alone, or beside a
+/// platform that is not installed here, compiles with `--part`.
 pub fn device(platform: Option<&str>, part: Option<&str>) -> Result<AieDevice> {
+    if let Some(platform) = platform {
+        match crate::steps::synth::resolve_platform_dir(platform) {
+            Some(dir) => {
+                let xpfm = fs::read_dir(&dir)?
+                    .filter_map(std::result::Result::ok)
+                    .map(|entry| crate::util::utf8(entry.path()))
+                    .find(|path| path.extension() == Some("xpfm"))
+                    .ok_or_else(|| {
+                        CliError::InvalidArg(format!(
+                            "platform `{platform}` has no `.xpfm` in {dir}"
+                        ))
+                    })?;
+                return Ok(AieDevice::Platform(xpfm));
+            }
+            None if part.is_none() => {
+                return Err(CliError::InvalidArg(format!(
+                    "cannot find the platform `{platform}`"
+                )));
+            }
+            None => {}
+        }
+    }
     if let Some(part) = part {
         return Ok(AieDevice::Part(part.to_string()));
-    }
-    if let Some(platform) = platform {
-        let dir = crate::steps::synth::resolve_platform_dir(platform).ok_or_else(|| {
-            CliError::InvalidArg(format!("cannot find the platform `{platform}`"))
-        })?;
-        let xpfm = fs::read_dir(&dir)?
-            .filter_map(std::result::Result::ok)
-            .map(|entry| crate::util::utf8(entry.path()))
-            .find(|path| path.extension() == Some("xpfm"))
-            .ok_or_else(|| {
-                CliError::InvalidArg(format!("platform `{platform}` has no `.xpfm` in {dir}"))
-            })?;
-        return Ok(AieDevice::Platform(xpfm));
     }
     Err(CliError::InvalidArg(
         "the AI Engine compiler needs a device; pass `--platform` or `--part-num`, \
@@ -443,10 +455,22 @@ pub fn pl_control_sidecar(xo: &Path) -> std::path::PathBuf {
 mod tests {
     use super::*;
 
+    /// An installed platform wins over a part, since `aiecompiler` 2022.2 (the
+    /// VCK5000's) has no `--part`; a part still serves when the platform is
+    /// not installed here, as for a remote tool host.
     #[test]
-    fn an_explicit_part_overrides_the_platform_for_aie() {
-        let device = device(Some("/platform/does/not/exist"), Some("xcvc1902-test"))
-            .expect("explicit part wins without reading the platform");
-        assert!(matches!(device, AieDevice::Part(part) if part == "xcvc1902-test"));
+    fn an_installed_platform_wins_over_a_part_for_aie() {
+        let remote = device(Some("/platform/does/not/exist"), Some("xcvc1902-test"))
+            .expect("a part serves where the platform is not installed");
+        assert!(matches!(remote, AieDevice::Part(part) if part == "xcvc1902-test"));
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let platform_dir = dir.path().join("vck5000");
+        fs::create_dir(&platform_dir).expect("platform dir");
+        let xpfm = platform_dir.join("pfm.xpfm");
+        fs::write(&xpfm, "<platform/>").expect("xpfm");
+        let platform = platform_dir.to_str().expect("UTF-8");
+        let installed = device(Some(platform), Some("xcvc1902-test")).expect("platform");
+        assert!(matches!(installed, AieDevice::Platform(path) if path == xpfm.to_str().unwrap()));
     }
 }

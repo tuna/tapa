@@ -317,6 +317,12 @@ the host's arguments. Software simulation remains the run without a
 bitstream. Running a package needs the simulators on `PATH`: source the
 Vitis `settings64.sh`.
 
+`--part-num` reaches `aiecompiler` as `--part`, which older releases lack:
+Vitis 2022.2, the only one that targets the VCK5000, rejects it. There, name
+the platform instead (`--platform xilinx_vck5000_gen4x8_qdma_2_202220_1`),
+whose `.xpfm` carries the part; a platform installed on the machine running
+`tapa` is used in preference to `--part-num` whenever both are given.
+
 The host binds each PL↔AI Engine stream by name, so name it after its
 variable: `tapa::stream<vec4f> a_q("a_q")`. An `async_mmap` port needs no
 name: the host runs its PL movers in software, on the memory the host

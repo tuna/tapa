@@ -10,7 +10,7 @@ pub mod report;
 use camino::{Utf8Path, Utf8PathBuf};
 use typed_builder::TypedBuilder;
 
-use crate::error::Result;
+use crate::error::{Result, XilinxError};
 use crate::runtime::process::{ToolInvocation, ToolRunner};
 use crate::tools::tool_failure;
 use crate::ToolValue;
@@ -88,7 +88,25 @@ pub fn compile(runner: &dyn ToolRunner, job: &AieCompileJob) -> Result<()> {
         inv = inv.arg("-use-async-rtp-locks=false");
     }
     inv = inv.arg("graph.cpp");
-    run_in(runner, inv, &job.graph_dir, "aiecompiler")
+    run_in(runner, inv, &job.graph_dir, "aiecompiler").map_err(|error| match error {
+        XilinxError::ToolFailure {
+            program,
+            code,
+            stderr,
+        } if matches!(job.device, AieDevice::Part(_))
+            && stderr.contains("Unknown command line argument '--part") =>
+        {
+            XilinxError::ToolFailure {
+                program,
+                code,
+                stderr: format!(
+                    "{stderr}\nthis aiecompiler has no `--part` (Vitis 2022.2 has none); \
+                     name the device with `--platform` instead"
+                ),
+            }
+        }
+        other => other,
+    })
 }
 
 fn run_in(
@@ -105,4 +123,35 @@ fn run_in(
         return Err(tool_failure(program, out));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime::process::{MockToolRunner, ToolOutput};
+
+    /// Vitis 2022.2's aiecompiler has no `--part`; its refusal names the
+    /// flag that works instead.
+    #[test]
+    fn a_compiler_without_part_points_at_platform() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let job = AieCompileJob::builder()
+            .graph_dir(crate::util::utf8(dir.path()))
+            .target(AieTarget::X86sim)
+            .device(AieDevice::Part("xcvc1902-vsva2197-2MP-e-S".into()))
+            .build();
+        let runner = MockToolRunner::new();
+        runner.push_ok(
+            "aiecompiler",
+            ToolOutput {
+                exit_code: 1,
+                stdout: "ERROR: [aiecompiler 77-4469] driver aiecompiler: Unknown command line \
+                         argument '--part=xcvc1902-vsva2197-2MP-e-S'."
+                    .into(),
+                stderr: String::new(),
+            },
+        );
+        let error = compile(&runner, &job).expect_err("2022.2 rejects --part");
+        assert!(error.to_string().contains("`--platform`"), "{error}");
+    }
 }
