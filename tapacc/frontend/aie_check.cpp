@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "clang/AST/Attr.h"
+#include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/RecursiveASTVisitor.h"
@@ -190,6 +191,21 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
         visited_.insert(def).second) {
       TraverseStmt(def->getBody());
     }
+    return true;
+  }
+
+  // A constructor is a call too, with its member initializers.
+  bool VisitCXXConstructExpr(clang::CXXConstructExpr* construct) {
+    const clang::FunctionDecl* def = nullptr;
+    if (!construct->getConstructor()->hasBody(def) ||
+        !visited_.insert(def).second) {
+      return true;
+    }
+    for (const clang::CXXCtorInitializer* init :
+         llvm::cast<clang::CXXConstructorDecl>(def)->inits()) {
+      TraverseStmt(init->getInit());
+    }
+    TraverseStmt(def->getBody());
     return true;
   }
 

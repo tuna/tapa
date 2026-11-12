@@ -66,6 +66,30 @@ std::string Design(const std::string& add, const std::string& load = R"cpp(
   )cpp";
 }
 
+// A constructor is a function the task calls: its locals share the
+// kernel's stack, and an AI Engine stack sized without them overflows.
+TEST(AieTest, StackCountsConstructorLocals) {
+  const TreePipelineRun run = Analyze(
+      "ctor_stack", Design(R"cpp(
+        struct Table {
+          float t;
+          Table() {
+            float scratch[64] = {};
+            t = scratch[0];
+          }
+        };
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          Table table;
+          for (int i = 0; i < n; ++i) c.write(a.read() + table.t);
+        }
+      )cpp"));
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  // `table`, the loop counter, and the constructor's `scratch`.
+  EXPECT_EQ(nlohmann::json::parse(run.json)["tasks"]["Add"]["aie_stack_bytes"],
+            4 + 4 + 64 * 4);
+}
+
 TEST(AieTest, LeafFrameReachesTheGraphAndItsOwnVariant) {
   const TreePipelineRun run =
       Analyze("leaf", Design(R"cpp(
