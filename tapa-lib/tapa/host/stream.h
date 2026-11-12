@@ -1257,15 +1257,17 @@ struct stream_uses<ostreams<T, S>> {
   }
 };
 
-#define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref)                             \
-  template <typename T, uint64_t N, typename U>                              \
-  struct accessor<io##stream<T>&, stream<U, N> arg_ref> {                    \
-    static io##stream<T> access(stream<U, N> arg_ref arg) { return arg; }    \
-    static void access(frt::Instance& instance, int& idx,                    \
-                       stream<U, N> arg_ref arg) {                           \
-      return instance.SetStreamArg(idx++,                                    \
-                                   arg.get_queue().get_frt_stream().path()); \
-    }                                                                        \
+// Any simulation depth: a `tapa::hls::stream` must reach `get_frt_stream`,
+// which rejects it, rather than bind as a scalar.
+#define TAPA_DEFINE_DEVICE_ACCESSOR(io, arg_ref)                              \
+  template <typename T, uint64_t N, uint64_t SD, typename U>                  \
+  struct accessor<io##stream<T>&, stream<U, N, SD> arg_ref> {                 \
+    static io##stream<T> access(stream<U, N, SD> arg_ref arg) { return arg; } \
+    static void access(frt::Instance& instance, int& idx,                     \
+                       stream<U, N, SD> arg_ref arg) {                        \
+      return instance.SetStreamArg(idx++,                                     \
+                                   arg.get_queue().get_frt_stream().path());  \
+    }                                                                         \
   };
 
 TAPA_DEFINE_DEVICE_ACCESSOR(i, )
