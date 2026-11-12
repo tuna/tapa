@@ -33,8 +33,12 @@ fn compute_xilinx_environ() -> HashMap<String, String> {
 }
 
 fn merge_sourced_env(script: &std::path::Path, env: &mut HashMap<String, String>) {
+    // The path goes in as an argument, not into the command text, where a
+    // space or a `$` in an install path would change what is sourced; the
+    // script then sees no arguments, as when sourced by hand.
     let out = Command::new("bash")
-        .args(["-c", &format!(". {} && env -0", script.display())])
+        .args(["-c", "script=$1; shift; . \"$script\" && env -0", "bash"])
+        .arg(script)
         .output();
     if let Ok(out) = out {
         if out.status.success() {
@@ -44,5 +48,25 @@ fn merge_sourced_env(script: &std::path::Path, env: &mut HashMap<String, String>
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::merge_sourced_env;
+    use std::collections::HashMap;
+
+    /// Tool installs may sit under a path with spaces or shell
+    /// metacharacters; the script is sourced from that path as is.
+    #[test]
+    fn a_settings_script_under_any_path_is_sourced() {
+        let root = tempfile::tempdir().expect("temp dir");
+        let dir = root.path().join("Xilinx Tools $HOME;");
+        std::fs::create_dir_all(&dir).expect("install dir");
+        let script = dir.join("settings64.sh");
+        std::fs::write(&script, "export FRT_SOURCED_PROBE=1\n").expect("write script");
+        let mut env = HashMap::new();
+        merge_sourced_env(&script, &mut env);
+        assert_eq!(env.get("FRT_SOURCED_PROBE").map(String::as_str), Some("1"));
     }
 }
