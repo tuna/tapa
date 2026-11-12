@@ -758,6 +758,31 @@ TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   EXPECT_NE(run.diags.front().find("upper task 'Pipe' is a template"),
             std::string::npos)
       << run.diags.front();
+
+  // An explicit specialization is no instantiation: it used to pass, and
+  // the rewrite then stripped its body as an unreachable task while a
+  // leaf wrapper called it.
+  constexpr char kExplicit[] = R"cpp(
+    void Fill(tapa::ostream<int>& out) {}
+    void Drain(tapa::istream<int>& in) {}
+    template <int N>
+    void Pipe(tapa::ostream<int>& out);
+    template <>
+    void Pipe<4>(tapa::ostream<int>& out) {
+      tapa::task().invoke(Fill, out);
+    }
+    void Top() {
+      tapa::stream<int> q;
+      tapa::task().invoke(Pipe<4>, q).invoke(Drain, q);
+    }
+  )cpp";
+  const test_support::TreePipelineRun spec = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/upper_spec.cpp", kExplicit}}, "Top",
+      testing::TempDir() + "/upper_spec", {"-std=c++17"});
+  ASSERT_FALSE(spec.diags.empty()) << spec.json;
+  EXPECT_NE(spec.diags.front().find("upper task 'Pipe' is a template"),
+            std::string::npos)
+      << spec.diags.front();
 }
 
 TEST(InvokeParser, AnAsyncMmapGoesToOneTask) {

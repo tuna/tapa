@@ -346,7 +346,9 @@ bool IsPassiveStmt(clang::ASTContext& ctx, const clang::Stmt* stmt) {
 }
 
 void DiagnoseUpperBody(UpperTaskContext& uc, const clang::FunctionDecl* func) {
-  if (func->isTemplateInstantiation()) {
+  // An explicit specialization is no instantiation, yet just as templated.
+  if (func->isFunctionTemplateSpecialization() ||
+      func->getDescribedFunctionTemplate() != nullptr) {
     ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
                      func->getLocation(),
                      "upper task '%0' is a template; only a leaf task may be "
