@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <istream>
 #include <string>
 
 namespace tapa {
@@ -57,6 +58,10 @@ void note_blocked_poll(const std::string& channel_name, const char* state);
 // Seconds parsed out of `TAPA_STALL_WARN_SECONDS`, as nanoseconds; 0 disables
 // the warning. Exposed for testing; `text` may be null or empty for "unset".
 uint64_t parse_stall_warn_seconds(const char* text);
+
+// The physical cores a `/proc/cpuinfo` lists, 0 if it names none. Exposed
+// for testing.
+int count_physical_cores(std::istream& cpuinfo);
 
 // FRT instance lifecycle, observed by blocked stream operations. A stream
 // bound to a kernel instance can only be filled or drained by that
