@@ -190,9 +190,10 @@ class async_mmap : public mmap<T> {
   stream<T, 64> write_data_q_{"write_data"};
   stream<resp_t, 64> write_resp_q_{"write_resp"};
 
+  // A size of 0 is unknown (`mmap(T* ptr)`): only a known one bounds it.
   int64_t checked(int64_t index) const {
     CHECK_GE(index, 0);
-    if (index != 0) {
+    if (this->size_ != 0) {
       CHECK_LT(index, this->size_);
     }
     return index;

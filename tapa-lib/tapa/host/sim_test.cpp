@@ -187,6 +187,28 @@ TEST(TapaSimTest, ReadOnlyMmapParametersTakeWritableMemory) {
   EXPECT_EQ(out[0], 2);
 }
 
+void ReadEach(tapa::async_mmap<int>& mem, int n, tapa::mmap<int> out) {
+  for (int i = 0; i < n; ++i) {
+    mem.read_addr.write(i);
+    out[i] = mem.read_data.read();
+  }
+}
+
+void ReadEachTop(tapa::mmap<int> in, int n, tapa::mmap<int> out) {
+  tapa::task().invoke(ReadEach, in, n, out);
+}
+
+// `mmap(T* ptr)` leaves the size unknown; an async_mmap over it reads past
+// the first element, as the raw pointer HLS sees would.
+TEST(TapaSimTest, AsyncMmapOverMemoryOfUnknownSize) {
+  std::vector<int> in = {1, 2, 3};
+  std::vector<int> out(3);
+  tapa::invoke(ReadEachTop, /*bitstream=*/"",
+               tapa::read_only_mmap<int>(in.data()), 3,
+               tapa::write_only_mmap<int>(out));
+  EXPECT_EQ(out, in);
+}
+
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
   using Vector = std::vector<int, tapa::aligned_allocator<int>>;
   Vector data = {1, 2, 3};
