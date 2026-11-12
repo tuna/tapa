@@ -630,16 +630,17 @@ fn regex_escape(s: &str) -> String {
 
 /// The pblock operations for every atomic slot a region covers.
 fn region_slot_pblock_ranges<'a>(device: &'a Device, region: &str) -> Vec<&'a [String]> {
-    let Some(coor) = Coor::from_region_or_slot_name(region) else {
-        return Vec::new();
-    };
-    let mut ranges = Vec::new();
-    for (x, y) in coor.all_slot_coors() {
-        if let Some(slot) = device.slot(x, y) {
-            ranges.push(slot.pblock_ranges.as_slice());
-        }
-    }
-    ranges
+    let coor = Coor::from_region_or_slot_name(region).expect("validated region");
+    coor.all_slot_coors()
+        .into_iter()
+        .map(|(x, y)| {
+            device
+                .slot(x, y)
+                .expect("validated slot")
+                .pblock_ranges
+                .as_slice()
+        })
+        .collect()
 }
 
 fn add_slot_ranges(lines: &mut Vec<String>, region: &str, slots: &[&[String]]) {
@@ -728,7 +729,8 @@ fn clip_step(lines: &mut Vec<String>, source: &str, target: &str, operation: &st
 /// overlapping pblocks for the same atomic slot.
 fn canonical_pblock_name(region: &str) -> String {
     Coor::from_region_or_slot_name(region)
-        .map_or_else(|| region.to_string(), |coor| coor.region_name())
+        .expect("validated region")
+        .region_name()
 }
 
 #[cfg(test)]
