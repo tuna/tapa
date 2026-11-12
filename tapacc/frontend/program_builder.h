@@ -122,8 +122,6 @@ class ProgramBuilder {
   // The single merged task graph, in the stable field order and spelling.
   nlohmann::json EmitJson() const;
 
-  const std::string& top() const { return top_; }
-
   // Merge-rule violations, one entry per failed rule check. The owner of
   // this class prints them; the builder itself stays silent so tests can
   // assert on the exact messages.

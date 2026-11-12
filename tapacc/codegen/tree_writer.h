@@ -152,8 +152,6 @@ class TreeFileBuffer {
   bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening);
   bool InsertGuardClosing(clang::SourceRange range, llvm::StringRef closing);
 
-  bool had_edits() const { return had_edits_; }
-
   // Announces an edit already applied through the shared Rewriter. Emits the
   // re-snap marker when its replacement changed the line count. This is the
   // hook EditSink registers for the per-decl rewrite rules.

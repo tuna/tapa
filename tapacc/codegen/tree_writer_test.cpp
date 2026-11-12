@@ -283,7 +283,6 @@ TEST(TreeFileBuffer, MultiLineReplacementResnapsWithLineMarker) {
   ASSERT_TRUE(
       buffer.ReplaceWithLineResnap(RangeOf(sm, offset, body.size()),
                                    "void f() {\n  one = 1;\n  one += 1;\n}"));
-  EXPECT_TRUE(buffer.had_edits());
   // Exact bytes: the marker names the original file and the original line
   // of the text following the edit.
   EXPECT_EQ(buffer.Render(),
@@ -507,7 +506,6 @@ TEST(TreeFileBuffer, LineCountPreservingEditsEmitNoMarker) {
   const size_t offset = std::string(kLinesCode).find("one = 1");
   ASSERT_NE(offset, std::string::npos);
   ASSERT_TRUE(buffer.ReplaceWithLineResnap(RangeOf(sm, offset, 7), "one = 2"));
-  EXPECT_TRUE(buffer.had_edits());
   EXPECT_EQ(buffer.Render(),
             "#line 1 \"/src/main.cpp\"\n"
             "int one;\n"
@@ -524,7 +522,6 @@ TEST(TreeFileBuffer, UneditedBuffersRenderByteIdentical) {
   clang::SourceManager& sm = ast->getSourceManager();
   clang::Rewriter rewriter(sm, ast->getLangOpts());
   TreeFileBuffer buffer(sm, rewriter, sm.getMainFileID(), "/src/main.cpp");
-  EXPECT_FALSE(buffer.had_edits());
   EXPECT_EQ(buffer.Render(), kLinesCode);
 }
 

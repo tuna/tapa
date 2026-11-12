@@ -48,7 +48,6 @@ TreePipelineRun Build() {
 
 TEST(BuildProgram, TopAndTaskSet) {
   const TreePipelineRun b = Build();
-  EXPECT_EQ(b.builder.top(), "VecAdd");
   EXPECT_EQ(nlohmann::json::parse(b.json)["tasks"].size(), 4u);
   EXPECT_NE(b.builder.FindTask("VecAdd"), nullptr);
   EXPECT_EQ(b.builder.FindTask("VecAdd")->level, TaskLevel::kUpper);
