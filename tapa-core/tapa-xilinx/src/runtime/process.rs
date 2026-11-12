@@ -7,7 +7,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
 
 use camino::Utf8PathBuf;
 
@@ -19,11 +18,9 @@ pub struct ToolInvocation {
     pub program: String,
     pub args: Vec<ToolValue>,
     pub env: HashMap<String, ToolValue>,
-    pub stdin: Option<Vec<u8>>,
     pub cwd: Option<Utf8PathBuf>,
     pub uploads: Vec<Utf8PathBuf>,
     pub downloads: Vec<Utf8PathBuf>,
-    pub timeout: Option<Duration>,
 }
 
 impl ToolInvocation {
@@ -49,12 +46,6 @@ impl ToolInvocation {
     pub fn local_args(&self) -> Vec<String> {
         self.args.iter().map(ToString::to_string).collect()
     }
-
-    #[must_use]
-    pub fn timeout(mut self, timeout: Duration) -> Self {
-        self.timeout = Some(timeout);
-        self
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -76,9 +67,8 @@ pub trait ToolRunner: Send + Sync {
 ///
 /// Remote env allowlisting lives in `RemoteToolRunner` where the env
 /// crosses a machine boundary. On a single host, the child sees the
-/// parent shell's state. When
-/// `ToolInvocation::timeout` is set, the child is killed on expiry
-/// and the call returns `XilinxError::ToolTimeout`.
+/// parent shell's state. Standard input is closed: vendor tools are
+/// non-interactive batch processes.
 #[derive(Debug, Default)]
 pub struct LocalToolRunner;
 
@@ -231,58 +221,17 @@ impl ToolRunner for LocalToolRunner {
         if let Some(cwd) = &inv.cwd {
             cmd = cmd.dir(cwd.as_str());
         }
-        cmd = if let Some(bytes) = &inv.stdin {
-            cmd.stdin_bytes(bytes.clone())
-        } else {
-            cmd.stdin_null()
-        };
-        cmd = cmd.stdout_capture().stderr_capture().unchecked();
-
-        #[cfg(unix)]
-        {
-            cmd = cmd.before_spawn(|command| {
-                use std::os::unix::process::CommandExt as _;
-                command.process_group(0);
-                Ok(())
-            });
-        }
-
+        cmd = cmd
+            .stdin_null()
+            .stdout_capture()
+            .stderr_capture()
+            .unchecked();
         let child = cmd.start().map_err(|e| XilinxError::ToolFailure {
             program: inv.program.clone(),
             code: -1,
             stderr: format!("cannot spawn the process: {e}"),
         })?;
-
-        // Duct feeds stdin and drains both output pipes concurrently. Its
-        // deadline covers the process and all three I/O worker threads.
-        let collected = if let Some(timeout) = inv.timeout {
-            child.wait_timeout(timeout)
-        } else {
-            child.wait().map(Some)
-        };
-        let output = collected
-            .and_then(|output| {
-                output.ok_or_else(|| std::io::Error::from(std::io::ErrorKind::TimedOut))
-            })
-            .map_err(|error| {
-                #[cfg(unix)]
-                for pid in child.pids() {
-                    let group = nix::unistd::Pid::from_raw(pid.cast_signed());
-                    let _ = nix::sys::signal::killpg(group, nix::sys::signal::Signal::SIGKILL);
-                }
-                #[cfg(not(unix))]
-                let _ = child.kill();
-                let _ = child.wait();
-                match inv.timeout {
-                    Some(timeout) if error.kind() == std::io::ErrorKind::TimedOut => {
-                        XilinxError::ToolTimeout {
-                            program: inv.program.clone(),
-                            timeout_secs: timeout.as_secs(),
-                        }
-                    }
-                    _ => error.into(),
-                }
-            })?;
+        let output = child.wait()?;
         match output.status.code() {
             Some(code) => Ok(ToolOutput {
                 exit_code: code,
@@ -436,54 +385,6 @@ mod tests {
         assert_eq!(out.exit_code, 3);
         assert_eq!(out.stdout, "hi");
         assert_eq!(out.stderr, "err");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn local_runner_drains_both_pipes_while_feeding_stdin() {
-        let payload = vec![b'x'; 256 * 1024];
-        for timeout in [None, Some(Duration::from_secs(5))] {
-            let mut inv = ToolInvocation::new("/bin/sh")
-                .arg("-c")
-                .arg("head -c 262144 /dev/zero; head -c 262144 /dev/zero >&2; cat");
-            inv.stdin = Some(payload.clone());
-            inv.timeout = timeout;
-            let out = LocalToolRunner::new()
-                .run(&inv)
-                .expect("concurrent tool I/O");
-            assert_eq!(out.exit_code, 0);
-            assert_eq!(out.stderr.as_bytes(), vec![0; payload.len()]);
-            assert_eq!(
-                &out.stdout.as_bytes()[..payload.len()],
-                vec![0; payload.len()]
-            );
-            assert_eq!(&out.stdout.as_bytes()[payload.len()..], payload);
-        }
-    }
-
-    #[test]
-    fn local_runner_honors_timeout() {
-        let runner = LocalToolRunner::new();
-        for script in [
-            "sleep 5",
-            "exec 1>&- 2>&-; sleep 5",
-            "while :; do printf output; printf error >&2; done",
-            "sleep 5 & exit 0",
-        ] {
-            let inv = ToolInvocation::new("/bin/sh")
-                .arg("-c")
-                .arg(script)
-                .timeout(Duration::from_millis(100));
-            let start = std::time::Instant::now();
-            let err = runner.run(&inv).unwrap_err();
-            assert!(
-                matches!(err, XilinxError::ToolTimeout { program, .. } if program == "/bin/sh")
-            );
-            assert!(
-                start.elapsed() < Duration::from_secs(2),
-                "the deadline must cover both communication and process exit"
-            );
-        }
     }
 
     #[test]
@@ -718,24 +619,5 @@ mod tests {
         let out = runner.run(&inv).unwrap();
         assert_eq!(out.exit_code, 0);
         assert_eq!(out.stdout, "it's working");
-    }
-
-    #[test]
-    fn local_runner_timeout_fires_quickly() {
-        let runner = LocalToolRunner::new();
-        let mut inv = ToolInvocation::new("/bin/sh")
-            .arg("-c")
-            .arg("sleep 10")
-            .timeout(Duration::from_millis(50));
-        // The tool never consumes stdin: writing it must share the deadline.
-        inv.stdin = Some(vec![0; 1024 * 1024]);
-        let start = std::time::Instant::now();
-        let err = runner.run(&inv).unwrap_err();
-        let elapsed = start.elapsed();
-        assert!(matches!(err, XilinxError::ToolTimeout { program, .. } if program == "/bin/sh"));
-        assert!(
-            elapsed < Duration::from_secs(2),
-            "timeout should fire quickly, took {elapsed:?}"
-        );
     }
 }

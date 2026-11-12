@@ -16,7 +16,6 @@
 
 mod transport;
 
-use std::io::Write;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -223,8 +222,8 @@ impl RemoteToolRunner {
 
     /// Final stage of [`run_once`](Self::run_once): execute the
     /// wrapped remote script through the transport and collect the
-    /// results -- stream `inv.stdin` when present, classify transient mux
-    /// failures, and otherwise download requested artifacts regardless of
+    /// results -- classify transient mux failures and otherwise download
+    /// requested artifacts regardless of
     /// exit code so failure logs survive. The attempt guard owns cleanup.
     fn exec_and_collect(
         &self,
@@ -235,19 +234,9 @@ impl RemoteToolRunner {
         let mut ssh = self.session.exec_cmd(wrapped);
         ssh.stdout(Stdio::piped());
         ssh.stderr(Stdio::piped());
-        if inv.stdin.is_some() {
-            ssh.stdin(Stdio::piped());
-        }
-        let mut child = ssh.spawn().map_err(|e| {
+        let child = ssh.spawn().map_err(|e| {
             XilinxError::RemoteTransfer(format!("cannot spawn ssh to run a remote command: {e}"))
         })?;
-        if let Some(bytes) = &inv.stdin {
-            if let Some(mut si) = child.stdin.take() {
-                si.write_all(bytes).map_err(|e| {
-                    XilinxError::RemoteTransfer(format!("cannot write to the ssh stdin: {e}"))
-                })?;
-            }
-        }
         let out = child.wait_with_output().map_err(|e| {
             XilinxError::RemoteTransfer(format!("cannot wait for the ssh command: {e}"))
         })?;

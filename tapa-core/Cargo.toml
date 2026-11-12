@@ -101,7 +101,6 @@ fs-err = "3"
 indexmap = { version = "2", features = ["serde"] }
 log = "0.4"
 askama = "0.16"
-nix = { version = "0.31", features = ["process", "signal"] }
 path-slash = "0.2"
 quick-xml = { version = "0.42", features = ["serialize"] }
 const-str = "1"
