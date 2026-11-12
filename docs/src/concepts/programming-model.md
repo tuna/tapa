@@ -139,6 +139,8 @@ The `--bitstream` flag is what controls which backend runs:
   `tapa::ostream<T>&`), and so is `tapa::async_mmap<T>&`. Passing a stream or
   `async_mmap` by value is a compile error.
 - mmap arguments are passed **by value** (`tapa::mmap<T>`), not by reference.
+  An invoke hands a task the parent's own mmap parameter; `tapa analyze`
+  rejects a local copy of it, which names no port to wire.
 - Scalar arguments (plain C++ types such as `int`, `float`, `uint64_t`) are
   passed by value, and `tapa analyze` rejects one taken by reference. A task
   may modify its local copy, but that modification is not returned to the

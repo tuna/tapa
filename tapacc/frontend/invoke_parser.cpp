@@ -571,6 +571,18 @@ void ParseInvocations(
           };
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kAsyncMmap) {
+            // Memory reaches a task through the parent's own port; a local
+            // copy of the parent's mmap names no port the graph can wire.
+            if (decl_ref == nullptr ||
+                !llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) ||
+                decl_ref->getDecl()->getDeclContext() != uc.task.def) {
+              ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                               arg->getBeginLoc(),
+                               "memory argument '%0' for task port '%1' must "
+                               "name a parent task parameter")
+                  << arg_name << port;
+              continue;
+            }
             if (decl_ref != nullptr &&
                 llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) &&
                 ClassifyTapaType(decl_ref->getType()) == TapaKind::kAsyncMmap) {

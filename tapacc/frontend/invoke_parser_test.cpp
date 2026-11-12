@@ -737,6 +737,26 @@ TEST(InvokeParser, AnInvokeBindsEveryParameter) {
       << run.diags.front();
 }
 
+TEST(InvokeParser, MemoryArgumentsNameParentParameters) {
+  // A local copy of the parent's mmap used to bind by its own name, which
+  // names no port of the parent.
+  constexpr char kCode[] = R"cpp(
+    void Fill(tapa::mmap<int> m) {}
+    void Top(tapa::mmap<int> m, tapa::mmap<int> other) {
+      tapa::mmap<int> copy = m;
+      tapa::task().invoke(Fill, copy).invoke(Fill, other);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/memory_origin.cpp", kCode}}, "Top",
+      testing::TempDir() + "/memory_origin", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 1u) << run.json;
+  EXPECT_NE(run.diags.front().find("memory argument 'copy' for task port 'm' "
+                                   "must name a parent task parameter"),
+            std::string::npos)
+      << run.diags.front();
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>
