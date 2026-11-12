@@ -279,6 +279,47 @@ TEST(InvokeParser, ConstantTakesTheLanguageConversionToThePort) {
   EXPECT_EQ(value_of("Float", 3), std::optional<uint64_t>(0xbf800000));
 }
 
+TEST(InvokeParser, ConstantWrapsToAnArbitraryPrecisionPortWidth) {
+  // tapa::u<W> and tapa::i<W> wrap to W bits. Their object is wider than W,
+  // so the 64-bit pattern of -1 used to reach the graph whole, as a
+  // constant that does not fit its own width; a port wider than the graph's
+  // 64-bit constant form cannot take one at all.
+  constexpr char kCode[] = R"cpp(
+    namespace tapa {
+    template <int W>
+    struct u {
+      u(long long);
+      unsigned short v[(W + 15) / 16];
+    };
+    template <int W>
+    struct i {
+      i(long long);
+      unsigned short v[(W + 15) / 16];
+    };
+    }  // namespace tapa
+    void Signed(tapa::i<12> value) {}
+    void Unsigned(tapa::u<16> value) {}
+    void Wide(tapa::u<128> value) {}
+    void Top() {
+      tapa::task().invoke(Signed, -1).invoke(Unsigned, 70000).invoke(Wide, 1);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/wrap.cpp", kCode}}, "Top",
+      testing::TempDir() + "/wrap", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 1u) << run.json;
+  EXPECT_NE(run.diags.front().find("128-bit task port 'value' does not fit"),
+            std::string::npos)
+      << run.diags.front();
+  const TaskModel* top = run.builder.FindTask("Top");
+  ASSERT_NE(top, nullptr);
+  const Arg& wrapped = top->instances.at("Signed").at(0).args.at("value");
+  EXPECT_EQ(wrapped.value, std::optional<uint64_t>(0xfff));
+  EXPECT_EQ(wrapped.width, 16u);
+  EXPECT_EQ(top->instances.at("Unsigned").at(0).args.at("value").value,
+            std::optional<uint64_t>(70000 & 0xffff));
+}
+
 TEST(InvokeParser, InstancesAndArgs) {
   auto p = ParseTop();
   const TaskModel& top = p.Task("Top");

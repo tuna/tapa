@@ -69,6 +69,13 @@ uint64_t ConvertToPortType(const clang::ASTContext& ctx,
                                llvm::APFloat::rmNearestTiesToEven);
     return converted.bitcastToAPInt().getZExtValue();
   }
+  // `tapa::u<W>` and `tapa::i<W>` wrap a value to W bits, as an integral
+  // conversion does; their object is wider than W, so the bits above W
+  // must not survive either.
+  if (const std::optional<uint32_t> width = ArbitraryIntWidth(type);
+      width && *width <= 64) {
+    return value.extOrTrunc(*width).getZExtValue();
+  }
   const uint64_t bits = value.extOrTrunc(64).getZExtValue();
   if (!type->isIntegralOrEnumerationType()) return bits;
   llvm::APSInt converted(llvm::APInt(/*numBits=*/64, bits),
@@ -534,9 +541,18 @@ void ParseInvocations(
           // ask clang for one.
           auto set_const = [&](const llvm::APSInt& v, const std::string& p) {
             const clang::QualType type = param->getType();
-            insts.back().args[p] =
-                Arg::Constant(ConvertToPortType(uc.ctx, v, type),
-                              BitWidth(uc.ctx, type), TapaKind::kNotTapa);
+            const uint32_t width = BitWidth(uc.ctx, type);
+            if (width > 64) {
+              ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                               arg->getBeginLoc(),
+                               "integer constant bound to the %0-bit task "
+                               "port '%1' does not fit the task graph's "
+                               "64-bit constant form")
+                  << std::to_string(width) << p;
+              return;
+            }
+            insts.back().args[p] = Arg::Constant(
+                ConvertToPortType(uc.ctx, v, type), width, TapaKind::kNotTapa);
           };
 
           if (pk == TapaKind::kMmap || pk == TapaKind::kAsyncMmap) {
