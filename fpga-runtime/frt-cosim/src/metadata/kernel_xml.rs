@@ -330,13 +330,19 @@ fn resolve_arg(arg: RawArg, ports: &HashMap<String, PortInfo>) -> Result<ArgSpec
 
 /// Scalar register width must match the kernel's declaration or XRT
 /// rejects the argument, so there is no silent default. `hostSize` is the
-/// generator's logical C width in
-/// bytes; `size` is the `s_axi` register footprint, 4-byte-padded for
-/// sub-32-bit scalars (a `uint16_t` arg ships `hostSize="0x2"` with
-/// `size="0x4"`); `type` can be a bare typedef name. Rank accordingly.
+/// host object's bytes; `size` is the `s_axi` register footprint, ceil(W/32)
+/// words, so 4-byte-padded for sub-32-bit scalars (a `uint16_t` arg ships
+/// `hostSize="0x2"` with `size="0x4"`) and narrower than the object for an
+/// arbitrary-precision one (an `ap_uint<80>` ships `hostSize="0x10"` with
+/// `size="0xc"`, and a fourth word would land on its control register).
+/// The value spans the smaller of the two. `type` can be a bare typedef name.
 fn scalar_width(arg: &RawArg) -> Result<u32> {
+    let host_bytes = match (arg.host_size_bytes, arg.size_bytes) {
+        (Some(host), Some(size)) => Some(host.min(size)),
+        (host, _) => host,
+    };
     arg.data_width
-        .or_else(|| arg.host_size_bytes.map(|b| b.saturating_mul(8)))
+        .or_else(|| host_bytes.map(|b| b.saturating_mul(8)))
         .or_else(|| c_scalar_type_bits(&arg.c_type))
         .or_else(|| arg.size_bytes.map(|b| b.saturating_mul(8)))
         .ok_or_else(|| {
@@ -606,6 +612,24 @@ mod tests {
         )
         .expect("parse");
         assert_eq!(arg(&parsed, "pid").kind, ArgKind::Scalar { width: 16 });
+    }
+
+    /// TAPA's kernel.xml for `Scalars(..., tapa::u<80> a, ..., tapa::u<12> c)`
+    /// as Vitis HLS 2025.2 lays the registers out: `a`'s value spans its
+    /// three data words (12 bytes), not its 16-byte host object, whose fourth
+    /// word is `a`'s control register; `c` spans its two host bytes.
+    #[test]
+    fn a_scalar_spans_the_smaller_of_its_host_object_and_registers() {
+        let parsed = parse(
+            r#"<?xml version="1.0"?>
+<root><kernel name="Scalars"><args>
+  <arg name="a" addressQualifier="0" id="1" port="s_axi_control" size="0xc" offset="0x1c" hostSize="0x10" type="tapa::u&lt;80&gt;"/>
+  <arg name="c" addressQualifier="0" id="3" port="s_axi_control" size="0x4" offset="0x34" hostSize="0x2" type="tapa::u&lt;12&gt;"/>
+</args></kernel></root>"#,
+        )
+        .expect("parse");
+        assert_eq!(arg(&parsed, "a").kind, ArgKind::Scalar { width: 96 });
+        assert_eq!(arg(&parsed, "c").kind, ArgKind::Scalar { width: 16 });
     }
 
     #[test]
