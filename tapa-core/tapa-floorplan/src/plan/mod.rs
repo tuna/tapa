@@ -21,9 +21,7 @@ use crate::partition::ilp::{
     floorplan_with_exact_resource_caps, floorplan_with_strategy, resolve_strategy, MAX_USAGE_LIMIT,
 };
 use crate::partition::PartitionStrategy;
-use crate::pipeline::plan::{
-    plan_routes, realize_slot_usage, realize_slot_usage_with_resource_caps,
-};
+use crate::pipeline::plan::{plan_routes, realize_slot_usage};
 use crate::solver::{CbcSolver, SolveOpts};
 use crate::xdc;
 
@@ -275,26 +273,15 @@ fn finish_plan(
     // (`MAX_USAGE_LIMIT`), not the cap the placement was found at, so a
     // placement at 0.6 may absorb registers up to the ceiling. The exact
     // DSE path validates against its per-candidate logic/block caps instead.
-    let slot_usage = if realized_caps.multilevel_block_margin_applied {
-        realize_slot_usage_with_resource_caps(
-            graph,
-            &assignment.regions,
-            &assignment.slot_usage,
-            &routes,
-            device,
-            realized_caps.logic_utilization_cap,
-            realized_caps.effective_block_utilization_cap,
-        )?
-    } else {
-        realize_slot_usage(
-            graph,
-            &assignment.regions,
-            &assignment.slot_usage,
-            &routes,
-            device,
-            realized_caps.logic_utilization_cap,
-        )?
-    };
+    let slot_usage = realize_slot_usage(
+        graph,
+        &assignment.regions,
+        &assignment.slot_usage,
+        &routes,
+        device,
+        realized_caps.logic_utilization_cap,
+        realized_caps.effective_block_utilization_cap,
+    )?;
     let mut regions = graph
         .vertices()
         .iter()

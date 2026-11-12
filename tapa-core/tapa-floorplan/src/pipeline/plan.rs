@@ -301,29 +301,9 @@ fn register_budgets(
         .collect()
 }
 
-/// Replace pre-routing FIFO estimates with the resources of the generated
-/// Head/Body/Tail pipelines, then enforce the placement retry envelope.
+/// Replace pre-routing FIFO estimates with generated Head/Body/Tail pipeline
+/// resources, then enforce independent logic and block-resource caps.
 pub(crate) fn realize_slot_usage(
-    graph: &FloorGraph,
-    regions: &[Cell],
-    baseline: &BTreeMap<Cell, Area>,
-    routes: &[PlannedRoute],
-    device: &Device,
-    capacity_limit: f64,
-) -> Result<BTreeMap<Cell, Area>, PipelineError> {
-    realize_slot_usage_with_resource_caps(
-        graph,
-        regions,
-        baseline,
-        routes,
-        device,
-        capacity_limit,
-        capacity_limit,
-    )
-}
-
-/// Realize generated resources with independent logic and block-resource caps.
-pub(crate) fn realize_slot_usage_with_resource_caps(
     graph: &FloorGraph,
     regions: &[Cell],
     baseline: &BTreeMap<Cell, Area>,
@@ -897,6 +877,7 @@ mod tests {
             &[route],
             &select_device("u280").expect("u280"),
             MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
         )
         .expect("account AXI pipeline");
         assert_eq!(
@@ -1164,6 +1145,7 @@ mod tests {
             &routes,
             &select_device("u280").expect("u280"),
             MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
         )
         .expect("account control pipelines");
         for region in [&source, &body, &destination] {
@@ -1185,6 +1167,7 @@ mod tests {
             &BTreeMap::new(),
             &[invalid],
             &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
             MAX_USAGE_LIMIT,
         )
         .expect_err("reversed control endpoints must fail");
@@ -1225,6 +1208,7 @@ mod tests {
             &baseline,
             &[route],
             &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
             MAX_USAGE_LIMIT,
         )
         .expect("realized usage");
@@ -1295,6 +1279,7 @@ mod tests {
             &[route],
             &device,
             MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
         )
         .expect_err("the Head exceeds the FF envelope");
         assert!(matches!(
@@ -1325,7 +1310,7 @@ mod tests {
             ..Area::default()
         };
 
-        let realized = realize_slot_usage_with_resource_caps(
+        let realized = realize_slot_usage(
             &graph,
             &[],
             &BTreeMap::from([(region, block_heavy)]),
@@ -1353,7 +1338,7 @@ mod tests {
                 },
             ),
         ] {
-            let error = realize_slot_usage_with_resource_caps(
+            let error = realize_slot_usage(
                 &graph,
                 &[],
                 &BTreeMap::from([(region, over_limit)]),
@@ -1398,6 +1383,7 @@ mod tests {
             &[],
             &select_device("u280").expect("u280"),
             MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
         )
         .expect("non-crossing usage");
         assert_eq!(realized, baseline);
@@ -1427,6 +1413,7 @@ mod tests {
             &baseline,
             &[stream_route(&[(0, 0), (1, 0)], &[])],
             &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
             MAX_USAGE_LIMIT,
         )
         .expect("crossing usage");
