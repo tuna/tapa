@@ -2,7 +2,6 @@
 
 pub mod cflags;
 pub mod discover;
-pub mod find_clang_binary;
 pub mod shim;
 
 pub use shim::{TAPACC_HLS_SHIM, TAPACC_HLS_SHIM_FILE};

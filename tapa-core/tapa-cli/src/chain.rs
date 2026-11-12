@@ -19,7 +19,6 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
 use crate::steps::{analyze, floorplan, gcc, link, meta, pack, synth, version};
-use crate::tapacc::find_clang_binary;
 use crate::update;
 
 /// A pipeline step paired with its concrete arguments.
@@ -178,14 +177,6 @@ pub enum Step {
         #[command(flatten)]
         chain_tail: ChainTail,
     },
-    /// Resolve a clang-family helper and print its absolute path.
-    #[command(name = "find-clang-binary", hide = true)]
-    FindClangBinary {
-        #[command(flatten)]
-        args: find_clang_binary::FindClangBinaryArgs,
-        #[command(flatten)]
-        chain_tail: ChainTail,
-    },
 }
 
 /// Standalone parser for re-parsing the trailing chain.
@@ -260,8 +251,7 @@ impl Step {
             | Self::Compile { chain_tail, .. }
             | Self::Version { chain_tail, .. }
             | Self::Update { chain_tail, .. }
-            | Self::UpdateCheck { chain_tail, .. }
-            | Self::FindClangBinary { chain_tail, .. } => Some(&mut chain_tail.chain_tail),
+            | Self::UpdateCheck { chain_tail, .. } => Some(&mut chain_tail.chain_tail),
             Self::Gpp { .. } => None,
         }
     }
@@ -283,7 +273,6 @@ impl Step {
                 update::run_update_check();
                 Ok(())
             }
-            Self::FindClangBinary { args, .. } => find_clang_binary::run(&args, ctx),
         }
     }
 }
