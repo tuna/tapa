@@ -852,7 +852,7 @@ fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
     if mixed.is_empty() {
         return Ok(Cow::Borrowed(graph));
     }
-    crate::transforms::inline_uppers(graph, |name| mixed.contains(name))
+    crate::transforms::inline_uppers(graph, &mixed)
         .map(Cow::Owned)
         .map_err(|error| {
             AieError(format!(

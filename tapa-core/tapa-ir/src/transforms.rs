@@ -4,13 +4,13 @@
 //!   top task while preserving FIFO connectivity and global names.
 //! - [`flatten_with_origins`] also retains original instance ownership as
 //!   typed references for control lowering, without copying invocation policy.
-//! - [`inline_uppers`] dissolves only the upper tasks a predicate selects,
+//! - [`inline_uppers`] dissolves only the upper tasks in a given set,
 //!   one level at a time, keeping the rest of the hierarchy.
 
 #[cfg(test)]
 mod tests;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use crate::graph::TaskGraph;
 use crate::instance::{Arg, ArgSource, TaskInstance};
@@ -215,23 +215,23 @@ pub fn flatten_with_origins(graph: &TaskGraph) -> Result<FlatProjection, Transfo
     })
 }
 
-/// Replace every instance of each upper task `inline` selects with that
-/// task's children, invoked by the instance's parent under the instance's
-/// bindings, until no selected upper task is invoked. A FIFO the inlined
+/// Replace every instance of each upper task in `inline` with that task's
+/// children, invoked by the instance's parent under the instance's
+/// bindings, until no task in the set is invoked. A FIFO the inlined
 /// instance declares becomes `<instance>__<fifo>` in the parent, and an
 /// inlined child is named `<instance>__<child instance>`. A detached
 /// instance's children are detached; a sequential invoke on either level
 /// is an error. Tasks no longer invoked are dropped; the top always stays.
 pub(crate) fn inline_uppers(
     graph: &TaskGraph,
-    inline: impl Fn(&str) -> bool,
+    inline: &BTreeSet<&str>,
 ) -> Result<TaskGraph, TransformError> {
     let mut out = graph.clone();
     while let Some((parent, child)) = out.tasks.iter().find_map(|(parent, def)| {
         def.tasks
             .keys()
             .find(|child| {
-                inline(child)
+                inline.contains(child.as_str())
                     && out
                         .tasks
                         .get(*child)
