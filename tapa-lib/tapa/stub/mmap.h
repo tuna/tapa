@@ -78,11 +78,6 @@ class mmaps {
   template <typename Container>
   explicit mmaps(Container& container);
 
-  mmaps(const mmaps&) = default;
-  mmaps(mmaps&&) = default;
-  mmaps& operator=(const mmaps&) = default;
-  mmaps& operator=(mmaps&&) = default;
-
   mmap<T>& operator[](int idx);
 
   template <uint64_t offset, uint64_t length>
