@@ -25,8 +25,6 @@ pub struct AieLinkJob {
     pub output_xclbin: Utf8PathBuf,
     #[builder(default = "v++".to_string())]
     pub vpp: String,
-    #[builder(default = "xclbinutil".to_string())]
-    pub xclbinutil: String,
 }
 
 /// The `.xsa` a link leaves beside `xclbin`.
@@ -87,7 +85,7 @@ pub fn link(runner: &dyn ToolRunner, job: &AieLinkJob) -> Result<LinkOutput> {
         .arg(ToolValue::path(&packaged))
         .arg(ToolValue::path(&xsa))
         .arg(ToolValue::path(&job.libadf));
-    let annotate = ToolInvocation::new(job.xclbinutil.clone())
+    let annotate = ToolInvocation::new("xclbinutil")
         .arg("--input")
         .arg(ToolValue::path(&packaged))
         .arg("--add-section")
@@ -99,17 +97,18 @@ pub fn link(runner: &dyn ToolRunner, job: &AieLinkJob) -> Result<LinkOutput> {
         .arg(ToolValue::path(&job.output_xclbin))
         .arg("--force");
     // What each step reads and writes, for a remote tool host.
+    let vpp = job.vpp.as_str();
     let steps = [
-        (link, &job.vpp, vec![job.libadf.clone()], vec![xsa.clone()]),
+        (link, vpp, vec![job.libadf.clone()], vec![xsa.clone()]),
         (
             package,
-            &job.vpp,
+            vpp,
             vec![xsa, job.libadf.clone()],
             vec![packaged.clone()],
         ),
         (
             annotate,
-            &job.xclbinutil,
+            "xclbinutil",
             vec![packaged, job.arguments.clone()],
             vec![job.output_xclbin.clone()],
         ),
