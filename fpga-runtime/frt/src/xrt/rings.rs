@@ -310,3 +310,63 @@ pub(super) fn start_run(api: &Api, run: Handle, rings: &[XrtRing]) -> Result<()>
     // SAFETY: live run handle with every argument set.
     check(unsafe { (api.run_start)(run) }, "start the kernel")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::xrt::fake::{Fake, API};
+    use frt_shm::SharedMemoryQueue;
+
+    /// A pump that fails leaves no frames to wait for: `finish` reports
+    /// why instead of waiting for them.
+    #[test]
+    fn delivery_fails_with_the_error_that_stopped_the_pump() {
+        let fake = Fake::leak();
+        // SAFETY: the fake API; a 4-byte buffer.
+        let bo = unsafe { (API.bo_alloc)(fake.handle(), 4, 0, 0) };
+        // SAFETY: as above.
+        let map = unsafe { (API.bo_map)(bo) } as usize;
+        // SAFETY: as above.
+        let address = unsafe { (API.bo_address)(bo) };
+        let (base, host_frames, kernel_frames) = (0x40, 0x48, 0x4c);
+        fake.set_register(base, address as u32);
+        fake.set_register(base + 4, (address >> 32) as u32);
+        // The kernel wrote a frame, which the host stream is too narrow for.
+        fake.set_register(kernel_frames, 1);
+        let queue = SharedMemoryQueue::create("xrt_ring_narrow", 4, 1).expect("queue");
+        let layout = RingLayout {
+            index: 0,
+            input: false,
+            element_bytes: 1,
+            frame: 2,
+            slots: 2,
+            host_frames,
+            kernel_frames,
+        };
+        let mut ring = XrtRing {
+            pump: Arc::new(RingPump::new(layout, "out".into(), 0)),
+            access: Arc::new(Access {
+                api: &API,
+                kernel: Shared(fake.handle()),
+                bo: Shared(bo),
+                map,
+                bytes: 4,
+                base,
+                address,
+            }),
+            host_arg: 0,
+            thread: None,
+        };
+        ring.bind(&queue.path().to_string_lossy());
+        ring.start().expect("start");
+        let (delivered, result) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = delivered.send(ring.deliver_all().map_err(|error| error.to_string()));
+        });
+        let error = result
+            .recv_timeout(std::time::Duration::from_secs(10))
+            .expect("delivery must end once the pump has failed")
+            .expect_err("the pump failed");
+        assert!(error.contains("too narrow"), "{error}");
+    }
+}
