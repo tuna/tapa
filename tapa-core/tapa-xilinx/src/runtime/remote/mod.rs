@@ -251,12 +251,21 @@ impl RemoteToolRunner {
         }
 
         // Download artifacts regardless of exit code so that failure logs
-        // and `--keep-hls-work-dir` project trees are preserved locally.
+        // and `--keep-hls-work-dir` project trees are preserved locally. A
+        // failed tool usually leaves some requested output unwritten; that
+        // download failure must not replace the tool's own exit code and
+        // diagnostics, so after a failure each download is best-effort.
         for (raw, abs) in inv.downloads.iter().zip(plan.downloads_abs.iter()) {
             let remote_src = local_to_remote_path(abs, &plan.session_dir);
             // Download back to the caller's requested path (raw), which
             // may be relative — keeping the caller-facing contract.
-            download_path(&self.session, &remote_src, raw.as_std_path())?;
+            match download_path(&self.session, &remote_src, raw.as_std_path()) {
+                Ok(()) => {}
+                Err(error) if code != 0 => {
+                    log::warn!("cannot download `{raw}` after the remote tool failed: {error}");
+                }
+                Err(error) => return Err(error),
+            }
         }
 
         Ok(ToolOutput {
