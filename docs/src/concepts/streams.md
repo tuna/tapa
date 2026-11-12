@@ -181,6 +181,10 @@ void InnerStage(int b, tapa::istreams<pkt_t, kN / 2>& in_q0,
 }
 ```
 
+An invoke may also bind one element, such as `q[2]`, to a single stream port.
+Hardware binds one fixed channel, so `tapa analyze` requires the index to be
+an integer constant inside the array.
+
 ---
 
 ## Frame ports

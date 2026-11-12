@@ -23,13 +23,23 @@ namespace tapa::cc {
 
 namespace {
 
-std::optional<int64_t> EvalInt(const clang::ASTContext& ctx,
-                               const clang::Expr* expr) {
-  clang::Expr::EvalResult result;
-  if (expr->EvaluateAsInt(result, ctx)) {
-    return result.Val.getInt().getExtValue();
+// The element an indexed channel array argument (`q[2]`) names: hardware
+// binds one fixed channel, so the index must be an integer constant inside
+// the array, or nullopt.
+std::optional<std::string> ArrayElementArg(
+    const clang::ASTContext& ctx, const clang::CXXOperatorCallExpr* op) {
+  const auto* base =
+      llvm::dyn_cast<clang::DeclRefExpr>(op->getArg(0)->IgnoreImplicit());
+  if (base == nullptr || op->getNumArgs() != 2) return std::nullopt;
+  const std::optional<llvm::APSInt> index =
+      op->getArg(1)->getIntegerConstantExpr(ctx);
+  const int64_t length = IntTemplateArg(base->getType(), 1).value_or(0);
+  if (!index || index->isNegative() || index->getActiveBits() > 63 ||
+      index->getExtValue() >= length) {
+    return std::nullopt;
   }
-  return std::nullopt;
+  return ArrayNameAt(base->getNameInfo().getAsString(),
+                     static_cast<int>(index->getExtValue()));
 }
 
 // Whether an evaluated value survives the task graph's 64-bit constant
@@ -432,12 +442,17 @@ void ParseInvocations(
         } else if (decl_ref != nullptr) {
           arg_name = decl_ref->getNameInfo().getAsString();
         } else if (op_call != nullptr) {
-          const auto* base = llvm::dyn_cast<clang::DeclRefExpr>(
-              op_call->getArg(0)->IgnoreImplicit());
-          const int64_t idx = EvalInt(uc.ctx, op_call->getArg(1)).value_or(0);
-          if (base != nullptr) {
-            arg_name = ArrayNameAt(base->getNameInfo().getAsString(), idx);
+          const std::optional<std::string> element =
+              ArrayElementArg(uc.ctx, op_call);
+          if (!element) {
+            ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                             arg->getBeginLoc(),
+                             "a channel array element bound to a task port "
+                             "needs an integer constant index inside the "
+                             "array; hardware binds one fixed channel");
+            continue;
           }
+          arg_name = *element;
         }
 
         if (decl_ref != nullptr || op_call != nullptr || is_int_constant ||

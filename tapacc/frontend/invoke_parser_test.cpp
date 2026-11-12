@@ -543,6 +543,38 @@ TEST(InvokeParser, EveryInvokeSitsInTheFirstTaskStatement) {
             (std::multiset<std::string>{"Looped", "Named", "Nested", "Top"}));
 }
 
+TEST(InvokeParser, AChannelArrayIndexIsAConstantInsideTheArray) {
+  // Hardware binds one fixed channel. A runtime index used to fold to
+  // channel 0 and an index past the end to name no channel at all.
+  constexpr char kCode[] = R"cpp(
+    void Src(tapa::ostream<int>& out) {}
+    void Snk(tapa::istream<int>& in) {}
+    void Top(int k) {
+      constexpr int kOne = 1;
+      tapa::streams<int, 2> q;
+      tapa::task()
+          .invoke(Src, q[0])
+          .invoke(Src, q[kOne])
+          .invoke(Snk, q[k])
+          .invoke(Snk, q[2])
+          .invoke(Snk, q[0])
+          .invoke(Snk, q[1]);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/stream_index.cpp", kCode}}, "Top",
+      testing::TempDir() + "/stream_index", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 2u) << run.diags.front();
+  for (const std::string& diag : run.diags) {
+    EXPECT_NE(diag.find("needs an integer constant index inside the array"),
+              std::string::npos)
+        << diag;
+  }
+  const TaskModel* top = run.builder.FindTask("Top");
+  ASSERT_NE(top, nullptr);
+  EXPECT_EQ(top->instances.at("Src").at(1).args.at("out").arg, "q[1]");
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>

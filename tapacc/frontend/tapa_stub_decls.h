@@ -40,7 +40,7 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
   template <typename T, int Depth = 2>
   struct stream : istream<T>, ostream<T> {};
   template <typename T, int N, int Depth = 2>
-  struct streams {};
+  struct streams { stream<T, Depth> operator[](int) const; };
   template <typename T, int N>
   struct istreams {};
   template <typename T, int N>
