@@ -1,9 +1,7 @@
 #include "classify.h"
 
-#include <string_view>
-#include <unordered_map>
-
 #include "clang/AST/DeclTemplate.h"
+#include "llvm/ADT/StringSwitch.h"
 
 #include "frontend/type_args.h"
 
@@ -11,28 +9,26 @@ namespace tapa::cc {
 
 namespace {
 
-TapaKind ClassifyByQualifiedName(std::string_view name) {
+TapaKind ClassifyByQualifiedName(llvm::StringRef name) {
   // Keys are the qualified record names Clang prints for the TAPA class
   // templates (without template arguments), matched exactly.
-  static const std::unordered_map<std::string_view, TapaKind> kTable = {
-      {"tapa::istream", TapaKind::kIStream},
-      {"tapa::ostream", TapaKind::kOStream},
-      {"tapa::istreams", TapaKind::kIStreams},
-      {"tapa::ostreams", TapaKind::kOStreams},
-      {"tapa::iframes", TapaKind::kIFrames},
-      {"tapa::oframes", TapaKind::kOFrames},
-      {"tapa::stream", TapaKind::kStream},
-      {"tapa::streams", TapaKind::kStreams},
-      {"tapa::mmap", TapaKind::kMmap},
-      {"tapa::mmaps", TapaKind::kMmaps},
-      {"tapa::async_mmap", TapaKind::kAsyncMmap},
-      {"tapa::hmap", TapaKind::kHmap},
-      {"tapa::task", TapaKind::kTask},
-      {"tapa::seq", TapaKind::kSeq},
-      {"tapa::executable", TapaKind::kExecutable},
-  };
-  const auto it = kTable.find(name);
-  return it == kTable.end() ? TapaKind::kNotTapa : it->second;
+  return llvm::StringSwitch<TapaKind>(name)
+      .Case("tapa::istream", TapaKind::kIStream)
+      .Case("tapa::ostream", TapaKind::kOStream)
+      .Case("tapa::istreams", TapaKind::kIStreams)
+      .Case("tapa::ostreams", TapaKind::kOStreams)
+      .Case("tapa::iframes", TapaKind::kIFrames)
+      .Case("tapa::oframes", TapaKind::kOFrames)
+      .Case("tapa::stream", TapaKind::kStream)
+      .Case("tapa::streams", TapaKind::kStreams)
+      .Case("tapa::mmap", TapaKind::kMmap)
+      .Case("tapa::mmaps", TapaKind::kMmaps)
+      .Case("tapa::async_mmap", TapaKind::kAsyncMmap)
+      .Case("tapa::hmap", TapaKind::kHmap)
+      .Case("tapa::task", TapaKind::kTask)
+      .Case("tapa::seq", TapaKind::kSeq)
+      .Case("tapa::executable", TapaKind::kExecutable)
+      .Default(TapaKind::kNotTapa);
 }
 
 }  // namespace
