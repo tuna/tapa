@@ -5,11 +5,9 @@
 #pragma once
 
 #include <cstdlib>
-
+#include <optional>
 #include <string>
 #include <string_view>
-
-#include <string.h>
 
 #include <glog/logging.h>
 
@@ -28,10 +26,7 @@ class ScopedSetEnv {
   ScopedSetEnv(const ScopedSetEnv&) = delete;
   ScopedSetEnv& operator=(const ScopedSetEnv&) = delete;
 
-  ~ScopedSetEnv() {
-    SetValue(old_value_);
-    free(old_value_);
-  }
+  ~ScopedSetEnv() { SetValue(old_value_ ? old_value_->c_str() : nullptr); }
 
  private:
   void SetValue(const char* value) {
@@ -42,7 +37,7 @@ class ScopedSetEnv {
     }
   }
   const std::string name_;
-  char* old_value_ = nullptr;
+  std::optional<std::string> old_value_;
 };
 
 }  // namespace tapa_testing
