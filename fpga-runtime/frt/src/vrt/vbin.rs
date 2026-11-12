@@ -690,6 +690,38 @@ mod tests {
     }
 
     #[test]
+    fn parser_defaults_the_shell_and_accepts_multi_digit_ddr_banks() {
+        let metadata = parse_system_map(VADD_MAP).expect("service is the default shell");
+        assert_eq!(metadata.shell, ShellType::Service);
+
+        let xml = VADD_MAP
+            .replace("<Platform>", "<ShellType>compute</ShellType><Platform>")
+            .replace("target=\"DDR0\"", "target=\"DDR11\"");
+        let metadata = parse_system_map(&xml).expect("compute shell with DDR11");
+        assert_eq!(metadata.shell, ShellType::Compute);
+        assert_eq!(metadata.kernel.connections["m_axi_b"], MemoryTarget::Ddr);
+
+        let xml = VADD_MAP.replace("<Platform>", "<ShellType>bogus</ShellType><Platform>");
+        assert!(parse_system_map(&xml)
+            .expect_err("unknown shell")
+            .to_string()
+            .contains("cannot parse system_map.xml"));
+    }
+
+    #[test]
+    fn ddr_targets_need_a_decimal_bank() {
+        for target in ["DDR0", "DDR10", "DDR11"] {
+            assert_eq!(
+                parse_memory_target(target).expect(target),
+                MemoryTarget::Ddr
+            );
+        }
+        for target in ["DDR", "DDRx", "DDR1x"] {
+            assert!(parse_memory_target(target).is_err(), "{target}");
+        }
+    }
+
+    #[test]
     fn extraction_rejects_unsafe_paths() {
         for (member, expected) in [("../escape", "unsafe path"), ("/absolute", "absolute path")] {
             let temp = tempfile::tempdir().expect("temp dir");
