@@ -96,20 +96,28 @@ int64_t ArraySize(const clang::ParmVarDecl* param) {
   return IntTemplateArg(param->getType(), 1).value_or(0);
 }
 
+std::optional<uint32_t> ArbitraryIntWidth(clang::QualType type) {
+  type = PeelType(type).getCanonicalType();
+  const auto* record = type->getAsRecordDecl();
+  if (record == nullptr) return std::nullopt;
+  const auto name = record->getQualifiedNameAsString();
+  if (name != "tapa::u" && name != "tapa::i" && name != "ap_uint" &&
+      name != "ap_int") {
+    return std::nullopt;
+  }
+  const auto width = IntTemplateArg(type, 0);
+  if (!width) return std::nullopt;
+  return static_cast<uint32_t>(*width);
+}
+
 uint32_t StreamElementWidth(const clang::ParmVarDecl* param) {
   const auto* arg = GetTemplateArg(param->getType(), 0);
   if (arg == nullptr || arg->getKind() != clang::TemplateArgument::Type) {
     return 0;
   }
-  const auto type = PeelType(arg->getAsType()).getCanonicalType();
-  if (const auto* record = type->getAsRecordDecl()) {
-    const auto name = record->getQualifiedNameAsString();
-    if (name == "tapa::u" || name == "tapa::i" || name == "ap_uint" ||
-        name == "ap_int") {
-      if (const auto width = IntTemplateArg(type, 0)) {
-        return static_cast<uint32_t>(*width);
-      }
-    }
+  if (const std::optional<uint32_t> width =
+          ArbitraryIntWidth(arg->getAsType())) {
+    return *width;
   }
   return ElementWidth(param);
 }

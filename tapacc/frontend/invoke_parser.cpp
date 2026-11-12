@@ -78,15 +78,26 @@ uint64_t ConvertToPortType(const clang::ASTContext& ctx,
   return converted.getZExtValue();
 }
 
+// The width of an integer whose bits forward raw: a non-boolean builtin
+// integer's, or an arbitrary-precision integer's declared W.
+std::optional<uint32_t> ForwardableIntWidth(const clang::ASTContext& ctx,
+                                            clang::QualType type) {
+  if (type->isIntegerType()) {
+    if (type->isBooleanType()) return std::nullopt;
+    return static_cast<uint32_t>(ctx.getIntWidth(type));
+  }
+  return ArbitraryIntWidth(type);
+}
+
 // Both control pipelines forward raw scalar bits. Distributed control packs
 // each source into a field sized for the child, so even integral resizing
 // requires a conversion that the generated wiring does not provide.
 bool CanForwardScalar(const clang::ASTContext& ctx, clang::QualType source,
                       clang::QualType destination) {
   if (ctx.hasSameUnqualifiedType(source, destination)) return true;
-  return source->isIntegerType() && destination->isIntegerType() &&
-         !source->isBooleanType() && !destination->isBooleanType() &&
-         ctx.getIntWidth(source) == ctx.getIntWidth(destination);
+  const std::optional<uint32_t> from = ForwardableIntWidth(ctx, source);
+  const std::optional<uint32_t> to = ForwardableIntWidth(ctx, destination);
+  return from && to && *from == *to;
 }
 
 // step (bulk-synchronous mode), vector length, and whether an explicit instance

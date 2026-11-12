@@ -45,6 +45,10 @@ std::string ElementTypeName(const clang::ParmVarDecl* param);
 // Bit width of the element (0th template arg) type of a port, or 0 if absent.
 uint32_t ElementWidth(const clang::ParmVarDecl* param);
 
+// The declared width W of an arbitrary-precision integer (`tapa::u<W>`,
+// `tapa::i<W>`, `ap_uint<W>`, `ap_int<W>`), or nullopt for any other type.
+std::optional<uint32_t> ArbitraryIntWidth(clang::QualType type);
+
 // Stream payload width: arbitrary-precision integers use their declared W,
 // while other elements retain their object-layout width.
 uint32_t StreamElementWidth(const clang::ParmVarDecl* param);

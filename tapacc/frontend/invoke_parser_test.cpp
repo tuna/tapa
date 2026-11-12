@@ -374,6 +374,56 @@ TEST(InvokeParser, RuntimeScalarBindingsRequireBitPreservingTypes) {
   }
 }
 
+TEST(InvokeParser, ArbitraryPrecisionIntsForwardAtTheirDeclaredWidth) {
+  // tapa::u<W> and tapa::i<W> are W-bit integers, so raw forwarding needs
+  // only an equal width, as between builtin integers; a real design
+  // (tests/regression/serpens-32ch) hands `int` to `tapa::u<32>` and
+  // `short` to `tapa::u<16>`.
+  constexpr char kCode[] = R"cpp(
+    namespace tapa {
+    template <int W>
+    struct u {
+      u(long long);
+      unsigned long long v;
+    };
+    template <int W>
+    struct i {
+      i(long long);
+      long long v;
+    };
+    }  // namespace tapa
+    void Narrow(const tapa::u<16> value) {}
+    void Word(tapa::u<32> value) {}
+    void Signed(tapa::i<32> value) {}
+    void Back(int value) {}
+    void Top(short half, int word, tapa::u<32> raw, tapa::i<31> odd) {
+      tapa::task()
+          .invoke(Narrow, half)
+          .invoke(Word, word)
+          .invoke(Signed, raw)
+          .invoke(Back, raw)
+          .invoke(Word, half)
+          .invoke(Signed, odd);
+    }
+  )cpp";
+  const auto run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/arbitrary_int.cpp", kCode}}, "Top",
+      testing::TempDir() + "/arbitrary_int", {"-std=c++17"});
+  // Only the two width changes are rejected.
+  ASSERT_EQ(run.diags.size(), 2u) << run.diags.front();
+  for (const auto& diag : run.diags) {
+    EXPECT_NE(diag.find("unsupported runtime scalar conversion"),
+              std::string::npos)
+        << diag;
+  }
+  const TaskModel* top = run.builder.FindTask("Top");
+  ASSERT_NE(top, nullptr);
+  EXPECT_EQ(top->instances.at("Narrow").at(0).args.at("value").arg, "half");
+  EXPECT_EQ(top->instances.at("Word").at(0).args.at("value").arg, "word");
+  EXPECT_EQ(top->instances.at("Signed").at(0).args.at("value").arg, "raw");
+  EXPECT_EQ(top->instances.at("Back").at(0).args.at("value").arg, "raw");
+}
+
 TEST(InvokeParser, FloatingConstantsCannotBecomeRuntimeBindings) {
   constexpr char kCode[] = R"cpp(
     using Scalar = float;

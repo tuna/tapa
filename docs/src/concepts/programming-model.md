@@ -150,7 +150,7 @@ The `--bitstream` flag is what controls which backend runs:
   rejected as invocation arguments.
   Runtime scalar bindings must refer to a parent-task parameter and use the same
   type (ignoring aliases and cv qualifiers) or equal-width non-boolean integer
-  types. Other conversions are rejected; pass matching scalar types and convert
+  types, where `tapa::u<W>` and `tapa::i<W>` count as `W`-bit integers. Other conversions are rejected; pass matching scalar types and convert
   inside a leaf task instead.
   A `const` runtime parameter is not a compile-time constant.
 - Software simulation runs automatically when `tapa::invoke` receives an empty
