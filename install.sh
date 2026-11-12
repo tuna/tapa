@@ -26,9 +26,6 @@ set -ue
 # Default values for the installation options.
 TAPA_LOCAL_PACKAGE="${TAPA_LOCAL_PACKAGE:-}"
 TAPA_VERSION="${TAPA_VERSION:-latest}"
-# Release tags carry a v prefix; copying one from the releases page into
-# -V v0.1.x would otherwise compose a .../download/vv0.1.x/ URL that 404s.
-TAPA_VERSION="${TAPA_VERSION#v}"
 TAPA_DOWNLOAD_TMPFILE=""
 # Set when --no-modify-path is passed. Distinct from MODIFY_PROFILE_PATH,
 # which is already "no" by default for root because a root install reaches
@@ -200,6 +197,10 @@ check_install_dir() {
 
 # Download the TAPA package from GitHub Releases.
 download_tapa_package() {
+  # Release tags carry a v prefix; copying one from the releases page into
+  # -V v0.1.x or TAPA_VERSION would otherwise compose a .../download/vv0.1.x/
+  # URL that 404s. Stripped here, after both sources have been read.
+  TAPA_VERSION="${TAPA_VERSION#v}"
   if [ "$TAPA_VERSION" = "latest" ]; then
     TAPA_URL="https://github.com/tuna/tapa/releases/latest/download/tapa.tar.gz"
   else
