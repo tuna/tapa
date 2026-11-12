@@ -16,27 +16,27 @@ namespace tapa {
 namespace internal {
 namespace frt {
 
-struct StreamFfiContext {
-  std::string path;
-};
-
 template <typename T>
 class Stream {
  public:
-  explicit Stream(uint64_t depth) : Stream(MakeInit(depth)) {}
+  explicit Stream(uint64_t depth) {
+    std::array<char, 4096> path_buf{};
+    handle_ = frt_shmq_create(static_cast<uint32_t>(depth == 0 ? 1 : depth),
+                              StreamCodec<T>::kBytes, path_buf.data(),
+                              path_buf.size());
+    CHECK(handle_ != nullptr) << "failed to create shared-memory stream";
+    path_ = path_buf.data();
+  }
 
   ~Stream() {
-    if (handle_ != nullptr) {
-      frt_shmq_destroy(handle_);
-      handle_ = nullptr;
-    }
+    if (handle_ != nullptr) frt_shmq_destroy(handle_);
   }
 
   Stream(const Stream&) = delete;
   Stream& operator=(const Stream&) = delete;
 
   // Shared-memory path used to hand this stream to the FRT C ABI.
-  std::string path() const { return context_.path; }
+  const std::string& path() const { return path_; }
 
   bool empty() const {
     int ret = frt_shmq_empty(handle_);
@@ -83,27 +83,7 @@ class Stream {
     return bytes;
   }
 
-  struct Init {
-    StreamFfiContext context;
-    void* handle = nullptr;
-  };
-
-  explicit Stream(const Init& init)
-      : context_(init.context), handle_(init.handle) {}
-
-  static Init MakeInit(uint64_t depth) {
-    std::array<char, 4096> path_buf{};
-    void* handle = frt_shmq_create(
-        static_cast<uint32_t>(depth == 0 ? 1 : depth), StreamCodec<T>::kBytes,
-        path_buf.data(), path_buf.size());
-    CHECK(handle != nullptr) << "failed to create shared-memory stream";
-    Init init;
-    init.context.path = std::string(path_buf.data());
-    init.handle = handle;
-    return init;
-  }
-
-  StreamFfiContext context_;
+  std::string path_;
   void* handle_ = nullptr;
 };
 
