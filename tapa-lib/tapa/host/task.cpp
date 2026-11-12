@@ -20,7 +20,6 @@
 #include <new>
 #include <queue>
 #include <set>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -217,28 +216,6 @@ void note_blocked_poll(const std::string& channel_name, const char* state) {
   if (emitted + 1 == kMaxStallWarnings) {
     LOG(WARNING) << "further channel stall warnings suppressed";
   }
-}
-
-int count_physical_cores(std::istream& cpuinfo) {
-  const auto trim = [](const std::string& s) {
-    auto b = s.find_first_not_of(" \t");
-    auto e = s.find_last_not_of(" \t");
-    return (b == std::string::npos) ? "" : s.substr(b, e - b + 1);
-  };
-  // Core ids restart on every socket, so a core is a (socket, core) pair.
-  std::set<std::pair<int, int>> cores;
-  int socket = 0;
-  std::string line;
-  while (std::getline(cpuinfo, line)) {
-    std::istringstream iss(line);
-    std::string key, val;
-    if (std::getline(iss, key, ':') && std::getline(iss, val)) {
-      key = trim(key);
-      if (key == "physical id") socket = std::stoi(trim(val));
-      if (key == "core id") cores.emplace(socket, std::stoi(trim(val)));
-    }
-  }
-  return cores.size();
 }
 
 namespace {

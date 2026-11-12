@@ -7,8 +7,6 @@
 #include <atomic>
 #include <condition_variable>
 #include <mutex>
-#include <sstream>
-#include <string>
 #include <thread>
 
 #include <gtest/gtest.h>
@@ -167,25 +165,6 @@ TEST(TaskTest, JoinsChildrenScheduledOntoAnEarlierIdleWorker) {
       .invoke(NestedJoinNoOp)
       .invoke(NestedJoinUpper, tapa::write_only_mmap<int>(&result, 1));
   EXPECT_EQ(result, 42);
-}
-
-// TAPA_CONCURRENCY defaults to the physical cores, and core ids restart on
-// every socket: two sockets of two cores, two hardware threads each, are
-// four.
-TEST(TaskTest, PhysicalCoresAreCountedPerSocket) {
-  std::string cpuinfo;
-  for (int socket = 0; socket < 2; ++socket) {
-    for (int core = 0; core < 2; ++core) {
-      for (int thread = 0; thread < 2; ++thread) {
-        cpuinfo += "processor\t: 0\nphysical id\t: " + std::to_string(socket) +
-                   "\ncore id\t\t: " + std::to_string(core) + "\n\n";
-      }
-    }
-  }
-  std::istringstream sockets(cpuinfo);
-  EXPECT_EQ(internal::count_physical_cores(sockets), 4);
-  std::istringstream unnamed("processor\t: 0\n");
-  EXPECT_EQ(internal::count_physical_cores(unnamed), 0);
 }
 
 // allocate/deallocate are mmap-backed; verify they return usable memory and
