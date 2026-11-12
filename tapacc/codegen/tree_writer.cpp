@@ -45,6 +45,7 @@ void IncludeRecorder::InclusionDirective(
 
   IncludeDirective record;
   record.writing_file = CanonicalPath(writing->getName());
+  record.offset = sm_.getFileOffset(hash_loc);
   record.spelling = file_name.str();
   record.angled = is_angled;
   // The characteristic kind is the include lookup's own verdict on the
@@ -57,11 +58,14 @@ void IncludeRecorder::InclusionDirective(
     record.resolved = CanonicalPath(file->getName());
     record.resolved_entry = file;
   }
+  // A file entered again sights its directives again: keep the first
+  // sighting of each site. Two directives at different sites are two
+  // records, each with its own spelling to rewrite.
   for (const IncludeDirective& seen : *log_) {
     if (seen.writing_file == record.writing_file &&
-        seen.spelling == record.spelling && seen.angled == record.angled &&
-        seen.resolved == record.resolved) {
-      return;  // the same directive sighted again: keep the first sighting
+        seen.offset == record.offset && seen.spelling == record.spelling &&
+        seen.angled == record.angled && seen.resolved == record.resolved) {
+      return;
     }
   }
   log_->push_back(std::move(record));

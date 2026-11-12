@@ -283,6 +283,40 @@ int main() { return near() + leaf() + angle() + deep() + flat(); }
                 "angle() + deep() + flat(); }\n");
 }
 
+// A header included twice (an X-macro list) is one file sighted at two
+// directive sites; each site is respelled. Only the first used to be, so
+// the second reached the original behind the user's `-I`.
+TEST(TreeWriter, EveryIncludeSiteIsRespelled) {
+  const std::string root = TempRoot("tree_writer", "twice");
+  TreeWriter writer(root, {"/w/src/main.cpp"});
+  const FileContentMappings files{
+      {"/w/src/inc/ops.def", "OP(add)\n"},
+      {"/w/vendor/more.def", "OP(sub)\n"},
+  };
+  constexpr char kCode[] = R"tapa(#define OP(x) int x();
+#include "ops.def"
+#include "more.def"
+#undef OP
+#define OP(x) int x() { return 0; }
+#include "ops.def"
+#include "more.def"
+)tapa";
+  bool parsed = false;
+  ParseInto(&writer, kCode, "/w/src/main.cpp",
+            {"-std=c++17", "-I/w/src/inc", "-I/w/vendor"}, files, &parsed);
+  std::string error;
+  ASSERT_TRUE(writer.Write(&error)) << error;
+  const std::string more =
+      "#include \"" + TreeLayout::ExternalKey("/w/vendor/more.def") + "\"\n";
+  EXPECT_EQ(ReadFile(root + "/main.cpp"),
+            "#line 1 \"/w/src/main.cpp\"\n#define OP(x) int x();\n"
+            "#include \"inc/ops.def\"\n" +
+                more +
+                "#undef OP\n#define OP(x) int x() { return 0; }\n"
+                "#include \"inc/ops.def\"\n" +
+                more);
+}
+
 // ── (d) #line re-snap ─────────────────────────────────────────────────────
 
 // clang-format formats the contents of R"cpp(...)" literals; these

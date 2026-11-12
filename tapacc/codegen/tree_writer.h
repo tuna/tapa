@@ -33,8 +33,10 @@ namespace tapa::cc {
 
 // One resolved `#include` directive as written in user source.
 struct IncludeDirective {
-  // The file the directive is written in (canonical absolute path).
+  // The file the directive is written in (canonical absolute path), and
+  // where in it: one site, however often its file is entered.
   std::string writing_file;
+  unsigned offset = 0;
   // The include argument exactly as written, without quotes or brackets.
   std::string spelling;
   // The resolved file (canonical absolute path); empty when unresolved.
