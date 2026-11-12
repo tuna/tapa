@@ -313,7 +313,8 @@ class fixed_base {
     return static_cast<int64_t>(internal::quantize<internal::imax(W, 64) + 2>(
         V, W - I, 0, q_mode::trn_zero));
   }
-  int64_t to_int() const { return to_int64(); }
+  /// An `int`, as the vendor's: the integer part's low 32 bits.
+  int to_int() const { return static_cast<int>(to_int64()); }
   uint64_t to_uint64() const { return static_cast<uint64_t>(to_int64()); }
   int length() const { return W; }
 

@@ -8,6 +8,7 @@
 #include "tapa/host/fixed.h"
 
 #include <sstream>
+#include <type_traits>
 
 #include "gtest/gtest.h"
 
@@ -175,6 +176,10 @@ TEST(FixedTest, RoundTripsThroughNative) {
   EXPECT_EQ((fixed<16, 8>(-2.5)).to_int64(), -2);
   EXPECT_EQ((fixed<16, 8>(2.5)).to_int64(), 2);
   EXPECT_EQ((fixed<16, 8, q_mode::rnd>(-2.75)).to_int64(), -2);
+  // `to_int` is an `int`, so an integer part past 32 bits keeps its low 32.
+  static_assert(std::is_same<decltype(fixed<48, 40>().to_int()), int>::value,
+                "to_int returns an int");
+  EXPECT_EQ((fixed<48, 40>(4294967298.5)).to_int(), 2);
 }
 
 TEST(FixedTest, StreamsAsItsValue) {

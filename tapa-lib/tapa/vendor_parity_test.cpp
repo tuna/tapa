@@ -946,6 +946,10 @@ TEST(VendorParity, FixedToInteger) {
     EXPECT_EQ((ufixed<16, 8>(d < 0 ? -d : d)).to_int64(),
               (ap_ufixed<16, 8>(d < 0 ? -d : d)).to_int64())
         << "unsigned " << d;
+    // `to_int` keeps the integer part's low 32 bits.
+    const double big = d * 1e10;
+    EXPECT_EQ((fixed<48, 40>(big)).to_int(), (ap_fixed<48, 40>(big)).to_int())
+        << "to_int " << big;
   }
 }
 
