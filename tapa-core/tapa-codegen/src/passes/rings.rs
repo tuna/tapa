@@ -80,15 +80,12 @@ pub(super) fn instantiate_rings(
     task_name: &str,
 ) -> Result<(), CodegenError> {
     let graph = design.design();
-    if task_name != graph.top {
-        return Ok(());
-    }
     let task = &graph.tasks[task_name];
     for ring in graph.rings() {
         // The argument's frame channel, or for an AI Engine top's PL kernel
         // the argument's PLIO.
         let plio = (!task.fifos.contains_key(&ring.port)).then(|| tapa_ir::ring_plio(&ring.port));
-        let width = ring_width(graph, modules, task, &ring, plio.is_some())?;
+        let width = ring_width(graph, modules, task, &ring)?;
         let Some(mm) = modules.get_mut(task_name) else {
             continue;
         };
@@ -219,22 +216,20 @@ fn add_ring_count(mm: &mut tapa_rtl::mutation::MutableModule, ring: &Ring, drain
 }
 
 /// The bits of an element of `ring`: its channel's, or for an AI Engine
-/// top's PL kernel (`plio`) its argument's.
+/// top's PL kernel its argument's.
 fn ring_width(
     graph: &tapa_ir::TaskGraph,
     modules: &ModuleTable<'_>,
     task: &tapa_ir::Task,
     ring: &Ring,
-    plio: bool,
 ) -> Result<u32, CodegenError> {
     let unresolved = || CodegenError::FifoWidthUnresolved(ring.port.clone());
-    let width = match (plio, task.fifos.get(&ring.port)) {
-        (true, _) => task.port(&ring.port).map_or(0, |port| port.width),
-        (false, Some(fifo)) => match frame_channel(graph, modules, task, &ring.port, fifo)? {
+    let width = match task.fifos.get(&ring.port) {
+        Some(fifo) => match frame_channel(graph, modules, task, &ring.port, fifo)? {
             Some(channel) => channel.data_width(),
             None => ring_fifo_width(graph, &graph.top, task, &ring.port).ok_or_else(unresolved)?,
         },
-        (false, None) => return Err(unresolved()),
+        None => task.port(&ring.port).map_or(0, |port| port.width),
     };
     if !(8..=512).contains(&width) || !width.is_power_of_two() {
         return Err(CodegenError::FrameChannel {
