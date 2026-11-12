@@ -6,12 +6,16 @@
 //! `stage_hls_sources` (the rewritten tree's ownership manifest), for
 //! each unique child task of the top task this module:
 //!
-//!   1. Consults the mtime of `<work_dir>/report/<task>.hier.util.rpt`
-//!      and skips the re-synth when the report is newer than every one
-//!      of the rewritten tree's freshness dependencies.
+//!   1. Reuses `<work_dir>/report/<task>.hier.util.rpt` only when it is
+//!      newer than every one of the rewritten tree's freshness
+//!      dependencies and the `.settings` recorded beside it still match:
+//!      the Vivado script (part and top module) and a digest of the RTL
+//!      tree it reads. Re-synthesizing for another part or clock changes
+//!      both without touching a source.
 //!   2. Otherwise builds an out-of-context `synth_design` TCL, drives
-//!      it through [`run_vivado`], and requires that the `.rpt` now
-//!      exists and is strictly newer than it was before.
+//!      it through [`run_vivado`], requires that the `.rpt` now exists
+//!      and is strictly newer than it was before, and records its
+//!      settings.
 //!   3. Parses the hierarchical utilization `.rpt` via
 //!      [`parse_utilization_rpt`] and updates the task's `total_area`
 //!      dict with the formula:
@@ -73,6 +77,7 @@ pub(super) fn emit_post_synth_util(
     if module_names.is_empty() {
         return Ok(());
     }
+    let rtl_digest = rtl_tree_digest(&rtl_dir)?;
     let worker_count = resolve_worker_count(jobs, module_names.len());
     let results: Vec<Result<UtilizationReport>> = crate::util::run_in_pool(
         worker_count,
@@ -82,7 +87,15 @@ pub(super) fn emit_post_synth_util(
             module_names
                 .par_iter()
                 .map(|module_name| {
-                    run_and_parse_one(runner, work_dir, &rtl_dir, module_name, part_num, sources)
+                    run_and_parse_one(
+                        runner,
+                        work_dir,
+                        &rtl_dir,
+                        &rtl_digest,
+                        module_name,
+                        part_num,
+                        sources,
+                    )
                 })
                 .collect()
         },
@@ -101,14 +114,22 @@ fn run_and_parse_one(
     runner: &dyn ToolRunner,
     work_dir: &Path,
     rtl_dir: &Path,
+    rtl_digest: &str,
     module_name: &str,
     part_num: &str,
     sources: &TaskSources,
 ) -> Result<UtilizationReport> {
     let rpt_path = post_syn_rpt_path(work_dir, module_name);
+    let settings_path = rpt_path.with_extension("settings");
     let prev_mtime = optional_mtime(&rpt_path);
+    let settings = report_settings(rtl_digest, module_name, part_num);
+    let settings_match = fs::read(&settings_path).is_ok_and(|saved| saved == settings.as_bytes());
 
-    if should_run_vivado(sources.freshness_deps(), prev_mtime) {
+    if !settings_match || should_run_vivado(sources.freshness_deps(), prev_mtime) {
+        // A failed run must not leave the old settings certifying the report.
+        if settings_path.exists() {
+            fs::remove_file(&settings_path)?;
+        }
         run_one(runner, rtl_dir, &rpt_path, module_name, part_num)?;
         if !report_is_fresh(&rpt_path, prev_mtime) {
             return Err(CliError::Codegen(format!(
@@ -118,6 +139,7 @@ fn run_and_parse_one(
                 rpt_path.display(),
             )));
         }
+        fs::write(&settings_path, settings)?;
     }
 
     let text = fs::read_to_string(&rpt_path)?;
@@ -145,6 +167,46 @@ fn post_syn_rpt_path(work_dir: &Path, module_name: &str) -> PathBuf {
 
 fn optional_mtime(path: &Path) -> Option<SystemTime> {
     fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// What a utilization report was computed from: the Vivado script, which
+/// names the part and the top module, and the RTL tree it reads.
+fn report_settings(rtl_digest: &str, module_name: &str, part_num: &str) -> String {
+    format!(
+        "tapa-util-cache-v1\n{}\n{rtl_digest}\n",
+        build_report_util_tcl(module_name, part_num)
+    )
+}
+
+/// A digest of every file under the RTL tree the utilization script reads
+/// (`*.v`, `*.tcl`, and IP `*.xci`), by relative path and content.
+fn rtl_tree_digest(rtl_dir: &Path) -> Result<String> {
+    use sha2::{Digest, Sha256};
+    let mut files = Vec::new();
+    for entry in walkdir::WalkDir::new(rtl_dir) {
+        let entry = entry.map_err(std::io::Error::other)?;
+        if entry.file_type().is_file() {
+            files.push(entry.into_path());
+        }
+    }
+    files.sort();
+    let mut hasher = Sha256::new();
+    for file in &files {
+        let relative = file.strip_prefix(rtl_dir).unwrap_or(file);
+        let bytes = fs::read(file)?;
+        hasher.update(relative.to_string_lossy().as_bytes());
+        hasher.update([0]);
+        hasher.update((bytes.len() as u64).to_le_bytes());
+        hasher.update(&bytes);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .fold(String::new(), |mut hex, byte| {
+            use std::fmt::Write as _;
+            write!(hex, "{byte:02x}").expect("write String");
+            hex
+        }))
 }
 
 /// Re-run Vivado if any staged dependency is strictly newer than the cached
@@ -354,6 +416,60 @@ mod tests {
         }
     }
 
+    /// The report and settings an earlier successful run for `part` left.
+    fn seed_report(work: &Path, module: &str, part: &str) {
+        let rpt_path = post_syn_rpt_path(work, module);
+        fs::create_dir_all(rpt_path.parent().expect("report dir")).expect("mkdir report");
+        fs::write(&rpt_path, sample_rpt(module)).expect("seed rpt");
+        let digest = rtl_tree_digest(&work.join("rtl")).expect("digest");
+        fs::write(
+            rpt_path.with_extension("settings"),
+            report_settings(&digest, module, part),
+        )
+        .expect("seed settings");
+    }
+
+    /// A report newer than every source still describes other RTL once
+    /// synthesis targets another part or regenerates different RTL (a new
+    /// clock or HLS configuration), so both must rerun Vivado.
+    #[test]
+    fn post_synth_util_reruns_a_report_for_another_part_or_rtl() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let work = tmp.path();
+        setup_work_dir(
+            work,
+            &[("Add", "void Add() {}\n"), ("VecAdd", "void VecAdd() {}\n")],
+        );
+        fs::write(work.join("rtl/Add.v"), "module Add(); endmodule\n").expect("rtl");
+        std::thread::sleep(Duration::from_millis(10));
+        seed_report(work, "Add", "xcu55c-fsvh2892-2L-e");
+        let rpt_path = crate::util::utf8(post_syn_rpt_path(work, "Add"));
+        let design = fixtures::vadd_design();
+        let sources = fixtures::staged(work, &design);
+        let run = |part: &str| {
+            let runner = MockToolRunner::new();
+            runner.push_ok("vivado", ToolOutput::default());
+            runner.attach_download(rpt_path.clone(), sample_rpt("Add").into_bytes());
+            std::thread::sleep(Duration::from_millis(10));
+            emit_post_synth_util(
+                work,
+                &mut design.clone(),
+                part,
+                None,
+                &runner,
+                &sources,
+                None,
+            )
+            .expect("post-synth utilization");
+            runner.calls().len()
+        };
+
+        assert_eq!(run("xcvu9p-flgb2104-2-i"), 1, "another part must rerun");
+        assert_eq!(run("xcvu9p-flgb2104-2-i"), 0, "the same part and RTL reuse");
+        fs::write(work.join("rtl/Add.v"), "module Add(); wire w; endmodule\n").expect("rtl");
+        assert_eq!(run("xcvu9p-flgb2104-2-i"), 1, "changed RTL must rerun");
+    }
+
     fn setup_work_dir(dir: &Path, tasks: &[(&str, &str)]) {
         fs::create_dir_all(dir.join(crate::tapacc::REWRITTEN_DIR)).expect("mkdir rewritten");
         fs::create_dir_all(dir.join("rtl")).expect("mkdir rtl");
@@ -437,7 +553,7 @@ mod tests {
         let src_path = work.join(crate::tapacc::REWRITTEN_DIR).join("Add.cpp");
         // Touch the report after the staged inputs.
         std::thread::sleep(Duration::from_millis(10));
-        fs::write(&rpt_path, sample_rpt("Add")).expect("seed rpt");
+        seed_report(work, "Add", "xcu250-figd2104-2L-e");
         // Verify ordering: rpt must be strictly newer than the source.
         let src_mtime = fs::metadata(&src_path).and_then(|m| m.modified()).unwrap();
         let rpt_mtime = fs::metadata(&rpt_path).and_then(|m| m.modified()).unwrap();

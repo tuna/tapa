@@ -153,7 +153,7 @@ This stage can run on a remote host via `--remote-host`.
 | `--skip-aie` | Build only the PL half of a design with AI Engine tasks, without compiling the AI Engine graph; the `.xo` then serves hybrid cosimulation. Rejected for a top on the AI Engine with no PL kernel; on a VCK5000, the PL kernel TAPA builds for such a top's rings is its PL half. |
 | `--aie-only` | Build only the hardware AI Engine graph. Requires an AI Engine partition and conflicts with `--skip-aie`; does not run HLS, RTL codegen, post-synthesis utilization, or PL timing reporting. |
 | `-j N` / `--jobs N` | Number of parallel HLS and post-synthesis jobs (default: the host's available parallelism). |
-| `--enable-synth-util` | Run out-of-context Vivado synthesis per task for accurate area numbers instead of the coarser HLS estimates. Costs one extra Vivado run per task. |
+| `--enable-synth-util` | Run out-of-context Vivado synthesis per task for accurate area numbers instead of the coarser HLS estimates. Costs one extra Vivado run per task; a task's report under `report/` is reused while the part, the generated RTL, and the task's sources are unchanged. |
 | `--keep-hls-work-dir` | Keep each task's Vitis HLS project under `hls/<task>/project` instead of discarding it. Useful for post-mortem debugging of an HLS failure. |
 | `--skip-hls-based-on-mtime` | Reuse existing Verilog when sources and headers are older than the output and the recorded HLS script, source list, and compiler flags match. Output from versions without recorded settings must be regenerated. |
 | `--require-hls-cache` | With `--skip-hls-based-on-mtime`, fail on a cache miss or an unusable or incompatible cached csynth report instead of running HLS. |
