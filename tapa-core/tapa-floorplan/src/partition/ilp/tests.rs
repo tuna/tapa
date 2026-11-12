@@ -487,7 +487,7 @@ fn two_slot_golden_model(graph: &FloorGraph) -> FloorplanModel {
             capacity: 34,
         }],
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("golden model")
 }
@@ -670,7 +670,7 @@ fn anchor_objective_prices_quarter_unit_site_offsets() {
         &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("model");
 
@@ -786,7 +786,7 @@ fn sparse_domains_encode_exact_terminals() {
         &region_areas(&device, &regions).expect("region areas"),
         DEFAULT_USAGE_LIMIT,
         None,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("domains");
 
@@ -811,7 +811,7 @@ fn sparse_domains_encode_exact_terminals() {
         &domain_areas(&device, &domains),
         &find_cuts_for_regions(&device, &regions),
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("model");
     let x_count = model
@@ -838,7 +838,7 @@ fn sparse_domains_encode_exact_terminals() {
         &domain_areas(&device, &sparse_domains),
         &[],
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("sparse model");
     let y_count = sparse_model
@@ -960,7 +960,7 @@ fn multilevel_infeasible_refinement_reuses_the_flat_atomic_formulation() {
         5,
         "row primary and refinement, rejected parent-atomic primary,              atomic-fallback primary and refinement"
     );
-    let constraints = exact_resource_cap_constraints(&device, block_limit);
+    let constraints = exact_resource_cap_limits(&device, block_limit);
     let regions = atomic_regions(&device);
     let domains = candidate_domains(
         &graph,
@@ -1002,7 +1002,7 @@ fn readback_rejects_missing_and_fractional_assignments() {
         &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("model");
 
@@ -1038,10 +1038,8 @@ fn resource_overrides_use_total_region_capacity() {
     let device = select_device("u280").expect("u280");
     let region = Coor::slot(0, 0);
     let domains = vec![vec![region]; graph.vertices().len()];
-    let mut constraints = PlacementConstraints::default();
-    constraints
-        .max_resource_limits
-        .insert(region, BTreeMap::from([(Resource::Lut, 0.5)]));
+    let mut constraints = RegionResourceLimits::default();
+    constraints.insert(region, BTreeMap::from([(Resource::Lut, 0.5)]));
     let model = FloorplanModel::build(
         &graph,
         &device,
@@ -1281,7 +1279,7 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         &domain_areas(&device, &domains),
         &[],
         DEFAULT_USAGE_LIMIT,
-        &PlacementConstraints::default(),
+        &RegionResourceLimits::default(),
     )
     .expect("model");
     assert!(
@@ -1500,12 +1498,10 @@ fn invalid_usage_limit_is_rejected_before_model_building() {
     ));
 
     let zero_override = PlacementConfig {
-        constraints: PlacementConstraints {
-            max_resource_limits: BTreeMap::from([(
-                Coor::slot(0, 0),
-                BTreeMap::from([(Resource::Lut, 0.0)]),
-            )]),
-        },
+        max_resource_limits: BTreeMap::from([(
+            Coor::slot(0, 0),
+            BTreeMap::from([(Resource::Lut, 0.0)]),
+        )]),
         ..PlacementConfig::default()
     };
     validate_config(&zero_override).expect("a zero override can intentionally empty a slot");

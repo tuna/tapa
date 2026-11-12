@@ -70,22 +70,13 @@ type RegionAreas = BTreeMap<Coor, Area>;
 /// Per-region, per-resource fractional limits.
 type RegionResourceLimits = BTreeMap<Coor, BTreeMap<Resource, f64>>;
 
-/// Constraints that narrow candidate domains or override resource limits.
-///
-/// Parent containment and exact external-terminal placement are added by the
-/// schedule itself, so none of these restrictions require extra ILP rows.
-#[derive(Debug, Clone, Default)]
-struct PlacementConstraints {
-    max_resource_limits: RegionResourceLimits,
-}
-
 /// Configuration for [`floorplan_with_config`].
 #[derive(Debug, Clone)]
 struct PlacementConfig {
     usage_limit: f64,
     retry_ceiling: f64,
     strategy: PartitionStrategy,
-    constraints: PlacementConstraints,
+    max_resource_limits: RegionResourceLimits,
 }
 
 impl Default for PlacementConfig {
@@ -94,7 +85,7 @@ impl Default for PlacementConfig {
             usage_limit: DEFAULT_USAGE_LIMIT,
             retry_ceiling: MAX_USAGE_LIMIT,
             strategy: PartitionStrategy::Auto,
-            constraints: PlacementConstraints::default(),
+            max_resource_limits: RegionResourceLimits::default(),
         }
     }
 }
@@ -170,7 +161,7 @@ pub(crate) fn floorplan_with_strategy(
             usage_limit: base_usage_limit,
             retry_ceiling,
             strategy,
-            constraints: PlacementConstraints::default(),
+            max_resource_limits: RegionResourceLimits::default(),
         },
         solver,
         opts,
@@ -193,10 +184,10 @@ pub(crate) fn floorplan_with_exact_resource_caps(
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
     let strategy = resolve_strategy(graph, device, strategy);
-    let constraints = if strategy == PartitionStrategy::MultiLevel {
-        exact_resource_cap_constraints(device, block_limit)
+    let max_resource_limits = if strategy == PartitionStrategy::MultiLevel {
+        exact_resource_cap_limits(device, block_limit)
     } else {
-        PlacementConstraints::default()
+        RegionResourceLimits::default()
     };
     let assignment = floorplan_with_config(
         graph,
@@ -205,7 +196,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
             usage_limit: logic_limit,
             retry_ceiling: logic_limit,
             strategy,
-            constraints,
+            max_resource_limits,
         },
         solver,
         opts,
@@ -213,23 +204,20 @@ pub(crate) fn floorplan_with_exact_resource_caps(
     Ok(assignment)
 }
 
-fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {
+fn exact_resource_cap_limits(device: &Device, block_limit: f64) -> RegionResourceLimits {
     let by_resource: BTreeMap<_, _> = Resource::ALL
         .into_iter()
         .filter(|resource| device.plans_resource(*resource) && !resource.is_logic())
         .map(|resource| (resource, block_limit))
         .collect();
-    let max_resource_limits = row_regions(device)
+    row_regions(device)
         .into_iter()
         .chain(atomic_regions(device))
         .map(|region| (region, by_resource.clone()))
-        .collect();
-    PlacementConstraints {
-        max_resource_limits,
-    }
+        .collect()
 }
 
-/// Plan using an explicit schedule and optional pin/resource constraints.
+/// Plan using an explicit schedule and optional per-resource limits.
 fn floorplan_with_config(
     graph: &FloorGraph,
     device: &Device,
@@ -347,7 +335,7 @@ fn validate_config(config: &PlacementConfig) -> Result<(), IlpError> {
             range: "base limit <= ceiling <= 1",
         });
     }
-    for (region, by_resource) in &config.constraints.max_resource_limits {
+    for (region, by_resource) in &config.max_resource_limits {
         for &value in by_resource.values() {
             validate_limit("maximum", &region.region_name(), value, true)?;
         }
@@ -600,7 +588,7 @@ fn attempt_placement(
         areas,
         usage_limit,
         parents,
-        &config.constraints,
+        &config.max_resource_limits,
     ) {
         Ok(domains) => domains,
         // An empty domain may be a derating that is merely too strict, or a
@@ -619,7 +607,7 @@ fn attempt_placement(
         areas,
         cuts,
         usage_limit,
-        &config.constraints,
+        &config.max_resource_limits,
     )?;
     let solution = solver.solve(&model.lp, opts)?;
     if solution.is_found() {
@@ -641,7 +629,7 @@ fn attempt_placement(
                     graph,
                     areas,
                     config.retry_ceiling,
-                    &config.constraints,
+                    &config.max_resource_limits,
                 ),
             }))
         }
@@ -664,7 +652,7 @@ fn describe_demand(
     graph: &FloorGraph,
     areas: &RegionAreas,
     usage_limit: f64,
-    constraints: &PlacementConstraints,
+    constraints: &RegionResourceLimits,
 ) -> String {
     let mut worst: Option<(Resource, u64, u64)> = None;
     for resource in Resource::ALL {
@@ -679,8 +667,7 @@ fn describe_demand(
         let supply: u64 = areas
             .iter()
             .map(|(region, total)| {
-                let limit = lookup_limit(&constraints.max_resource_limits, region, resource)
-                    .unwrap_or(usage_limit);
+                let limit = lookup_limit(constraints, region, resource).unwrap_or(usage_limit);
                 scaled_amount(resource.amount(total), limit)
             })
             .sum();
@@ -714,7 +701,7 @@ fn candidate_domains(
     areas: &RegionAreas,
     usage_limit: f64,
     parents: Option<&[Coor]>,
-    constraints: &PlacementConstraints,
+    constraints: &RegionResourceLimits,
 ) -> Result<Vec<Vec<Coor>>, IlpError> {
     let mut domains = Vec::with_capacity(graph.vertices().len());
 
@@ -737,12 +724,7 @@ fn candidate_domains(
             let total = areas
                 .get(&region)
                 .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
-            let available = scaled_area_with_overrides(
-                *total,
-                usage_limit,
-                &constraints.max_resource_limits,
-                &region,
-            );
+            let available = scaled_area_with_overrides(*total, usage_limit, constraints, &region);
             // A zero-area vertex fits even on a slot whose derated area
             // scaled to zero (0 <= 0); only the fitting check decides.
             if !area_fits_on_device(device, vertex.area, available) {
@@ -825,7 +807,7 @@ struct DomainContext<'a> {
     regions: &'a [Coor],
     areas: &'a RegionAreas,
     usage_limit: f64,
-    constraints: &'a PlacementConstraints,
+    constraints: &'a RegionResourceLimits,
 }
 
 /// The [`IlpError::AnchorUnplaceable`] for an anchored vertex whose domain
@@ -871,12 +853,7 @@ fn anchor_unplaceable_error(
         areas.get(region).is_some_and(|total| {
             area_fits(
                 vertex.area,
-                scaled_area_with_overrides(
-                    *total,
-                    usage_limit,
-                    &constraints.max_resource_limits,
-                    region,
-                ),
+                scaled_area_with_overrides(*total, usage_limit, constraints, region),
             )
         })
     });
@@ -894,14 +871,9 @@ fn anchor_unplaceable_error(
     let best_available = tagged
         .iter()
         .filter_map(|region| {
-            areas.get(region).map(|total| {
-                scaled_area_with_overrides(
-                    *total,
-                    usage_limit,
-                    &constraints.max_resource_limits,
-                    region,
-                )
-            })
+            areas
+                .get(region)
+                .map(|total| scaled_area_with_overrides(*total, usage_limit, constraints, region))
         })
         .reduce(component_max)
         .unwrap_or_default();
@@ -1007,7 +979,7 @@ impl FloorplanModel {
         areas: &RegionAreas,
         cuts: &[Cut],
         usage_limit: f64,
-        constraints: &PlacementConstraints,
+        constraints: &RegionResourceLimits,
     ) -> Result<Self, IlpError> {
         debug_assert_eq!(
             graph.vertices().len(),
@@ -1253,7 +1225,7 @@ fn add_resource_constraints(
     areas: &RegionAreas,
     domains: &[Vec<Coor>],
     usage_limit: f64,
-    constraints: &PlacementConstraints,
+    constraints: &RegionResourceLimits,
     x: &[Vec<LpVar>],
     y: &[Vec<Vec<LpVar>>],
 ) -> Result<(), IlpError> {
@@ -1284,8 +1256,7 @@ fn add_resource_constraints(
             // The same floor `scaled_area_with_overrides` applies when it
             // filters candidates, so a region the filter admits is never one
             // this row then rejects by a fraction of a unit.
-            let limit = lookup_limit(&constraints.max_resource_limits, &region, resource)
-                .unwrap_or(usage_limit);
+            let limit = lookup_limit(constraints, &region, resource).unwrap_or(usage_limit);
             let max_rhs = scaled_amount(resource.amount(&total), limit).as_f64();
             lp.add_constraint(
                 format!("node_{}_{}_usage", region.region_name(), resource.name()),
