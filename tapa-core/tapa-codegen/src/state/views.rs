@@ -16,7 +16,6 @@
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
-use tapa_ir::task::TaskLevel;
 use tapa_ir::{Design, FloorplanResult};
 use tapa_rtl::mutation::MutableModule;
 use tapa_rtl::VerilogModule;
@@ -126,18 +125,7 @@ impl<'a> FsmTable<'a> {
     }
 
     /// Create an FSM module for an upper-level task.
-    ///
-    /// Rejects lower-level tasks; the design-side level lookup lives in the
-    /// `create_fsm_module` task pass, which delegates here.
-    pub fn create_fsm_module(
-        &mut self,
-        task_name: &str,
-        task_level: TaskLevel,
-    ) -> Result<(), CodegenError> {
-        if task_level == TaskLevel::Lower {
-            return Err(CodegenError::FsmForLowerTask(task_name.to_owned()));
-        }
-
+    pub fn create_fsm_module(&mut self, task_name: &str) -> Result<(), CodegenError> {
         // Create an empty FSM module with the standard TAPA handshake ports.
         // The generated top-level RTL wires ap_start / ap_done / ap_ready /
         // ap_idle to this FSM, so they must be present on the FSM module

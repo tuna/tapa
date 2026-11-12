@@ -7,8 +7,7 @@
 //!   the IDLE -> RUNNING -> DONE controller that drives the ap-ctrl
 //!   handshake and gates on all child `is_done` signals.
 //! - `CHILD_STATE_*`: the 4-state per-instance child FSM, consumed by
-//!   `crate::passes::children::fsm`, which re-exports them under the
-//!   historical `STATE_*` names.
+//!   `crate::passes::children::fsm`.
 
 use tapa_protocol::{
     HANDSHAKE_CLK, HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
@@ -57,23 +56,6 @@ pub const DONE_Q: &str = "__tapa_done_q";
 ///
 /// Children use `start_q` for IDLE->RUNNING and `done_q` for DONE->IDLE.
 pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
-    let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
-        HANDSHAKE_START,
-        tapa_rtl::port::Direction::Input,
-    ));
-    let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
-        HANDSHAKE_DONE,
-        tapa_rtl::port::Direction::Output,
-    ));
-    let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
-        HANDSHAKE_IDLE,
-        tapa_rtl::port::Direction::Output,
-    ));
-    let _ = fsm_module.add_port(tapa_rtl::mutation::simple_port(
-        HANDSHAKE_READY,
-        tapa_rtl::port::Direction::Output,
-    ));
-
     let _ = fsm_module.add_signal(wide_reg("__tapa_state", "1", "0"));
 
     let _ = fsm_module.add_signal(wire(HANDSHAKE_RST));
@@ -178,7 +160,7 @@ mod tests {
 
     #[test]
     fn apply_global_fsm_to_module() {
-        let source = "module top_fsm (\n  input wire ap_clk,\n  input wire ap_rst_n\n);\nendmodule";
+        let source = "module top_fsm (\n  input wire ap_clk,\n  input wire ap_rst_n,\n  input wire ap_start,\n  output wire ap_done,\n  output wire ap_ready,\n  output wire ap_idle\n);\nendmodule";
         let module = VerilogModule::parse(source).unwrap();
         let mut mm = MutableModule::from_parsed(module);
         apply_global_fsm(

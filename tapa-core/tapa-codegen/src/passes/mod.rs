@@ -124,7 +124,7 @@ impl<'a> TaskPassCtx<'a> {
 ///
 /// Everything here is a pure function of the design/floorplan state as it
 /// stands when the task's group starts, so computing it up front preserves
-/// the historical "validate before any mutation" ordering.
+/// the validate-before-mutation ordering.
 pub struct TaskStageInputs {
     /// Whether this task is the design's top task; staged because two
     /// passes special-case the top level.
@@ -269,14 +269,7 @@ pub fn cleanup_hls_artifacts(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenErr
 /// plan replaces it.
 pub fn create_fsm_module(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
     if ctx.inputs.control_plan.is_none() {
-        let task_level = ctx
-            .design
-            .design()
-            .tasks
-            .get(ctx.name)
-            .ok_or_else(|| CodegenError::TaskNotFound(ctx.name.to_owned()))?
-            .level;
-        ctx.fsms.create_fsm_module(ctx.name, task_level)?;
+        ctx.fsms.create_fsm_module(ctx.name)?;
     }
     Ok(())
 }

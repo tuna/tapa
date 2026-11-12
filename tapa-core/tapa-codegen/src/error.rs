@@ -10,9 +10,6 @@ pub enum CodegenError {
     #[error("a module is already attached to task `{0}`")]
     ModuleAlreadyAttached(String),
 
-    #[error("cannot create an FSM module for lower-level task `{0}`")]
-    FsmForLowerTask(String),
-
     #[error("invalid mmap connection: {0}")]
     InvalidMmapConnection(String),
 

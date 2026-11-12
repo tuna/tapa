@@ -194,21 +194,10 @@ mod tests {
     }
 
     #[test]
-    fn create_fsm_rejects_lower_task() {
-        let mut state = TopologyWithRtl::new(sample_program());
-        let result = crate::state::views::FsmTable::new(&mut state.fsm_modules)
-            .create_fsm_module("child_a", TaskLevel::Lower);
-        assert!(
-            matches!(result, Err(CodegenError::FsmForLowerTask(_))),
-            "got: {result:?}"
-        );
-    }
-
-    #[test]
     fn create_fsm_for_upper_task() {
         let mut state = TopologyWithRtl::new(sample_program());
         crate::state::views::FsmTable::new(&mut state.fsm_modules)
-            .create_fsm_module("top_task", TaskLevel::Upper)
+            .create_fsm_module("top_task")
             .unwrap();
         assert!(state.fsm_modules.contains_key("top_task"));
     }

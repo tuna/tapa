@@ -4,11 +4,8 @@ use crate::instance_signals::InstanceSignals;
 use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 
-// Aliased from `crate::program` (see its module doc) to the historical
-// `STATE_*` names used below.
 use crate::program::{
-    CHILD_STATE_DONE as STATE_DONE, CHILD_STATE_IDLE as STATE_IDLE,
-    CHILD_STATE_RUNNING as STATE_RUNNING, CHILD_STATE_WAITING as STATE_WAITING,
+    CHILD_STATE_DONE, CHILD_STATE_IDLE, CHILD_STATE_RUNNING, CHILD_STATE_WAITING,
 };
 
 /// Generate the 4-state FSM always block for a non-autorun child instance.
@@ -16,7 +13,7 @@ use crate::program::{
 /// States: IDLE(00) -> RUNNING(01) -> WAITING(11) or DONE(10) -> IDLE(00)
 ///
 /// `start_input`: the signal that triggers IDLE->RUNNING transition.
-/// `done_release`: the signal that releases `STATE_DONE` back to IDLE
+/// `done_release`: the signal that releases `CHILD_STATE_DONE` back to IDLE
 /// (from the global done pipeline, so all children hold done until
 /// the program FSM acknowledges completion).
 pub fn generate_child_fsm(
@@ -32,52 +29,52 @@ pub fn generate_child_fsm(
         HANDSHAKE_CLK,
         vec![Statement::If {
             cond: Expr::ident(HANDSHAKE_RST),
-            then_body: vec![sig.set_state(Expr::lit(STATE_IDLE))],
+            then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_IDLE))],
             else_body: vec![Statement::Case {
                 expr: state,
                 items: vec![
                     // IDLE -> RUNNING when global start pipeline asserts
                     CaseItem::new(
-                        Expr::lit(STATE_IDLE),
+                        Expr::lit(CHILD_STATE_IDLE),
                         vec![Statement::If {
                             cond: start_input,
-                            then_body: vec![sig.set_state(Expr::lit(STATE_RUNNING))],
+                            then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_RUNNING))],
                             else_body: vec![],
                         }],
                     ),
                     // RUNNING -> DONE if ready&done, WAITING if ready&!done
                     CaseItem::new(
-                        Expr::lit(STATE_RUNNING),
+                        Expr::lit(CHILD_STATE_RUNNING),
                         vec![Statement::If {
                             cond: Expr::logical_and(ready.clone(), done.clone()),
-                            then_body: vec![sig.set_state(Expr::lit(STATE_DONE))],
+                            then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_DONE))],
                             else_body: vec![Statement::If {
                                 cond: ready,
-                                then_body: vec![sig.set_state(Expr::lit(STATE_WAITING))],
+                                then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_WAITING))],
                                 else_body: vec![],
                             }],
                         }],
                     ),
                     // WAITING -> DONE when done
                     CaseItem::new(
-                        Expr::lit(STATE_WAITING),
+                        Expr::lit(CHILD_STATE_WAITING),
                         vec![Statement::If {
                             cond: done,
-                            then_body: vec![sig.set_state(Expr::lit(STATE_DONE))],
+                            then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_DONE))],
                             else_body: vec![],
                         }],
                     ),
                     // DONE -> IDLE only when global done pipeline releases
                     CaseItem::new(
-                        Expr::lit(STATE_DONE),
+                        Expr::lit(CHILD_STATE_DONE),
                         vec![Statement::If {
                             cond: done_release,
-                            then_body: vec![sig.set_state(Expr::lit(STATE_IDLE))],
+                            then_body: vec![sig.set_state(Expr::lit(CHILD_STATE_IDLE))],
                             else_body: vec![],
                         }],
                     ),
                 ],
-                default: vec![sig.set_state(Expr::lit(STATE_IDLE))],
+                default: vec![sig.set_state(Expr::lit(CHILD_STATE_IDLE))],
             }],
         }],
     )
@@ -85,11 +82,11 @@ pub fn generate_child_fsm(
 
 /// Generate an `__is_done` assign inside the FSM module.
 ///
-/// `assign is_done = (state == STATE_DONE)`
+/// `assign is_done = (state == CHILD_STATE_DONE)`
 pub fn generate_is_done_assign(sig: &InstanceSignals) -> ContinuousAssign {
     ContinuousAssign::new(
         Expr::ident(sig.is_done_name()),
-        sig.is_state(Expr::lit(STATE_DONE)),
+        sig.is_state(Expr::lit(CHILD_STATE_DONE)),
     )
 }
 
@@ -120,9 +117,12 @@ pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
 
 /// Generate the combinational start assign for a non-autorun instance.
 ///
-/// `instance_start = (state == STATE_RUNNING)`
+/// `instance_start = (state == CHILD_STATE_RUNNING)`
 pub fn generate_start_assign(sig: &InstanceSignals) -> ContinuousAssign {
-    ContinuousAssign::new(sig.start_expr(), sig.is_state(Expr::lit(STATE_RUNNING)))
+    ContinuousAssign::new(
+        sig.start_expr(),
+        sig.is_state(Expr::lit(CHILD_STATE_RUNNING)),
+    )
 }
 
 #[cfg(test)]
@@ -137,9 +137,9 @@ mod tests {
         let block = generate_child_fsm(&sig, start_input, done_release);
         let text = block.to_string();
         assert!(text.contains("case (child_0__state)"), "got:\n{text}");
-        assert!(text.contains(STATE_IDLE), "got:\n{text}");
-        assert!(text.contains(STATE_RUNNING), "got:\n{text}");
-        assert!(text.contains(STATE_DONE), "got:\n{text}");
+        assert!(text.contains(CHILD_STATE_IDLE), "got:\n{text}");
+        assert!(text.contains(CHILD_STATE_RUNNING), "got:\n{text}");
+        assert!(text.contains(CHILD_STATE_DONE), "got:\n{text}");
         // IDLE->RUNNING uses global_start_q
         assert!(
             text.contains("global_start_q"),
@@ -175,7 +175,7 @@ mod tests {
         let assign = generate_start_assign(&sig);
         let text = assign.to_string();
         assert!(
-            text.contains("child_0__ap_start") && text.contains(STATE_RUNNING),
+            text.contains("child_0__ap_start") && text.contains(CHILD_STATE_RUNNING),
             "got: {text}"
         );
     }
