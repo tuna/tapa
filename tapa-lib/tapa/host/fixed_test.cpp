@@ -128,6 +128,17 @@ TEST(FixedTest, MixedWidthsAlignTheBinaryPoint) {
   EXPECT_DOUBLE_EQ(sum.to_double(), 2.5625);
 }
 
+// The vendor types `integer / x` as `x / integer` would be, and hardware
+// computes the same, so the exact quotient truncates into that type.
+TEST(FixedTest, IntegerDividendTakesTheVendorsSwappedType) {
+  const auto q = 1 / fixed<12, 6>(0.25);
+  static_assert(decltype(q)::width == 13 && decltype(q)::iwidth == 7,
+                "fixed<12, 6>'s div by an int");
+  EXPECT_EQ(q.to_double(), 4.0);
+  // 1000 needs 11 integer bits; 7 keep 1000 mod 128 = 104, then signed.
+  EXPECT_EQ((1000 / fixed<12, 6>(1.0)).to_double(), -24.0);
+}
+
 TEST(FixedTest, DivisionTruncatesTowardZero) {
   fixed<16, 8> a = 7.5;
   fixed<16, 8> b = 2.0;

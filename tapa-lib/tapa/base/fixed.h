@@ -537,8 +537,9 @@ struct as_fixed<i<W>> {
 
 }  // namespace internal
 
-// Arithmetic against a plain integer or a tapa::u/i, in either order.
-#define TAPA_FIXED_MIXED_ARITH(op)                                             \
+// Arithmetic against a plain integer or a tapa::u/i, in either order;
+// `lhs_too` says which of them may be the left operand.
+#define TAPA_FIXED_MIXED_ARITH(op, lhs_too)                                    \
   template <int W1, int I1, bool S1, q_mode Q1, o_mode O1, int N1, typename T, \
             typename U = typename internal::as_fixed<T>::type>                 \
   inline auto operator op(const fixed_base<W1, I1, S1, Q1, O1, N1>& lhs,       \
@@ -547,18 +548,33 @@ struct as_fixed<i<W>> {
     return lhs op U(rhs);                                                      \
   }                                                                            \
   template <int W1, int I1, bool S1, q_mode Q1, o_mode O1, int N1, typename T, \
-            typename U = typename internal::as_fixed<T>::type>                 \
+            typename U = typename internal::as_fixed<T>::type,                 \
+            typename std::enable_if<(lhs_too), int>::type = 0>                 \
   inline auto operator op(const T& lhs,                                        \
                           const fixed_base<W1, I1, S1, Q1, O1, N1>& rhs)       \
       ->decltype(std::declval<const U&>() op rhs) {                            \
     return U(lhs) op rhs;                                                      \
   }
 
-TAPA_FIXED_MIXED_ARITH(+)
-TAPA_FIXED_MIXED_ARITH(-)
-TAPA_FIXED_MIXED_ARITH(*)
-TAPA_FIXED_MIXED_ARITH(/)
+TAPA_FIXED_MIXED_ARITH(+, true)
+TAPA_FIXED_MIXED_ARITH(-, true)
+TAPA_FIXED_MIXED_ARITH(*, true)
+// A plain integer dividend is below.
+TAPA_FIXED_MIXED_ARITH(/, !std::is_integral<T>::value)
 #undef TAPA_FIXED_MIXED_ARITH
+
+// A plain integer dividend: the vendor types the quotient as if the integer
+// were the divisor, `frtype<fixed, integer>::div`, and synthesis uses the
+// same declaration, so the exact quotient truncates into it: `1 /
+// fixed<12, 6>(0.25)` is a `fixed<13, 7>`, holding 4.
+template <int W1, int I1, bool S1, q_mode Q1, o_mode O1, int N1, typename T,
+          typename std::enable_if<std::is_integral<T>::value, int>::type = 0,
+          typename U = typename internal::as_fixed<T>::type,
+          typename R = typename internal::frtype<W1, I1, S1, U::width,
+                                                 U::iwidth, U::is_signed>::div>
+inline R operator/(T lhs, const fixed_base<W1, I1, S1, Q1, O1, N1>& rhs) {
+  return R(U(lhs) / rhs);
+}
 
 // Comparison against a plain number: the vendor declares an overload per
 // integral C type that wraps the operand as a fixed-point of that type's

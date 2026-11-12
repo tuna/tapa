@@ -884,6 +884,12 @@ TEST(VendorParity, FixedArithmeticWithNativeIntegers) {
   TAPA_CHECK_MIXED(1 + a, 1 + va);
   TAPA_CHECK_MIXED(a - 1, va - 1);
   TAPA_CHECK_MIXED(a / 2, va / 2);
+  // A plain integer dividend takes the type the vendor declares for it.
+  TAPA_CHECK_MIXED(2 / a, 2 / va);
+  TAPA_CHECK_MIXED(-3 / b, -3 / vb);
+  TAPA_CHECK_MIXED(1000 / b, 1000 / vb);
+  TAPA_CHECK_MIXED(7u / a, 7u / va);
+  TAPA_CHECK_MIXED(u<4>(3) / b, ap_uint<4>(3) / vb);
   TAPA_CHECK_MIXED(b * 2, vb * 2);
   TAPA_CHECK_MIXED(b + 3, vb + 3);
   TAPA_CHECK_MIXED(b - 3, vb - 3);
