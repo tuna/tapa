@@ -929,9 +929,12 @@ task::~task() {
         }
       }
       if (t.joinable()) {
+        // Joining is progress: back off only while no task can be joined.
         t.join();
+        internal::blocked_poll_streak = 0;
+      } else {
+        reschedule_this_thread();
       }
-      reschedule_this_thread();
     }
     std::unique_lock<std::mutex> lock(internal::mtx);
     internal::invokes_ended.store(internal::invokes_begun,
