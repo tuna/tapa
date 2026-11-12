@@ -565,8 +565,8 @@ fn validate_realized_usage(
         let block_limit = scaled_area(capacity, block_capacity_limit);
         for resource in Resource::ALL {
             if !device.plans_resource(resource) {
-                // Do not reject V80 plans for hard-block usage; Vivado places
-                // BRAM/URAM after TAPA has fixed the SLR/NOC topology.
+                // Resource classes excluded by this table are not placement
+                // constraints; Vivado remains the final legality authority.
                 continue;
             }
             let used = resource.amount(used_area);
