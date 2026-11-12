@@ -307,9 +307,9 @@ mod tests {
     #[test]
     fn open_rejects_a_valid_header_with_truncated_payload() {
         let q = SharedMemoryQueue::create("test_q_payload_source", 2, 4).expect("create");
-        let mut seg = MmapSegment::create("test_q_truncated_payload", q.seg.len() - 1)
+        let mut seg = MmapSegment::create("test_q_truncated_payload", q.seg.as_slice().len() - 1)
             .expect("create truncated segment");
-        let len = seg.len();
+        let len = seg.as_slice().len();
         seg.as_mut_slice().copy_from_slice(&q.seg.as_slice()[..len]);
 
         match SharedMemoryQueue::open(seg.path().to_str().expect("utf8")) {

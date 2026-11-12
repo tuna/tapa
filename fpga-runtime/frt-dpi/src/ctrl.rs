@@ -42,6 +42,6 @@ pub fn axi_memory_impl(ctx: &DpiContext, port: &str, size: &mut u64) -> *mut u8 
         *size = 0;
         return std::ptr::null_mut();
     };
-    *size = segment.len() as u64;
+    *size = segment.as_slice().len() as u64;
     segment.shared_ptr()
 }

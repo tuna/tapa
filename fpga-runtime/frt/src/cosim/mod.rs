@@ -207,7 +207,7 @@ impl CosimDevice {
 
     fn copy_back_to_host(&mut self) -> Result<()> {
         self.for_each_transfer(BufferAccess::stores_to_host, |ptr, bytes, seg| {
-            let len = bytes.min(seg.len());
+            let len = bytes.min(seg.as_slice().len());
             if len > 0 {
                 // SAFETY: ptr is non-null (validated above) and
                 // len <= bytes, so the slice is within the
@@ -760,7 +760,7 @@ impl Device for CosimDevice {
 
     fn write_to_device(&mut self) -> Result<()> {
         self.for_each_transfer(BufferAccess::loads_from_host, |ptr, bytes, seg| {
-            let len = bytes.min(seg.len());
+            let len = bytes.min(seg.as_slice().len());
             if len > 0 {
                 // SAFETY: ptr is non-null (validated above) and
                 // len <= bytes, so the slice is within the
@@ -1114,10 +1114,10 @@ mod tests {
         host[bytes - 1] = 0x22;
         dev.set_buffer_arg(0, host.as_mut_ptr(), host.len(), BufferAccess::ReadWrite)
             .expect("set buffer");
-        assert_eq!(dev.ctx.buffers["buf0"].len(), bytes);
+        assert_eq!(dev.ctx.buffers["buf0"].as_slice().len(), bytes);
         dev.write_to_device().expect("write to device");
         let buf = dev.ctx.buffers.get("buf0").expect("buffer");
-        assert_eq!(buf.len(), bytes);
+        assert_eq!(buf.as_slice().len(), bytes);
         assert_eq!(buf.as_slice()[0], 0x11);
         assert_eq!(buf.as_slice()[bytes - 1], 0x22);
     }

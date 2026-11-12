@@ -21,7 +21,10 @@ fn resolve_span<'c>(
         eprintln!("frt-dpi: {op}: invalid addr on '{port}'");
         return None;
     };
-    if offset.checked_add(len).is_none_or(|end| end > seg.len()) {
+    if offset
+        .checked_add(len)
+        .is_none_or(|end| end > seg.as_slice().len())
+    {
         eprintln!("frt-dpi: {op}: out of bounds on '{port}' offset={offset} len={len}");
         return None;
     }

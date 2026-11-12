@@ -136,7 +136,7 @@ impl CosimRing {
         let access = Arc::new(Access {
             control,
             memory: segment.shared_ptr() as usize,
-            bytes: segment.len(),
+            bytes: segment.as_slice().len(),
         });
         let pump = Arc::new(RingPump::new(self.layout.clone(), self.name.clone(), 0));
         pump.frames.bind(path);

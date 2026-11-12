@@ -78,14 +78,6 @@ impl MmapSegment {
     pub fn shared_ptr(&self) -> *mut u8 {
         self.mmap.as_ptr().cast_mut()
     }
-
-    pub fn len(&self) -> usize {
-        self.mmap.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.mmap.is_empty()
-    }
 }
 
 impl Drop for MmapSegment {

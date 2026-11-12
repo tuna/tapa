@@ -108,7 +108,7 @@ impl CosimContext {
                 .into());
             };
             let mut seg = create(name, size.max(1))?;
-            let len = old.len().min(seg.len());
+            let len = old.as_slice().len().min(seg.as_slice().len());
             if len > 0 {
                 seg.as_mut_slice()[..len].copy_from_slice(&old.as_slice()[..len]);
             }
@@ -254,7 +254,7 @@ mod tests {
     fn resize_buffer_grows_the_segment() {
         let mut ctx = CosimContext::new(&make_spec()).expect("new");
         ctx.resize_buffer("a", 5 * 1024 * 1024).expect("resize");
-        assert_eq!(ctx.buffers["a"].len(), 5 * 1024 * 1024);
+        assert_eq!(ctx.buffers["a"].as_slice().len(), 5 * 1024 * 1024);
     }
 
     #[test]
@@ -269,7 +269,7 @@ mod tests {
             })
             .expect_err("resize should fail");
         assert!(err.to_string().contains("injected failure"));
-        assert_eq!(ctx.buffers["a"].len(), PLACEHOLDER_BUFFER_BYTES);
+        assert_eq!(ctx.buffers["a"].as_slice().len(), PLACEHOLDER_BUFFER_BYTES);
         assert_eq!(ctx.buffers["a"].path(), original_path.as_path());
         assert_eq!(ctx.buffers["a"].as_slice()[0], 0xaa);
     }
