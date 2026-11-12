@@ -202,6 +202,7 @@ impl TaskGraph {
     ///
     /// A schema version other than [`SCHEMA_VERSION`], a task named after
     /// a [support module](SUPPORT_MODULES), an invalid invoke-site constant,
+    /// an argument bound to a port its child lacks or of another category,
     /// a stream of depth 0, or a stream shallower than a frame it carries.
     pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
@@ -218,6 +219,7 @@ impl TaskGraph {
         }
         self.validate_task_names()?;
         self.validate_literals()?;
+        self.validate_named_args()?;
         self.validate_stream_depths()?;
         self.validate_frame_depths()?;
         self.validate_frame_channels()
@@ -470,6 +472,47 @@ impl TaskGraph {
         }
         memo.insert(name.to_string(), frames.clone());
         frames
+    }
+
+    /// Every argument an invoke binds by name binds a port the child
+    /// declares, of a category that takes it: the same category, or one
+    /// channel of a stream array. Codegen would otherwise connect a port the
+    /// child's RTL lacks and leave the declared one unbound.
+    fn validate_named_args(&self) -> Result<(), ParseError> {
+        let binds = |arg: ArgCategory, port: ArgCategory| {
+            arg == port
+                || matches!(
+                    (arg, port),
+                    (ArgCategory::Istream, ArgCategory::Istreams)
+                        | (ArgCategory::Ostream, ArgCategory::Ostreams)
+                )
+        };
+        for (task_name, task) in &self.tasks {
+            for (child_name, instances) in &task.tasks {
+                let child = self.tasks.get(child_name);
+                for (port_name, arg) in instances.iter().flat_map(|instance| &instance.args) {
+                    let Some(bound) = arg.name() else {
+                        continue;
+                    };
+                    let problem = match child.map(|child| child.port(port_name)) {
+                        None => format!("no task `{child_name}` is declared"),
+                        Some(None) => format!("`{child_name}` declares no port `{port_name}`"),
+                        Some(Some(port)) if !binds(arg.cat, port.cat) => format!(
+                            "a `{}` argument cannot bind the `{}` port `{child_name}.{}`",
+                            arg.cat.as_str(),
+                            port.cat.as_str(),
+                            port.name
+                        ),
+                        Some(Some(_)) => continue,
+                    };
+                    return Err(ParseError::Schema {
+                        path: format!("tasks.{task_name}.tasks.{child_name}.args.{port_name}"),
+                        message: format!("`{bound}` is bound to `{port_name}`, but {problem}"),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Reject invalid invoke-site constants and undeclared or non-scalar child
@@ -816,6 +859,48 @@ mod tests {
         }
         for name in ["fifos", "axi_crossbar_2", "axi_crossbar_axb"] {
             TaskGraph::from_json(&graph(name)).expect(name);
+        }
+    }
+
+    #[test]
+    fn a_named_argument_binds_a_declared_port_of_its_category() {
+        // `Child` takes the scalar `n` and the stream array `in`; `T` binds
+        // `bind` to `child_port` with category `cat`.
+        let graph = |child_port: &str, cat: &str| {
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{
+                    "T": {{"level": "upper", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "",
+                        "ports": [{{"cat": "istream", "name": "s", "type": "int", "width": 32}}],
+                        "tasks": {{"Child": [{{"args": {{
+                            "{child_port}": {{"arg": "s", "cat": "{cat}"}}}}}}]}},
+                        "fifos": {{"s": {{"consumed_by": ["Child", 0]}}}}}},
+                    "Child": {{"level": "lower", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [
+                            {{"cat": "scalar", "name": "n", "type": "int", "width": 32}},
+                            {{"cat": "istreams", "name": "in", "type": "int", "width": 32,
+                              "chan_count": 2}}],
+                        "tasks": {{}}, "fifos": {{}}}}}}}}"#
+            )
+        };
+        TaskGraph::from_json(&graph("in[1]", "istream")).expect("a channel of `in`");
+        for (port, cat, problem) in [
+            ("m", "scalar", "`Child` declares no port `m`"),
+            (
+                "n",
+                "istream",
+                "a `istream` argument cannot bind the `scalar` port `Child.n`",
+            ),
+        ] {
+            let message = TaskGraph::from_json(&graph(port, cat))
+                .expect_err(port)
+                .to_string();
+            assert!(
+                message.contains(&format!("tasks.T.tasks.Child.args.{port}"))
+                    && message.contains(problem),
+                "{message}"
+            );
         }
     }
 
