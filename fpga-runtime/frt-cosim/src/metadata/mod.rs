@@ -89,7 +89,10 @@ pub struct KernelSpec {
 /// zero-extended (little-endian high-order padding), a longer buffer is
 /// truncated, and a missing or empty value becomes an all-zero value of
 /// the declared width. The width is rounded up to whole bytes, with a
-/// one-byte minimum so a zero-width scalar still binds one byte.
+/// one-byte minimum so a zero-width scalar still binds one byte, and the
+/// bits above the width in its last byte are cleared: a host `ap_int<12>`
+/// holding -5 stores `fb ff`, sign-extended past its 12 bits, and a
+/// simulator port expects those bits zero.
 pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
     let expected = (width_bits as usize).div_ceil(8).max(1);
     let mut out = raw.map(<[u8]>::to_vec).unwrap_or_default();
@@ -97,6 +100,12 @@ pub fn normalized_scalar_bytes(width_bits: u32, raw: Option<&[u8]>) -> Vec<u8> {
         std::cmp::Ordering::Less => out.resize(expected, 0),
         std::cmp::Ordering::Greater => out.truncate(expected),
         std::cmp::Ordering::Equal => {}
+    }
+    let partial = width_bits % 8;
+    if partial != 0 {
+        if let Some(last) = out.last_mut() {
+            *last &= (1u8 << partial) - 1;
+        }
     }
     out
 }
@@ -363,6 +372,28 @@ mod tests {
         assert_eq!(normalized_scalar_bytes(16, None), vec![0x00, 0x00]);
         assert_eq!(normalized_scalar_bytes(16, Some(&[])), vec![0x00, 0x00]);
         assert_eq!(normalized_scalar_bytes(128, None), vec![0u8; 16]);
+    }
+
+    /// An odd-width scalar carries exactly its bits: a vendor host
+    /// `ap_int<12>` holding -5 stores `fb ff` and `ap_int<80>` holding -3
+    /// sixteen bytes of sign extension; the simulator port gets only the 12
+    /// or 80 bits, and an unsigned value its zero extension.
+    #[test]
+    fn bits_above_an_odd_width_are_cleared() {
+        assert_eq!(
+            normalized_scalar_bytes(12, Some(&[0xfb, 0xff])),
+            [0xfb, 0x0f]
+        );
+        let mut minus_three = vec![0xff; 16];
+        minus_three[0] = 0xfd;
+        let mut expected = vec![0xff; 10];
+        expected[0] = 0xfd;
+        assert_eq!(normalized_scalar_bytes(80, Some(&minus_three)), expected);
+        assert_eq!(
+            normalized_scalar_bytes(12, Some(&[0x34, 0x02])),
+            [0x34, 0x02]
+        );
+        assert_eq!(normalized_scalar_bytes(1, Some(&[0xff])), [0x01]);
     }
 
     #[test]
