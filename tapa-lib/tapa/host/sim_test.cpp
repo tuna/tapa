@@ -4,6 +4,8 @@
 
 #include <atomic>
 #include <chrono>
+#include <csignal>
+#include <cstdlib>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -110,6 +112,24 @@ TEST(TapaSimTest, DetachedTasksEndWithTheirInvoke) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   EXPECT_TRUE(idle_task_ended);
+}
+
+volatile std::sig_atomic_t interrupted = 0;
+
+void OnInterrupt(int) { interrupted = 1; }
+
+void NopTop() { tapa::task().invoke(Nop); }
+
+// The scheduler handles SIGINT only while an invoke runs.
+TEST(TapaSimDeathTest, InvokeRestoresTheProgramsInterruptHandler) {
+  EXPECT_EXIT(
+      {
+        std::signal(SIGINT, OnInterrupt);
+        tapa::invoke(NopTop, /*bitstream=*/"");
+        std::raise(SIGINT);
+        std::exit(interrupted ? 0 : 1);
+      },
+      testing::ExitedWithCode(0), "");
 }
 
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {

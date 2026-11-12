@@ -132,9 +132,13 @@ class thread_pool {
   mutex cleanup_mtx;
   std::list<function<void()>> cleanup_tasks;
 
+  // The program's own handler, which `signal_handler` replaces while the
+  // pool it reaches exists.
+  void (*previous_sigint)(int);
+
  public:
   thread_pool() {
-    signal(SIGINT, signal_handler);
+    previous_sigint = signal(SIGINT, signal_handler);
     ensure_split_stack_runtime_ready();
     size_t worker_count;
     if (auto concurrency = getenv("TAPA_CONCURRENCY")) {
@@ -196,6 +200,7 @@ class thread_pool {
   }
 
   ~thread_pool() {
+    signal(SIGINT, previous_sigint);
     unique_lock lock(this->worker_mtx);
     this->workers.clear();
   }
