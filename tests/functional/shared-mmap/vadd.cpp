@@ -16,6 +16,8 @@ void Add(istream<float>& a, istream<float>& b, ostream<float>& c) {
   [[tapa::pipeline(1)]] TAPA_WHILE_NEITHER_EOT(a, b) {
     c.write(a.read(nullptr) + b.read(nullptr));
   }
+  a.open();
+  b.open();
   c.close();
 }
 
@@ -32,6 +34,7 @@ void Stream2Mmap(istream<float>& stream, mmap<float> mmap, int offset,
   for (uint64_t i = 0; i < n; ++i) {
     mmap[n * offset + i] = stream.read();
   }
+  stream.open();
 }
 
 void Load(mmap<float> srcs, uint64_t n, ostream<float>& a, ostream<float>& b) {

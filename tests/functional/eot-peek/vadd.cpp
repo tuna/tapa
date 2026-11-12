@@ -24,6 +24,8 @@ void Add(tapa::istream<float>& a, tapa::istream<float>& b,
     assert(valid_a && valid_b);
     c << (a.read() + b.read());
   }
+  a.open();
+  b.open();
   c.close();
 }
 
@@ -48,6 +50,7 @@ void Stream2Mmap(tapa::istream<float>& stream, tapa::mmap<float> mmap,
       i++;
     }
   }
+  stream.open();
   assert(i == n);
 }
 
