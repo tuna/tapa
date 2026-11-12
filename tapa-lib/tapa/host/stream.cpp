@@ -56,8 +56,9 @@ type_erased_queue::LogContext::New(std::string_view name) {
 const std::string& type_erased_queue::get_name() const { return this->name; }
 void type_erased_queue::set_name(const std::string& name) { this->name = name; }
 
-type_erased_queue::type_erased_queue(const std::string& name)
-    : name(name), log(LogContext::New(name)) {}
+type_erased_queue::type_erased_queue(const std::string& name,
+                                     const std::string& log_name)
+    : name(name), log(LogContext::New(log_name)) {}
 
 void type_erased_queue::check_leftover() {
   if (!this->empty()) {

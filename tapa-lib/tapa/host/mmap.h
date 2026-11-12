@@ -12,6 +12,7 @@
 #include <memory>
 #include <ostream>
 
+#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -184,11 +185,19 @@ class async_mmap : public mmap<T> {
  private:
   using super = mmap<T>;
 
-  stream<burst, 64> read_addr_q_{"read_addr"};
-  stream<T, 64> read_data_q_{"read_data"};
-  stream<burst, 64> write_addr_q_{"write_addr"};
-  stream<T, 64> write_data_q_{"write_data"};
-  stream<resp_t, 64> write_resp_q_{"write_resp"};
+  // Each channel's log takes the place of the invoke binding the argument
+  // (see `internal::binding_log_prefix`).
+  stream<burst, 64> read_addr_q_ = channel<burst>("read_addr");
+  stream<T, 64> read_data_q_ = channel<T>("read_data");
+  stream<burst, 64> write_addr_q_ = channel<burst>("write_addr");
+  stream<T, 64> write_data_q_ = channel<T>("write_data");
+  stream<resp_t, 64> write_resp_q_ = channel<resp_t>("write_resp");
+
+  template <typename U>
+  static stream<U, 64> channel(const std::string& name) {
+    return internal::stream_factory::logged<U, 64>(
+        name, internal::join_path(internal::binding_log_prefix(), name));
+  }
 
   // A size of 0 is unknown (`mmap(T* ptr)`): only a known one bounds it.
   int64_t checked(int64_t index) const {

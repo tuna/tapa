@@ -15,7 +15,7 @@ is not a supported way to reconfigure execution.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `TAPA_CONCURRENCY` | Physical CPU cores the process may run on (its CPU affinity) | Number of worker threads running task coroutines; a value below 1 means 1. Set to `1` for a simpler scheduling interleaving. Has no effect on HLS compilation parallelism (`-j`), nor on macOS, where each task runs on a thread of its own. |
-| `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Existing directory for stream write logs. TAPA writes one file per named stream; unnamed streams are not logged. Useful for tracing data during software simulation. |
+| `TAPA_STREAM_LOG_DIR` | (unset — logging disabled) | Existing directory for stream write logs. TAPA writes one file per named stream, named by its task instance's path (see [Stream logging](../howto/software-simulation.md#stream-logging)); unnamed streams are not logged. Useful for tracing data during software simulation. |
 | `TAPA_STREAM_LEFTOVER_LOG_COUNT` | `10` | Maximum number of leftover tokens printed for a nonempty stream when it is destroyed. A value that is not a positive integer is reported and the default used. |
 | `TAPA_STALL_WARN_SECONDS` | `10` | Warn when software simulation makes no successful stream progress for this many seconds, naming a blocked channel. Set `0` to disable. Suppressed while a kernel instance is running, since waiting on hardware or RTL is not a stall. |
 | `FRT_STREAM_DEBUG` | (unset) | Log every successful fast-cosim stream read and write. Produces high-volume output; use only for targeted debugging. |

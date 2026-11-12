@@ -54,7 +54,8 @@ program.
 
 Set `TAPA_STREAM_LOG_DIR` to an existing directory before running. TAPA writes
 one log file per named stream under that directory, recording every value
-written to the stream:
+written to the stream, and names each file after where its stream sits in
+the design ([Stream logging](../howto/software-simulation.md#stream-logging)):
 
 ```bash
 mkdir -p /tmp/tapa-stream-logs

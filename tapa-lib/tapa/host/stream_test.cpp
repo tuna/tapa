@@ -4,6 +4,8 @@
 
 #include "tapa/host/stream.h"
 
+#include "tapa/host/tapa.h"
+
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -116,6 +118,59 @@ TEST_F(StreamLogTest, LoggingEotSucceeds) {
   data_q.read();
 
   EXPECT_EQ(GetLogContent(data_q.get_name()), "233\n\n2333\n");
+}
+
+void LogSource(int base, tapa::ostream<int>& out) {
+  for (int i = 0; i < 2; ++i) out.write(base + i);
+}
+
+void LogSink(tapa::istream<int>& in) {
+  for (int i = 0; i < 2; ++i) in.read();
+}
+
+void LogMid(int base) {
+  tapa::stream<int> mid("mid");
+  tapa::task().invoke(LogSource, base, mid).invoke(LogSink, mid);
+}
+
+void LogOuter(int base) {
+  tapa::task().invoke(LogMid, base).invoke(LogMid, base + 10);
+}
+
+void LogCopy(tapa::async_mmap<int>& src, tapa::async_mmap<int>& dst) {
+  src.read_addr.write(0);
+  dst.write_addr.write(0);
+  dst.write_data.write(src.read_data.read());
+  dst.write_resp.read();
+}
+
+// The two copies run concurrently, so they only read what they share.
+void LogTop(tapa::mmap<int> src, tapa::mmap<int> dst, tapa::mmap<int> other) {
+  tapa::stream<int> top("top");
+  tapa::task()
+      .invoke(LogSource, 0, top)
+      .invoke(LogSink, top)
+      .invoke(LogOuter, 100)
+      .invoke(LogOuter, "named", 200)
+      .invoke(LogCopy, src, dst)
+      .invoke(LogCopy, "copy", src, other);
+}
+
+// Every task instance logs its streams under its own path, so two instances
+// declaring the same stream cannot share a file; an async_mmap's channels
+// log under the invoke and the parameter.
+TEST_F(StreamLogTest, InstancesLogUnderTheirPaths) {
+  int memory[3] = {7, 0, 0};
+  tapa::invoke(LogTop, /*bitstream=*/"",
+               tapa::read_write_mmap<int>(&memory[0], 1),
+               tapa::read_write_mmap<int>(&memory[1], 1),
+               tapa::read_write_mmap<int>(&memory[2], 1));
+  EXPECT_EQ(GetLogContent("top"), "0\n1\n");
+  EXPECT_EQ(GetLogContent("LogOuter_0.LogMid_0.mid"), "100\n101\n");
+  EXPECT_EQ(GetLogContent("LogOuter_0.LogMid_1.mid"), "110\n111\n");
+  EXPECT_EQ(GetLogContent("named.LogMid_1.mid"), "210\n211\n");
+  EXPECT_EQ(GetLogContent("4.1.write_data"), "7\n");
+  EXPECT_EQ(GetLogContent("copy.1.write_data"), "7\n");
 }
 
 TEST_F(StreamLogTest, LoggingToNonexistentDirFails) {

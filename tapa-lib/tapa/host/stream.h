@@ -97,7 +97,8 @@ class type_erased_queue {
   const std::unique_ptr<LogContext> log;
   std::atomic<bool> kernel_done_ = false;
 
-  type_erased_queue(const std::string& name);
+  // `log_name` names the log file, `<log_name>.txt` (see `LogContext`).
+  type_erased_queue(const std::string& name, const std::string& log_name);
 
   void check_leftover();
 
@@ -161,8 +162,9 @@ class locked_queue : public base_queue<T> {
   std::deque<T> buffer;
 
  public:
-  locked_queue(size_t depth, const std::string& name)
-      : base_queue<T>(name), depth(depth) {}
+  locked_queue(size_t depth, const std::string& name,
+               const std::string& log_name)
+      : base_queue<T>(name, log_name), depth(depth) {}
 
   bool empty() const override {
     std::unique_lock<std::mutex> lock(this->mtx);
@@ -204,7 +206,9 @@ template <typename T>
 class frt_queue : public base_queue<T> {
  public:
   explicit frt_queue(int64_t depth, const std::string& name)
-      : base_queue<T>(name), stream_(depth) {}
+      : frt_queue(depth, name, name) {}
+  frt_queue(int64_t depth, const std::string& name, const std::string& log_name)
+      : base_queue<T>(name, log_name), stream_(depth) {}
 
   ~frt_queue() override { this->check_leftover(); }
 
@@ -259,13 +263,22 @@ class frt_queue : public base_queue<T> {
 
 template <typename T>
 std::shared_ptr<base_queue<T>> make_queue(uint64_t depth,
-                                          const std::string& name) {
+                                          const std::string& name,
+                                          const std::string& log_name) {
   if (depth == ::tapa::kStreamInfiniteDepth) {
     VLOG(1) << "channel '" << name << "' created as a locked queue";
-    return std::make_shared<locked_queue<T>>(depth, name);
+    return std::make_shared<locked_queue<T>>(depth, name, log_name);
   }
   VLOG(1) << "channel '" << name << "' created as a lock-free queue";
-  return std::make_shared<frt_queue<T>>(depth, name);
+  return std::make_shared<frt_queue<T>>(depth, name, log_name);
+}
+
+// The log name of a stream `name` that the function `function` declares:
+// its task instance's path and its name (see `instance_path`); none for an
+// unnamed stream, which is not logged.
+inline std::string stream_log_name(const char* function,
+                                   const std::string& name) {
+  return name.empty() ? name : join_path(instance_path(function), name);
 }
 
 template <typename T>
@@ -277,7 +290,10 @@ class basic_stream {
   // Not protected: used in std::vector<basic_stream<T>>.
   basic_stream() {}
   basic_stream(const std::string& name, uint64_t depth)
-      : queue(make_queue<elem_t<T>>(depth, name)) {}
+      : basic_stream(name, depth, name) {}
+  basic_stream(const std::string& name, uint64_t depth,
+               const std::string& log_name)
+      : queue(make_queue<elem_t<T>>(depth, name, log_name)) {}
 
   basic_stream(const basic_stream&) = default;
   basic_stream(basic_stream&&) = default;
@@ -830,10 +846,12 @@ class stream : public internal::unbound_stream<T> {
 
   stream() : internal::basic_stream<T>("", SimulationDepth) {}
 
-  /// Constructs with @p name for debugging.
+  /// Constructs with @p name for debugging. @p function, the body declaring
+  /// the stream, places its log (see `internal::instance_path`).
   template <size_t S>
-  stream(const char (&name)[S])
-      : internal::basic_stream<T>(name, SimulationDepth) {}
+  stream(const char (&name)[S], const char* function = __builtin_FUNCTION())
+      : internal::basic_stream<T>(name, SimulationDepth,
+                                  internal::stream_log_name(function, name)) {}
 
  private:
   template <typename U, uint64_t friend_length, uint64_t friend_depth,
@@ -959,14 +977,19 @@ class streams : public internal::unbound_streams<T, S> {
   }
 
   /// Constructs with @p name as base name; each element is named @c name[i].
+  /// @p function, the body declaring them, places their logs.
   template <size_t name_length>
-  streams(const char (&name)[name_length])
+  streams(const char (&name)[name_length],
+          const char* function = __builtin_FUNCTION())
       : internal::basic_streams<T>(
             std::make_shared<typename internal::basic_streams<T>::metadata_t>(
                 name, 0)) {
     for (uint64_t i = 0; i < S; ++i) {
+      const std::string element =
+          std::string(name) + "[" + std::to_string(i) + "]";
       this->ptr->refs.emplace_back(
-          std::string(name) + "[" + std::to_string(i) + "]", SimulationDepth);
+          element, SimulationDepth,
+          internal::stream_log_name(function, element));
     }
   }
 
@@ -1228,6 +1251,13 @@ struct is_tapa_stream<stream<T, N, SimulationDepth>> : std::true_type {};
 // A `tapa::stream` named at run time, which the host makes for itself (see
 // `hybrid_run`): the type of `like`, a stream of its own.
 struct stream_factory {
+  // A stream logged as `log_name` (see `type_erased_queue`).
+  template <typename T, uint64_t N>
+  static stream<T, N> logged(const std::string& name,
+                             const std::string& log_name) {
+    return stream<T, N>(basic_stream<T>(name, N, log_name));
+  }
+
   template <typename T, uint64_t N, uint64_t SimulationDepth>
   static std::shared_ptr<stream<T, N, SimulationDepth>> named(
       const stream<T, N, SimulationDepth>& like, const std::string& name) {

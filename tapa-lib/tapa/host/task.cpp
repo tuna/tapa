@@ -39,21 +39,101 @@ thread_local uint64_t blocked_poll_count = 0;
 
 namespace {
 
-// Whether the running task descends from a detached invoke. Hardware waits
-// on no instance under a detached one, joined or not: the tasks a detached
-// upper task invokes are detached with it.
-thread_local bool in_detached_scope = false;
+// A running task instance: where it sits, for the names of its stream logs
+// (see `instance_path`), and the invokes it has made so far.
+struct instance {
+  // Whether it descends from a detached invoke. Hardware waits on no
+  // instance under a detached one, joined or not: the tasks a detached
+  // upper task invokes are detached with it.
+  bool detached = false;
+  invoke_slot slot;
+  // Its path once known: its slot names it, or its body's function does.
+  std::string path;
+  bool resolved = false;
+  int invokes = 0;
+  std::map<const void*, int> task_invokes;
+};
 
-// `f` as `schedule` runs it: it and every task it invokes are detached if
-// `detach`.
-std::function<void()> scoped(bool detach, const std::function<void()>& f) {
-  return [detach, f] {
-    in_detached_scope = detach;
+// The top-level task's body, which runs outside any scheduled task and
+// whose path is empty; reset when an invoke starts.
+instance root_instance;
+// The instance whose body this thread (or coroutine) runs, null in the
+// top-level task's.
+thread_local instance* current_instance = nullptr;
+
+instance& running_instance() {
+  return current_instance != nullptr ? *current_instance : root_instance;
+}
+
+// `f` as `schedule` runs it, as the instance of `slot`, or as part of the
+// running instance without one; detached if `detach`.
+std::function<void()> scoped(bool detach, const std::function<void()>& f,
+                             const invoke_slot* slot) {
+  auto self = std::make_shared<instance>();
+  self->detached = detach;
+  if (slot != nullptr) {
+    self->slot = *slot;
+  } else {
+    self->path = running_instance().path;
+    self->resolved = true;
+  }
+  return [self, f] {
+    current_instance = self.get();
     f();
   };
 }
 
+// The invoke and parameter binding their arguments now (see
+// `binding_log_prefix`).
+thread_local const invoke_slot* binding_slot = nullptr;
+thread_local int binding_param = 0;
+
 }  // namespace
+
+std::string join_path(const std::string& parent, const std::string& child) {
+  return parent.empty() ? child : parent + "." + child;
+}
+
+std::string instance_path(const char* function) {
+  instance& self = running_instance();
+  if (&self == &root_instance) return "";
+  if (!self.resolved) {
+    self.path = join_path(self.slot.parent,
+                          !self.slot.name.empty()
+                              ? self.slot.name
+                              : std::string(function) + "_" +
+                                    std::to_string(self.slot.task_index));
+    self.resolved = true;
+  }
+  return self.path;
+}
+
+invoke_slot next_invoke_slot(const char* invoker, const void* task,
+                             const std::string& name) {
+  instance& self = running_instance();
+  invoke_slot slot;
+  slot.parent = instance_path(invoker);
+  slot.name = name;
+  slot.index = self.invokes++;
+  slot.task_index = self.task_invokes[task]++;
+  return slot;
+}
+
+void reset_root_instance() { root_instance = instance(); }
+
+void set_binding(const invoke_slot* slot, int param) {
+  binding_slot = slot;
+  binding_param = param;
+}
+
+std::string binding_log_prefix() {
+  if (binding_slot == nullptr) return "";
+  return join_path(
+      join_path(binding_slot->parent, binding_slot->name.empty()
+                                          ? std::to_string(binding_slot->index)
+                                          : binding_slot->name),
+      std::to_string(binding_param));
+}
 
 }  // namespace internal
 
@@ -687,10 +767,10 @@ void yield_to_scheduler() {
   if (current_handle == nullptr) {
     reschedule_this_thread();
   } else {
-    // The coroutines this thread runs meanwhile set their own scope.
-    const bool detached = in_detached_scope;
+    // The coroutines this thread runs meanwhile set their own instance.
+    instance* const self = current_instance;
     (*current_handle)();
-    in_detached_scope = detached;
+    current_instance = self;
   }
 }
 
@@ -754,20 +834,21 @@ void signal_handler(int signal) {
 
 }  // namespace
 
-void schedule(bool detach, const function<void()>& f) {
-  detach = detach || in_detached_scope;
-  pool->add_task(detach, scoped(detach, f));
+void schedule(bool detach, const function<void()>& f, const invoke_slot* slot) {
+  detach = detach || running_instance().detached;
+  pool->add_task(detach, scoped(detach, f, slot));
 }
 
 void schedule_cleanup(const function<void()>& f) { pool->add_cleanup_task(f); }
 
 }  // namespace internal
 
-task::task() {
+task::task(const char* function) : function_(function) {
   unique_lock lock(internal::mtx);
   if (internal::pool == nullptr) {
     internal::pool = new internal::thread_pool;
     internal::top_task = this;
+    internal::reset_root_instance();
   }
 }
 
@@ -836,11 +917,12 @@ void yield(const std::string& channel_name, const char* state) {
   reschedule_this_thread();
 }
 
-void schedule(bool detach, const std::function<void()>& f) {
-  detach = detach || in_detached_scope;
+void schedule(bool detach, const std::function<void()>& f,
+              const invoke_slot* slot) {
+  detach = detach || running_instance().detached;
   std::unique_lock<std::mutex> lock(internal::mtx);
   const uint64_t invoke = thread_invoke != 0 ? thread_invoke : invokes_begun;
-  auto run = [invoke, f = scoped(detach, f)] {
+  auto run = [invoke, f = scoped(detach, f, slot)] {
     thread_invoke = invoke;
     try {
       f();
@@ -859,7 +941,7 @@ void schedule_cleanup(const std::function<void()>&) {}
 
 }  // namespace internal
 
-task::task() {
+task::task(const char* function) : function_(function) {
   std::unique_lock<std::mutex> lock(internal::mtx);
   ++internal::active_task_count;
   // Only the invoke's own thread starts one: a detached task outliving an
@@ -868,6 +950,7 @@ task::task() {
   if (internal::top_task == nullptr && internal::thread_invoke == 0) {
     internal::top_task = this;
     ++internal::invokes_begun;
+    internal::reset_root_instance();
   }
   if (internal::threads == nullptr) {
     internal::threads = new std::deque<std::thread>;

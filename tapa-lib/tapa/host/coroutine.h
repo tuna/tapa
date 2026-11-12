@@ -10,8 +10,43 @@
 
 namespace tapa {
 namespace internal {
-void schedule(bool detach, const std::function<void()>&);
+
+// Where an invoke's task instance sits, which names its stream logs (see
+// `instance_path`): its parent's path, the invoke's own name ("" if it has
+// none), its position among the parent's invokes, and its position among
+// the parent's invokes of the same task.
+struct invoke_slot {
+  std::string parent;
+  std::string name;
+  int index = 0;
+  int task_index = 0;
+};
+
+// Runs `f` as a task, the instance of `slot` if not null.
+void schedule(bool detach, const std::function<void()>&,
+              const invoke_slot* slot = nullptr);
 void schedule_cleanup(const std::function<void()>&);
+
+// The path of the running task instance, whose body is the function
+// `function` (as `__builtin_FUNCTION` names it): empty in the top-level
+// task; else its parent's path and, joined by '.', the invoke's name, or
+// `<function>_<k>` for the k-th of the parent's invokes of this task.
+std::string instance_path(const char* function);
+std::string join_path(const std::string& parent, const std::string& child);
+
+// Takes the next invoke of `task` (its function or functor) by the running
+// instance, whose body is the function `invoker`.
+invoke_slot next_invoke_slot(const char* invoker, const void* task,
+                             const std::string& name);
+
+// The top-level task starts over: its invokes are numbered from 0 again.
+void reset_root_instance();
+
+// While an invoke binds its arguments, which invoke and parameter (null when
+// none), and the log path prefix an async_mmap built then takes:
+// `<parent path>.<invoke name, else index>.<parameter index>`.
+void set_binding(const invoke_slot* slot, int param);
+std::string binding_log_prefix();
 
 // Yield to the scheduler, naming what the caller is blocked on.
 //

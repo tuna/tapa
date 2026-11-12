@@ -322,18 +322,23 @@ struct invoker {
       std::is_same_v<void, typename function_traits<FuncType>::return_type>,
       "task function must return void");
 
+  // `invoking` is the function whose body invokes, `name` the invoke's own
+  // name ("" if it has none); they place the new instance (see
+  // `instance_path`).
   template <typename... Args>
-  static void invoke(InvokeMode mode, F&& f, Args&&... args) {
+  static void invoke(InvokeMode mode, const char* invoking,
+                     const std::string& name, F&& f, Args&&... args) {
     if (hybrid_recorder* recorder = hybrid_recorder::current()) {
       recorder->record(invoker::recorded(mode, std::forward<F>(f),
                                          std::index_sequence_for<Args...>{},
                                          std::forward<Args>(args)...));
       return;
     }
+    const invoke_slot slot = next_invoke_slot(invoking, task_key(f), name);
     auto functor = invoker::functor_with_accessors(
-        std::forward<F>(f), std::index_sequence_for<Args...>{},
+        slot, std::forward<F>(f), std::index_sequence_for<Args...>{},
         std::forward<Args>(args)...);
-    schedule(mode == InvokeMode::kDetach, std::move(functor));
+    schedule(mode == InvokeMode::kDetach, std::move(functor), &slot);
   }
 
   template <typename... Args>
@@ -463,13 +468,29 @@ struct invoker {
     return invoke;
   }
 
+  // Which task an invoke makes, to number the parent's invokes of it.
+  static const void* task_key(F& f) {
+    if constexpr (std::is_pointer<FuncType>::value) {
+      return reinterpret_cast<const void*>(static_cast<FuncType>(f));
+    } else {
+      return static_cast<const void*>(&f);
+    }
+  }
+
   template <typename Func, size_t... Is, typename... CapturedArgs>
-  static auto functor_with_accessors(Func&& func, std::index_sequence<Is...>,
+  static auto functor_with_accessors(const invoke_slot& slot, Func&& func,
+                                     std::index_sequence<Is...>,
                                      CapturedArgs&&... args) {
+    // Each accessor knows which parameter it binds, for the async_mmap it
+    // may build (see `binding_log_prefix`).
+    struct binding {
+      ~binding() { set_binding(nullptr, 0); }
+    } const unbind;
     // Braced initialization evaluates the accessors left to right.
     std::tuple<std::decay_t<std::tuple_element_t<Is, Params>>...> values{
-        accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-            std::forward<CapturedArgs>(args))...};
+        (set_binding(&slot, static_cast<int>(Is)),
+         accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
+             std::forward<CapturedArgs>(args)))...};
     return
         [func = FuncType(func), values]() mutable { std::apply(func, values); };
   }
@@ -493,7 +514,9 @@ class executable {
 
 /// Parent task that instantiates and joins/detaches child task instances.
 struct task {
-  explicit task();
+  /// @p function is the body making this task's invokes, which places the
+  /// instances it makes in the design (see the stream log names).
+  explicit task(const char* function = __builtin_FUNCTION());
   ~task();
 
   task(const task&) = delete;
@@ -520,12 +543,8 @@ struct task {
   template <internal::InvokeMode mode, typename Func, typename... Args,
             size_t name_size>
   task& invoke(Func&& func, const char (&name)[name_size], Args&&... args) {
-    static_assert(
-        internal::is_callable_v<typename std::remove_reference_t<Func>>,
-        "the first argument for tapa::task::invoke() must be callable");
-    internal::invoker<Func>::template invoke<Args...>(
-        mode, std::forward<Func>(func), std::forward<Args>(args)...);
-    return *this;
+    return invoke_as<mode>(name, std::forward<Func>(func),
+                           std::forward<Args>(args)...);
   }
 
   /// Host-only invoke with @c executable to override execution target.
@@ -556,13 +575,29 @@ struct task {
       // Forwarding inside the loop is load-bearing: accessor<T, seq> only
       // matches rvalue `seq&&` and increments the shared position counter on
       // each replica; the accessors never move from the forwarded arguments.
-      invoke<mode>(std::forward<Func>(func), std::forward<Args>(args)...);
+      // A named invoke's instance i is `<name>_<i>`, as in the RTL.
+      invoke_as<mode>(
+          name_size > 1 ? std::string(name) + "_" + std::to_string(i) : "",
+          std::forward<Func>(func), std::forward<Args>(args)...);
     }
     return *this;
   }
 
  private:
+  template <internal::InvokeMode mode, typename Func, typename... Args>
+  task& invoke_as(const std::string& name, Func&& func, Args&&... args) {
+    static_assert(
+        internal::is_callable_v<typename std::remove_reference_t<Func>>,
+        "the first argument for tapa::task::invoke() must be callable");
+    internal::invoker<Func>::template invoke<Args...>(
+        mode, function_, name, std::forward<Func>(func),
+        std::forward<Args>(args)...);
+    return *this;
+  }
+
   task& invoke_frt(std::shared_ptr<internal::frt::Instance> instance);
+
+  const char* function_;
 };
 
 }  // namespace tapa
