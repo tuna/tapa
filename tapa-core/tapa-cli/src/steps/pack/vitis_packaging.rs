@@ -333,10 +333,13 @@ fn resolve_device_settings(work_dir: &Path, flow: &FlowSettings) -> Result<(Stri
     Ok((part_num, clock_period))
 }
 
+/// The M-AXI ports the top RTL declares, by base name, each with the width
+/// of its data bus when the RTL states one: HLS rounds an element up to a
+/// power of two bytes there, so the element's width may not be the bus's.
 fn top_rtl_m_axi_bases(
     hdl_dir: &Path,
     top_name: &str,
-) -> Result<std::collections::BTreeSet<String>> {
+) -> Result<std::collections::BTreeMap<String, Option<u32>>> {
     let rtl_path = hdl_dir.join(format!("{top_name}.v"));
     let source = std::fs::read_to_string(&rtl_path).map_err(|e| {
         CliError::Codegen(format!(
@@ -350,7 +353,7 @@ fn top_rtl_m_axi_bases(
             rtl_path.display(),
         ))
     })?;
-    let mut out = std::collections::BTreeSet::new();
+    let mut out = std::collections::BTreeMap::new();
     for port in &module.ports {
         let Some(rest) = port.name.strip_prefix("m_axi_") else {
             continue;
@@ -358,8 +361,8 @@ fn top_rtl_m_axi_bases(
         // Every emitted M-AXI port has to be one the protocol crate knows:
         // an unrecognized one would drop out of the projection silently and
         // leave kernel.xml describing fewer interfaces than the RTL has.
-        let base = m_axi_suffixes()
-            .find_map(|suffix| rest.strip_suffix(suffix))
+        let (base, suffix) = m_axi_suffixes()
+            .find_map(|suffix| Some((rest.strip_suffix(suffix)?, suffix)))
             .ok_or_else(|| {
                 CliError::Codegen(format!(
                     "top RTL `{}` has M-AXI port `{}`, whose suffix is not in \
@@ -369,7 +372,10 @@ fn top_rtl_m_axi_bases(
                     port.name,
                 ))
             })?;
-        out.insert(base.to_owned());
+        let width = out.entry(base.to_owned()).or_insert(None);
+        if matches!(suffix, "_RDATA" | "_WDATA") {
+            *width = port.bit_width();
+        }
     }
     Ok(out)
 }
@@ -806,7 +812,7 @@ mod tests {
         .expect("write rtl");
         let bases = top_rtl_m_axi_bases(dir.path(), "Top").expect("project bases");
         assert_eq!(
-            bases.into_iter().collect::<Vec<_>>(),
+            bases.into_keys().collect::<Vec<_>>(),
             vec!["a".to_owned(), "b".to_owned()]
         );
     }

@@ -50,6 +50,8 @@ fn validate_mmap_channel_geometry(
     Ok(())
 }
 
+/// The geometry of the M-AXI bus `parent` hands `child`: `bus_width` when
+/// the child presents one (see `child_mmap_summary`), else the element width.
 fn merge_mmap_port_metadata(
     parent_task_name: &str,
     parent_port_name: &str,
@@ -57,6 +59,7 @@ fn merge_mmap_port_metadata(
     child_task_name: &str,
     child_port_name: &str,
     child: Option<&IrPort>,
+    bus_width: Option<u32>,
 ) -> Result<MemoryGeometry, CodegenError> {
     if let (Some(parent), Some(child)) = (parent, child) {
         if parent.width != child.width {
@@ -76,12 +79,13 @@ fn merge_mmap_port_metadata(
         )?;
     }
 
-    let data_width = parent.or(child).map(|port| port.width).ok_or_else(|| {
+    let element_width = parent.or(child).map(|port| port.width).ok_or_else(|| {
         CodegenError::InvalidMmapConnection(format!(
             "no port named `{parent_port_name}` on task `{parent_task_name}` or \
              `{child_port_name}` on child `{child_task_name}` to derive the mmap data width from",
         ))
     })?;
+    let data_width = bus_width.unwrap_or(element_width);
     let chan_count = parent
         .and_then(|port| port.chan_count)
         .or_else(|| child.and_then(|port| port.chan_count));
@@ -195,7 +199,7 @@ impl TopologyWithRtl {
                     let child_task = self.data_design().tasks.get(child_task_name.as_str());
                     let port = child_task
                         .and_then(|t| t.ports.iter().find(|p| p.name == *child_port_name));
-                    let (child_id_width, child_threads) =
+                    let (child_id_width, child_threads, child_bus_width) =
                         self.child_mmap_summary(child_task_name, child_port_name, cache)?;
 
                     // Group by parent scope arg name, not child port name. An
@@ -213,6 +217,7 @@ impl TopologyWithRtl {
                         child_task_name,
                         child_port_name,
                         port,
+                        child_bus_width,
                     )?;
                     let conn = connections
                         .entry(parent_arg_name.to_owned())
@@ -273,16 +278,21 @@ impl TopologyWithRtl {
         Ok(connections)
     }
 
-    /// The `(id_width, threads)` a child port presents to its parent:
-    /// the RTL module's AXI ID port width combined with the child's own
-    /// nested aggregation (an upper child sharing the mmap internally
-    /// presents its aggregated totals; a leaf presents 1 thread).
+    /// The `(id_width, threads, bus_width)` a child port presents to its
+    /// parent: the RTL module's AXI ID port width combined with the child's
+    /// own nested aggregation (an upper child sharing the mmap internally
+    /// presents its aggregated totals; a leaf presents 1 thread). The bus
+    /// width is the data width of a leaf's own M-AXI port as its RTL
+    /// declares it, which HLS rounds up to a power of two bytes, as AXI
+    /// requires (a 96-bit element gets a 128-bit bus), or an upper child's
+    /// aggregated one; `None` for a leaf without M-AXI ports, an
+    /// `async_mmap` whose bridge moves whole elements.
     fn child_mmap_summary(
         &self,
         child_task_name: &str,
         child_port_name: &str,
         cache: &mut BTreeMap<String, BTreeMap<String, MMapConnection>>,
-    ) -> Result<(u32, u32), CodegenError> {
+    ) -> Result<(u32, u32, Option<u32>), CodegenError> {
         let child_port = sanitize_array_name(child_port_name);
         let prefix = format!("m_axi_{child_port}");
         // Planning policy: fold the ID-port widths with `max` for a safe
@@ -305,18 +315,28 @@ impl TopologyWithRtl {
             .tasks
             .get(child_task_name)
             .is_some_and(|task| task.level == TaskLevel::Upper);
-        let (nested_id_width, threads) = if is_upper {
+        let (nested_id_width, threads, bus_width) = if is_upper {
             if !cache.contains_key(child_task_name) {
                 let conns = self.aggregate_mmap_connections_cached(child_task_name, cache)?;
                 cache.insert(child_task_name.to_owned(), conns);
             }
             cache[child_task_name]
                 .get(child_port_name)
-                .map_or((1, 1), |conn| (conn.id_width(), conn.total_threads()))
+                .map_or((1, 1, None), |conn| {
+                    (
+                        conn.id_width(),
+                        conn.total_threads(),
+                        Some(conn.geometry.data_width()),
+                    )
+                })
         } else {
-            (1, 1)
+            let bus_width = self
+                .module_map
+                .get(child_task_name)
+                .and_then(|module| rtl_m_axi_data_width(&module.inner, &prefix));
+            (1, 1, bus_width)
         };
-        Ok((module_id_width.max(nested_id_width), threads))
+        Ok((module_id_width.max(nested_id_width), threads, bus_width))
     }
 }
 
@@ -349,6 +369,15 @@ fn rtl_m_axi_id_widths<'m>(
             Some((suffix, port, resolve_rtl_port_width(module, port)))
         })
         .collect()
+}
+
+/// The width of the data ports `module` declares under the compact M-AXI
+/// `prefix`, if it has any and their width resolves.
+fn rtl_m_axi_data_width(module: &VerilogModule, prefix: &str) -> Option<u32> {
+    m_axi_compact_ports()
+        .filter(|port| matches!(port.width_rule(), AxiWidth::Data))
+        .find_map(|entry| module.find_port(&format!("{prefix}{}", entry.suffix)))
+        .and_then(|port| resolve_rtl_port_width(module, port))
 }
 
 fn resolve_rtl_port_width(module: &VerilogModule, port: &RtlPort) -> Option<u32> {

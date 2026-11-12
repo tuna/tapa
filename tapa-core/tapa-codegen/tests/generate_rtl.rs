@@ -1260,7 +1260,7 @@ fn direct_axi_routes() -> Vec<tapa_ir::PipelineRoute> {
     .collect()
 }
 
-fn compact_m_axi_child_module_src() -> String {
+fn compact_m_axi_child_module_src(data_width: u32) -> String {
     use tapa_protocol::{
         axi_subport_from_suffix, axi_subport_width, m_axi_compact_suffixes, m_axi_port_direction,
         PortDir, AXI_ADDR_WIDTH,
@@ -1278,7 +1278,12 @@ fn compact_m_axi_child_module_src() -> String {
     for suffix in m_axi_compact_suffixes() {
         let output = matches!(m_axi_port_direction(suffix), Some(PortDir::Output));
         let direction = if output { "output" } else { "input" };
-        let width = axi_subport_width(axi_subport_from_suffix(suffix), 32, AXI_ADDR_WIDTH, 3);
+        let width = axi_subport_width(
+            axi_subport_from_suffix(suffix),
+            data_width,
+            AXI_ADDR_WIDTH,
+            3,
+        );
         let width = if width == 1 {
             String::new()
         } else {
@@ -1290,12 +1295,23 @@ fn compact_m_axi_child_module_src() -> String {
 }
 
 fn direct_axi_state(routes: Option<Vec<tapa_ir::PipelineRoute>>) -> TopologyWithRtl {
+    direct_axi_state_with(routes, 32, 32)
+}
+
+/// `top` handing its memory to `reader`, whose elements are `element_width`
+/// bits and whose M-AXI bus, as HLS made it, `bus_width`.
+fn direct_axi_state_with(
+    routes: Option<Vec<tapa_ir::PipelineRoute>>,
+    element_width: u32,
+    bus_width: u32,
+) -> TopologyWithRtl {
     use std::collections::BTreeMap;
     use tapa_ir::FloorplanResult;
 
     let top = task("top", "upper", |t| {
-        t["ports"] =
-            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "int*", "width": 32}]);
+        t["ports"] = serde_json::json!(
+            [{"cat": "mmap", "name": "mem", "type": "int*", "width": element_width}]
+        );
         t["tasks"] = serde_json::json!({
             "reader": [{
                 "name": "reader#0",
@@ -1304,8 +1320,9 @@ fn direct_axi_state(routes: Option<Vec<tapa_ir::PipelineRoute>>) -> TopologyWith
         });
     });
     let reader = task("reader", "lower", |t| {
-        t["ports"] =
-            serde_json::json!([{"cat": "mmap", "name": "data", "type": "int*", "width": 32}]);
+        t["ports"] = serde_json::json!(
+            [{"cat": "mmap", "name": "data", "type": "int*", "width": element_width}]
+        );
     });
     let mut state = TopologyWithRtl::new(design(
         "top",
@@ -1329,7 +1346,10 @@ fn direct_axi_state(routes: Option<Vec<tapa_ir::PipelineRoute>>) -> TopologyWith
         )
         .unwrap();
     state
-        .attach_module("reader", parse_module(&compact_m_axi_child_module_src()))
+        .attach_module(
+            "reader",
+            parse_module(&compact_m_axi_child_module_src(bus_width)),
+        )
         .unwrap();
     state.floorplan = routes.map(|routes| FloorplanResult {
         device: "u280".to_string(),
@@ -1380,6 +1400,26 @@ fn test_generate_rtl_floorplanned_direct_axi_pipelines_all_five_channels() {
             "assign m_axi_mem_ARQOS = 4'b0000",
         ],
         &[],
+    );
+}
+
+/// HLS gives an mmap of 96-bit elements a 128-bit M-AXI bus, as AXI moves a
+/// power of two bytes a beat. The top's port is that bus: one as wide as the
+/// element cut off the leaf's upper data bits, and a platform rejects it
+/// ("Unsupported AXI-MM data width: 96").
+#[test]
+fn test_generate_rtl_m_axi_port_takes_the_leafs_bus_width() {
+    let mut state = direct_axi_state_with(None, 96, 128);
+    let manifest = generate_manifest(&mut state);
+    let top_v = rtl_file(&manifest, "top.v");
+    check(
+        top_v,
+        &[
+            "input wire [127:0] m_axi_mem_RDATA",
+            "output wire [127:0] m_axi_mem_WDATA",
+            "output wire [15:0] m_axi_mem_WSTRB",
+        ],
+        &["[95:0]"],
     );
 }
 
