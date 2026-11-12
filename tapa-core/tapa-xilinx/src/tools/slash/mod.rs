@@ -572,6 +572,82 @@ mod tests {
     }
 
     #[test]
+    fn hardware_finish_link_derates_the_recorded_clock_and_rewrites_the_vbin() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let root = crate::util::utf8(temp.path());
+        let work = root.join("work").join("link");
+        fs_err::create_dir_all(&work).expect("link work directory");
+        let output = root.join("callipepla.hw.vbin");
+        fs_err::copy(fixture("vadd-gzip.vbin"), &output).expect("stage vbin");
+        let report_path = root.join("callipepla-routed-timing.rpt");
+        // The historical fixture predates SLASH's `user_clk` rename.
+        let report = fs_err::read_to_string(fixture("callipepla-routed-timing.rpt"))
+            .expect("timing fixture")
+            .replace("tapa_user_clk", KERNEL_CLOCK);
+        fs_err::write(&report_path, report).expect("stage timing report");
+        let job = SlashLinkJob {
+            platform: service(),
+            package: root.join("callipepla-package.zip"),
+            config: root.join("callipepla.cfg"),
+            output: output.clone(),
+            work_dir: work.clone(),
+            slashkit: "/tool-host/bin/slashkit".into(),
+            vivado: "vivado".into(),
+            jobs: 1,
+            target_mhz: 300,
+            floorplan_xdc: None,
+            mode: SlashLinkMode::Hardware,
+        };
+        let prepared = PreparedLink {
+            output: output.clone(),
+            work: work.clone(),
+            ip: work.join("ip"),
+            hls_data: root.join("work").join("hls_data.json"),
+            config: work.join("config.cfg"),
+            hook: work.join(hooks::HOOK_NAME),
+            place_hook: work.join(hooks::PLACE_HOOK_NAME),
+            floorplan_xdc: None,
+            timing_report: Some(report_path.clone()),
+        };
+
+        let result = finish_link(
+            &job,
+            prepared,
+            ToolOutput {
+                exit_code: 0,
+                stdout: "linked".into(),
+                stderr: "warning".into(),
+            },
+        )
+        .expect("negative kernel/fixed slack still links");
+
+        let timing = result.hardware_timing().expect("hardware timing");
+        let expected_recorded = recorded_clock_hz(300_000_000, timing).expect("recorded clock");
+        assert!(expected_recorded < 300_000_000);
+        assert_eq!(result.recorded_mhz, hz_to_mhz(expected_recorded));
+        assert_eq!(result.bitstream, output);
+        assert_eq!(result.timing_report, Some(report_path.clone()));
+        assert_eq!(result.stdout, "linked");
+        assert_eq!(result.stderr, "warning");
+        assert_eq!(
+            vbin::read_system_map(&result.bitstream)
+                .expect("rewritten map")
+                .clock_hz,
+            expected_recorded,
+        );
+
+        let metrics = read_metrics(&work);
+        assert_eq!(metrics["platform"], "slash_v80_service");
+        assert_eq!(metrics["shell_type"], "service");
+        assert_eq!(metrics["requested_mhz"], 300);
+        assert_eq!(metrics["recorded_mhz"], result.recorded_mhz);
+        assert_eq!(metrics["kernel_wns_ns"], -5.529);
+        assert_eq!(metrics["fixed_domain_wns_ns"], -1.023);
+        assert_eq!(metrics["timing_closed"], false);
+        assert_eq!(metrics["timing_report"], report_path.as_str());
+    }
+
+    #[test]
     fn simulation_mode_is_forwarded_to_the_tool_host() {
         let temp = tempfile::tempdir().expect("tempdir");
         let root = crate::util::utf8(temp.path());
