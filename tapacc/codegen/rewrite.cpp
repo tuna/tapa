@@ -798,18 +798,27 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   // unreachable upper tasks, and helpers, classified per decl and rewritten
   // unconditionally -- the rewrites are identical for every task variant.
   for (const clang::FunctionDecl* func : program.file_funcs) {
+    const auto spec = specs.find(func->getCanonicalDecl());
     const auto task = program.tasks.find(func->getNameAsString());
-    if (task != program.tasks.end() && !task->second.is_template_spec) {
-      if (!func->isThisDeclarationADefinition()) {
-        RemoveInline(func, edits);
-        LowerFuncAttrs(func, shared, edits);
-        LowerParamAttrs(func, shared, edits);
-      }
+    const bool task_redecl = spec == specs.end() &&
+                             task != program.tasks.end() &&
+                             !task->second.is_template_spec;
+    // A forward declaration of a task, a template task or an unreachable
+    // upper task takes its own attribute lowering only. The definition takes
+    // the rest, some of which walks the whole redeclaration chain or reaches
+    // the body through any declaration: applied per declaration, it would
+    // guard a forward declaration or rename a parameter twice.
+    if (!func->isThisDeclarationADefinition() &&
+        (task_redecl || spec != specs.end() ||
+         GetTapaTaskObject(func->getBody()) != nullptr)) {
+      if (task_redecl) RemoveInline(func, edits);
+      LowerFuncAttrs(func, shared, edits);
+      LowerParamAttrs(func, shared, edits);
       continue;
     }
+    if (task_redecl) continue;  // the definition is guarded above
 
-    const clang::FunctionDecl* canonical = func->getCanonicalDecl();
-    if (const auto spec = specs.find(canonical); spec != specs.end()) {
+    if (spec != specs.end()) {
       std::map<SynthTarget, std::vector<const TaskModel*>> by_target;
       for (const TaskModel* model : spec->second) {
         by_target[model->target].push_back(model);

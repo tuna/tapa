@@ -537,6 +537,35 @@ TEST(Rewrite, UnreachableTaskIsStrippedLikeOtherTasks) {
   EXPECT_FALSE(Contains(code, ".invoke("));
 }
 
+// A forward declaration is rewritten for itself only. A template task's
+// used to be guarded like its definition, and an unreachable upper task's
+// signature, renamed once per declaration, ended up `m_offset_offset`.
+TEST(Rewrite, ForwardDeclarationsAreRewrittenOnce) {
+  const std::string code = Rewrite("forward", R"tapa(
+template <int K>
+void Scale(tapa::istream<int>& in, tapa::ostream<int>& out);
+template <int K>
+void Scale(tapa::istream<int>& in, tapa::ostream<int>& out) {
+  out.write(in.read() * K);
+}
+void Fill(tapa::mmap<int> m) {}
+void Other(tapa::mmap<int> m);
+void Other(tapa::mmap<int> m) { tapa::task().invoke(Fill, m); }
+void Top(tapa::istream<int>& in, tapa::ostream<int>& out) {
+  tapa::task().invoke(Scale<2>, in, out);
+}
+)tapa",
+                                   "Top");
+  EXPECT_TRUE(Contains(code,
+                       "\ntemplate <int K>\nvoid Scale(tapa::istream<int>& "
+                       "in, tapa::ostream<int>& out);\n"))
+      << code;
+  EXPECT_EQ(code.find("tapa::ostream<int>& out)\n#else"), std::string::npos)
+      << code;
+  EXPECT_TRUE(Contains(code, "void Other(uint64_t m_offset);")) << code;
+  EXPECT_FALSE(Contains(code, "m_offset_offset")) << code;
+}
+
 // An attribute Clang itself drops: [[tapa::partition]] applies to variables,
 // so on a function it never reaches the AST -- and no removal pass can see
 // what is not there. Its text stays in the mirror the tree writer renders,
