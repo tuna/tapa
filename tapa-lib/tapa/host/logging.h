@@ -5,4 +5,3 @@
 #pragma once
 
 #include <glog/logging.h>
-#include "tapa/base/logging.h"
