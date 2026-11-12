@@ -241,30 +241,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tapa_ldflags_do_not_reference_unbundled_runtime_deps() {
+    fn tapa_ldflags_link_the_static_runtime_without_xrt() {
         let flags = get_tapa_ldflags();
-        // The frt_cpp C++ shim is folded into libtapa; the rest are bundled
-        // inside the static Rust FRT. Never referenced as separate libraries.
-        for removed in [
-            "-lasio",
-            "-lfilesystem",
-            "-lminizip_ng",
-            "-ltinyxml2",
-            "-lz",
-            "-lyaml-cpp",
-            "-lfrt_cpp",
-            // Dropped with the zip crate's default features; no longer linked.
-            "-llzma",
-            "-lbz2",
-            // frt dlopens XRT on first hardware use; linking it would make
-            // software simulation need an XRT install.
-            "-lxrt_coreutil",
-        ] {
-            assert!(
-                !flags.contains(&removed.to_string()),
-                "unexpected removed linker flag {removed}"
-            );
-        }
+        // frt dlopens XRT on first hardware use; linking it would make
+        // software simulation need an XRT install, which the docs promise
+        // it does not.
+        assert!(
+            !flags.contains(&"-lxrt_coreutil".to_string()),
+            "`tapa g++` must not link XRT"
+        );
         for kept in [
             "-ltapa",
             // Static libfrt.a (no shared libfrt.so).

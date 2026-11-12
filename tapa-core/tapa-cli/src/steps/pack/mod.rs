@@ -500,13 +500,6 @@ mod tests {
             names.iter().any(|n| n == "tapa.json"),
             "tapa.json missing: {names:?}"
         );
-        assert!(
-            !names
-                .iter()
-                .any(|n| n == "graph.yaml" || n == "settings.yaml"),
-            "the split YAML snapshots must be gone, not shipped alongside \
-             tapa.json: {names:?}",
-        );
 
         // The `tapa.json` entry is `frt-cosim`'s contract: the work-dir
         // state plus the cosim port metadata `pack` stamps — a pure

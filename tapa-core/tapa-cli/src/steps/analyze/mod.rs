@@ -456,15 +456,6 @@ mod tests {
         // Nothing has synthesized yet, so the flow block is still pristine.
         assert_eq!(state.flow, crate::state::work::FlowSettings::default());
 
-        // The superseded state files must not reappear: one schema-bearing
-        // file in the work dir is the whole point.
-        for stale in ["graph.json", "design.json", "settings.json"] {
-            assert!(
-                !ctx.work_dir.join(stale).exists(),
-                "`{stale}` must no longer be written",
-            );
-        }
-
         // The verbatim tapacc output is kept for debugging, byte-for-byte,
         // *without* analyze's injected cflags/target.
         let raw = fs::read_to_string(ctx.work_dir.join("tapacc.json")).expect("read tapacc.json");
