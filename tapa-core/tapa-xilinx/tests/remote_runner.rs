@@ -85,6 +85,27 @@ fn a_failed_tool_reports_its_own_failure_not_a_missing_download() {
     assert!(out.stderr.contains("the real diagnostic"), "{}", out.stderr);
 }
 
+/// ssh exits 255 for its own failures and forwards a tool's status
+/// otherwise, so a tool whose own log says "Broken pipe" failed once: it
+/// must neither be run again nor be reported as a lost SSH connection.
+#[test]
+fn a_tool_failure_mentioning_a_broken_pipe_is_not_retried() {
+    let (_temp, root) = temp_root();
+    let work = root.join("local work");
+    let runs = root.join("runs");
+    let mut inv = ToolInvocation::new("sh").arg("-c").arg(format!(
+        "echo run >> '{runs}'; echo 'ERROR: write failed: Broken pipe' >&2; exit 1"
+    ));
+    inv.cwd = Some(work);
+
+    let out = runner(&root)
+        .run(&inv)
+        .expect("a tool failure is a tool output, not an SSH error");
+    assert_eq!(out.exit_code, 1);
+    assert!(out.stderr.contains("Broken pipe"), "{}", out.stderr);
+    assert_eq!(std::fs::read_to_string(&runs).expect("runs"), "run\n");
+}
+
 #[test]
 fn a_successful_tool_output_is_downloaded_to_the_local_path() {
     let (_temp, root) = temp_root();

@@ -63,6 +63,10 @@ impl RemoteToolRunner {
     }
 }
 
+/// The status OpenSSH exits with for a failure of its own; any other status
+/// is the remote command's.
+const SSH_FAILURE_EXIT: i32 = 255;
+
 /// Environment variables forwarded to the remote. Anything else is
 /// dropped unless the key begins with `TAPA_`.
 const REMOTE_ENV_ALLOWLIST: &[&str] = &["HOME", "LANG", "LC_ALL", "LC_CTYPE"];
@@ -243,7 +247,10 @@ impl RemoteToolRunner {
         let stdout = String::from_utf8_lossy(&out.stdout).into_owned();
         let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
         let code = out.status.code().unwrap_or(-1);
-        if code != 0
+        // ssh forwards the remote command's own exit status and stderr, and
+        // exits 255 only for its own failures. A tool that fails with "Broken
+        // pipe" in its log is a tool failure, not a lost connection to retry.
+        if code == SSH_FAILURE_EXIT
             && !stderr.is_empty()
             && classify_ssh_error(&stderr) == SshErrorKind::TransientMux
         {
