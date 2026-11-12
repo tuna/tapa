@@ -759,6 +759,11 @@ impl Device for CosimDevice {
     }
 
     fn write_to_device(&mut self) -> Result<()> {
+        // A resumed run's segments hold what the simulation left, which is
+        // what the host reads back: its inputs went in before that run.
+        if self.resume_from_post_sim {
+            return Ok(());
+        }
         self.for_each_transfer(BufferAccess::loads_from_host, |ptr, bytes, seg| {
             let len = bytes.min(seg.as_slice().len());
             if len > 0 {
@@ -1080,6 +1085,33 @@ mod tests {
         assert_eq!(dev.compute_ns(), 0, "resume does not execute a simulator");
         dev.finish().expect("finish resume-from-post-sim");
         assert_eq!(host_word, 42);
+    }
+
+    /// A resumed run's device memory is what the simulation left: the
+    /// host's upload, which comes first as in any run, must not replace
+    /// what the kernel wrote to a buffer it also reads.
+    #[test]
+    fn resume_from_post_sim_keeps_the_simulated_buffers() {
+        let mut dev = make_test_device_with_mmap(true);
+        let mut host_word = 10u32;
+        dev.set_buffer_arg(
+            0,
+            (&raw mut host_word).cast::<u8>(),
+            std::mem::size_of_val(&host_word),
+            BufferAccess::ReadWrite,
+        )
+        .expect("set buffer");
+        dev.ctx
+            .buffers
+            .get_mut("buf0")
+            .expect("mmap buffer")
+            .as_mut_slice()[..4]
+            .copy_from_slice(&42u32.to_le_bytes());
+        dev.write_to_device().expect("upload");
+        dev.exec().expect("resume-from-post-sim exec");
+        dev.read_from_device().expect("schedule readback");
+        dev.finish().expect("finish resume-from-post-sim");
+        assert_eq!(host_word, 42, "the simulated value, not the host's input");
     }
 
     #[test]
