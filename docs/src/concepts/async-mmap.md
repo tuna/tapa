@@ -163,6 +163,9 @@ acknowledged elements, not responses.
 - Drain `write_resp` while writes are in flight. Its value encodes
   `burst_length - 1`, so one response can complete multiple writes, and a
   long burst request can take several responses.
+- On a memory several tasks share, keep draining `read_data` for the reads
+  you requested: unread data stall the read channel every sharer uses (see
+  [Shared mmap](mmap.md#shared-mmap)).
 
 ```admonish warning
 A blocking operation on an `async_mmap` channel inside a pipelined loop can

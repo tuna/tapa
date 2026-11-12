@@ -131,6 +131,13 @@ consistency. Unordered accesses to the same addresses can produce inconsistent
 results. Partition the buffer or add an explicit synchronization protocol.
 ```
 
+Tasks sharing a mmap also share one read data channel from memory. A task
+that takes the mmap as an `async_mmap` must keep draining the read data it
+has requested, or it can block the other sharers' reads: one that requests
+reads, then waits on a stream that another sharer writes only once that
+sharer's reads return, deadlocks in hardware when its unread data fill the
+channel ahead of them, though software simulation runs it.
+
 ---
 
 ## mmap arrays
