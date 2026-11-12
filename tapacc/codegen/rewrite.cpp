@@ -459,10 +459,16 @@ void ReportLeakedAttrs(llvm::StringRef code, llvm::StringRef file,
 
 namespace {
 
-// The primary-template pattern of a template-specialization task's definition
-// (the decl that actually appears in the source), or nullptr.
+// The definition in the source a template-specialization task's body comes
+// from: the primary-template pattern of an implicit specialization, or an
+// explicit specialization itself, which is a task body of its own; nullptr
+// for any other task.
 const clang::FunctionDecl* SpecPrimary(const TaskModel& model) {
   if (!model.is_template_spec || model.def == nullptr) return nullptr;
+  if (model.def->getTemplateSpecializationKind() ==
+      clang::TSK_ExplicitSpecialization) {
+    return model.def->getCanonicalDecl();
+  }
   if (const clang::FunctionDecl* pattern =
           model.def->getTemplateInstantiationPattern()) {
     return pattern->getCanonicalDecl();

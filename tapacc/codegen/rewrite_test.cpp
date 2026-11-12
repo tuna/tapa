@@ -6,6 +6,7 @@
 // C++ language and reflows their content, and no language is mapped to
 // `tapa`.
 
+#include <map>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "nlohmann/json.hpp"
 
+#include "conventions.h"
 #include "test_util.h"
 #include "tree_pipeline.h"
 
@@ -564,6 +566,54 @@ void Top(tapa::istream<int>& in, tapa::ostream<int>& out) {
       << code;
   EXPECT_TRUE(Contains(code, "void Other(uint64_t m_offset);")) << code;
   EXPECT_FALSE(Contains(code, "m_offset_offset")) << code;
+}
+
+// An explicit specialization of a leaf template task is a task body of
+// its own, next to the primary template it specializes: guarded under its
+// own define with the task's interface preamble, and reached through the
+// same mangled wrapper as an implicit specialization. It used to be
+// rejected as a redefinition of the primary, or, without a defined
+// primary, rewritten as a non-inlined helper.
+TEST(Rewrite, ExplicitlySpecializedLeafIsATaskBody) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/explicit_leaf.cpp", R"tapa(
+template <int K>
+void Scale(tapa::istream<int>& in, tapa::ostream<int>& out) {
+  out.write(in.read() * K);
+}
+template <>
+void Scale<2>(tapa::istream<int>& in, tapa::ostream<int>& out) {
+  out.write(in.read() << 1);
+}
+void Top(tapa::istream<int>& in, tapa::ostream<int>& out) {
+  tapa::stream<int> mid;
+  tapa::task().invoke(Scale<2>, in, mid).invoke(Scale<3>, mid, out);
+}
+)tapa"}},
+      "Top", TempRoot("rewrite", "explicit_leaf"), {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  std::map<std::string, std::string> readable;
+  const nlohmann::json graph = nlohmann::json::parse(run.json);
+  for (const auto& [name, task] : graph["tasks"].items()) {
+    readable[task["readable_name"].get<std::string>()] = name;
+  }
+  ASSERT_EQ(readable.count("Scale<2>"), 1u) << run.json;
+  ASSERT_EQ(readable.count("Scale<3>"), 1u) << run.json;
+  const std::string& code = run.files.at("explicit_leaf.cpp");
+  const size_t guard =
+      code.find("#ifdef " + TaskGuardDefine(readable["Scale<2>"]) + "\n");
+  const size_t body = code.find("template <>\nvoid Scale<2>(");
+  const size_t preamble = code.find("#pragma HLS interface ap_fifo", body);
+  const size_t stub = code.find(
+      "#else\ntemplate <>\nvoid Scale<2>(tapa::istream<int>& in, "
+      "tapa::ostream<int>& out) ;\n#endif");
+  ASSERT_NE(guard, std::string::npos) << code;
+  EXPECT_LT(guard, body) << code;
+  EXPECT_LT(preamble, code.find("out.write(in.read() << 1)")) << code;
+  EXPECT_LT(body, stub) << code;
+  EXPECT_FALSE(Contains(code, "noinline")) << code;
+  EXPECT_TRUE(Contains(code, "void " + readable["Scale<2>"] + "(")) << code;
+  EXPECT_TRUE(Contains(code, "  Scale<2>(in, out);")) << code;
 }
 
 // An attribute Clang itself drops: [[tapa::partition]] applies to variables,

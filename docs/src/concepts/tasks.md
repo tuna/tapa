@@ -104,8 +104,10 @@ terminate on program completion.
 - For the `xilinx-vitis` target (the default) and `xilinx-slash`, the
   top-level task must be an upper-level task — it cannot be a leaf task.
 - Leaf templated tasks (template functions that compute directly) are
-  supported. `tapa analyze` rejects a templated task that invokes other
-  tasks.
+  supported. An explicit specialization of one (`template <> void
+  Scale<2>(...) {...}`) is a task of its own, whether or not the primary
+  template is defined. `tapa analyze` rejects a templated task that invokes
+  other tasks.
 - A task's RTL module takes the task's name, so a task cannot share a name
   with a Verilog module TAPA ships with the generated RTL (for example
   `fifo`, `arbiter`, `async_mmap`, `relay_station` or an

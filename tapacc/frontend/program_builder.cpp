@@ -947,13 +947,14 @@ bool ProgramBuilder::MergeAndDiscover() {
   }
 
   // The redefinition guard over the merged index: two definitions with one
-  // plain name make the name-keyed task map ambiguous. Implicit
-  // specializations never count (they are sighted only through invokes) and
-  // neither do internal helpers.
+  // plain name make the name-keyed task map ambiguous. A specialization,
+  // implicit or explicit, never counts (its task goes by its mangled name,
+  // next to the template it specializes), and neither does an internal
+  // helper.
   std::map<std::string, std::vector<const DefSighting*>> by_plain_name;
   for (const auto& [key, sightings] : defs_) {
     const DefSighting& sighting = sightings.front();
-    if (sighting.internal || sighting.implicit_spec) continue;
+    if (sighting.internal || sighting.is_spec) continue;
     by_plain_name[sighting.plain_name].push_back(&sighting);
   }
   for (const auto& [key, task] : tasks_) {

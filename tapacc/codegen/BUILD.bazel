@@ -325,6 +325,7 @@ cc_test(
     copts = TAPACC_COPTS,
     includes = [".."],
     deps = [
+        ":conventions",
         ":test_util",
         ":tree_pipeline",
         "@googletest//:gtest",
