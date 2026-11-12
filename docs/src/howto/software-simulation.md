@@ -88,7 +88,9 @@ limits apply, so producers experience backpressure when a FIFO fills.
 
 An invocation waits for all joined tasks, including descendants scheduled by
 upper tasks on other workers. Detached tasks do not hold up completion, nor do
-the tasks a detached upper task invokes, as in hardware.
+the tasks a detached upper task invokes, as in hardware. They end with the
+invocation instead: each unwinds at the next stream operation that finds its
+stream empty or full.
 
 This helps expose missing handshakes, element-count mismatches, and ordering
 assumptions before synthesis. It is not cycle-accurate: it does not model HLS

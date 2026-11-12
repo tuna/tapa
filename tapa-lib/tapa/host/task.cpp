@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <deque>
+#include <exception>
 #include <fstream>
 #include <functional>
 #include <list>
@@ -831,13 +832,6 @@ __attribute__((weak)) void __sanitizer_finish_switch_fiber(void*, const void**,
 namespace tapa {
 namespace internal {
 
-void yield(const char*) { reschedule_this_thread(); }
-
-void yield(const std::string& channel_name, const char* state) {
-  note_blocked_poll(channel_name, state);
-  reschedule_this_thread();
-}
-
 namespace {
 
 std::deque<std::thread>* threads = nullptr;
@@ -845,15 +839,53 @@ const task* top_task = nullptr;
 std::atomic<int> active_task_count{0};
 std::mutex mtx;
 
+// The invokes whose top task was constructed (under `mtx`), and those whose
+// top task has returned. A task's thread serves the invoke it was scheduled
+// under; once that invoke has ended, which only its detached tasks outlive,
+// the thread ends at its next yield, unwinding as a coroutine does when the
+// coroutine build deletes its pool.
+uint64_t invokes_begun = 0;
+std::atomic<uint64_t> invokes_ended{0};
+thread_local uint64_t thread_invoke = 0;  // 0: not a task's thread
+
+struct invoke_ended {};
+
+void end_if_invoke_ended() {
+  if (thread_invoke != 0 &&
+      thread_invoke <= invokes_ended.load(std::memory_order_acquire) &&
+      std::uncaught_exceptions() == 0) {
+    throw invoke_ended{};
+  }
+}
+
 }  // namespace
+
+void yield(const char*) {
+  end_if_invoke_ended();
+  reschedule_this_thread();
+}
+
+void yield(const std::string& channel_name, const char* state) {
+  end_if_invoke_ended();
+  note_blocked_poll(channel_name, state);
+  reschedule_this_thread();
+}
 
 void schedule(bool detach, const std::function<void()>& f) {
   detach = detach || in_detached_scope;
+  std::unique_lock<std::mutex> lock(internal::mtx);
+  const uint64_t invoke = thread_invoke != 0 ? thread_invoke : invokes_begun;
+  auto run = [invoke, f = scoped(detach, f)] {
+    thread_invoke = invoke;
+    try {
+      f();
+    } catch (const invoke_ended&) {
+    }
+  };
   if (detach) {
-    std::thread(scoped(detach, f)).detach();
+    std::thread(run).detach();
   } else {
-    std::unique_lock<std::mutex> lock(internal::mtx);
-    threads->emplace_back(scoped(detach, f));
+    threads->emplace_back(run);
   }
 }
 
@@ -867,6 +899,7 @@ task::task() {
   ++internal::active_task_count;
   if (internal::top_task == nullptr) {
     internal::top_task = this;
+    ++internal::invokes_begun;
   }
   if (internal::threads == nullptr) {
     internal::threads = new std::deque<std::thread>;
@@ -892,6 +925,9 @@ task::~task() {
       }
       reschedule_this_thread();
     }
+    std::unique_lock<std::mutex> lock(internal::mtx);
+    internal::invokes_ended.store(internal::invokes_begun,
+                                  std::memory_order_release);
     internal::top_task = nullptr;
   }
   std::unique_lock<std::mutex> lock(internal::mtx);

@@ -2,6 +2,7 @@
 
 #include "tapa/host/tapa.h"
 
+#include <atomic>
 #include <chrono>
 #include <thread>
 #include <utility>
@@ -85,6 +86,30 @@ TEST(TapaSimTest, DetachedUpperTaskDoesNotHoldUpCompletion) {
   tapa::invoke(DetachedUpperTop, /*bitstream=*/"",
                tapa::read_write_mmap<int>(data.data(), data.size()));
   EXPECT_EQ(data[0], 7);
+}
+
+std::atomic<bool> idle_task_ended{false};
+
+void Idle(tapa::istream<int>& in) {
+  struct OnEnd {
+    ~OnEnd() { idle_task_ended = true; }
+  } on_end;
+  in.read();
+}
+
+void IdleTop() {
+  tapa::stream<int> q("idle");
+  tapa::task().invoke<tapa::detach>(Idle, q);
+}
+
+// A detached task ends with its invoke, at the stream operation it waits
+// on, rather than outliving it on a thread of its own.
+TEST(TapaSimTest, DetachedTasksEndWithTheirInvoke) {
+  tapa::invoke(IdleTop, /*bitstream=*/"");
+  for (int i = 0; i < 1000 && !idle_task_ended; ++i) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  EXPECT_TRUE(idle_task_ended);
 }
 
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
