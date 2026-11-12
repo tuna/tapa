@@ -4,7 +4,7 @@
 //!   top task while preserving FIFO connectivity and global names.
 //! - [`flatten_with_origins`] also retains original instance ownership as
 //!   typed references for control lowering, without copying invocation policy.
-//! - [`inline_uppers`] dissolves only the upper tasks in a given set,
+//! - `inline_uppers` dissolves only the upper tasks in a given set,
 //!   one level at a time, keeping the rest of the hierarchy.
 
 #[cfg(test)]

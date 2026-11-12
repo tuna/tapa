@@ -4,7 +4,7 @@
 //! the attributes, the `--target TASK:aie` mappings and the propagation down
 //! an upper task, so each leaf's tag says where it runs. An upper task whose
 //! subtree mixes PL and AI Engine leaves is first inlined into its parent
-//! (see [`by_fabric`]), which leaves every PL↔AI Engine stream a FIFO the
+//! (see `by_fabric`), which leaves every PL↔AI Engine stream a FIFO the
 //! top declares. [`AiePartition::derive`] then flattens the AI Engine tasks
 //! into kernels and classifies every stream they touch: a FIFO between two AI
 //! Engine tasks is an AI Engine net, and a FIFO between a PL task and an AI
