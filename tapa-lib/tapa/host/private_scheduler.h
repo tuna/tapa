@@ -128,26 +128,18 @@ class thread_pool {
   std::list<function<void()>> cleanup_tasks;
 
  public:
-  thread_pool(size_t worker_count = 0) {
+  thread_pool() {
     signal(SIGINT, signal_handler);
     ensure_split_stack_runtime_ready();
-    if (worker_count == 0) {
-      if (auto concurrency = getenv("TAPA_CONCURRENCY")) {
-        worker_count = atoi(concurrency);
-      } else {
-        worker_count = get_physical_core_count();
-      }
+    size_t worker_count;
+    if (auto concurrency = getenv("TAPA_CONCURRENCY")) {
+      worker_count = atoi(concurrency);
+    } else {
+      worker_count = get_physical_core_count();
     }
     if (worker_count == 0) worker_count = 1;
-    this->add_worker(worker_count);
+    for (size_t i = 0; i < worker_count; ++i) workers.emplace_back();
     it = workers.begin();
-  }
-
-  void add_worker(size_t count) {
-    unique_lock lock(this->worker_mtx);
-    for (size_t i = 0; i < count; ++i) {
-      this->workers.emplace_back();
-    }
   }
 
   void add_task(bool detach, const function<void()>& f) {
