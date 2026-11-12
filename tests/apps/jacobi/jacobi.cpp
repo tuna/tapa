@@ -4,6 +4,15 @@
 
 #include "jacobi.h"
 
+// Takes the rest of a transaction, its EoT marker included: the stencil
+// stops reading an input once another one ends, and the next invocation
+// must start on empty streams.
+template <typename T>
+void DrainToEot(tapa::istream<T>& in) {
+  TAPA_WHILE_NOT_EOT(in) { in.read(nullptr); }
+  in.open();
+}
+
 void Mmap2Stream(tapa::mmap<const float> mmap, uint64_t n,
                  tapa::ostream<tapa::vec_t<float, 2>>& stream) {
   [[tapa::pipeline(2)]] for (uint64_t i = 0; i < n; ++i) {
@@ -27,6 +36,7 @@ void Stream2Mmap(tapa::istream<tapa::vec_t<float, 2>>& stream,
       ++i;
     }
   }
+  stream.open();
 }
 
 void Module0Func(tapa::ostream<float>& fifo_st_0,
@@ -40,6 +50,7 @@ module_0_epoch:
   }
   fifo_st_0.close();
   fifo_st_1.close();
+  DrainToEot(dram_t1_bank_0_fifo);
 }
 
 void Module1Func(tapa::ostream<float>& fifo_st_0,
@@ -53,6 +64,7 @@ module_1_epoch:
   }
   fifo_st_0.close();
   fifo_st_1.close();
+  DrainToEot(fifo_ld_0);
 }
 
 void Module3Func1(tapa::ostream<float>& fifo_st_0,
@@ -74,6 +86,8 @@ module_3_1_epoch:
     }
   }
   fifo_st_0.close();
+  DrainToEot(fifo_ld_0);
+  DrainToEot(fifo_ld_1);
 }
 
 void Module3Func2(tapa::ostream<float>& fifo_st_0,
@@ -95,6 +109,8 @@ module_3_2_epoch:
     }
   }
   fifo_st_0.close();
+  DrainToEot(fifo_ld_0);
+  DrainToEot(fifo_ld_1);
 }
 
 void Module6Func1(tapa::ostream<float>& fifo_st_0,
@@ -123,6 +139,9 @@ module_6_1_epoch:
     }
   }
   fifo_st_0.close();
+  DrainToEot(fifo_ld_0);
+  DrainToEot(fifo_ld_1);
+  DrainToEot(fifo_ld_2);
 }
 void Module6Func2(tapa::ostream<float>& fifo_st_0,
                   tapa::istream<float>& fifo_ld_0,
@@ -150,6 +169,9 @@ module_6_2_epoch:
     }
   }
   fifo_st_0.close();
+  DrainToEot(fifo_ld_0);
+  DrainToEot(fifo_ld_1);
+  DrainToEot(fifo_ld_2);
 }
 
 void Module8Func(tapa::ostream<tapa::vec_t<float, 2>>& dram_t0_bank_0_fifo,
@@ -163,6 +185,8 @@ module_8_epoch:
     dram_t0_bank_0_fifo.write(tmp);
   }
   dram_t0_bank_0_fifo.close();
+  DrainToEot(fifo_ld_0);
+  DrainToEot(fifo_ld_1);
 }
 
 void Jacobi(tapa::mmap<float> bank_0_t0, tapa::mmap<const float> bank_0_t1,
