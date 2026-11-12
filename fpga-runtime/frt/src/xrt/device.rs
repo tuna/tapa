@@ -102,7 +102,14 @@ pub(super) fn load_xclbin(api: &Api, xclbin_path: &Path) -> Result<(Handle, [u8;
         .transpose()?;
     let path = CString::new(xclbin_path.to_string_lossy().into_owned())
         .map_err(|e| FrtError::Xrt(format!("xclbin path: {e}")))?;
+    let refused_by_all = |rc: c_int| {
+        FrtError::Xrt(format!(
+            "cannot load the xclbin on any available device (last XRT returned {rc})"
+        ))
+    };
     let mut index = 0;
+    // What the last device that refused the xclbin returned.
+    let mut refused = None;
     let device = loop {
         let device = if let Some(bdf) = &bdf {
             // SAFETY: a valid C string.
@@ -111,6 +118,10 @@ pub(super) fn load_xclbin(api: &Api, xclbin_path: &Path) -> Result<(Handle, [u8;
             // SAFETY: plain index argument.
             unsafe { (api.device_open)(index) }
         };
+        // Past the last device: every device there refused the xclbin.
+        if let (true, Some(rc)) = (device.is_null(), refused) {
+            return Err(refused_by_all(rc));
+        }
         let device = non_null(device, "open a device")?;
         // SAFETY: live device handle and a valid C string.
         let rc = unsafe { (api.device_load_xclbin_file)(device, path.as_ptr()) };
@@ -124,11 +135,10 @@ pub(super) fn load_xclbin(api: &Api, xclbin_path: &Path) -> Result<(Handle, [u8;
                 "cannot load the xclbin on the requested device (XRT returned {rc})"
             )));
         }
+        refused = Some(rc);
         index += 1;
         if index >= 64 {
-            return Err(FrtError::Xrt(format!(
-                "cannot load the xclbin on any available device (last XRT returned {rc})"
-            )));
+            return Err(refused_by_all(rc));
         }
     };
     let mut uuid = [0u8; 16];
