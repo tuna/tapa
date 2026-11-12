@@ -475,6 +475,17 @@ its `&`/`|`/`^` against C integers, and the vendor's `to_string` hexfloat
 formatting for fixed-point. `tapa::u/i` additionally offer
 `x.to_string(base, sign)` and stream extraction (`in >> x`).
 
+The text of `tapa::u/i`, from `x.to_string(base, sign)` (base 2 by default)
+and from `os << x`, is exactly the vendor's, quirks included: base 2 never
+prints a sign and base 10 is signed by the type alone; bases 2, 8 and 16
+carry a `0b`/`0o`/`0x` prefix and add one leading `0` digit to a positive
+value whose digits cover fewer than `W` bits, up to 64 bits only when the
+top digit's high bit is set (`tapa::u<9>(0x80)` prints `0x080`); past 64
+bits hex digits are uppercase, every such value gets the `0`, and zero is a
+bare `0`. `os << x` prints `x.to_string(16)`, `(8)` or `(10)` by the
+stream's basefield; the vendor reads `std::cout`'s instead, which is not
+reproduced.
+
 ### `tapa::axis<T, WUser, WId, WDest>`
 
 Vendor-agnostic AXI4-Stream packet, replacing `ap_axiu`/`ap_axis`. Parameterized by payload type, as the vendor's own `hls::axis` is: `ap_axiu<W, U, I, D>` becomes `tapa::axis<tapa::u<W>, U, I, D>` and `ap_axis<...>` becomes `tapa::axis<tapa::i<W>, ...>`.

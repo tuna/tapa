@@ -41,6 +41,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -536,6 +537,90 @@ TEST(VendorParity, MixedComparison) {
   CheckExtendedEquality<48, 40>(state, 4);
   CheckExtendedEquality<64, 32>(state, 4);
   CheckExtendedEquality<96, 40>(state, 4);
+}
+
+// ---------------------------------------------------------------- text
+
+// Every text form is the vendor's, quirks included: a leading '0' digit
+// for a value whose digits fall short of the width, radix 2 never signed,
+// decimal signed by the type alone, and past 64 bits uppercase hex and a
+// bare "0". Values: random, zero, the sign bit alone, all ones, and a few
+// low bits.
+template <int W, bool S>
+void CheckText(uint64_t& state, int rounds) {
+  using mine = typename std::conditional<S, i<W>, u<W> >::type;
+  using theirs = typename std::conditional<S, ap_int<W>, ap_uint<W> >::type;
+  for (int r = 0; r < rounds; ++r) {
+    std::vector<bool> bits = RandomBits(W, state);
+    for (int b = 0; b < W; ++b) {
+      switch (r % 5) {
+        case 1:
+          bits[b] = false;
+          break;
+        case 2:
+          bits[b] = b == W - 1;
+          break;
+        case 3:
+          bits[b] = true;
+          break;
+        case 4:
+          bits[b] = bits[b] && b < 3;
+          break;
+      }
+    }
+    mine a;
+    theirs va;
+    SetTapa(a, bits);
+    SetVendor(va, bits);
+    const std::string where =
+        std::string(S ? "i" : "u") + std::to_string(W) + " " + TapaBits(a);
+    EXPECT_EQ(a.to_string(), va.to_string()) << where;
+    for (const int radix : {2, 8, 10, 16}) {
+      EXPECT_EQ(a.to_string(radix), va.to_string(radix))
+          << "radix " << radix << ", " << where;
+      EXPECT_EQ(a.to_string(radix, true), va.to_string(radix, true))
+          << "signed radix " << radix << ", " << where;
+      EXPECT_EQ(a.to_string(radix, false), va.to_string(radix, false))
+          << "unsigned radix " << radix << ", " << where;
+      EXPECT_EQ(to_string(a, radix), va.to_string(radix))
+          << "free radix " << radix << ", " << where;
+    }
+    // The vendor's ostream reads std::cout's basefield, decimal here, and
+    // prints `to_string` in it; ours reads the stream's own.
+    std::ostringstream ours, vendor, hex, oct;
+    ours << a;
+    vendor << va;
+    EXPECT_EQ(ours.str(), vendor.str()) << "ostream, " << where;
+    hex << std::hex << a;
+    EXPECT_EQ(hex.str(), va.to_string(16)) << "hex ostream, " << where;
+    oct << std::oct << a;
+    EXPECT_EQ(oct.str(), va.to_string(8)) << "oct ostream, " << where;
+  }
+}
+
+TEST(VendorParity, TextForms) {
+  uint64_t state = 0x7e47;
+  CheckText<1, false>(state, 10);
+  CheckText<1, true>(state, 10);
+  CheckText<3, false>(state, 20);
+  CheckText<3, true>(state, 20);
+  CheckText<8, false>(state, 40);
+  CheckText<8, true>(state, 40);
+  CheckText<13, false>(state, 40);
+  CheckText<13, true>(state, 40);
+  CheckText<31, true>(state, 40);
+  CheckText<32, false>(state, 40);
+  CheckText<32, true>(state, 40);
+  CheckText<33, false>(state, 40);
+  CheckText<63, true>(state, 40);
+  CheckText<64, false>(state, 40);
+  CheckText<64, true>(state, 40);
+  CheckText<65, false>(state, 40);
+  CheckText<65, true>(state, 40);
+  CheckText<96, true>(state, 30);
+  CheckText<128, false>(state, 30);
+  CheckText<130, true>(state, 30);
+  CheckText<200, false>(state, 20);
 }
 
 // ----------------------------------------------------------- bit access

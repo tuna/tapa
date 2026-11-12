@@ -603,8 +603,8 @@ class int_base {
   }
   bool operator!() const { return !or_reduce(); }
   explicit operator bool() const { return or_reduce(); }
-  // The vendor member form: radix defaults to 2, and sign = false prints
-  // the unsigned bit pattern. Defined after tapa::to_string below.
+  // Exactly the vendor member's text (see `internal::vendor_text`); the
+  // radix defaults to 2. Defined after tapa::to_string below.
   std::string to_string(int base = 2, bool sign = S) const;
   typename rtype<1, false, W, S>::minus operator-() const {
     typename rtype<1, false, W, S>::minus zero(0);
@@ -918,68 +918,87 @@ inline u<W> int_base<W, S>::range(int hi, int lo) const& {
   return read_range(hi, lo);
 }
 
-/// Text form of @p x in @p base (2, 8, 10, or 16). Matches the vendor
-/// ostream output: non-decimal bases carry the radix prefix (0b/0o/0x,
-/// also on zero), and a negative signed value prints as '-' + prefix +
-/// magnitude. (The vendor reads std::cout's flags instead of the target
-/// stream's; that bug is deliberately not reproduced — the parity claim
-/// covers the format, not that.)
+namespace internal {
+
+// What the vendor's ap_private::toString prints (Vitis 2025.2), which every
+// text form of its arbitrary-precision integers goes through, quirks and
+// all. A negative value of a signed type prints, when `want_signed`, as '-'
+// and its magnitude. Radixes 2, 8 and 16 carry the prefix 0b, 0o or 0x and
+// skip leading zero digits, except that a positive value whose digits cover
+// fewer than W bits gets one '0' digit back: up to 64 bits only when its top
+// digit has the high bit set, past 64 bits always. Past 64 bits hex digits
+// are uppercase, and zero is "0" with no prefix; up to 64 bits it is
+// "0x0", "0o0" or "0b0". Decimal zero is "0".
 template <int W, bool S>
-inline std::string to_string(const int_base<W, S>& x, int base = 10) {
-  switch (base) {
-    case 10:
-      break;
-    case 16:
-      if (x.is_zero()) return "0x0";
-      break;
-    case 8:
-      if (x.is_zero()) return "0o0";
-      break;
+inline std::string vendor_text(const int_base<W, S>& x, int radix,
+                               bool want_signed) {
+  constexpr bool kWide = W > 64;
+  switch (radix) {
     case 2:
-      if (x.is_zero()) return "0b0";
+    case 8:
+    case 10:
+    case 16:
       break;
     default:
       assert(false && "to_string base must be 2, 8, 10, or 16");
-      base = 10;
+      radix = 10;
   }
-  if (x.is_zero()) return "0";
-  std::string digits;
-  if (S && x.negative()) digits += '-';
+  const bool minus = want_signed && S && x.negative();
   // The magnitude's bit pattern must print unsigned, or RetType re-sign-
   // extends its top bit.
-  u<W> mag(x.magnitude());
-  if (base == 10) {
-    if (W <= 64) return digits + std::to_string(static_cast<uint64_t>(mag));
+  u<W> rest(minus ? x.magnitude() : x);
+  const std::string sign = minus ? "-" : "";
+  if (radix == 10) {
+    if (rest.is_zero()) return "0";
+    if (W <= 64) return sign + std::to_string(static_cast<uint64_t>(rest));
     const uint64_t chunk = 1000000000000000000ULL;
     std::string parts;
-    while (!mag.is_zero()) {
-      uint64_t rem = mag % chunk;
-      mag /= chunk;
+    while (!rest.is_zero()) {
+      uint64_t rem = rest % chunk;
+      rest /= chunk;
       for (int i = 0; i < 18; ++i) {
         parts += char('0' + rem % 10);
         rem /= 10;
       }
     }
     while (parts.size() > 1 && parts.back() == '0') parts.pop_back();
-    return digits + std::string(parts.rbegin(), parts.rend());
+    return sign + std::string(parts.rbegin(), parts.rend());
   }
-  digits += base == 16 ? "0x" : base == 8 ? "0o" : "0b";
-  const int bits = base == 16 ? 4 : base == 8 ? 3 : 1;
-  const char* alphabet = "0123456789abcdef";
-  std::string parts;
-  for (int b = 0; b < W; b += bits) {
+  const char* prefix = radix == 16 ? "0x" : radix == 8 ? "0o" : "0b";
+  if (x.is_zero()) return kWide ? "0" : std::string(prefix) + "0";
+  const int shift = radix == 16 ? 4 : radix == 8 ? 3 : 1;
+  const char* alphabet = kWide ? "0123456789ABCDEF" : "0123456789abcdef";
+  int top = W - 1;
+  while (!rest.get_bit(top)) --top;
+  const int count = top / shift + 1;
+  std::string digits;
+  bool high_bit = false;  // of the top digit
+  for (int d = count - 1; d >= 0; --d) {
     unsigned digit = 0;
-    for (int k = bits - 1; k >= 0; --k) {
-      const int idx = b + k;
-      digit = digit * 2 + (idx < W && mag.get_bit(idx) ? 1 : 0);
+    for (int k = shift - 1; k >= 0; --k) {
+      const int idx = d * shift + k;
+      digit = digit * 2 + (idx < W && rest.get_bit(idx) ? 1 : 0);
     }
-    parts += alphabet[digit];
+    if (d == count - 1) high_bit = (digit >> (shift - 1)) != 0;
+    digits += alphabet[digit];
   }
-  while (parts.size() > 1 && parts.back() == '0') parts.pop_back();
-  digits += std::string(parts.rbegin(), parts.rend());
-  return digits;
+  const bool lead = !minus && count * shift < W && (kWide || high_bit);
+  return sign + prefix + (lead ? "0" : "") + digits;
 }
 
+}  // namespace internal
+
+/// The vendor's `x.to_string(base)`, which is also what its ostream prints
+/// in that base: see `int_base::to_string`.
+template <int W, bool S>
+inline std::string to_string(const int_base<W, S>& x, int base = 10) {
+  return x.to_string(base);
+}
+
+// The vendor's ostream text: `x.to_string(16)`, `(8)` or `(10)` by the
+// basefield. The vendor reads std::cout's basefield instead of the target
+// stream's; that bug is not reproduced, or `os << std::hex << x` would print
+// decimal into any stream but std::cout.
 template <int W, bool S>
 inline std::ostream& operator<<(std::ostream& os, const int_base<W, S>& x) {
   const std::ios_base::fmtflags ff = os.flags();
@@ -988,10 +1007,12 @@ inline std::ostream& operator<<(std::ostream& os, const int_base<W, S>& x) {
   return os << to_string(x);
 }
 
+// The vendor's member: radix 2 never prints a sign, and decimal follows the
+// type's signedness whatever `sign` says.
 template <int W, bool S>
 inline std::string int_base<W, S>::to_string(int base, bool sign) const {
-  return sign ? tapa::to_string(*this, base)
-              : tapa::to_string(u<W>(*this), base);
+  if (base == 2) sign = false;
+  return internal::vendor_text(*this, base, base == 10 ? S : sign);
 }
 
 /// Reads one token into @p x: the stream's basefield selects the radix,

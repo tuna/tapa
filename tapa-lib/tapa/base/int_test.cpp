@@ -629,12 +629,23 @@ TEST(IntTest, OstreamAndToString) {
 }
 
 TEST(IntTest, MemberToStringMatchesVendorDefaults) {
-  // The vendor member form: radix defaults to 2, sign to the type's.
-  EXPECT_EQ(tapa::u<8>(5).to_string(), "0b101");
-  EXPECT_EQ(tapa::i<8>(-1).to_string(), "-0b1");
+  // The vendor member form, recorded from Vitis 2025.2's ap_int: radix 2 by
+  // default and never signed, decimal signed by the type alone.
+  EXPECT_EQ(tapa::u<8>(5).to_string(), "0b0101");
+  EXPECT_EQ(tapa::i<8>(-1).to_string(), "0b11111111");
   EXPECT_EQ(tapa::i<8>(-1).to_string(16), "-0x1");
   EXPECT_EQ(tapa::i<8>(-1).to_string(16, false), "0xff");
+  EXPECT_EQ(tapa::i<8>(-1).to_string(10, false), "-1");
   EXPECT_EQ(tapa::u<8>(255).to_string(16, false), "0xff");
+  // A '0' digit leads a value whose digits fall short of the width: up to 64
+  // bits when the top digit's high bit is set, past 64 bits always, where
+  // hex is uppercase and zero is a bare "0".
+  EXPECT_EQ(tapa::u<8>(0x80).to_string(16), "0x80");
+  EXPECT_EQ(tapa::u<9>(0x80).to_string(16), "0x080");
+  EXPECT_EQ(tapa::u<9>(0x70).to_string(16), "0x70");
+  EXPECT_EQ(tapa::u<8>(0).to_string(16), "0x0");
+  EXPECT_EQ(tapa::u<100>(0x7f).to_string(16), "0x07F");
+  EXPECT_EQ(tapa::u<100>(0).to_string(16), "0");
 }
 
 TEST(IntTest, IstreamParsesWithBasefieldAndPrefixes) {
