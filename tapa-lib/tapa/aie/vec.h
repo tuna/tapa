@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <type_traits>
 #include <utility>
 
 #include "tapa/base/util.h"
@@ -25,9 +26,18 @@ namespace tapa {
 
 namespace internal {
 
-template <typename T, int N,
-          bool Native =
-              requires { typename ::aie::detail::native_vector_type_t<T, N>; }>
+// Whether `aie::vector<T, N>` is a native vector shape. A trait, not a
+// `requires` expression: a default template argument is part of the mangled
+// name of every function template taking the type, and the AI Engine
+// compiler of Vitis 2022.2 cannot mangle a `requires` expression.
+template <typename T, int N, typename = void>
+struct is_native_vector : std::false_type {};
+template <typename T, int N>
+struct is_native_vector<T, N,
+                        std::void_t<::aie::detail::native_vector_type_t<T, N>>>
+    : std::true_type {};
+
+template <typename T, int N, bool Native = is_native_vector<T, N>::value>
 struct vec_product;
 
 template <typename T, int N>
@@ -88,8 +98,7 @@ struct vec_product<T, N, false> {
 }  // namespace internal
 
 template <typename T, int N,
-          bool Native =
-              requires { typename ::aie::detail::native_vector_type_t<T, N>; }>
+          bool Native = internal::is_native_vector<T, N>::value>
 struct vec_t;
 
 template <typename T, int N>
