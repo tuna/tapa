@@ -227,6 +227,21 @@ impl Step {
         Ok(())
     }
 
+    /// Whether this step keeps state in the work directory, which `main`
+    /// then creates; `version`, `g++` and the update flow never touch it.
+    #[must_use]
+    pub const fn uses_work_dir(&self) -> bool {
+        matches!(
+            self,
+            Self::Link { .. }
+                | Self::Analyze { .. }
+                | Self::Synth { .. }
+                | Self::Floorplan { .. }
+                | Self::Pack { .. }
+                | Self::Compile { .. }
+        )
+    }
+
     /// Detach the trailing-vararg payload from this step and return
     /// the head (with an empty tail) plus the captured tail tokens.
     /// `g++` is terminal — its own `trailing_var_arg` already

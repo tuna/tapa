@@ -1,6 +1,6 @@
 //! `tapa` CLI library — argument parsing, dispatch, and step handlers,
 //! factored out of the thin `main.rs` binary entry point (the bin/lib
-//! split). The sole integration test drives the compiled binary over
+//! split). The integration tests drive the compiled binary over
 //! `std::process::Command`, not this crate.
 
 mod aie;

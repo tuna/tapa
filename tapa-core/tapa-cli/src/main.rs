@@ -51,15 +51,14 @@ fn run() -> Result<(), CliError> {
     );
 
     let mut ctx = CliContext::from_globals(&cli.globals);
-    // The update flow gets a cache-dir work dir: it has no use for
-    // `./work.out`, and creating one in the user's cwd would be litter.
-    let work_dir = if is_update_flow {
-        update::update_flow_work_dir()
-    } else {
-        ctx.work_dir.clone()
-    };
-    ctx.switch_work_dir(&work_dir)
-        .map_err(|e| CliError::WorkDir(work_dir.clone(), e.to_string()))?;
+    // Only the compiler steps keep state in the work directory; creating it
+    // for `version`, `g++` or `update` would litter `./work.out` into the
+    // user's cwd.
+    if cli.step.as_ref().is_some_and(Step::uses_work_dir) {
+        let work_dir = ctx.work_dir.clone();
+        ctx.switch_work_dir(&work_dir)
+            .map_err(|e| CliError::WorkDir(work_dir.clone(), e.to_string()))?;
+    }
 
     if let Some(temp_dir) = cli.globals.temp_dir.as_deref() {
         std::env::set_var("TMPDIR", temp_dir);

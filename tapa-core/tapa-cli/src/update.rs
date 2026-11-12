@@ -181,16 +181,6 @@ fn warn_if_outdated() {
     }
 }
 
-/// A work dir inside the cache for the update flow, which never touches
-/// compiler state — without it `main` would create `./work.out` in the
-/// user's cwd as a side effect of an unrelated command.
-pub fn update_flow_work_dir() -> PathBuf {
-    cache_file_path().map_or_else(
-        || std::env::temp_dir().join("tapa-update-work"),
-        |path| path.with_file_name("update-check-work"),
-    )
-}
-
 /// Stamp the cache and spawn the detached `update-check` worker. The
 /// stamp comes first so a burst of invocations spawns one checker and
 /// a failed check is not retried until the interval elapses.
@@ -213,12 +203,7 @@ fn spawn_check_if_stale() {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    // Give the child a work dir inside the cache so it does not create
-    // `./work.out` in the user's cwd as a side effect of `main`.
-    let work_dir = update_flow_work_dir();
     let _ = Command::new(exe)
-        .arg("--work-dir")
-        .arg(work_dir)
         .arg("update-check")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
