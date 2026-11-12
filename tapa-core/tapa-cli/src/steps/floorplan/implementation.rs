@@ -837,7 +837,7 @@ fn atomic_copy(source: impl AsRef<Path>, destination: &Path) -> Result<()> {
         ))
     })?;
     fs_err::create_dir_all(parent)?;
-    let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+    let mut temporary = json::staging_file_in(parent)?;
     let mut input = fs_err::File::open(source.as_ref())?;
     std::io::copy(&mut input, temporary.as_file_mut())?;
     temporary.as_file_mut().sync_all()?;
