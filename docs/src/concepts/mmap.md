@@ -63,6 +63,11 @@ The kernel task still receives a plain `mmap<T>` or `mmaps<T, N>` parameter.
 These wrappers control runtime transfers; they do not add C++ access
 restrictions beyond the element type's constness.
 
+A buffer may be empty, as an empty `std::vector` is for a run over no
+elements. Every flow accepts it: on hardware and in SLASH simulation the
+kernel's argument gets a placeholder of one page, which no transfer
+touches.
+
 From the vector-add host code:
 
 ```cpp

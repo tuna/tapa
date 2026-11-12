@@ -46,6 +46,10 @@ struct Graph {
 /// XRT's user-pointer buffers must start on a 4 KiB boundary.
 const USER_PTR_ALIGNMENT: usize = 4096;
 
+/// What a zero-length buffer argument gets: the kernel's argument still
+/// needs an address, and XRT allocates whole pages.
+const PLACEHOLDER_BYTES: usize = 4096;
+
 pub struct XrtDevice {
     meta: KernelXml,
     api: &'static Api,
@@ -318,7 +322,7 @@ impl XrtDevice {
     /// Copies every buffer the kernel writes back to the host.
     fn copy_back(&self) -> Result<()> {
         for (index, binding) in &self.buffers {
-            if !binding.access.stores_to_host() {
+            if !binding.access.stores_to_host() || binding.bytes == 0 {
                 continue;
             }
             // SAFETY: live buffer handle of `bytes` bytes.
@@ -553,12 +557,7 @@ impl Device for XrtDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
-        if bytes == 0 {
-            return Err(FrtError::MetadataParse(format!(
-                "zero-length buffer arg {index} is unsupported in XRT runtime"
-            )));
-        }
-        if ptr.is_null() {
+        if ptr.is_null() && bytes != 0 {
             return Err(FrtError::MetadataParse(format!(
                 "null host pointer for non-empty buffer arg {index}"
             )));
@@ -570,7 +569,11 @@ impl Device for XrtDevice {
         let group = u32::try_from(group)
             .map_err(|e| FrtError::Xrt(format!("argument {index} has no memory bank: {e}")))?;
         let staged = !(ptr as usize).is_multiple_of(USER_PTR_ALIGNMENT);
-        let bo = if staged {
+        let bo = if bytes == 0 {
+            // No transfer touches it (see `write_to_device`).
+            // SAFETY: live device handle.
+            unsafe { (self.api.bo_alloc)(self.device, PLACEHOLDER_BYTES, 0, group) }
+        } else if staged {
             // SAFETY: live device handle.
             unsafe { (self.api.bo_alloc)(self.device, bytes, 0, group) }
         } else {
@@ -625,7 +628,7 @@ impl Device for XrtDevice {
 
     fn write_to_device(&mut self) -> Result<()> {
         for (index, binding) in &self.buffers {
-            if !binding.access.loads_from_host() {
+            if !binding.access.loads_from_host() || binding.bytes == 0 {
                 continue;
             }
             if binding.staged {
@@ -841,6 +844,57 @@ mod tests {
     use super::{emulation_mode_env_value, is_run_error, va_scalar, VaScalar};
     use crate::xrt::api::RUN_COMPLETED;
     use frt_cosim::metadata::kernel_xml::XclbinTarget;
+
+    /// An empty `std::vector` passed as an mmap: the kernel's argument
+    /// gets a placeholder buffer, and nothing moves to or from it.
+    #[test]
+    fn a_zero_length_buffer_binds_a_placeholder_no_transfer_touches() {
+        use crate::device::{BufferAccess, Device, ExecutionState};
+        use crate::xrt::fake::{Fake, API};
+        use frt_cosim::metadata::{ArgKind, ArgSpec};
+
+        let fake = Fake::leak();
+        let mut device = super::XrtDevice {
+            meta: super::KernelXml {
+                top_name: "top".into(),
+                platform: String::new(),
+                target: XclbinTarget::Flat,
+                aie_pl_control: false,
+                args: vec![ArgSpec {
+                    name: "a".into(),
+                    id: 0,
+                    kind: ArgKind::Mmap {
+                        data_width: 32,
+                        addr_width: 64,
+                    },
+                }],
+                host_types: std::collections::HashMap::new(),
+            },
+            api: &API,
+            device: fake.handle(),
+            kernel: fake.handle(),
+            run: fake.handle(),
+            graph: None,
+            scalars: std::collections::HashMap::new(),
+            buffers: std::collections::HashMap::new(),
+            rings: Vec::new(),
+            readback_scheduled: false,
+            execution_state: ExecutionState::Idle,
+            compute_ns: 0,
+        };
+        device
+            .set_buffer_arg(0, std::ptr::null_mut(), 0, BufferAccess::ReadWrite)
+            .expect("bind an empty buffer");
+        device.write_to_device().expect("upload");
+        device.exec().expect("exec");
+        device.read_from_device().expect("schedule readback");
+        device.finish().expect("finish");
+        let calls = fake.calls();
+        assert!(calls.contains(&"bo_alloc 4096".to_owned()), "{calls:?}");
+        for transfer in ["bo_alloc_user_ptr", "bo_write", "bo_read", "bo_sync"] {
+            assert_eq!(fake.count(transfer), 0, "{calls:?}");
+        }
+    }
 
     #[test]
     fn only_emulation_xclbins_ask_for_an_emulation_mode() {

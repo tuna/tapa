@@ -106,19 +106,16 @@ impl Kernel {
     }
 
     /// Reject an invalid buffer binding and resolve its memory target and
-    /// byte size, before the caller allocates or stages anything.
+    /// the bytes to allocate, before the caller allocates or stages
+    /// anything. A zero-length buffer gets [`PLACEHOLDER_BYTES`], which no
+    /// transfer touches: the kernel's argument still needs an address.
     pub(super) fn validate_buffer_arg(
         &self,
         index: u32,
         ptr: *const u8,
         bytes: usize,
     ) -> Result<(MemoryTarget, u64)> {
-        if bytes == 0 {
-            return Err(FrtError::Vrt(format!(
-                "zero-length buffer argument {index}"
-            )));
-        }
-        if ptr.is_null() {
+        if ptr.is_null() && bytes != 0 {
             return Err(FrtError::Vrt(format!(
                 "null host pointer for buffer argument {index}"
             )));
@@ -133,9 +130,12 @@ impl Kernel {
         let target = self.memory_target(arg)?;
         let size = u64::try_from(bytes)
             .map_err(|error| FrtError::Vrt(format!("buffer argument {index}: {error}")))?;
-        Ok((target, size))
+        Ok((target, if size == 0 { PLACEHOLDER_BYTES } else { size }))
     }
 }
+
+/// What a zero-length buffer argument gets allocated.
+pub(super) const PLACEHOLDER_BYTES: u64 = 4096;
 
 /// A fully extracted VBIN and the typed metadata shared by VRT backends.
 #[derive(Debug)]

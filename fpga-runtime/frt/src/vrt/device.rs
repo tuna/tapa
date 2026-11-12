@@ -504,7 +504,7 @@ impl Device for VrtDevice {
         self.execution_state
             .ensure_not_running("upload buffers", "VRT kernel")?;
         for (index, binding) in &self.buffers {
-            if !binding.access.loads_from_host() {
+            if !binding.access.loads_from_host() || binding.bytes == 0 {
                 continue;
             }
             // SAFETY: the live C handle owns its staging pointer.
@@ -526,7 +526,7 @@ impl Device for VrtDevice {
             self.finish()?;
         }
         for (index, binding) in &self.buffers {
-            if !binding.access.stores_to_host() {
+            if !binding.access.stores_to_host() || binding.bytes == 0 {
                 continue;
             }
             let size = u64::try_from(binding.bytes)

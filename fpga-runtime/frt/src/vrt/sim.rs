@@ -457,7 +457,7 @@ impl Device for SimDevice {
         let buffers = self
             .buffers
             .iter()
-            .filter(|(_, binding)| binding.access.loads_from_host())
+            .filter(|(_, binding)| binding.access.loads_from_host() && binding.bytes != 0)
             .map(|(index, binding)| (*index, *binding))
             .collect::<Vec<_>>();
         for (index, binding) in buffers {
@@ -480,7 +480,7 @@ impl Device for SimDevice {
         let buffers = self
             .buffers
             .iter()
-            .filter(|(_, binding)| binding.access.stores_to_host())
+            .filter(|(_, binding)| binding.access.stores_to_host() && binding.bytes != 0)
             .map(|(index, binding)| (*index, *binding))
             .collect::<Vec<_>>();
         for (index, binding) in buffers {
@@ -833,6 +833,39 @@ mod tests {
             .expect_err("streams are unsupported")
             .to_string()
             .contains("host streams are unsupported"));
+    }
+
+    /// An empty `std::vector` passed as an mmap: the kernel's argument
+    /// gets a placeholder address, and nothing moves to or from it.
+    #[test]
+    fn a_zero_length_buffer_binds_a_placeholder_no_transfer_touches() {
+        let (mut device, state) = fake_device();
+        device
+            .set_buffer_arg(0, std::ptr::null_mut(), 0, BufferAccess::ReadWrite)
+            .expect("bind an empty buffer");
+        device
+            .set_scalar_arg(1, &0_u32.to_le_bytes())
+            .expect("bind scalar");
+        device.write_to_device().expect("upload");
+        device.exec().expect("exec");
+        state.lock().expect("fake state").registers.insert(BASE, 2);
+        device.read_from_device().expect("finish and download");
+        let state = state.lock().expect("fake state");
+        let commands = state
+            .requests
+            .iter()
+            .map(|request| request.command["command"].as_str().expect("command"))
+            .collect::<Vec<_>>();
+        assert!(!commands.contains(&"populate"), "{commands:?}");
+        assert_eq!(
+            state
+                .requests
+                .iter()
+                .filter(|request| request.command["type"] == "buffer")
+                .count(),
+            0
+        );
+        assert_eq!(state.registers[&(BASE + 0x10)], HBM_BASE as u32);
     }
 
     #[test]
