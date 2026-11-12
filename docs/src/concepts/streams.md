@@ -285,7 +285,9 @@ the FIFO) is in memory.
   the next invoke on XRT, as in a stream; cosimulation starts each invoke
   afresh, so there it is dropped.
 - `[[tapa::ring(S)]]` belongs on such a stream parameter of the top only;
-  anywhere else it is an error, as is an `S` of 0.
+  anywhere else it is an error. `S` must be a power of two: the host and the
+  kernel count frames in 32 bits, and only then do their slots stay in step
+  when the count wraps.
 
 ---
 

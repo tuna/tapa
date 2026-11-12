@@ -223,6 +223,35 @@ TEST(Rewrite, TopFrameArgumentsBecomeRings) {
   EXPECT_TRUE(reported);
 }
 
+// The 32-bit frame counts wrap: the host takes slot `count % S` and the
+// RTL steps its slots round-robin, which agree across the wrap only when S
+// is a power of two. Anything else would lose a frame there.
+TEST(Rewrite, RingSlotsArePowersOfTwo) {
+  constexpr char kRingOf[] = R"tapa(
+void Turn([[tapa::frame(64)]] tapa::istream<float>& in,
+          tapa::ostream<float>& out) {
+  out.write(in.read());
+}
+void Top([[tapa::ring(SLOTS)]] tapa::istream<float>& in,
+         tapa::ostream<float>& out) {
+  tapa::task().invoke(Turn, in, out);
+}
+)tapa";
+  for (const std::string slots : {"0", "3", "12"}) {
+    std::string code = kRingOf;
+    code.replace(code.find("SLOTS"), 5, slots);
+    const TreePipelineRun run = test_support::RunTreePipeline(
+        {VirtualTu{"/proj/src/ring_slots.cpp", code}}, "Top",
+        TempRoot("rewrite", "ring_slots"), {"-std=c++17"}, {},
+        {{"Top", SynthTarget::kXilinxVitis}});
+    EXPECT_FALSE(run.ok) << slots;
+    ASSERT_EQ(run.builder.errors().size(), 1u) << slots;
+    EXPECT_TRUE(Contains(run.builder.errors().front(),
+                         "a ring holds a power-of-two number of frames"))
+        << run.builder.errors().front();
+  }
+}
+
 constexpr char kAttrs[] = R"cpp(
   float DeclFirst(int);
   inline float DeclFirst(int x) { return x + 1; }

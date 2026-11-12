@@ -665,9 +665,14 @@ bool ProgramBuilder::ComputeRings(const std::string& top_key) {
              "port has a ring");
         return false;
       }
-      if (slots == 0) {
-        Fail("[[tapa::ring(0)]] at " + def.ring_locs.at(index) +
-             ": a ring holds at least one frame");
+      // The 32-bit frame counts wrap: the host takes slot `count % S` and
+      // the RTL steps its slots round-robin, which agree across the wrap
+      // only when S divides 2^32.
+      if (slots == 0 || (slots & (slots - 1)) != 0) {
+        Fail("[[tapa::ring(" + std::to_string(slots) + ")]] at " +
+             def.ring_locs.at(index) +
+             ": a ring holds a power-of-two number of frames, so its slots "
+             "stay in step when the 32-bit frame count wraps");
         return false;
       }
     }
