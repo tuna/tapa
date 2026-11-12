@@ -2,9 +2,11 @@
 
 #include "tapa/host/tapa.h"
 
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <csignal>
+#include <cstdint>
 #include <cstdlib>
 #include <thread>
 #include <utility>
@@ -130,6 +132,28 @@ TEST(TapaSimDeathTest, InvokeRestoresTheProgramsInterruptHandler) {
         std::exit(interrupted ? 0 : 1);
       },
       testing::ExitedWithCode(0), "");
+}
+
+void AddAt(int idx, tapa::mmap<int> mem) { mem[idx] += 1; }
+
+void MmapsUpper(tapa::mmaps<int, 2> mems) {
+  tapa::task().invoke<tapa::join, 2>(AddAt, 1, mems);
+}
+
+// An upper task hands its whole mmaps on to another upper task.
+void MmapsTop(tapa::mmaps<int, 2> mems) {
+  tapa::task().invoke<tapa::join, 2>(AddAt, 0, mems).invoke(MmapsUpper, mems);
+}
+
+TEST(TapaSimTest, UpperTaskHandsItsMmapsToAnother) {
+  std::vector<int> first = {1, 10};
+  std::vector<int> second = {2, 20};
+  const std::array<int*, 2> buffers = {first.data(), second.data()};
+  const std::array<uint64_t, 2> sizes = {2, 2};
+  tapa::invoke(MmapsTop, /*bitstream=*/"",
+               tapa::read_write_mmaps<int, 2>(buffers, sizes));
+  EXPECT_EQ(first, (std::vector<int>{2, 11}));
+  EXPECT_EQ(second, (std::vector<int>{3, 21}));
 }
 
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
