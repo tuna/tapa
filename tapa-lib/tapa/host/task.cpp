@@ -833,15 +833,10 @@ void schedule(bool detach, const std::function<void()>& f) {
   }
 }
 
-namespace {
-
-std::list<std::function<void()>> cleanup_tasks;
-
-}  // namespace
-
-void schedule_cleanup(const std::function<void()>& f) {
-  cleanup_tasks.push_back(f);
-}
+// Nothing runs cleanups here: the thread-per-task build installs no signal
+// handler, so the queued Kill() calls would never fire anyway, and an
+// instance outlives its task no longer than one that was never queued.
+void schedule_cleanup(const std::function<void()>&) {}
 
 }  // namespace internal
 
