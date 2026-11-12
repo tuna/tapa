@@ -147,9 +147,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
     switch (kind) {
       case TapaKind::kMmap:
       case TapaKind::kAsyncMmap:
-        ports.push_back(Port{name, kind, elem + "*", elem_width, std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt, std::nullopt});
+        ports.push_back(Port{name, kind, elem + "*", elem_width});
         break;
 
       case TapaKind::kMmaps: {
@@ -157,9 +155,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         const uint32_t n = IntArg(ctx, param, 1, "channel count").value_or(0);
         for (uint32_t i = 0; i < n; ++i) {
           ports.push_back(Port{ArrayNameAt(name, static_cast<int>(i)),
-                               TapaKind::kMmap, elem + "*", elem_width,
-                               std::nullopt, std::nullopt, std::nullopt,
-                               std::nullopt, std::nullopt, std::nullopt});
+                               TapaKind::kMmap, elem + "*", elem_width});
         }
         break;
       }
@@ -173,9 +169,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       case TapaKind::kIStream:
       case TapaKind::kOStream:
-        ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt, std::nullopt});
+        ports.push_back(Port{name, kind, elem, elem_width});
         break;
 
       case TapaKind::kIStreams:
@@ -196,10 +190,9 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       default:
         // Scalar: the parameter's own type and width.
-        ports.push_back(
-            Port{name, TapaKind::kNotTapa, param->getType().getAsString(),
-                 BitWidth(ctx, param->getType()), std::nullopt, std::nullopt,
-                 std::nullopt, std::nullopt, std::nullopt, std::nullopt});
+        ports.push_back(Port{name, TapaKind::kNotTapa,
+                             param->getType().getAsString(),
+                             BitWidth(ctx, param->getType())});
         break;
     }
   }

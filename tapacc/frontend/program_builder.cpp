@@ -199,9 +199,7 @@ std::vector<Port> MoverPorts(const Port& memory, bool writes, bool responses) {
   const std::string element = memory.ctype.substr(0, memory.ctype.size() - 1);
   const auto port = [](std::string name, TapaKind kind, std::string ctype,
                        uint32_t width) {
-    return Port{std::move(name), kind,         std::move(ctype), width,
-                std::nullopt,    std::nullopt, std::nullopt,     std::nullopt,
-                std::nullopt,    std::nullopt};
+    return Port{std::move(name), kind, std::move(ctype), width};
   };
   std::vector<Port> ports{
       port("mem", TapaKind::kAsyncMmap, memory.ctype, memory.width)};

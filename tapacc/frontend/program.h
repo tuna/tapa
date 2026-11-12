@@ -36,16 +36,17 @@ struct Port {
   TapaKind kind;      // serialized "cat" via TapaKindCat(kind)
   std::string ctype;  // C++ type string, e.g. "const float*", "uint64_t"
   uint32_t width = 0;
-  std::optional<uint32_t> chan_count;  // hmap / istreams / ostreams
-  std::optional<uint32_t> chan_size;   // hmap
-  std::optional<uint32_t> frame;       // [[tapa::frame(N)]]
+  std::optional<uint32_t> chan_count =
+      std::nullopt;  // hmap / istreams / ostreams
+  std::optional<uint32_t> chan_size = std::nullopt;  // hmap
+  std::optional<uint32_t> frame = std::nullopt;      // [[tapa::frame(N)]]
   // An AI Engine task's async_mmap: the PL tasks serving the directions its
   // body uses (see Mover).
-  std::optional<std::string> aie_reads;
-  std::optional<std::string> aie_writes;
+  std::optional<std::string> aie_reads = std::nullopt;
+  std::optional<std::string> aie_writes = std::nullopt;
   // A Vitis top's stream argument that reaches a frame port: the slots of
   // the device-memory ring that carries it ([[tapa::ring(S)]], default 4).
-  std::optional<uint32_t> ring;
+  std::optional<uint32_t> ring = std::nullopt;
 };
 
 // One argument of a child invocation: what the child port binds to in the
