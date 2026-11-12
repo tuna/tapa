@@ -316,7 +316,8 @@ TEST(InvokeParser, ConstantWrapsToAnArbitraryPrecisionPortWidth) {
   ASSERT_NE(top, nullptr);
   const Arg& wrapped = top->instances.at("Signed").at(0).args.at("value");
   EXPECT_EQ(wrapped.value, std::optional<uint64_t>(0xfff));
-  EXPECT_EQ(wrapped.width, 16u);
+  // Sized to the child port, which is the declared 12 bits wide.
+  EXPECT_EQ(wrapped.width, 12u);
   EXPECT_EQ(top->instances.at("Unsigned").at(0).args.at("value").value,
             std::optional<uint64_t>(70000 & 0xffff));
 }

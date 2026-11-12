@@ -570,7 +570,7 @@ void ParseInvocations(
           // ask clang for one.
           auto set_const = [&](const llvm::APSInt& v, const std::string& p) {
             const clang::QualType type = param->getType();
-            const uint32_t width = BitWidth(uc.ctx, type);
+            const uint32_t width = ScalarWidth(uc.ctx, type);
             if (width > 64) {
               ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
                                arg->getBeginLoc(),

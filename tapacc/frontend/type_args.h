@@ -53,6 +53,11 @@ std::optional<uint32_t> ArbitraryIntWidth(clang::QualType type);
 // while other elements retain their object-layout width.
 uint32_t StreamElementWidth(const clang::ParmVarDecl* param);
 
+// A scalar port's width, as HLS sizes its control register: an
+// arbitrary-precision integer's declared W (its object is wider: a
+// `tapa::u<80>` occupies 128 bits), any other type's object-layout width.
+uint32_t ScalarWidth(const clang::ASTContext& ctx, clang::QualType type);
+
 // Byte-aligned TDATA width of the unsigned QDMA envelope at the Vitis top.
 uint32_t AxisDataWidth(const clang::ParmVarDecl* param);
 

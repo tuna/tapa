@@ -173,6 +173,42 @@ TEST(Ports, MemoryElementTypeIsComplete) {
   }
 }
 
+// HLS sizes a scalar's control register by the integer's declared width:
+// `k(ap_uint<80> a, int b, ...)` gets a in 3 data words and b right after
+// them. The object is wider (`tapa::u<80>` occupies 128 bits), and the
+// object's width put every later argument's kernel.xml register past
+// where HLS had it.
+TEST(Ports, ArbitraryPrecisionScalarsCarryTheirDeclaredWidth) {
+  auto b = ParseProbe(R"cpp(
+    namespace tapa {
+    template <int W>
+    struct u {
+      unsigned long long v[(W + 63) / 64 * 2];
+    };
+    template <int W>
+    struct i {
+      unsigned long long v[(W + 63) / 64 * 2];
+    };
+    }  // namespace tapa
+    template <int W>
+    struct ap_uint {
+      unsigned short v[(W + 15) / 16];
+    };
+    template <int W>
+    struct ap_int {
+      unsigned short v[(W + 15) / 16];
+    };
+    void probe(tapa::u<80> a, int b, ap_uint<12> c, long long d, tapa::i<12> e,
+               ap_int<80> f, bool g) {}
+  )cpp");
+  const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
+  ASSERT_EQ(ports.size(), 7u);
+  const uint32_t widths[] = {80, 32, 12, 64, 12, 80, 8};
+  for (size_t index = 0; index < ports.size(); ++index) {
+    EXPECT_EQ(ports[index].width, widths[index]) << ports[index].name;
+  }
+}
+
 // The graph spells a scalar's type as C++ does: the AI Engine graph
 // generator reads `bool` (an unsigned runtime parameter) from it, which a
 // C-spelled `_Bool` never matched.

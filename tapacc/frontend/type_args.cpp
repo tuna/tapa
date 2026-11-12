@@ -122,6 +122,10 @@ uint32_t StreamElementWidth(const clang::ParmVarDecl* param) {
   return ElementWidth(param);
 }
 
+uint32_t ScalarWidth(const clang::ASTContext& ctx, clang::QualType type) {
+  return ArbitraryIntWidth(type).value_or(BitWidth(ctx, type));
+}
+
 uint32_t AxisDataWidth(const clang::ParmVarDecl* param) {
   const uint32_t width = StreamElementWidth(param);
   return (width + 7) / 8 * 8;

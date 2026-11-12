@@ -231,7 +231,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         ports.push_back(
             Port{name, TapaKind::kNotTapa,
                  param->getType().getAsString(ctx.getPrintingPolicy()),
-                 BitWidth(ctx, param->getType())});
+                 ScalarWidth(ctx, param->getType())});
         break;
     }
   }
