@@ -64,25 +64,50 @@ pub fn run(args: &LinkArgs, ctx: &CliContext) -> Result<()> {
         extract_aie_package(&args.package, job)?;
     }
     let output = ctx.with_tool_runner(|runner| run_plan(runner, &plan))?;
-    let backend = match plan {
-        LinkPlan::Vitis(_) => "Vitis",
-        LinkPlan::Aie(job) => {
-            log::info!(
-                "AI Engine link produced {}, with no PL kernel, and {}",
-                output.bitstream,
-                tapa_xilinx::tools::aie::link::xsa(&job.output_xclbin)
-            );
-            return Ok(());
+    match plan {
+        LinkPlan::Vitis(_) => {
+            log::info!("{}", link_summary("Vitis", false, &output));
+            if let Some(timing) = output.timing.filter(|timing| timing.wns_ns < 0.0) {
+                log::warn!(
+                    "Vitis routed kernel timing does not meet the requested {} MHz \
+                     (WNS {:.3} ns, Fmax {:.3} MHz); check the kernel clock v++ recorded in `{}`",
+                    output.requested_mhz,
+                    timing.wns_ns,
+                    timing.fmax_mhz,
+                    output.bitstream,
+                );
+            }
         }
-        LinkPlan::Slash(_) => "SLASH",
-    };
-    log::info!(
-        "{backend} link produced {} at {:.6} MHz (requested {} MHz)",
-        output.bitstream,
-        output.recorded_mhz,
-        output.requested_mhz,
-    );
+        LinkPlan::Aie(job) => log::info!(
+            "AI Engine link produced {}, with no PL kernel, and {}",
+            output.bitstream,
+            tapa_xilinx::tools::aie::link::xsa(&job.output_xclbin)
+        ),
+        // SLASH warns about a derated clock itself, as it records it.
+        LinkPlan::Slash(_) => log::info!("{}", link_summary("SLASH", true, &output)),
+    }
     Ok(())
+}
+
+/// The result line of a link: the routed kernel timing whenever the link
+/// produced one, and the bitstream's clock only where the backend records
+/// it (SLASH writes it into the vbin; TAPA does not read an xclbin back).
+fn link_summary(backend: &str, recorded: bool, output: &LinkOutput) -> String {
+    use std::fmt::Write as _;
+    let mut line = format!("{backend} link produced {}", output.bitstream);
+    if recorded {
+        write!(line, " at {:.6} MHz", output.recorded_mhz).expect("write String");
+    }
+    write!(line, " (requested {} MHz)", output.requested_mhz).expect("write String");
+    if let Some(timing) = &output.timing {
+        write!(
+            line,
+            "; routed kernel WNS {:.3} ns, Fmax {:.3} MHz",
+            timing.wns_ns, timing.fmax_mhz
+        )
+        .expect("write String");
+    }
+    line
 }
 
 fn run_plan(runner: &dyn ToolRunner, plan: &LinkPlan) -> Result<LinkOutput> {
@@ -479,6 +504,42 @@ mod tests {
         let error = plan_link(&parsed, Path::new("/work"), &state(Target::XilinxVitis))
             .expect_err("a PL top packs an .xo");
         assert!(error.to_string().contains("link its `.xo`"), "{error}");
+    }
+
+    /// The routed kernel timing is a hardware link's measured result, so the
+    /// result line carries it; a Vitis link claims no recorded clock, since
+    /// v++ may scale the kernel clock it writes into the xclbin.
+    #[test]
+    fn link_summary_reports_the_routed_kernel_timing() {
+        let output = LinkOutput {
+            bitstream: "Top.xclbin".into(),
+            requested_mhz: 300,
+            recorded_mhz: 300.0,
+            timing: Some(tapa_xilinx::KernelTiming {
+                reported_target_period_ns: 3.333,
+                reported_target_mhz: 300.03,
+                wns_ns: -0.5,
+                achieved_period_ns: 3.833,
+                fmax_mhz: 260.9,
+            }),
+            timing_report: Some("timing_summary.rpt".into()),
+            stdout: String::new(),
+            stderr: String::new(),
+        };
+        assert_eq!(
+            link_summary("Vitis", false, &output),
+            "Vitis link produced Top.xclbin (requested 300 MHz); \
+             routed kernel WNS -0.500 ns, Fmax 260.900 MHz"
+        );
+        let simulation = LinkOutput {
+            timing: None,
+            timing_report: None,
+            ..output
+        };
+        assert_eq!(
+            link_summary("SLASH", true, &simulation),
+            "SLASH link produced Top.xclbin at 300.000000 MHz (requested 300 MHz)"
+        );
     }
 
     #[test]
