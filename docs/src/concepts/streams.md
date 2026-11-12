@@ -229,7 +229,10 @@ argument.
   Engine tile DMA copies a buffer between distant tiles: each frame-port end
   gets its own channel of the same banks, and the elements cross the slots
   through the stream's pipeline. A copy costs the extra banks and delays the
-  consumer by a frame; ends in one slot share one channel.
+  consumer by a frame; ends in one slot share one channel. Synthesizing a
+  task with a frame port takes Vitis HLS 2024.1 or newer, whose port-group
+  `hls::fence` holds a frame's release behind its accesses; with an earlier
+  release `tapa synth` stops with a message saying so.
 - **On the AI Engine** a frame port is the kernel's buffer port, filled or
   drained by DMA. Between two AI Engine frame ports the graph connects the
   buffers directly, so neighbouring kernels share tile memory.

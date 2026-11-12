@@ -11,9 +11,9 @@
 #include <cstdint>
 #include <type_traits>
 
-#include <hls_fence.h>
 #include <hls_stream.h>
 
+#include "tapa/xilinx/hls/fence.h"
 #include "tapa/xilinx/hls/util.h"
 
 namespace tapa {
@@ -226,7 +226,7 @@ class tapa_frames {
     void release() {
 #pragma HLS inline
       if (live_) {
-        hls::fence({buf_}, {release_});
+        internal::fence_one_way(buf_, release_, 0);
         release_.write(1);
         live_ = false;
       }

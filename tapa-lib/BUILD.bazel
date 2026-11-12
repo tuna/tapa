@@ -64,6 +64,7 @@ _PUBLIC_HEADERS = [
     "tapa/stub/util.h",
     "tapa/stub/vec.h",
     "tapa/xilinx/hls/axis.h",
+    "tapa/xilinx/hls/fence.h",
     "tapa/xilinx/hls/fixed.h",
     "tapa/xilinx/hls/logging.h",
     "tapa/xilinx/hls/mmap.h",
@@ -188,6 +189,7 @@ cc_test(
             "tapa/vendor_parity_test.cpp",
             "tapa/vendor_stream_test.cpp",
             "tapa/vendor_vec_test.cpp",
+            "tapa/xilinx/hls/fence_test.cpp",
         ],
     ),
     linkopts = ["-lstdc++fs"],
@@ -200,6 +202,28 @@ cc_test(
         "@googletest//:gtest",
         "@googletest//:gtest_main",
     ],
+)
+
+# `tapa/xilinx/hls/fence.h` against a stand-in for the vendor's
+# `hls_fence.h`, so the frame release's fence is checked with or without
+# Xilinx installed.
+cc_test(
+    name = "hls-fence-test",
+    size = "small",
+    srcs = ["tapa/xilinx/hls/fence_test.cpp"],
+    deps = [
+        ":hls-fence-stand-in",
+        ":tapa",
+        "@googletest//:gtest",
+        "@googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "hls-fence-stand-in",
+    testonly = True,
+    hdrs = ["testdata/hls-fence/hls_fence.h"],
+    includes = ["testdata/hls-fence"],
 )
 
 # The vendor headers are an optional dependency, and where Xilinx is not
