@@ -4,6 +4,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -621,6 +622,24 @@ void ValidateStreams(UpperTaskContext& uc) {
 }
 
 }  // namespace
+
+void DiagnoseStrayInvokes(clang::ASTContext& ctx,
+                          const clang::FunctionDecl* func) {
+  if (func == nullptr || !func->hasBody()) return;
+  const std::vector<const clang::CXXMemberCallExpr*> chained =
+      GetInvokes(GetTapaTaskObject(func->getBody()));
+  const std::set<const clang::CXXMemberCallExpr*> lowered(chained.begin(),
+                                                          chained.end());
+  for (const clang::CXXMemberCallExpr* invoke : GetInvokes(func->getBody())) {
+    if (lowered.count(invoke) != 0) continue;
+    ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, invoke->getExprLoc(),
+                     "task '%0' invokes a task outside the first tapa::task() "
+                     "statement of its body; hardware instantiates only that "
+                     "statement's invokes and runs any other as a plain call, "
+                     "so chain every invoke onto one tapa::task() statement")
+        .AddString(func->getNameAsString());
+  }
+}
 
 void ParseUpperTask(
     clang::ASTContext& ctx, TaskModel& task, bool is_top,

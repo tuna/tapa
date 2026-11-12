@@ -1004,6 +1004,10 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
     } else if (model.target != SynthTarget::kIgnore) {
       model.closed_ports = ClosedPorts(model.def);
     }
+    // An ignored task's body is only its software model, free to invoke.
+    if (model.target != SynthTarget::kIgnore) {
+      DiagnoseStrayInvokes(ctx, model.def);
+    }
     if (model.level == TaskLevel::kUpper) {
       ParseUpperTask(ctx, model, /*is_top=*/model.name == top_, parameter_name);
     }

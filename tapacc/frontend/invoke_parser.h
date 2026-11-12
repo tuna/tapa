@@ -28,6 +28,15 @@ void ParseUpperTask(
     llvm::function_ref<std::string(const clang::FunctionDecl*, unsigned)>
         parameter_name);
 
+// Report every `tapa::task::invoke` in a task's body that the task graph
+// would not hold: one outside the first `tapa::task()` statement written
+// directly in the body (a second such statement, a nested block, a loop, a
+// declaration's initializer), which in a leaf means any invoke at all.
+// Hardware keeps only that first statement's invokes and HLS runs any other
+// as a sequential call, so each would silently change the program.
+void DiagnoseStrayInvokes(clang::ASTContext& ctx,
+                          const clang::FunctionDecl* func);
+
 }  // namespace tapa::cc
 
 #endif  // TAPA_FRONTEND_INVOKE_PARSER_H_

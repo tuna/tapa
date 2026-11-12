@@ -90,9 +90,11 @@ terminate on program completion.
 - Leaf tasks receive streams by reference (`istream<T>&`, `ostream<T>&`) and
   mmap interfaces by value (`mmap<T>`).
 - An upper-level task body must contain only channel declarations,
-  constants, `assert`s, and `.invoke(...)` calls — no loops, arithmetic, or
-  other computation. `tapa analyze` rejects any other statement; hardware
-  drops the `assert`s, as an `NDEBUG` build does.
+  constants, `assert`s, and one `tapa::task()` statement chaining every
+  `.invoke(...)` — no loops, arithmetic, or other computation. `tapa analyze`
+  rejects any other statement, and any invoke outside that one statement
+  (in a second `tapa::task()` statement, a nested block, or a leaf task);
+  hardware drops the `assert`s, as an `NDEBUG` build does.
 - `async_mmap` channel operations (`read_addr`, `read_data`, etc.) are
   leaf-task-only.
 - For the `xilinx-vitis` target (the default) and `xilinx-slash`, the

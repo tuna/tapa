@@ -133,8 +133,8 @@ The `--bitstream` flag is what controls which backend runs:
 - The top-level task is **called via `tapa::invoke` from the host**; never
   called directly.
 - An upper-level task body **must contain only** channel declarations and
-  `tapa::task().invoke(...)` chains. Scalar and mmap arguments may be forwarded
-  to children, but the upper task performs no computation.
+  one `tapa::task().invoke(...)` chain. Scalar and mmap arguments may be
+  forwarded to children, but the upper task performs no computation.
 - Streams are passed **by reference** (`tapa::istream<T>&`,
   `tapa::ostream<T>&`), and so is `tapa::async_mmap<T>&`. Passing a stream or
   `async_mmap` by value is a compile error.

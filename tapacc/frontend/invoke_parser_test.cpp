@@ -2,6 +2,7 @@
 
 #include <map>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -490,6 +491,56 @@ TEST(InvokeParser, AnUpperTaskHoldsOnlyChannelsConstantsAndInvokes) {
               std::string::npos)
         << diag;
   }
+}
+
+TEST(InvokeParser, EveryInvokeSitsInTheFirstTaskStatement) {
+  // The graph holds only the invokes of the first tapa::task() statement
+  // written directly in a body; HLS runs any other invoke as a plain call.
+  // Each such invoke is its own error, and one in a leaf is one too. An
+  // ignored task's body is its software model and may invoke freely.
+  constexpr char kCode[] = R"cpp(
+    void Leaf(tapa::mmap<int> m) {}
+    [[tapa::target("ignore")]] void Model(tapa::mmap<int> m) {
+      tapa::task().invoke(Leaf, m);
+    }
+    void Nested(tapa::mmap<int> m) {
+      {
+        tapa::task().invoke(Leaf, m);
+      }
+    }
+    void Looped(tapa::mmap<int> m) {
+      for (int i = 0; i < 2; ++i) tapa::task().invoke(Leaf, m);
+    }
+    void Named(tapa::mmap<int> m, tapa::mmap<int> n) {
+      tapa::task t;
+      t.invoke(Leaf, m);
+      t.invoke(Leaf, n);
+    }
+    void Top(tapa::mmap<int> a, tapa::mmap<int> b, tapa::mmap<int> c,
+             tapa::mmap<int> d, tapa::mmap<int> e, tapa::mmap<int> f) {
+      tapa::task().invoke(Model, a).invoke(Nested, b).invoke(Looped, c).invoke(
+          Named, d, e);
+      tapa::task().invoke(Leaf, f);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/stray_invoke.cpp", kCode}}, "Top",
+      testing::TempDir() + "/stray_invoke", {"-std=c++17"});
+  // Each message names the task whose body holds the stray invoke.
+  std::multiset<std::string> strays;
+  for (const std::string& diag : run.diags) {
+    constexpr llvm::StringLiteral kPrefix = "task '";
+    if (diag.find("outside the first tapa::task() statement") ==
+            std::string::npos ||
+        diag.rfind(kPrefix.str(), 0) != 0) {
+      continue;
+    }
+    strays.insert(diag.substr(
+        kPrefix.size(), diag.find('\'', kPrefix.size()) - kPrefix.size()));
+  }
+  EXPECT_EQ(run.diags.size(), strays.size());
+  EXPECT_EQ(strays,
+            (std::multiset<std::string>{"Looped", "Named", "Nested", "Top"}));
 }
 
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
