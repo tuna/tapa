@@ -251,7 +251,9 @@ arithmetic on it.
 Decoupled memory access type. The kernel issues read/write requests and
 collects responses through five FIFO channels, giving it explicit control
 over outstanding memory operations. Passed **by reference** in task
-signatures: `tapa::async_mmap<T>&`.
+signatures: `tapa::async_mmap<T>&`. `T` is a power of two of at least 8
+bits, one memory beat per element: `tapa analyze` rejects others, so pad a
+96-bit struct to 128 bits (e.g. with `alignas(16)`).
 
 See [async_mmap channels](#async_mmap-channels) below for channel details.
 

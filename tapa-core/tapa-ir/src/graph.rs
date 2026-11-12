@@ -203,7 +203,8 @@ impl TaskGraph {
     /// A schema version other than [`SCHEMA_VERSION`], a task named after
     /// a [support module](SUPPORT_MODULES), an invalid invoke-site constant,
     /// an argument bound to a port its child lacks or of another category,
-    /// a stream of depth 0, a frame of 0 elements, or a stream shallower
+    /// a stream of depth 0, a frame of 0 elements, an `async_mmap` element
+    /// that is not a power of two of at least 8 bits, or a stream shallower
     /// than a frame it carries.
     pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
@@ -223,6 +224,7 @@ impl TaskGraph {
         self.validate_named_args()?;
         self.validate_stream_depths()?;
         self.validate_frame_sizes()?;
+        self.validate_async_mmap_widths()?;
         self.validate_frame_depths()?;
         self.validate_frame_channels()
     }
@@ -253,6 +255,31 @@ impl TaskGraph {
                         "port `{}` of task `{task_name}` moves frames of 0 elements; a frame \
                          holds at least one",
                         task.ports[index].name
+                    ),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// An `async_mmap` element is a power of two of at least 8 bits: its
+    /// bridge moves one element per AXI beat, and an AXI beat is a power of
+    /// two of bytes.
+    fn validate_async_mmap_widths(&self) -> Result<(), ParseError> {
+        for (task_name, task) in &self.tasks {
+            for (index, port) in task.ports.iter().enumerate() {
+                let width = port.width;
+                if port.cat != ArgCategory::AsyncMmap || (width >= 8 && width.is_power_of_two()) {
+                    continue;
+                }
+                return Err(ParseError::Schema {
+                    path: format!("tasks.{task_name}.ports[{index}].width"),
+                    message: format!(
+                        "async_mmap port `{}` of task `{task_name}` has {width}-bit elements; \
+                         an async_mmap element is a power of two of at least 8 bits, so pad \
+                         the element type to {} bits",
+                        port.name,
+                        width.max(8).next_power_of_two()
                     ),
                 });
             }
@@ -993,6 +1020,32 @@ mod tests {
             .frame_channel(&graph.tasks["T"], "q")
             .expect("a channel");
         assert_eq!((channel.frame, channel.banks), (2, 2));
+    }
+
+    #[test]
+    fn an_async_mmap_element_is_a_power_of_two_of_bytes() {
+        let graph = |width: u32| {
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "L", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{"L": {{"level": "lower", "srcs": [],
+                    "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "",
+                    "ports": [{{"cat": "async_mmap", "name": "mem", "type": "Elem",
+                    "width": {width}}}], "tasks": {{}}, "fifos": {{}}}}}}}}"#
+            )
+        };
+        for (width, padded) in [(96, 128), (24, 32), (1, 8)] {
+            let message = TaskGraph::from_json(&graph(width))
+                .expect_err("not a power of two of bytes")
+                .to_string();
+            assert!(
+                message.contains("tasks.L.ports[0].width")
+                    && message.contains(&format!("pad the element type to {padded} bits")),
+                "{message}"
+            );
+        }
+        for width in [8, 128, 512] {
+            TaskGraph::from_json(&graph(width)).expect("a power of two of bytes");
+        }
     }
 
     #[test]

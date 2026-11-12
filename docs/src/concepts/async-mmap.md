@@ -148,6 +148,9 @@ acknowledged elements, not responses.
 
 - `async_mmap<T>` must be passed **by reference** (`async_mmap<T>&`). Passing
   by value is a compile error.
+- `T` is a power of two of at least 8 bits wide, one memory beat per
+  element; `tapa analyze` rejects others. Pad a 96-bit struct to 128 bits,
+  for example with `alignas(16)`.
 - Channel operations (`try_read`/`try_write` on the five streams) are
   **leaf-task only**. An upper-level task may accept an `async_mmap<T>&`
   parameter and hand it to **one** child task without operating on it. To
