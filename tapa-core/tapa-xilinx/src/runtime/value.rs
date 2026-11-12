@@ -42,6 +42,13 @@ impl ToolValue {
             })
             .collect()
     }
+
+    /// The value as a local tool sees it. A relative path names a file
+    /// relative to this process's cwd, exactly as the remote runner relocates
+    /// it, never relative to the cwd the tool is started in.
+    pub(crate) fn render_local(&self) -> String {
+        self.render(|path| crate::util::absolutize(path).into_string())
+    }
 }
 
 impl From<String> for ToolValue {

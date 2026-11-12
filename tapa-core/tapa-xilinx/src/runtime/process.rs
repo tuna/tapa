@@ -43,8 +43,11 @@ impl ToolInvocation {
         self
     }
 
+    /// The argv a local tool receives. Typed paths are made absolute against
+    /// this process's cwd, the same reading the remote runner gives them, so a
+    /// relative path still names its file once the tool runs in `cwd`.
     pub fn local_args(&self) -> Vec<String> {
-        self.args.iter().map(ToString::to_string).collect()
+        self.args.iter().map(ToolValue::render_local).collect()
     }
 }
 
@@ -216,7 +219,7 @@ impl ToolRunner for LocalToolRunner {
         // Inherit the parent's full env, then overlay `inv.env` so
         // per-invocation entries win.
         for (k, v) in &inv.env {
-            cmd = cmd.env(k, v.to_string());
+            cmd = cmd.env(k, v.render_local());
         }
         if let Some(cwd) = &inv.cwd {
             cmd = cmd.dir(cwd.as_str());
@@ -606,6 +609,27 @@ mod tests {
         let out = runner.run(&inv).unwrap();
         assert_eq!(out.exit_code, 0);
         assert_eq!(out.stdout, "hello world");
+    }
+
+    /// A relative typed path names a file relative to the caller, as the
+    /// remote runner reads it: a tool started in another `cwd` (HLS runs in a
+    /// stage tempdir) must still find a user's relative `-Iinc`.
+    #[test]
+    fn local_runner_resolves_relative_typed_paths_against_the_caller() {
+        let caller = crate::util::utf8(std::env::current_dir().expect("cwd"));
+        let file = "Cargo.toml";
+        assert!(caller.join(file).is_file(), "test runs in the crate root");
+        let stage = tempfile::tempdir().expect("stage");
+        let mut inv = ToolInvocation::new("/bin/sh")
+            .arg("-c")
+            .arg("test -f \"$1\" && test -f \"${2#-I}\" && test -f \"$TAPA_FILE\"")
+            .arg("dummy")
+            .arg(ToolValue::path(file))
+            .arg(ToolValue::prefixed_path("-I", file))
+            .env("TAPA_FILE", ToolValue::path(file));
+        inv.cwd = Some(crate::util::utf8(stage.path()));
+        let out = LocalToolRunner::new().run(&inv).expect("run");
+        assert_eq!(out.exit_code, 0, "{}", out.stderr);
     }
 
     #[test]
