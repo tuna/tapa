@@ -94,9 +94,8 @@ The run is correct when:
 
 ```admonish tip
 If you use `std::vector` for memory-mapped buffers, XRT may warn about
-unaligned host pointers and make an extra copy. Use
-`std::vector<T, tapa::aligned_allocator<T>>` to provide page-aligned storage
-and avoid that alignment-related copy.
+unaligned host pointers and make an extra copy — see
+[Aligned allocator](../concepts/mmap.md#aligned-allocator).
 ```
 
 ## If something goes wrong

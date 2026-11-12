@@ -27,6 +27,6 @@ per-kernel RTL validation with software-modeled streams between kernels.
 
 ## Background reading
 
-Before starting any lab, the [Programming Model](../concepts/programming-model.md) page covers the vocabulary used throughout: task graphs, streams, mmap, and the compile pipeline. The labs assume you have read at least the [Programming Model](../concepts/programming-model.md) page.
+The labs assume you have read the [Programming Model](../concepts/programming-model.md) page, which covers the vocabulary used throughout: task graphs, streams, mmap, and the compile pipeline.
 
 **Start here:** [Lab 1: Vector Add](lab-01-vadd.md)
