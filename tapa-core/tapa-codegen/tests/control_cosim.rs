@@ -956,3 +956,183 @@ int main() {
   return 0;
 }
 "#;
+
+/// Every control delivers each scalar at its child port's width, as a C++
+/// argument converts to its parameter: a 64-bit parent wire bound to a
+/// 32-bit and an 8-bit port, beside a 1-bit one, under the per-task FSM,
+/// a floorplan's distributed controllers, and a flattened top's.
+#[test]
+fn every_control_delivers_scalars_at_the_ports_width() {
+    use common::run_manifest::{generate_manifest, rtl_file};
+
+    for (floorplanned, flattened) in [(false, false), (true, false), (false, true)] {
+        let mut state = scalar_state(floorplanned, flattened);
+        let manifest = generate_manifest(&mut state);
+        let mut sources = vec![("top.v", rtl_file(&manifest, "top.v").as_str())];
+        if let Some(fsm) = manifest.files().get("rtl/top_fsm.v") {
+            sources.push(("top_fsm.v", fsm));
+        }
+        sources.extend([("worker.v", SCALAR_WORKER), ("harness.v", SCALAR_HARNESS)]);
+        run_cosim(
+            "scalar_harness",
+            &[],
+            &["tapa_control.v"],
+            &sources,
+            SCALAR_TESTBENCH,
+        );
+    }
+}
+
+fn scalar_state(floorplanned: bool, flattened: bool) -> tapa_codegen::rtl_state::TopologyWithRtl {
+    use common::{design, parse_module, task};
+    use serde_json::json;
+    use std::collections::BTreeMap;
+    use tapa_ir::{
+        global_controller_instance_name, local_controller_instance_name, ControlChannel,
+        FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
+    let top = task("top", "upper", |t| {
+        t["ports"] = json!([
+            {"cat": "scalar", "name": "n", "type": "uint64_t", "width": 64},
+            {"cat": "scalar", "name": "flag", "type": "bool", "width": 1}
+        ]);
+        t["tasks"] = json!({"worker": [{"name": "worker#0", "args": {
+            "count": {"arg": "n", "cat": "scalar"},
+            "flag": {"arg": "flag", "cat": "scalar"},
+            "tiny": {"arg": "n", "cat": "scalar"}
+        }}]});
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] = json!([
+            {"cat": "scalar", "name": "count", "type": "uint32_t", "width": 32},
+            {"cat": "scalar", "name": "flag", "type": "bool", "width": 1},
+            {"cat": "scalar", "name": "tiny", "type": "uint8_t", "width": 8}
+        ]);
+    });
+    let mut state = tapa_codegen::rtl_state::TopologyWithRtl::new(design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("worker", worker)],
+    ));
+    state
+        .attach_module(
+            "top",
+            parse_module(
+                "module top(input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+                 output wire ap_done, output wire ap_idle, output wire ap_ready,\n\
+                 input wire [63:0] n, input wire flag);\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module("worker", parse_module(SCALAR_WORKER))
+        .unwrap();
+    if flattened {
+        state.flat_projection =
+            Some(tapa_ir::transforms::flatten_with_origins(&state.design).unwrap());
+    }
+    if floorplanned {
+        let worker = "worker#0";
+        let (central, remote) = ("SLOT_X0Y0".to_owned(), "SLOT_X1Y0".to_owned());
+        let routes = [
+            ControlChannel::Launch,
+            ControlChannel::Reset,
+            ControlChannel::Completion,
+        ]
+        .into_iter()
+        .map(|channel| PipelineRoute {
+            channel: RoutedChannel::Control {
+                instance: worker.to_owned(),
+                channel,
+            },
+            route: if channel == ControlChannel::Completion {
+                vec![remote.clone(), central.clone()]
+            } else {
+                vec![central.clone(), remote.clone()]
+            },
+            scheme: PipelineScheme::Single,
+            reg_regions: Vec::new(),
+        })
+        .collect();
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_owned(),
+            grid: (2, 1),
+            regions: BTreeMap::from([
+                (global_controller_instance_name().to_owned(), central),
+                (worker.to_owned(), remote.clone()),
+                (local_controller_instance_name(worker), remote),
+            ]),
+            routes,
+            slot_usage: BTreeMap::new(),
+        });
+    }
+    state
+}
+
+/// A task that records the scalars it starts with.
+const SCALAR_WORKER: &str = "
+module worker(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+              output wire ap_done, output wire ap_idle, output wire ap_ready,
+              input wire [31:0] count, input wire flag, input wire [7:0] tiny);
+  reg [31:0] seen_count = 0;
+  reg seen_flag = 0;
+  reg [7:0] seen_tiny = 0;
+  reg busy = 0;
+  reg finished = 0;
+  assign ap_done = finished;
+  assign ap_ready = finished;
+  assign ap_idle = !busy && !finished;
+  always @(posedge ap_clk) begin
+    if (!ap_rst_n) begin
+      busy <= 0; finished <= 0;
+    end else begin
+      finished <= 0;
+      if (busy) begin
+        busy <= 0; finished <= 1;
+      end else if (ap_start && !finished) begin
+        busy <= 1; seen_count <= count; seen_flag <= flag; seen_tiny <= tiny;
+      end
+    end
+  end
+endmodule
+";
+
+const SCALAR_HARNESS: &str = "
+module scalar_harness(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+                      input wire [63:0] n, input wire flag, output wire ap_done,
+                      output wire [31:0] count, output wire seen_flag,
+                      output wire [7:0] tiny);
+  wire ap_idle, ap_ready;
+  top dut(.ap_clk(ap_clk), .ap_rst_n(ap_rst_n), .ap_start(ap_start),
+          .ap_done(ap_done), .ap_idle(ap_idle), .ap_ready(ap_ready), .n(n),
+          .flag(flag));
+  assign count = dut.worker_0.seen_count;
+  assign seen_flag = dut.worker_0.seen_flag;
+  assign tiny = dut.worker_0.seen_tiny;
+endmodule
+";
+
+const SCALAR_TESTBENCH: &str = r#"
+#include "Vscalar_harness.h"
+#include <cstdio>
+#include <memory>
+int main() {
+  auto d = std::make_unique<Vscalar_harness>();
+  auto tick = [&]() { d->ap_clk = 1; d->eval(); d->ap_clk = 0; d->eval(); };
+  d->ap_clk = 0; d->ap_rst_n = 0; d->ap_start = 0;
+  d->n = 0x123456789AULL; d->flag = 1;
+  for (int i = 0; i < 16; ++i) tick();
+  d->ap_rst_n = 1;
+  for (int i = 0; i < 16; ++i) tick();
+  d->ap_start = 1;
+  for (int i = 0; i < 200 && !d->ap_done; ++i) tick();
+  if (!d->ap_done || d->count != 0x3456789Au || d->seen_flag != 1 || d->tiny != 0x9A) {
+    std::printf("FAIL: done %d count 0x%x flag %d tiny 0x%x\n", (int)d->ap_done,
+                (unsigned)d->count, (int)d->seen_flag, (unsigned)d->tiny);
+    return 1;
+  }
+  std::printf("PASS\n");
+  return 0;
+}
+"#;

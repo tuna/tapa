@@ -402,12 +402,19 @@ impl DistributedControlPlan {
         module.add_signal(wire(&reset_n))?;
         module.add_signal(wire(&local_completion))?;
 
-        let mut launch_fields = child
-            .payload
-            .iter()
-            .rev()
-            .map(|field| field.source.clone())
-            .collect::<Vec<_>>();
+        // Each field enters the bundle at its own width, through a wire of
+        // that width: a parent wire wider or narrower than the child's port
+        // would otherwise shift every field above it.
+        let mut launch_fields = Vec::new();
+        for (index, field) in child.payload.iter().enumerate().rev() {
+            let sized = format!("{prefix}__field{index}");
+            module.add_signal(width_wire(&sized, field.width))?;
+            module.add_assign(ContinuousAssign::new(
+                Expr::ident(&sized),
+                field.source.clone(),
+            ));
+            launch_fields.push(Expr::ident(sized));
+        }
         if !child.is_autorun {
             launch_fields.push(Expr::ident(scope_signal(child.owner.as_deref(), "release")));
         }

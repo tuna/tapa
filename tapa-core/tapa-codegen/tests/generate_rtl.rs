@@ -1037,7 +1037,7 @@ fn test_generate_rtl_distributes_floorplanned_control() {
         &[],
     );
     assert_eq!(top.matches("tapa_control_pipeline #(").count(), 3, "{top}");
-    check(top, &[".WIDTH(19)", "assign __tapa_control_worker_0__launch_input = {n, __tapa_control_release, __tapa_control_start}", "assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]", ".FLUSH_CYCLES(7)", "assign ap_rst = !__tapa_control_fabric_reset_n", ".fabric_reset_n(__tapa_control_fabric_reset_n)", "(* max_fanout = 256 *) wire ap_rst;", ".ap_rst_n(__tapa_control_worker_0__reset_n)", "assign __tapa_control_daemon_0__reset_n = ap_rst_n", ".AUTORUN(1)", ".launch_start(__tapa_control_daemon_0__launch_output)",], &["__tapa_control_daemon_0_completion"]);
+    check(top, &[".WIDTH(19)", "wire [16:0] __tapa_control_worker_0__field0;", "assign __tapa_control_worker_0__field0 = n;", "assign __tapa_control_worker_0__launch_input = {__tapa_control_worker_0__field0, __tapa_control_release, __tapa_control_start}", "assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]", ".FLUSH_CYCLES(7)", "assign ap_rst = !__tapa_control_fabric_reset_n", ".fabric_reset_n(__tapa_control_fabric_reset_n)", "(* max_fanout = 256 *) wire ap_rst;", ".ap_rst_n(__tapa_control_worker_0__reset_n)", "assign __tapa_control_daemon_0__reset_n = ap_rst_n", ".AUTORUN(1)", ".launch_start(__tapa_control_daemon_0__launch_output)",], &["__tapa_control_daemon_0_completion"]);
     lint_distributed_top(&state);
 }
 
@@ -1207,7 +1207,7 @@ fn test_generate_rtl_control_launch_packs_direct_mmap_offset() {
 
     let manifest = generate_manifest(&mut state);
     let top = rtl_file(&manifest, "top.v");
-    check(top, &[".WIDTH(66)", "assign __tapa_control_reader_0__launch_input = {mem_offset, __tapa_control_release, __tapa_control_start}", "assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]", ".FLUSH_CYCLES(8)"], &[]);
+    check(top, &[".WIDTH(66)", "assign __tapa_control_reader_0__field0 = mem_offset;", "assign __tapa_control_reader_0__launch_input = {__tapa_control_reader_0__field0, __tapa_control_release, __tapa_control_start}", "assign reader_0__data_offset = __tapa_control_reader_0__launch_output[65:2]", ".FLUSH_CYCLES(8)"], &[]);
 }
 
 fn direct_axi_endpoint() -> tapa_ir::AxiEndpoint {
