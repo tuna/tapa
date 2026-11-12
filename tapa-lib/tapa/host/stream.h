@@ -865,10 +865,13 @@ class istreams : virtual public internal::basic_streams<T> {
   istreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     istreams<T, length> result;
-    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length, [&] {
-      return "istream slice '" + this->get_slice_name(istreams::length) +
-             "' accessed";
-    });
+    // Named where it starts in the original streams.
+    result.ptr = this->access_slice(
+        access_pos_, this->ptr->pos + static_cast<int>(access_pos_), length,
+        [&] {
+          return "istream slice '" + this->get_slice_name(istreams::length) +
+                 "' accessed";
+        });
     return result;
   }
 };
@@ -908,10 +911,13 @@ class ostreams : virtual public internal::basic_streams<T> {
   ostreams<T, length> access() {
     CHECK_NOTNULL(this->ptr.get());
     ostreams<T, length> result;
-    result.ptr = this->access_slice(access_pos_, this->ptr->pos, length, [&] {
-      return "ostream slice '" + this->get_slice_name(ostreams::length) +
-             "' accessed";
-    });
+    // Named where it starts in the original streams.
+    result.ptr = this->access_slice(
+        access_pos_, this->ptr->pos + static_cast<int>(access_pos_), length,
+        [&] {
+          return "ostream slice '" + this->get_slice_name(ostreams::length) +
+                 "' accessed";
+        });
     return result;
   }
 };
