@@ -7,7 +7,6 @@
 #include <vector>
 
 #include "tapa/host/frt/c_api.h"
-#include "tapa/host/frt/types.h"
 
 namespace tapa {
 namespace internal {
