@@ -160,17 +160,17 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
 
 /// The offset of each argument's (low) data word in an HLS control slave.
 ///
-/// Keyed by lowercase argument name and read from the slave's Verilog:
-/// `localparam ADDR_<NAME>_DATA_0 = 6'h10` (Vitis HLS 2021 and later) or
-/// `ADDR_<NAME>_0` (2020), else the `// 0x10 : Data signal of <name>`
-/// comments.
+/// Keyed by lowercase argument name and read from the slave's address
+/// `localparam`s: Vitis HLS 2021 and later write one `localparam` block with
+/// an `ADDR_<NAME>_DATA_0 = 6'h10,` line per register, Vitis HLS 2020 (and
+/// hand-written slaves) `localparam ADDR_<NAME>_0 = 8'h10;`. A slave with
+/// neither falls back to the `// 0x10 : Data signal of <name>` comments.
 #[must_use]
 pub fn control_register_offsets(verilog: &str) -> std::collections::BTreeMap<String, u32> {
     let mut map = std::collections::BTreeMap::new();
     for line in verilog.lines() {
-        let Some(rest) = line.trim_start().strip_prefix("localparam") else {
-            continue;
-        };
+        let line = line.trim_start();
+        let rest = line.strip_prefix("localparam").unwrap_or(line);
         let Some((name, value)) = rest.split_once('=') else {
             continue;
         };
@@ -441,6 +441,22 @@ mod control_register_tests {
         let m = control_register_offsets(v);
         assert_eq!(m.get("a").copied(), Some(0x10));
         assert_eq!(m.get("n").copied(), Some(0x20));
+        assert_eq!(m.len(), 2);
+    }
+
+    /// The shape Vitis HLS 2025.2 (and 2022.2) writes: the `localparam`
+    /// keyword alone, then one register per line; no comments here, so the
+    /// fallback cannot be what answers.
+    #[test]
+    fn reads_the_localparam_block_vitis_writes() {
+        let v = "localparam\n    ADDR_AP_CTRL         = 6'h00,\n    \
+                 ADDR_A_OFFSET_DATA_0 = 6'h10,\n    ADDR_A_OFFSET_DATA_1 = 6'h14,\n    \
+                 ADDR_N_DATA_0        = 6'h34,\n    ADDR_N_CTRL          = 6'h38,\n    \
+                 WRIDLE               = 2'd0;\n\
+                 always @(posedge ACLK) if (waddr == ADDR_N_DATA_0) int_n <= WDATA;\n";
+        let m = control_register_offsets(v);
+        assert_eq!(m.get("a_offset").copied(), Some(0x10));
+        assert_eq!(m.get("n").copied(), Some(0x34));
         assert_eq!(m.len(), 2);
     }
 
