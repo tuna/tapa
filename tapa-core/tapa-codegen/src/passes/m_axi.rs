@@ -100,11 +100,8 @@ pub(crate) fn crossbar_master_addr_raw(arg_name: &str, channel_idx: u32, suffix:
     )
 }
 
-/// Build crossbar parameter arguments after validating the connection.
-pub(crate) fn try_build_crossbar_params(
-    conn: &MMapConnection,
-) -> Result<Vec<ParamArg>, CodegenError> {
-    validate_mmap_connection(conn)?;
+/// Build crossbar parameter arguments for a validated connection.
+pub(crate) fn build_crossbar_params(conn: &MMapConnection) -> Vec<ParamArg> {
     let addr_width = conn.geometry.channel_addr_width().unwrap_or(AXI_ADDR_WIDTH);
     let mut params = vec![
         ParamArg::new(
@@ -150,7 +147,7 @@ pub(crate) fn try_build_crossbar_params(
         ));
     }
 
-    Ok(params)
+    params
 }
 
 pub(crate) fn crossbar_slave_id_width(conn: &MMapConnection) -> u32 {
@@ -167,14 +164,12 @@ pub(crate) fn crossbar_slave_suffix_width(conn: &MMapConnection, suffix: &str) -
     }
 }
 
-/// Build a crossbar instance after validating the connection.
-pub(crate) fn try_build_crossbar_instance(
-    conn: &MMapConnection,
-) -> Result<ModuleInstance, CodegenError> {
+/// Build a crossbar instance for a validated connection.
+pub(crate) fn build_crossbar_instance(conn: &MMapConnection) -> ModuleInstance {
     let module_name = crossbar_module_name(conn);
     let arg_name = sanitize_array_name(&conn.arg_name);
     let instance_name = format!("axi_crossbar__{arg_name}");
-    let params = try_build_crossbar_params(conn)?;
+    let params = build_crossbar_params(conn);
 
     let mut ports = vec![
         PortArg::new("clk", Expr::ident(HANDSHAKE_CLK)),
@@ -214,9 +209,9 @@ pub(crate) fn try_build_crossbar_instance(
         }
     }
 
-    Ok(ModuleInstance::new(module_name, instance_name)
+    ModuleInstance::new(module_name, instance_name)
         .with_params(params)
-        .with_ports(ports))
+        .with_ports(ports)
 }
 
 /// Resolve the width of an M-AXI suffix from the protocol port-width
@@ -520,7 +515,7 @@ pub(crate) fn add_m_axi_and_crossbars(
     outputs: &mut OutputSet<'_>,
     task_name: &str,
     mmap_conns: &std::collections::BTreeMap<String, crate::rtl_state::MMapConnection>,
-) -> Result<(), CodegenError> {
+) {
     for conn in mmap_conns.values() {
         if let Some(mm) = modules.get_mut(task_name) {
             if conn.geometry.is_hmap() {
@@ -600,7 +595,7 @@ pub(crate) fn add_m_axi_and_crossbars(
                 }
             }
 
-            let crossbar_inst = try_build_crossbar_instance(conn)?;
+            let crossbar_inst = build_crossbar_instance(conn);
             if let Some(mm) = modules.get_mut(task_name) {
                 mm.add_instance(crossbar_inst);
             }
@@ -609,7 +604,6 @@ pub(crate) fn add_m_axi_and_crossbars(
             outputs.insert_generated(file_name, crossbar_rtl);
         }
     }
-    Ok(())
 }
 
 #[cfg(test)]
@@ -676,7 +670,7 @@ mod tests {
             slaves: vec![slave_w("leaf", 0, "d", 1, 2), slave("mid", 0, "data", 2)],
             geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
-        let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
+        let params = build_crossbar_params(&conn);
         let rendered: Vec<String> = params.iter().map(|p| format!("{p}")).collect();
         assert!(
             rendered.iter().any(|p| p.contains("S00_THREADS(1)")),
@@ -705,7 +699,7 @@ mod tests {
             slaves: vec![slave("task_a", 0, "data", 1), slave("task_b", 0, "data", 1)],
             geometry: tapa_ir::MemoryGeometry::new(64, None, None).unwrap(),
         };
-        let params = try_build_crossbar_params(&conn).expect("valid crossbar parameters");
+        let params = build_crossbar_params(&conn);
         assert!(
             params.len() >= 4,
             "should have at least DATA/ADDR/S_ID/M_ID"
@@ -724,9 +718,7 @@ mod tests {
             ],
             geometry: tapa_ir::MemoryGeometry::new(64, None, None).unwrap(),
         };
-        let text = try_build_crossbar_instance(&conn)
-            .expect("valid crossbar instance")
-            .to_string();
+        let text = build_crossbar_instance(&conn).to_string();
         assert!(text.contains(".S_ID_WIDTH(1)"), "got:\n{text}");
         assert!(text.contains(".M_ID_WIDTH(3)"), "got:\n{text}");
     }
@@ -816,9 +808,7 @@ mod tests {
             slaves: vec![slave("task_a", 0, "mem", 1)],
             geometry: tapa_ir::MemoryGeometry::new(32, None, None).unwrap(),
         };
-        let text = try_build_crossbar_instance(&conn)
-            .expect("valid crossbar instance")
-            .to_string();
+        let text = build_crossbar_instance(&conn).to_string();
         assert!(text.contains("axi_crossbar__chan_0"), "got:\n{text}");
         assert!(text.contains("m_axi_chan_0_ARADDR"), "got:\n{text}");
         assert!(!text.contains("chan[0]"), "got:\n{text}");
@@ -831,9 +821,7 @@ mod tests {
             slaves: vec![slave("task_a", 0, "mem", 1), slave("task_a", 1, "mem", 1)],
             geometry: tapa_ir::MemoryGeometry::new(512, Some(2), Some(1024)).unwrap(),
         };
-        let text = try_build_crossbar_instance(&conn)
-            .expect("valid crossbar instance")
-            .to_string();
+        let text = build_crossbar_instance(&conn).to_string();
         assert!(
             text.contains(".m00_ARADDR(m_axi_mat_a_0_ARADDR_raw)"),
             "got:\n{text}"

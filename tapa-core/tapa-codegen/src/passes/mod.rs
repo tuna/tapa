@@ -299,13 +299,17 @@ pub fn frame_rings(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
 
 /// Task pass: add M-AXI ports and crossbars, reusing the precomputed mmap
 /// connections.
+#[allow(
+    clippy::unnecessary_wraps,
+    reason = "every pass shares one signature so the stage table stays uniform"
+)]
 pub fn m_axi_crossbars(ctx: &mut TaskPassCtx<'_>) -> Result<(), CodegenError> {
     crate::m_axi::add_m_axi_and_crossbars(
         &mut ctx.modules,
         &mut ctx.outputs,
         ctx.name,
         &ctx.inputs.mmap_conns,
-    )?;
+    );
     Ok(())
 }
 
