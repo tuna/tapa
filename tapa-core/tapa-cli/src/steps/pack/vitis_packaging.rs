@@ -267,16 +267,21 @@ fn prepare_package_inputs(
         .map(collect_hls_report_paths)
         .transpose()?
         .unwrap_or_default();
-    Ok(build_package_xo_inputs(
-        design,
-        rtl_dir,
-        output_path,
-        part_num,
-        clock_period,
-        kernel_ports,
-        m_axi_param_block(&top_task.ports, &top_m_axi_bases),
-        report_paths,
-    ))
+    Ok(PackageXoInputs::builder()
+        .top_name(design.top.clone())
+        .hdl_dir(crate::util::utf8(rtl_dir))
+        .device_info(DeviceInfo {
+            part_num,
+            clock_period: clock_period.to_string(),
+        })
+        .kernel_xml(KernelXmlArgs {
+            top_name: design.top.clone(),
+            ports: kernel_ports,
+        })
+        .kernel_out_path(crate::util::utf8(output_path))
+        .m_axi_params(m_axi_param_block(&top_task.ports, &top_m_axi_bases))
+        .report_paths(report_paths)
+        .build())
 }
 
 fn write_slash_zip(
@@ -367,38 +372,6 @@ fn top_rtl_m_axi_bases(
         out.insert(base.to_owned());
     }
     Ok(out)
-}
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "aggregating these into a struct would bounce values through \
-              another builder without adding clarity"
-)]
-fn build_package_xo_inputs(
-    design: &Design,
-    hdl_dir: &Path,
-    output_path: &Path,
-    part_num: String,
-    clock_period: ClockPeriod,
-    kernel_ports: Vec<tapa_xilinx::KernelXmlPort>,
-    m_axi_params: Vec<(String, Vec<(String, String)>)>,
-    report_paths: Vec<(Utf8PathBuf, String)>,
-) -> PackageXoInputs {
-    PackageXoInputs::builder()
-        .top_name(design.top.clone())
-        .hdl_dir(crate::util::utf8(hdl_dir))
-        .device_info(DeviceInfo {
-            part_num,
-            clock_period: clock_period.to_string(),
-        })
-        .kernel_xml(KernelXmlArgs {
-            top_name: design.top.clone(),
-            ports: kernel_ports,
-        })
-        .kernel_out_path(crate::util::utf8(output_path))
-        .m_axi_params(m_axi_params)
-        .report_paths(report_paths)
-        .build()
 }
 
 /// Collect HLS reports for the `.xo` under `report/`: the work-dir-level

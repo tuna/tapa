@@ -87,33 +87,8 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, rtl_dir: &Path) -> Res
     Ok(())
 }
 
-/// Yield `(task_name, report_dir)` for every
-/// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
-/// both walk this layout; file selection, staging, and redaction stay
-/// per-path.
-fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathBuf)>> {
-    let hls_root = work_dir.join("hls");
-    let mut out = Vec::new();
-    if !hls_root.is_dir() {
-        return Ok(out);
-    }
-    for task_entry in fs_err::read_dir(&hls_root)? {
-        let task_entry = task_entry?;
-        if !task_entry.file_type()?.is_dir() {
-            continue;
-        }
-        let report_dir = task_entry.path().join("report");
-        if !report_dir.is_dir() {
-            continue;
-        }
-        let task_name = task_entry.file_name().to_string_lossy().into_owned();
-        out.push((task_name, report_dir));
-    }
-    Ok(out)
-}
-
-/// Walk each task's HLS report dir (see [`hls_task_report_dirs`]) for the
-/// files `keep` accepts and return `(source, archive_name)` pairs sorted by
+/// Walk each `<work_dir>/hls/<task>/report/` directory for the files
+/// `keep` accepts and return `(source, archive_name)` pairs sorted by
 /// archive name, so both pack flows emit a stable archive order. The
 /// `report/<task>/` layout in the archive name keeps same-named reports from
 /// different tasks from collapsing into a single entry. Filtering, and what
@@ -124,27 +99,39 @@ pub(super) fn collect_hls_reports(
     keep: impl Fn(&Path) -> bool,
 ) -> Result<Vec<(PathBuf, String)>> {
     let mut files = Vec::new();
-    for (task_name, report_root) in &hls_task_report_dirs(work_dir)? {
-        for entry in walkdir::WalkDir::new(report_root) {
-            let entry = entry.map_err(std::io::Error::other)?;
-            if !entry.file_type().is_file() {
+    let hls_root = work_dir.join("hls");
+    if hls_root.is_dir() {
+        for task_entry in fs_err::read_dir(hls_root)? {
+            let task_entry = task_entry?;
+            if !task_entry.file_type()?.is_dir() {
                 continue;
             }
-            let path = entry.path();
-            if !keep(path) {
+            let report_root = task_entry.path().join("report");
+            if !report_root.is_dir() {
                 continue;
             }
-            let rel = path.strip_prefix(report_root).map_err(|_| {
-                CliError::Archive(format!(
-                    "report file `{}` is not under the HLS report root `{}`",
-                    path.display(),
-                    report_root.display(),
-                ))
-            })?;
-            files.push((
-                path.to_path_buf(),
-                format!("report/{task_name}/{}", rel.to_slash_lossy()),
-            ));
+            let task_name = task_entry.file_name().to_string_lossy().into_owned();
+            for entry in walkdir::WalkDir::new(&report_root) {
+                let entry = entry.map_err(std::io::Error::other)?;
+                if !entry.file_type().is_file() {
+                    continue;
+                }
+                let path = entry.path();
+                if !keep(path) {
+                    continue;
+                }
+                let rel = path.strip_prefix(&report_root).map_err(|_| {
+                    CliError::Archive(format!(
+                        "report file `{}` is not under the HLS report root `{}`",
+                        path.display(),
+                        report_root.display(),
+                    ))
+                })?;
+                files.push((
+                    path.to_path_buf(),
+                    format!("report/{task_name}/{}", rel.to_slash_lossy()),
+                ));
+            }
         }
     }
     files.sort();
