@@ -124,7 +124,8 @@ pub fn render_graph(
     );
     let drain = drains(partition);
     for kernel in &partition.kernels {
-        let signature = signature(kernel, &partition.streams, drain)?;
+        let params = kernel_params(kernel, &partition.streams, drain)?;
+        let signature = signature(kernel, &params);
         let _ = writeln!(decls, "{signature};");
         let source = options.sources.get(&kernel.task).ok_or_else(|| {
             XilinxError::AieGraph(format!(
@@ -134,7 +135,7 @@ pub fn render_graph(
         })?;
         files.insert(
             format!("kernels/{}.cc", kernel.name),
-            wrapper(kernel, &partition.streams, source, &signature, drain)?,
+            wrapper(kernel, &params, source, &signature),
         );
     }
     files.insert("kernels.h".to_string(), decls);
@@ -192,29 +193,18 @@ fn memory_channels(memory: &AieMemoryPort) -> Vec<(&'static str, usize, bool)> {
 }
 
 /// The `tapa::aie::memory{read_addr, read_data, write_addr, write_data,
-/// write_resp}` of an `async_mmap` port: a write request and its data share
-/// one port, and a channel the body never names is null.
-fn memory_arg(name: &str, memory: &AieMemoryPort) -> String {
-    let port = |present: bool, suffix: &str| {
-        if present {
-            format!("{name}_{suffix}")
-        } else {
-            "nullptr".to_string()
-        }
-    };
-    let reads = memory.reads.is_some();
-    let writes = memory.writes.is_some();
-    let responses = memory
-        .writes
-        .as_ref()
-        .is_some_and(|w| w.responses.is_some());
+/// write_resp}` of an `async_mmap` port whose channels are the parameters
+/// `channels` (by [`memory_channels`] suffix): a write request and its data
+/// share one port, and a channel the body never names is null.
+fn memory_arg(channels: &BTreeMap<&str, String>) -> String {
+    let port = |suffix: &str| channels.get(suffix).map_or("nullptr", String::as_str);
     format!(
         "tapa::aie::memory{{{}, {}, {}, {}, {}}}",
-        port(reads, "read_addr"),
-        port(reads, "read_data"),
-        port(writes, "write"),
-        port(writes, "write"),
-        port(responses, "write_resp")
+        port("read_addr"),
+        port("read_data"),
+        port("write"),
+        port("write"),
+        port("write_resp")
     )
 }
 
@@ -236,8 +226,6 @@ const GMIO_MBPS: u32 = 1000;
 /// `inout` runtime parameter, `frames_<GMIO>`, for a GMIO, or on the
 /// argument's count PLIO for a ring (see [`tapa_ir::RingPlio::Count`]).
 struct Counted {
-    /// The parameter's name.
-    param: String,
     /// The stream it writes.
     stream: usize,
     /// The ring's count PLIO, or `None` for a GMIO's runtime parameter.
@@ -280,11 +268,7 @@ fn counted_outputs(kernel: &AieKernel, streams: &[AieStream]) -> Result<Vec<Coun
                     port.name, kernel.name, streams[stream].fifo
                 )));
             }
-            counted.push(Counted {
-                param: sanitize_identifier_name(&port.name),
-                stream,
-                plio,
-            });
+            counted.push(Counted { stream, plio });
         }
     }
     Ok(counted)
@@ -302,97 +286,136 @@ fn drains(partition: &AiePartition) -> bool {
         .any(|stream| matches!(stream.kind, AieStreamKind::Gmio { input: false }))
 }
 
+/// A kernel wrapper's ADF parameters, each named by its position
+/// (`tapa_arg<i>`, with the port it carries in a comment) so that no port
+/// name, nor a name TAPA derives from one, can collide with another
+/// parameter or with what the wrapper declares.
+#[derive(Default)]
+struct KernelParams {
+    /// Each parameter's declaration.
+    decls: Vec<String>,
+    /// What the task receives, in its parameter order.
+    args: Vec<String>,
+    /// The drain flag ([`drains`]).
+    drain: Option<String>,
+    /// Per [`Counted`] port: its frame parameter, the local counting its
+    /// frames, the parameter reporting them, and whether that is a ring's
+    /// count PLIO.
+    counted: Vec<(String, String, String, bool)>,
+}
+
+impl KernelParams {
+    /// Declare the next parameter, of type `ty`, carrying `what`.
+    fn push(&mut self, ty: &str, what: &str) -> String {
+        let name = format!("tapa_arg{}", self.decls.len());
+        self.decls.push(format!("{ty} {name} /* {what} */"));
+        name
+    }
+}
+
 /// One ADF kernel parameter per stream channel, frame or runtime scalar,
 /// then the drain flag ([`drains`]), then one frame count per GMIO or ring
 /// the kernel writes ([`Counted`]).
-fn signature(kernel: &AieKernel, streams: &[AieStream], drain: bool) -> Result<String> {
-    let mut params = Vec::new();
+fn kernel_params(kernel: &AieKernel, streams: &[AieStream], drain: bool) -> Result<KernelParams> {
+    let counted = counted_outputs(kernel, streams)?;
+    let mut params = KernelParams::default();
+    // The frame parameter of each counted stream.
+    let mut frames = BTreeMap::new();
     for port in &kernel.ports {
         let name = sanitize_identifier_name(&port.name);
         match &port.kind {
             AiePortKind::Streams {
                 input,
-                streams,
+                streams: channels,
                 plural,
                 words,
                 frame,
             } => {
                 let dir = if *input { "input" } else { "output" };
-                for (i, _) in streams.iter().enumerate() {
-                    let param = if *plural {
-                        format!("{name}_{i}")
-                    } else {
-                        name.clone()
-                    };
-                    params.push(match frame {
-                        Some(n) => format!("tapa::aie::{dir}_frame<int32, {}>& {param}", n * words),
-                        None => format!("{dir}_stream<int32>* {param}"),
-                    });
-                }
+                let ty = match frame {
+                    Some(n) => format!("tapa::aie::{dir}_frame<int32, {}>&", n * words),
+                    None => format!("{dir}_stream<int32>*"),
+                };
+                let names: Vec<String> = channels
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &stream)| {
+                        let what = if *plural {
+                            format!("{name}[{i}]")
+                        } else {
+                            name.clone()
+                        };
+                        let param = params.push(&ty, &what);
+                        frames.insert(stream, param.clone());
+                        param
+                    })
+                    .collect();
+                params.args.push(if *plural {
+                    format!("tapa::aie::pack({})", names.join(", "))
+                } else {
+                    let stream = channels[0];
+                    match counted.iter().position(|c| c.stream == stream) {
+                        Some(index) => {
+                            format!("tapa::aie::count({}, tapa_frames{index})", names[0])
+                        }
+                        None => names[0].clone(),
+                    }
+                });
             }
             AiePortKind::Scalar {
                 ctype,
                 width,
                 value: ScalarBinding::Runtime(_),
-            } => params.push(format!("{} {name}", rtp_type(ctype, *width)?)),
-            AiePortKind::Scalar { .. } => {}
-            AiePortKind::Memory(memory) => {
-                for (channel, _, input) in memory_channels(memory) {
-                    let dir = if input { "input" } else { "output" };
-                    params.push(format!("{dir}_stream<int32>* {name}_{channel}"));
-                }
-            }
-        }
-    }
-    if drain {
-        params.push("int32 tapa_drain".to_string());
-    }
-    for counted in counted_outputs(kernel, streams)? {
-        let param = &counted.param;
-        params.push(match counted.plio {
-            None => format!("int32 & tapa_frames_{param}"),
-            Some(_) => format!("output_stream<int32>* tapa_count_{param}"),
-        });
-    }
-    Ok(format!(
-        "void tapa_aie_{}({})",
-        kernel.name,
-        params.join(", ")
-    ))
-}
-
-fn wrapper(
-    kernel: &AieKernel,
-    streams: &[AieStream],
-    source: &KernelSource,
-    signature: &str,
-    drain: bool,
-) -> Result<String> {
-    let counted = counted_outputs(kernel, streams)?;
-    let mut args = Vec::new();
-    for port in &kernel.ports {
-        let name = sanitize_identifier_name(&port.name);
-        match &port.kind {
-            AiePortKind::Streams {
-                plural: true,
-                streams,
-                ..
             } => {
-                let channels: Vec<String> =
-                    (0..streams.len()).map(|i| format!("{name}_{i}")).collect();
-                args.push(format!("tapa::aie::pack({})", channels.join(", ")));
+                let param = params.push(rtp_type(ctype, *width)?, &name);
+                params.args.push(param);
             }
             AiePortKind::Scalar {
                 value: ScalarBinding::Constant(value),
                 ..
-            } => args.push(format!("tapa::aie::bits{{{:#x}ULL}}", value.value)),
-            AiePortKind::Memory(memory) => args.push(memory_arg(&name, memory)),
-            AiePortKind::Streams { .. } if counted.iter().any(|c| c.param == name) => {
-                args.push(format!("tapa::aie::count({name}, frames_{name})"));
+            } => params
+                .args
+                .push(format!("tapa::aie::bits{{{:#x}ULL}}", value.value)),
+            AiePortKind::Memory(memory) => {
+                let mut channels = BTreeMap::new();
+                for (channel, _, input) in memory_channels(memory) {
+                    let dir = if input { "input" } else { "output" };
+                    let ty = format!("{dir}_stream<int32>*");
+                    channels.insert(channel, params.push(&ty, &format!("{name}.{channel}")));
+                }
+                params.args.push(memory_arg(&channels));
             }
-            AiePortKind::Streams { .. } | AiePortKind::Scalar { .. } => args.push(name),
         }
     }
+    if drain {
+        params.drain = Some(params.push("int32", "drain"));
+    }
+    for (index, Counted { stream, plio, .. }) in counted.into_iter().enumerate() {
+        let what = format!("frames of {}", streams[stream].name);
+        let report = match plio {
+            None => params.push("int32 &", &what),
+            Some(_) => params.push("output_stream<int32>*", &what),
+        };
+        params.counted.push((
+            frames[&stream].clone(),
+            format!("tapa_frames{index}"),
+            report,
+            plio.is_some(),
+        ));
+    }
+    Ok(params)
+}
+
+fn signature(kernel: &AieKernel, params: &KernelParams) -> String {
+    format!("void tapa_aie_{}({})", kernel.name, params.decls.join(", "))
+}
+
+fn wrapper(
+    kernel: &AieKernel,
+    params: &KernelParams,
+    source: &KernelSource,
+    signature: &str,
+) -> String {
     let mut out = format!(
         "// Generated by TAPA: AI Engine kernel `{}` of task `{}`.\n",
         kernel.name, kernel.task
@@ -404,35 +427,33 @@ fn wrapper(
         let _ = writeln!(out, "#define TAPA_AIE_ORDERED_STREAMS");
     }
     let _ = write!(out, "#include \"{}\"\n\n{signature} {{\n", source.tu);
-    if drain {
-        out.push_str("  if (tapa_drain != 0) {\n");
-        for Counted { param, .. } in &counted {
-            let _ = writeln!(out, "    {param}.acquire();\n    {param}.release();");
+    if let Some(drain) = &params.drain {
+        let _ = writeln!(out, "  if ({drain} != 0) {{");
+        for (frame, ..) in &params.counted {
+            let _ = writeln!(out, "    {frame}.acquire();\n    {frame}.release();");
         }
         out.push_str("    return;\n  }\n");
     }
-    for Counted { param, .. } in &counted {
-        let _ = writeln!(out, "  int32 frames_{param} = 0;");
+    for (_, local, ..) in &params.counted {
+        let _ = writeln!(out, "  int32 {local} = 0;");
     }
     let _ = writeln!(
         out,
         "  tapa::aie::invoke({}, {});",
         kernel.call,
-        args.join(", ")
+        params.args.join(", ")
     );
-    for Counted { param, plio, .. } in &counted {
-        let _ = match plio {
-            None => writeln!(out, "  tapa_frames_{param} = frames_{param};"),
+    for (_, local, report, plio) in &params.counted {
+        let _ = if *plio {
             // With TLAST: the interface to the PL holds a lone 32-bit word
             // until a second one arrives, and none follows the count.
-            Some(_) => writeln!(
-                out,
-                "  writeincr(tapa_count_{param}, frames_{param}, true);"
-            ),
+            writeln!(out, "  writeincr({report}, {local}, true);")
+        } else {
+            writeln!(out, "  {report} = {local};")
         };
     }
     out.push_str("}\n");
-    Ok(out)
+    out
 }
 
 /// One end of a stream connection, as ADF spells it.
@@ -686,7 +707,8 @@ impl GraphText {
     /// to one tile (`pl_control::control_tiles`). Each packet controller
     /// answers a read on its own packet id, merged into `tapa_ctrl_ret`.
     /// The kernel's stack, and ADF's iteration count beside it, stay on that
-    /// tile.
+    /// tile. The nets to and from a controller are numbered, apart from the
+    /// streams' `n_<stream>`.
     fn pl_control(&mut self, kernels: &[AieKernel], freq: &str) {
         let n = kernels.len();
         let _ = writeln!(
@@ -714,14 +736,13 @@ impl GraphText {
             let _ = writeln!(
                 self.body,
                 "    {control} = adf::pktcontrol::create(true);\n    \
-                 adf::connect<adf::pktstream, adf::pktstream> n_{control}\
+                 adf::connect<adf::pktstream, adf::pktstream> tapa_ctrl_to_{index}\
                  (tapa_ctrl_split.out[{index}], {control}.in[0]);\n    \
-                 adf::connect<adf::pktstream, adf::pktstream> n_ret_{name}\
+                 adf::connect<adf::pktstream, adf::pktstream> tapa_ctrl_from_{index}\
                  ({control}.out[0], tapa_ctrl_merge.in[{index}]);\n    \
                  adf::location<adf::interconnect>({control}) = \
                  adf::location<adf::kernel>({k});\n    \
-                 adf::location<adf::stack>({k}) = adf::location<adf::kernel>({k});",
-                name = kernel.name
+                 adf::location<adf::stack>({k}) = adf::location<adf::kernel>({k});"
             );
         }
     }
@@ -1167,9 +1188,9 @@ mod tests {
         let files = render_graph(&partition, &options).expect("render");
         assert!(
             files["kernels/Scale_0.cc"].contains(
-                "void tapa_aie_Scale_0(output_stream<int32>* mem_read_addr, \
-                 input_stream<int32>* mem_read_data) {\n  \
-                 tapa::aie::invoke(Scale, tapa::aie::memory{mem_read_addr, mem_read_data, \
+                "void tapa_aie_Scale_0(output_stream<int32>* tapa_arg0 /* mem.read_addr */, \
+                 input_stream<int32>* tapa_arg1 /* mem.read_data */) {\n  \
+                 tapa::aie::invoke(Scale, tapa::aie::memory{tapa_arg0, tapa_arg1, \
                  nullptr, nullptr, nullptr});\n}\n"
             ),
             "{}",
@@ -1221,14 +1242,16 @@ mod tests {
              #define TAPA_TASK_DEF_Join\n\
              #define TAPA_AIE_ORDERED_STREAMS\n\
              #include \"design.cpp\"\n\n\
-             void tapa_aie_Join_0(input_stream<int32>* in_0, input_stream<int32>* in_1, \
-             output_stream<int32>* c, uint64 n) {\n  \
-             tapa::aie::invoke(Join<2>, tapa::aie::pack(in_0, in_1), c, n, \
-             tapa::aie::bits{0x3ULL});\n}\n"
+             void tapa_aie_Join_0(input_stream<int32>* tapa_arg0 /* in[0] */, \
+             input_stream<int32>* tapa_arg1 /* in[1] */, \
+             output_stream<int32>* tapa_arg2 /* c */, uint64 tapa_arg3 /* n */) {\n  \
+             tapa::aie::invoke(Join<2>, tapa::aie::pack(tapa_arg0, tapa_arg1), tapa_arg2, \
+             tapa_arg3, tapa::aie::bits{0x3ULL});\n}\n"
         );
         assert!(files["kernels.h"].contains(
-            "void tapa_aie_Fan_0(tapa::aie::input_frame<int32, 256>& in, \
-             output_stream<int32>* out_0, output_stream<int32>* out_1);"
+            "void tapa_aie_Fan_0(tapa::aie::input_frame<int32, 256>& tapa_arg0 /* in */, \
+             output_stream<int32>* tapa_arg1 /* out[0] */, \
+             output_stream<int32>* tapa_arg2 /* out[1] */);"
         ));
     }
 
@@ -1273,9 +1296,9 @@ mod tests {
             "n_tapa_ctrl_ret(tapa_ctrl_merge.out[0], p_tapa_ctrl_ret.in[0]);",
             "control_Fan_0 = adf::pktcontrol::create(true);",
             "control_Join_0 = adf::pktcontrol::create(true);",
-            "n_control_Fan_0(tapa_ctrl_split.out[0], control_Fan_0.in[0]);",
-            "n_control_Join_0(tapa_ctrl_split.out[1], control_Join_0.in[0]);",
-            "n_ret_Join_0(control_Join_0.out[0], tapa_ctrl_merge.in[1]);",
+            "tapa_ctrl_to_0(tapa_ctrl_split.out[0], control_Fan_0.in[0]);",
+            "tapa_ctrl_to_1(tapa_ctrl_split.out[1], control_Join_0.in[0]);",
+            "tapa_ctrl_from_1(control_Join_0.out[0], tapa_ctrl_merge.in[1]);",
             "adf::location<adf::interconnect>(control_Join_0) = \
              adf::location<adf::kernel>(k_Join_0);",
             "adf::location<adf::stack>(k_Join_0) = adf::location<adf::kernel>(k_Join_0);",
@@ -1405,16 +1428,102 @@ mod tests {
         let kernel = &files["kernels/Pass_0.cc"];
         assert!(
             kernel.contains(
-                "tapa::aie::output_frame<int32, 64>& out, int32 tapa_drain, \
-                 int32 & tapa_frames_out) {\n  \
-                 if (tapa_drain != 0) {\n    out.acquire();\n    out.release();\n    \
+                "tapa::aie::output_frame<int32, 64>& tapa_arg1 /* out */, \
+                 int32 tapa_arg2 /* drain */, int32 & tapa_arg3 /* frames of dst */) {\n  \
+                 if (tapa_arg2 != 0) {\n    tapa_arg1.acquire();\n    tapa_arg1.release();\n    \
                  return;\n  }\n  \
-                 int32 frames_out = 0;\n  \
-                 tapa::aie::invoke(Pass, in, tapa::aie::count(out, frames_out));\n  \
-                 tapa_frames_out = frames_out;\n}"
+                 int32 tapa_frames0 = 0;\n  \
+                 tapa::aie::invoke(Pass, tapa_arg0, tapa::aie::count(tapa_arg1, tapa_frames0));\n  \
+                 tapa_arg3 = tapa_frames0;\n}"
             ),
             "{kernel}"
         );
+    }
+
+    /// A kernel wrapper names its parameters and locals by position, so
+    /// ports named like what it once derived from other ports (`a_0` beside
+    /// the plural `a`, `frames_out` beside the counted `out`, `tapa_drain`)
+    /// collide with nothing: no port name is an identifier in the wrapper.
+    #[test]
+    fn no_port_name_collides_with_a_wrapper_identifier() {
+        let stream = |name: &str, kind| AieStream {
+            name: name.into(),
+            fifo: name.into(),
+            words: 4,
+            frame: matches!(kind, AieStreamKind::Gmio { .. }).then_some(16),
+            kind,
+            ring: None,
+        };
+        let plio = AieStreamKind::Plio {
+            input: true,
+            width: 128,
+        };
+        let runtime = |arg: &str| AiePortKind::Scalar {
+            ctype: "int".into(),
+            width: 32,
+            value: ScalarBinding::Runtime(arg.into()),
+        };
+        let names = ["in", "out", "a", "a_0", "tapa_drain", "frames_out"];
+        let partition = AiePartition {
+            kernels: vec![AieKernel {
+                name: "Pass_0".into(),
+                task: "Pass".into(),
+                call: "Pass".into(),
+                ports: vec![
+                    port(names[0], streams(true, vec![0], Some(16))),
+                    port(names[1], streams(false, vec![1], Some(16))),
+                    port(names[2], streams(true, vec![2, 3], None)),
+                    port(names[3], streams(true, vec![4], None)),
+                    port(names[4], runtime("k")),
+                    port(names[5], runtime("m")),
+                ],
+                location: None,
+                stack_bytes: None,
+                ordered: false,
+            }],
+            streams: vec![
+                stream("src", AieStreamKind::Gmio { input: true }),
+                stream("dst", AieStreamKind::Gmio { input: false }),
+                stream("a0", plio),
+                stream("a1", plio),
+                stream("x", plio),
+            ],
+            run_forever: false,
+            pl_less: true,
+        };
+        let options = GraphOptions {
+            sources: BTreeMap::from([(
+                "Pass".into(),
+                KernelSource {
+                    tu: "design.cpp".into(),
+                    defines: Vec::new(),
+                },
+            )]),
+            rtp_args: BTreeMap::from([("k".into(), 0), ("m".into(), 1)]),
+            ..GraphOptions::default()
+        };
+        let files = render_graph(&partition, &options).expect("render");
+        let kernel = &files["kernels/Pass_0.cc"];
+        let mut code = String::new();
+        for chunk in kernel.split("/*") {
+            code.push_str(chunk.split_once("*/").map_or(chunk, |(_, rest)| rest));
+        }
+        let words: Vec<&str> = code
+            .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .collect();
+        for name in names {
+            assert!(
+                !words.contains(&name),
+                "`{name}` is an identifier in:\n{kernel}"
+            );
+        }
+        let params: Vec<&str> = words
+            .iter()
+            .copied()
+            .filter(|word| word.starts_with("tapa_arg"))
+            .collect();
+        let declared: std::collections::BTreeSet<&str> = params.iter().copied().collect();
+        assert_eq!(declared.len(), 9, "{kernel}");
     }
 
     /// Where only PL drives the graph, a PL-less top's arguments are PLIOs
@@ -1477,11 +1586,11 @@ mod tests {
         let kernel = &files["kernels/Pass_0.cc"];
         assert!(
             kernel.contains(
-                "tapa::aie::output_frame<int32, 64>& out, \
-                 output_stream<int32>* tapa_count_out) {\n  \
-                 int32 frames_out = 0;\n  \
-                 tapa::aie::invoke(Pass, in, tapa::aie::count(out, frames_out));\n  \
-                 writeincr(tapa_count_out, frames_out, true);\n}"
+                "tapa::aie::output_frame<int32, 64>& tapa_arg1 /* out */, \
+                 output_stream<int32>* tapa_arg2 /* frames of dst_plio */) {\n  \
+                 int32 tapa_frames0 = 0;\n  \
+                 tapa::aie::invoke(Pass, tapa_arg0, tapa::aie::count(tapa_arg1, tapa_frames0));\n  \
+                 writeincr(tapa_arg2, tapa_frames0, true);\n}"
             ),
             "{kernel}"
         );
