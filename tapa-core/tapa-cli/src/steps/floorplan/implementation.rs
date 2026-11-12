@@ -126,6 +126,8 @@ pub(super) struct ImplementationTarget {
     vivado: String,
     vpp: String,
     flow: Target,
+    /// A Vitis platform on Versal, whose link makes an `.xsa`.
+    versal: bool,
 }
 
 impl ImplementationTarget {
@@ -186,6 +188,7 @@ pub(super) fn validate_target(
     } else {
         (String::new(), String::new(), args.programs.vitis()?)
     };
+    let versal = flow == Target::XilinxVitis && crate::steps::link::platform_is_versal(platform)?;
 
     Ok(ImplementationTarget {
         platform: platform.to_string(),
@@ -195,6 +198,7 @@ pub(super) fn validate_target(
         vivado,
         vpp,
         flow,
+        versal,
     })
 }
 
@@ -392,13 +396,36 @@ fn try_implement_one(
         "floorplan candidate_{:03} [3/3]: running Vitis implementation",
         candidate.index,
     );
-    let job = VitisLinkJob::builder()
-        .kernel_name(projection.flat.top.clone())
+    let job = vitis_candidate_job(
+        &projection.flat.top,
+        package,
+        target,
+        &paths,
+        connectivity.is_some(),
+    );
+    let output = run_vitis_link(runner, &job)?;
+    Ok((output, Some(Box::new(job))))
+}
+
+/// The exploration link of one Vitis candidate: up to post-route timing, in
+/// the candidate's own directories. A Versal platform links to an `.xsa`, as
+/// `tapa link` does there; v++ refuses an `.xclbin` output ("[v++ 82-4223]
+/// Output file type of .xsa is required").
+fn vitis_candidate_job(
+    top: &str,
+    package: camino::Utf8PathBuf,
+    target: &ImplementationTarget,
+    paths: &CandidatePaths,
+    connectivity: bool,
+) -> VitisLinkJob {
+    VitisLinkJob::builder()
+        .kernel_name(top.to_string())
         .xo(package)
         .platform(target.platform.clone())
         .target_mhz(target.target_mhz)
         .vivado_threads(target.vivado_threads)
         .vpp(target.vpp.clone())
+        .versal(target.versal)
         .mode(VitisLinkMode::PostRouteTiming)
         .work_dir(crate::util::utf8(&paths.link))
         .artifacts_dir(crate::util::utf8(&paths.artifacts))
@@ -410,11 +437,9 @@ fn try_implement_one(
             paths.constraints.join(FLOORPLAN_XDC),
         )))
         .connectivity_config(
-            connectivity.map(|_| crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY))),
+            connectivity.then(|| crate::util::utf8(paths.constraints.join(FLOORPLAN_CONNECTIVITY))),
         )
-        .build();
-    let output = run_vitis_link(runner, &job)?;
-    Ok((output, Some(Box::new(job))))
+        .build()
 }
 
 fn package_candidate(
@@ -918,29 +943,73 @@ mod tests {
         })
     }
 
+    fn vitis_target(versal: bool) -> ImplementationTarget {
+        ImplementationTarget {
+            platform: "xilinx_test_platform".to_string(),
+            target_mhz: 300,
+            vivado_threads: 2,
+            slashkit: String::new(),
+            vivado: String::new(),
+            vpp: "v++".to_string(),
+            flow: Target::XilinxVitis,
+            versal,
+        }
+    }
+
     fn vitis_job(work_dir: &Path, index: usize) -> VitisLinkJob {
+        vitis_job_for(work_dir, index, &vitis_target(false))
+    }
+
+    fn vitis_job_for(work_dir: &Path, index: usize, target: &ImplementationTarget) -> VitisLinkJob {
         let paths = CandidatePaths::new(work_dir, index, "Top");
         paths.recreate().expect("candidate directories");
         fs_err::write(&paths.xo, "prepared XO").expect("write prepared XO");
         fs_err::write(paths.constraints.join(FLOORPLAN_XDC), "constraints")
             .expect("write constraints");
-        VitisLinkJob::builder()
-            .kernel_name("Top".to_string())
-            .xo(crate::util::utf8(&paths.xo))
-            .platform("xilinx_test_platform".to_string())
-            .target_mhz(300)
-            .vivado_threads(2)
-            .mode(VitisLinkMode::PostRouteTiming)
-            .work_dir(crate::util::utf8(&paths.link))
-            .artifacts_dir(crate::util::utf8(&paths.artifacts))
-            .output_xclbin(crate::util::utf8(&paths.xclbin))
-            .report_dir(crate::util::utf8(&paths.reports))
-            .log_dir(crate::util::utf8(&paths.logs))
-            .temp_dir(crate::util::utf8(&paths.temp))
-            .floorplan_xdc(Some(crate::util::utf8(
-                paths.constraints.join(FLOORPLAN_XDC),
-            )))
-            .build()
+        vitis_candidate_job("Top", crate::util::utf8(&paths.xo), target, &paths, false)
+    }
+
+    /// On Versal (VCK190), v++ makes every link an `.xsa` and refuses the
+    /// `.xclbin` an Alveo candidate links to ("[v++ 82-4223] Output file type
+    /// of .xsa is required"), and sets the kernel clock as `tapa link` does.
+    #[test]
+    fn a_versal_candidate_links_an_xsa() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let job = vitis_job_for(dir.path(), 0, &vitis_target(true));
+        let paths = CandidatePaths::new(dir.path(), 0, "Top");
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(
+            crate::util::utf8(paths.artifacts.join("timing_summary.rpt")),
+            b"
+| Clock Summary
+| -------------
+
+Clock   Waveform(ns)         Period(ns)      Frequency(MHz)
+-----   ------------         ----------      --------------
+ap_clk  {0.000 1.667}        3.333           300.030
+
+| Intra Clock Table
+| -----------------
+
+Clock             WNS(ns)      TNS(ns)
+-----             -------      -------
+ap_clk              0.400        0.000
+
+"
+            .to_vec(),
+        );
+        run_vitis_link(&runner, &job).expect("exploration link");
+
+        let args = runner.calls()[0].local_args();
+        let xsa = crate::util::utf8(paths.artifacts.join("Top.xsa"));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--output", xsa.as_str()]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--clock.defaultFreqHz", "300000000"]));
+        assert!(!args.iter().any(|arg| arg == "--kernel_frequency"));
     }
 
     #[test]

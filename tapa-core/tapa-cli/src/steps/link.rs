@@ -195,10 +195,7 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
             let artifacts = link_work.join("artifacts");
             // A platform installed elsewhere, as for a remote runner, is
             // left to v++ to judge.
-            let versal = crate::steps::synth::resolve_platform_dir(&platform)
-                .map(|dir| tapa_xilinx::platform_is_versal(&dir))
-                .transpose()?
-                .unwrap_or(false);
+            let versal = platform_is_versal(&platform)?;
             Ok(LinkPlan::Vitis(
                 VitisLinkJob::builder()
                     .kernel_name(state.graph.top.clone())
@@ -315,6 +312,16 @@ fn extract_aie_package(package: &Path, job: &AieLinkJob) -> Result<()> {
         fs_err::write(path, bytes)?;
     }
     Ok(())
+}
+
+/// Whether `platform` is a Versal device, whose `v++ --link` makes an `.xsa`
+/// that `v++ --package` turns into the xclbin. A platform not installed here,
+/// as for a remote tool host, is left to v++ to judge.
+pub(crate) fn platform_is_versal(platform: &str) -> Result<bool> {
+    Ok(crate::steps::synth::resolve_platform_dir(platform)
+        .map(|dir| tapa_xilinx::platform_is_versal(&dir))
+        .transpose()?
+        .unwrap_or(false))
 }
 
 pub(crate) fn slash_platform(state: &WorkState) -> Result<&'static tapa_xilinx::SlashPlatform> {
