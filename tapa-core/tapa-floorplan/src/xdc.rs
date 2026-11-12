@@ -684,10 +684,8 @@ fn add_resize_operations(lines: &mut Vec<String>, pblock: &str, ranges: &[String
                 "resize_pblock {pblock} -remove {}",
                 braced(payload)
             ));
-        } else if range.starts_with('{') {
-            lines.push(format!("resize_pblock {pblock} -add {range}"));
         } else {
-            lines.push(format!("resize_pblock {pblock} -add {{{range}}}"));
+            lines.push(format!("resize_pblock {pblock} -add {}", braced(range)));
         }
     }
 }
