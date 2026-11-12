@@ -85,6 +85,48 @@ fn scan_ini(input: &str) -> impl Iterator<Item = (usize, IniLine<'_>)> {
     })
 }
 
+/// The Vitis config `v++ --link` reads for a connectivity file TAPA accepts.
+/// TAPA names a `tapa::mmaps` channel by its index, `sp=Top.chan[0]:HBM[0]`,
+/// the spelling the floorplanner matches; `v++` knows that channel only as
+/// the kernel argument `chan_0`. Each such `sp` endpoint is respelled; every
+/// other line is kept verbatim.
+#[must_use]
+pub fn vitis_link_config(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut in_connectivity = false;
+    for line in input.split_inclusive('\n') {
+        let text = strip_comment(line).trim();
+        if text.starts_with('[') {
+            in_connectivity = text
+                .strip_prefix('[')
+                .and_then(|section| section.strip_suffix(']'))
+                .is_some_and(|section| section.trim() == "connectivity");
+        } else if let Some((kernel, port, target)) = in_connectivity
+            .then(|| sp_endpoint(text))
+            .flatten()
+            .filter(|(_, port, _)| is_port_name(port) && port.contains('['))
+        {
+            let ending = &line[line.trim_end_matches(['\r', '\n']).len()..];
+            let port = tapa_ir::port::sanitize_array_name(port);
+            write!(output, "sp={kernel}.{port}:{target}{ending}").expect("write String");
+            continue;
+        }
+        output.push_str(line);
+    }
+    output
+}
+
+/// The `(kernel, port, target)` of an `sp=kernel.port:target` entry.
+fn sp_endpoint(text: &str) -> Option<(&str, &str, &str)> {
+    let (key, value) = text.split_once('=')?;
+    if key.trim() != "sp" {
+        return None;
+    }
+    let (endpoint, target) = value.trim().split_once(':')?;
+    let (kernel, port) = endpoint.trim().split_once('.')?;
+    Some((kernel.trim(), port.trim(), target.trim()))
+}
+
 /// Parse memory assignments from a Vitis configuration string.
 pub fn parse_vitis_config(input: &str) -> Result<MemoryBindings, ConnectivityParseError> {
     let mut in_connectivity = false;
@@ -484,6 +526,24 @@ fn parse_bank(value: &str, line: usize) -> Result<MemoryBank, ConnectivityParseE
 mod tests {
     use super::*;
     use tapa_ir::MemoryKind;
+
+    #[test]
+    fn vitis_link_config_respells_only_indexed_connectivity_endpoints() {
+        let input = "# kept\n[connectivity]\nnk=Top:1:Top\n\
+                     sp = Top.chan[0] : HBM[0] ; channel\r\nsp=Top.a:DDR[1]\n\
+                     [vivado]\nprop=run.impl_1.strategy=Explore\n[connectivity]\nsp=Top.chan[3]:HBM[3]";
+        assert_eq!(
+            vitis_link_config(input),
+            "# kept\n[connectivity]\nnk=Top:1:Top\n\
+             sp=Top.chan_0:HBM[0]\r\nsp=Top.a:DDR[1]\n\
+             [vivado]\nprop=run.impl_1.strategy=Explore\n[connectivity]\nsp=Top.chan_3:HBM[3]"
+        );
+        assert_eq!(
+            parse_vitis_config(input).expect("valid").len(),
+            3,
+            "the respelled file describes the same bindings"
+        );
+    }
 
     fn slash_port(name: &str) -> KernelXmlPort {
         KernelXmlPort {

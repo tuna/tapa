@@ -14,6 +14,8 @@ use self::timing::parse_kernel_timing_summary;
 use super::{validate_input, LinkOutput};
 
 const TIMING_REPORT_NAME: &str = "timing_summary.rpt";
+/// The connectivity config respelled for `v++`, in the link work directory.
+const LINK_CONFIG_NAME: &str = "connectivity.ini";
 const FINAL_TIMING_HOOK_NAME: &str = "final_timing.tcl";
 const IMPLEMENTATION_STRATEGY: &str = "Explore";
 const PLACEMENT_STRATEGY: &str = "EarlyBlockPlacement";
@@ -438,7 +440,7 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
 
 /// Run one hardware link and return its kernel-clock timing result.
 pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<LinkOutput> {
-    let resolved = ResolvedJob::new(job)?;
+    let mut resolved = ResolvedJob::new(job)?;
     validate_input(&resolved.xo, "XO", XilinxError::VitisLink)?;
     if let Some(xdc) = &resolved.floorplan_xdc {
         validate_input(xdc, "floorplan XDC", XilinxError::VitisLink)?;
@@ -448,6 +450,15 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
     }
 
     fs_err::create_dir_all(&resolved.work_dir)?;
+    if let Some(config) = &resolved.connectivity_config {
+        let text = fs_err::read_to_string(config)?;
+        let linked = crate::connectivity::vitis_link_config(&text);
+        if linked != text {
+            let path = resolved.work_dir.join(LINK_CONFIG_NAME);
+            fs_err::write(&path, linked)?;
+            resolved.connectivity_config = Some(path);
+        }
+    }
     let output_parent = resolved
         .output_xclbin
         .parent()
@@ -892,6 +903,37 @@ packaged"
             .iter()
             .any(|arg| arg.contains("OPT_DESIGN.TCL.PRE")));
         assert_eq!(call.uploads.len(), 2);
+    }
+
+    /// The floorplanner matches a `tapa::mmaps` channel as `chan[0]`, and the
+    /// same file feeds the link, but v++ rejects that endpoint ("invalid port
+    /// or argument name: chan[0]") and knows the kernel argument `chan_0`.
+    #[test]
+    fn link_respells_mmaps_channel_endpoints_for_vpp() {
+        let fixture = Fixture::new();
+        let config = fixture.job.connectivity_config.clone().expect("config");
+        fs_err::write(
+            &config,
+            "[connectivity]\nsp=Top.chan[1]:HBM[1]\nsp=Top.n:HBM[2]\n",
+        )
+        .expect("write config");
+        let runner = MockToolRunner::new();
+        fixture.attach_success(&runner);
+        run_vitis_link(&runner, &fixture.job).expect("link succeeds");
+
+        let call = &runner.calls()[0];
+        let linked = fixture.job.work_dir.join(LINK_CONFIG_NAME);
+        let args = call.local_args();
+        let pos = args
+            .iter()
+            .position(|arg| arg == "--config")
+            .expect("--config");
+        assert_eq!(args[pos + 1], linked.as_str());
+        assert!(call.uploads.contains(&linked));
+        assert_eq!(
+            fs_err::read_to_string(&linked).expect("linked config"),
+            "[connectivity]\nsp=Top.chan_1:HBM[1]\nsp=Top.n:HBM[2]\n"
+        );
     }
 
     #[test]

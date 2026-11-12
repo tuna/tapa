@@ -260,7 +260,8 @@ sp=Bandwidth.chan[1]:DDR[1]
 ```
 
 The same `sp=` file feeds floorplanning and hardware linking; `tapa link`
-passes it to `v++ --link` for U-series devices. On V80, write slashkit's own
+passes it to `v++ --link` for U-series devices, spelling a `tapa::mmaps`
+channel such as `chan[0]` as the kernel argument `chan_0` that `v++` knows. On V80, write slashkit's own
 configuration instead (`nk=`, `sp=<instance>.m_axi_x:HBMn`, optional
 `[clock]`); see [Alveo V80 with SLASH](../howto/v80.md#the-slash-configuration).
 
