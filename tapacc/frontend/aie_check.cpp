@@ -2,7 +2,6 @@
 
 #include <algorithm>
 #include <cstdint>
-#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -147,10 +146,10 @@ const char* AieStreamOpProblem(llvm::StringRef op, unsigned num_args) {
 }
 
 // Every member call on a TAPA stream in a body.
-class StreamCalls : public clang::RecursiveASTVisitor<StreamCalls> {
+template <typename F>
+class StreamCalls : public clang::RecursiveASTVisitor<StreamCalls<F>> {
  public:
-  template <typename F>
-  explicit StreamCalls(F&& visit) : visit_(std::forward<F>(visit)) {}
+  explicit StreamCalls(F visit) : visit_(std::move(visit)) {}
 
   bool VisitCXXMemberCallExpr(clang::CXXMemberCallExpr* call) {
     const clang::Expr* object = call->getImplicitObjectArgument();
@@ -164,7 +163,7 @@ class StreamCalls : public clang::RecursiveASTVisitor<StreamCalls> {
   }
 
  private:
-  std::function<void(const clang::CXXMemberCallExpr&)> visit_;
+  F visit_;
 };
 
 class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {

@@ -1,7 +1,6 @@
 #include "rewrite.h"
 
 #include <cctype>
-#include <functional>
 #include <map>
 #include <optional>
 #include <set>
@@ -585,7 +584,7 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   // definition shape is rejected.
   auto begin_guarded = [&](const clang::FunctionDecl* func,
                            const std::string& task_name,
-                           const std::function<void()>& signature_edits)
+                           const auto& signature_edits)
       -> std::optional<std::pair<clang::SourceRange, std::string>> {
     const clang::SourceRange definition = DefinitionRange(func, edits);
     if (reject_macro_owned_definition(definition, task_name)) {
@@ -626,11 +625,9 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
   };
 
   using MixedVariant = std::pair<TaskModel, std::vector<std::string>>;
-  using BodyRewrite =
-      std::function<void(TaskModel&, const Backend&, EditSink&)>;
   auto guard_mixed_definition = [&](const std::vector<MixedVariant>& variants,
                                     const clang::FunctionDecl* func,
-                                    const BodyRewrite& rewrite_body) {
+                                    const auto& rewrite_body) {
     const clang::SourceRange definition = DefinitionRange(func, edits);
     if (reject_macro_owned_definition(definition,
                                       variants.front().first.name)) {
