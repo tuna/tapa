@@ -255,4 +255,87 @@ mod tests {
         pump.frames.stop();
         thread.join().expect("join").expect("pump");
     }
+
+    /// Moves `FRAMES` frames through a 4-slot ring whose counts start just
+    /// short of 2^32, against a kernel on its own thread that takes (input)
+    /// or writes (output) a frame whenever the handshake lets it: every
+    /// frame arrives once, in order, across the wrap of the counts.
+    fn frames_cross_the_count_wrap(input: bool) {
+        const FRAMES: u32 = 300;
+        const START: u32 = u32::MAX - 100;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let element = |n: u32| (n % 251) as u8 + 1;
+        let mut queue = SharedMemoryQueue::create("frt_ring_wrap", 8, 2).expect("queue");
+        let ring = Arc::new(FakeRing {
+            registers: Mutex::new([START, START]),
+            memory: Mutex::new(vec![0; 8]),
+        });
+        let pump = Arc::new(RingPump::new(
+            RingLayout {
+                slots: 4,
+                ..layout(input)
+            },
+            "wrap".into(),
+            START,
+        ));
+        pump.frames.bind(&queue.path().to_string_lossy());
+        let thread = {
+            let (ring, pump) = (Arc::clone(&ring), Arc::clone(&pump));
+            std::thread::spawn(move || pump.run(ring.as_ref()))
+        };
+        let kernel = {
+            let ring = Arc::clone(&ring);
+            std::thread::spawn(move || {
+                for frame in 0..FRAMES {
+                    let want = [element(frame * 2), element(frame * 2 + 1)];
+                    loop {
+                        assert!(std::time::Instant::now() < deadline, "kernel timed out");
+                        let mut registers = ring.registers.lock().expect("registers");
+                        let [host, kernel] = *registers;
+                        let at = (kernel % 4) as usize * 2;
+                        let mut memory = ring.memory.lock().expect("memory");
+                        if input && host != kernel {
+                            assert_eq!(memory[at..at + 2], want, "frame {frame}");
+                        } else if !input && kernel.wrapping_sub(host) < 4 {
+                            memory[at..at + 2].copy_from_slice(&want);
+                        } else {
+                            drop((registers, memory));
+                            std::thread::yield_now();
+                            continue;
+                        }
+                        registers[1] = kernel.wrapping_add(1);
+                        break;
+                    }
+                }
+            })
+        };
+        let mut slot = [0u8; 2];
+        for n in 0..FRAMES * 2 {
+            loop {
+                assert!(std::time::Instant::now() < deadline, "host timed out");
+                if input && queue.try_push(&[element(n), 0]).is_ok() {
+                    break;
+                }
+                if !input && queue.pop_into(&mut slot) {
+                    assert_eq!(slot, [element(n), 0], "element {n}");
+                    break;
+                }
+                std::thread::yield_now();
+            }
+        }
+        kernel.join().expect("kernel");
+        wait(|| pump.host_frames() == START.wrapping_add(FRAMES));
+        pump.frames.stop();
+        thread.join().expect("join").expect("pump");
+    }
+
+    #[test]
+    fn input_frames_cross_the_count_wrap_in_order() {
+        frames_cross_the_count_wrap(true);
+    }
+
+    #[test]
+    fn output_frames_cross_the_count_wrap_in_order() {
+        frames_cross_the_count_wrap(false);
+    }
 }
