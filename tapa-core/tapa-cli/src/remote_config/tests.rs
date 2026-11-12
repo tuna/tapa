@@ -116,7 +116,7 @@ fn taparc_defaults_flow_through() {
     assert_eq!(
         cfg.key_file.as_deref(),
         Some(camino::Utf8Path::new("/home/alice/.ssh/id_ed25519")),
-        "key_file must be tilde-expanded by RemoteConfig::from_yaml_str",
+        "key_file must be tilde-expanded by RemoteConfig::from_yaml_value",
     );
     assert_eq!(
         cfg.xilinx_settings.as_deref(),
