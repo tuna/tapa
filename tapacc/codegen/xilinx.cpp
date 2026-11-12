@@ -276,28 +276,46 @@ void RewriteDeclSignature(const TaskModel& task, Lvl lvl,
   bool rewrote_axis_stream = false;
   std::string counters;
   for (const clang::ParmVarDecl* param : decl->parameters()) {
+    // A declaration may leave a parameter unnamed: its rewrite then names
+    // nothing either, since there is no name token to replace.
     const std::string name = param->getNameAsString();
+    const auto named = [&name](const std::string& spelled) {
+      return name.empty() ? std::string() : " " + spelled;
+    };
+    const auto rename_offset = [&] {
+      if (!name.empty()) {
+        edits.ReplaceText(param->getLocation(), OffsetName(name));
+      }
+    };
     const TapaKind kind = ClassifyTapaType(param);
-    if (lvl == Lvl::kTop && task.rings.count(name) != 0) {
+    // Rings are keyed by the parameter's name, which any redeclaration
+    // may be the one to spell.
+    std::string ring = name;
+    for (const clang::FunctionDecl* other : decl->redecls()) {
+      if (!ring.empty()) break;
+      ring = other->getParamDecl(param->getFunctionScopeIndex())
+                 ->getNameAsString();
+    }
+    if (lvl == Lvl::kTop && task.rings.count(ring) != 0) {
       // A ring: its base address in place, its registers after the last
       // parameter, so the host's argument indices stay the parameters'.
       edits.ReplaceText(
           param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
           "uint64_t");
-      edits.ReplaceText(param->getLocation(), OffsetName(name));
-      counters += ", uint32_t " + RingHostFramesName(name) + ", uint32_t& " +
-                  RingKernelFramesName(name) + ", uint64_t& " +
-                  RingShapeName(name);
+      rename_offset();
+      counters += ", uint32_t" + named(RingHostFramesName(name)) +
+                  ", uint32_t&" + named(RingKernelFramesName(name)) +
+                  ", uint64_t&" + named(RingShapeName(name));
     } else if (kind == TapaKind::kMmap || kind == TapaKind::kAsyncMmap) {
       edits.ReplaceText(
           param->getTypeSourceInfo()->getTypeLoc().getSourceRange(),
           "uint64_t");
-      edits.ReplaceText(param->getLocation(), OffsetName(name));
+      rename_offset();
     } else if (IsMmapArray(kind)) {
       std::string text;
       for (int64_t i = 0; i < ArraySize(param); ++i) {
         if (!text.empty()) text += ", ";
-        text += "uint64_t " + ArrayElemOffset(name, static_cast<int>(i));
+        text += "uint64_t" + named(ArrayElemOffset(name, static_cast<int>(i)));
       }
       edits.ReplaceText(param->getSourceRange(), text);
     } else if (lvl == Lvl::kTop &&

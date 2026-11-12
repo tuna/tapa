@@ -480,6 +480,24 @@ TEST(Rewrite, UpperTaskBecomesShellWithOffsets) {
   EXPECT_TRUE(Contains(code, "#pragma HLS interface ap_none port = n"));
 }
 
+// A declaration may leave its parameters unnamed. The offset rename used
+// to land on the token after the type, the comma, and rewrite
+// `void Mid(tapa::mmap<int>, int);` into `void Mid(uint64_t_offset int);`.
+TEST(Rewrite, UnnamedDeclarationParametersStayUnnamed) {
+  const std::string code = Rewrite("unnamed", R"tapa(
+void Leaf(tapa::mmap<int> m, int n) {}
+void Mid(tapa::mmap<int>, tapa::mmaps<int, 2>, int);
+void Mid(tapa::mmap<int> m, tapa::mmaps<int, 2> ms, int n) {
+  tapa::task().invoke(Leaf, m, n).invoke<0, 2>(Leaf, ms, n);
+}
+)tapa",
+                                   "Mid");
+  EXPECT_TRUE(Contains(code, "void Mid(uint64_t, uint64_t, uint64_t, int);"))
+      << code;
+  EXPECT_TRUE(
+      Contains(code, "void Mid(uint64_t m_offset, uint64_t ms_0_offset, "));
+}
+
 TEST(Rewrite, UnreachableTaskIsStrippedLikeOtherTasks) {
   const std::string code = RewriteVadd();
 
