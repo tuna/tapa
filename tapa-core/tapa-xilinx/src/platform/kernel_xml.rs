@@ -116,8 +116,14 @@ fn project_kernel_xml(args: &KernelXmlArgs) -> Result<(Vec<XmlPort>, Vec<XmlArg>
         let (addr_qualifier, size, host_size, port_name, arg_offset) = match port.category {
             PortCategory::Scalar => {
                 has_s_axi_control = true;
-                let host_size = u64::from(port.width) / 8;
-                let size = host_size.max(4);
+                // HLS gives a W-bit scalar ceil(W/32) data words and then one
+                // control word: an `ap_uint<80>` takes three, an `ap_uint<12>`
+                // one. `hostSize` is the host object the value arrives in,
+                // which rounds to a power of two for the builtin and the
+                // arbitrary-precision integers alike (`tapa::u<80>` is 16
+                // bytes, `tapa::u<24>` 4).
+                let host_size = u64::from(port.width).div_ceil(8).max(1).next_power_of_two();
+                let size = u64::from(port.width).div_ceil(32).max(1) * 4;
                 let pname = user_port.unwrap_or(S_AXI_NAME).to_string();
                 let off = offset;
                 offset += size + 4;
@@ -397,6 +403,71 @@ mod tests {
         };
         let xml = emit_kernel_xml(&args).unwrap();
         assert!(xml.contains("std::vector&lt;int&gt; &amp;"));
+    }
+
+    /// The register map Vitis HLS 2025.2 synthesized for `Scalars(mmap<uint64_t>
+    /// result, tapa::u<80> a, int b, tapa::u<12> c, long long d, tapa::i<12> e,
+    /// tapa::i<80> f)`: each argument gets ceil(W/32) data words and then one
+    /// control word. kernel.xml must place every argument where HLS did, or
+    /// the host writes later arguments into the wrong registers; sizing a
+    /// scalar by its object (`tapa::u<80>` occupies 128 bits) put `b` at 0x30.
+    #[test]
+    fn scalar_registers_follow_the_hls_register_map() {
+        let hls = include_str!("../../testdata/xilinx/real/scalars_control_s_axi.v");
+        let port = |name: &str, category, width, ctype: &str| KernelXmlPort {
+            name: name.into(),
+            category,
+            width,
+            port: String::new(),
+            ctype: ctype.into(),
+        };
+        let args = KernelXmlArgs {
+            top_name: "Scalars".into(),
+            ports: vec![
+                port("result", PortCategory::MAxi, 64, "uint64_t*"),
+                port("a", PortCategory::Scalar, 80, "tapa::u<80>"),
+                port("b", PortCategory::Scalar, 32, "int"),
+                port("c", PortCategory::Scalar, 12, "tapa::u<12>"),
+                port("d", PortCategory::Scalar, 64, "long long"),
+                port("e", PortCategory::Scalar, 12, "tapa::i<12>"),
+                port("f", PortCategory::Scalar, 80, "tapa::i<80>"),
+            ],
+        };
+        let (_, xml_args) = project_kernel_xml(&args).expect("project");
+        let offsets = tapa_protocol::control_register_offsets(hls);
+        for arg in &xml_args {
+            let data = if arg.addr_qualifier == 1 {
+                format!("{}_offset", arg.name)
+            } else {
+                arg.name.clone()
+            };
+            assert_eq!(
+                Some(&u32::try_from(arg.offset_bytes).expect("offset")),
+                offsets.get(&data),
+                "offset of `{}`",
+                arg.name
+            );
+            // The address `localparam`s: `ADDR_<NAME>_DATA_<k> = 7'h1c,`.
+            let prefix = format!("ADDR_{}_DATA_", data.to_uppercase());
+            let words = hls
+                .lines()
+                .filter_map(|line| line.split_once('='))
+                .filter(|(name, value)| {
+                    name.trim()
+                        .strip_prefix(&prefix)
+                        .is_some_and(|k| k.chars().all(|c| c.is_ascii_digit()))
+                        && !value.starts_with('=')
+                })
+                .count();
+            assert_eq!(
+                arg.size_bytes,
+                u64::try_from(words * 4).expect("size"),
+                "data words of `{}`",
+                arg.name
+            );
+        }
+        let host_sizes: Vec<u64> = xml_args.iter().map(|arg| arg.host_size_bytes).collect();
+        assert_eq!(host_sizes, [8, 16, 4, 2, 8, 2, 16]);
     }
 
     #[test]
