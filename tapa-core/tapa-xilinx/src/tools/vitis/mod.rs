@@ -10,10 +10,11 @@ use crate::runtime::process::{ToolInvocation, ToolRunner};
 
 pub mod timing;
 
-use self::timing::parse_kernel_timing_summary;
+use self::timing::{parse_kernel_timing_summary, parse_named_clock_timing_summary};
 use super::{validate_input, LinkOutput};
 
 const TIMING_REPORT_NAME: &str = "timing_summary.rpt";
+const KERNEL_CLOCK_NAME: &str = "kernel_clock.txt";
 /// The connectivity config respelled for `v++`, in the link work directory.
 const LINK_CONFIG_NAME: &str = "connectivity.ini";
 const FINAL_TIMING_HOOK_NAME: &str = "final_timing.tcl";
@@ -126,6 +127,7 @@ struct ResolvedJob<'a> {
     package_temp_dir: Utf8PathBuf,
     timing_hook: Utf8PathBuf,
     timing_report: Utf8PathBuf,
+    kernel_clock: Utf8PathBuf,
 }
 
 fn validate_job(job: &VitisLinkJob) -> Result<()> {
@@ -224,6 +226,7 @@ impl<'a> ResolvedJob<'a> {
         let package_temp_dir = Utf8PathBuf::from(format!("{temp_dir}.package"));
         let timing_hook = artifacts_dir.join(FINAL_TIMING_HOOK_NAME);
         let timing_report = artifacts_dir.join(TIMING_REPORT_NAME);
+        let kernel_clock = artifacts_dir.join(KERNEL_CLOCK_NAME);
 
         Ok(Self {
             job,
@@ -241,6 +244,7 @@ impl<'a> ResolvedJob<'a> {
             package_temp_dir,
             timing_hook,
             timing_report,
+            kernel_clock,
         })
     }
 }
@@ -304,9 +308,39 @@ fn link_error<T>(detail: impl Into<String>) -> Result<T> {
     Err(XilinxError::VitisLink(detail.into()))
 }
 
-fn final_timing_tcl() -> &'static str {
-    "set artifact_dir [file dirname [file normalize [info script]]]\n\
-report_timing_summary -file [file join $artifact_dir timing_summary.rpt]\n"
+/// The post-route hook: the timing summary, and the clock that reaches the
+/// compute unit's `ap_clk`. A platform clock may run at the kernel's
+/// frequency (the U250 shell's DDR reference clock is 300 MHz), so only the
+/// netlist names the kernel clock reliably.
+fn final_timing_tcl(kernel_name: &str) -> String {
+    format!(
+        "set artifact_dir [file dirname [file normalize [info script]]]\n\
+report_timing_summary -file [file join $artifact_dir {TIMING_REPORT_NAME}]\n\
+catch {{\n\
+  set cells [get_cells -quiet -hierarchical -filter {{NAME =~ */{kernel_name}}}]\n\
+  set pins [get_pins -quiet -of_objects $cells -filter {{REF_PIN_NAME == ap_clk}}]\n\
+  set file [open [file join $artifact_dir {KERNEL_CLOCK_NAME}] w]\n\
+  puts $file [join [get_clocks -quiet -of_objects $pins] \"\\n\"]\n\
+  close $file\n\
+}}\n"
+    )
+}
+
+/// The clock the hook found at the compute unit's `ap_clk`, if exactly one.
+fn hooked_kernel_clock(path: &Utf8Path) -> Result<Option<String>> {
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let text = fs_err::read_to_string(path)?;
+    let clocks: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    Ok(match clocks.as_slice() {
+        [clock] => Some((*clock).to_string()),
+        _ => None,
+    })
 }
 
 fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
@@ -471,7 +505,11 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         remove_stale_output(&resolved.link_output)?;
     }
     remove_stale_output(&resolved.timing_report)?;
-    fs_err::write(&resolved.timing_hook, final_timing_tcl().as_bytes())?;
+    remove_stale_output(&resolved.kernel_clock)?;
+    fs_err::write(
+        &resolved.timing_hook,
+        final_timing_tcl(&job.kernel_name).as_bytes(),
+    )?;
 
     let link_output = runner.run(&build_link_invocation(&resolved))?;
     if link_output.exit_code != 0 {
@@ -508,7 +546,10 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         ));
     }
     let timing_text = fs_err::read_to_string(&resolved.timing_report)?;
-    let timing = parse_kernel_timing_summary(&timing_text, job.target_mhz)?;
+    let timing = match hooked_kernel_clock(&resolved.kernel_clock)? {
+        Some(clock) => parse_named_clock_timing_summary(&timing_text, &clock)?,
+        None => parse_kernel_timing_summary(&timing_text, job.target_mhz)?,
+    };
 
     Ok(LinkOutput {
         bitstream: resolved.output_xclbin,
@@ -1052,6 +1093,62 @@ packaged"
         assert_eq!(code, 7);
         assert!(output.contains("stdout:\nlink phase context"));
         assert!(output.contains("stderr:\nimplementation failed"));
+    }
+
+    /// The U250 shell's DDR reference clock runs at the kernel's 300 MHz and
+    /// precedes the kernel clock, with only pulse-width columns in its row.
+    /// The clock the hook finds at the compute unit's `ap_clk` decides.
+    #[test]
+    fn the_hooked_compute_unit_clock_wins_over_a_platform_clock_at_the_target() {
+        let report = b"
+| Clock Summary
+| -------------
+
+Clock                           Waveform(ns)    Period(ns)  Frequency(MHz)
+-----                           ------------    ----------  --------------
+io_clk_ddr4_01                  {0.000 1.666}   3.333       300.030
+  clk_kernel_00_unbuffered_net  {0.000 1.667}   3.333       300.030
+
+| Intra Clock Table
+| -----------------
+
+Clock                           WNS(ns)  TNS(ns)  TNS Failing Endpoints  TNS Total Endpoints  \
+WHS(ns)  THS(ns)  THS Failing Endpoints  THS Total Endpoints  WPWS(ns)  TPWS(ns)  \
+TPWS Failing Endpoints  TPWS Total Endpoints
+-----                           -------  -------  ---------------------  -------------------  \
+-------  -------  ---------------------  -------------------  --------  --------  \
+----------------------  --------------------
+io_clk_ddr4_01                                                                                \
+                                                                                  2.043     0.000     \
+0                       2
+  clk_kernel_00_unbuffered_net  0.400    0.000    0                      63854                \
+0.009    0.000    0                      63854                1.124     0.000     \
+0                       25209
+
+"
+        .to_vec();
+        let fixture = Fixture::new();
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(fixture.timing_report(), report.clone());
+        run_vitis_link(&runner, &fixture.job).expect_err("the DDR clock has no setup columns");
+
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(fixture.timing_report(), report);
+        runner.attach_download(
+            fixture.job.artifacts_dir.join(KERNEL_CLOCK_NAME),
+            b"clk_kernel_00_unbuffered_net\n".to_vec(),
+        );
+        let output = run_vitis_link(&runner, &fixture.job).expect("the hook names the clock");
+        let timing = output.timing.expect("timing");
+        assert!((timing.wns_ns - 0.4).abs() < 1e-9);
+
+        let hook = fs_err::read_to_string(fixture.job.artifacts_dir.join(FINAL_TIMING_HOOK_NAME))
+            .expect("read hook");
+        assert!(hook.contains("NAME =~ */Top}"));
+        assert!(hook.contains("REF_PIN_NAME == ap_clk"));
+        assert!(hook.contains(KERNEL_CLOCK_NAME));
     }
 
     #[test]
