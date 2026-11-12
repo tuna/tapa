@@ -133,7 +133,7 @@ reg m_axi_{{ arg.ident }}_BVALID = 0;
 byte unsigned axi_{{ arg.ident }}_bytes[0:{{ arg.data_width_bytes - 1 }}];
 
 // Multi-outstanding read support: AR requests are queued so the DUT can
-// pipeline multiple burst reads (required by AXI crossbar/broadcastor designs).
+// pipeline multiple burst reads (required by AXI crossbar designs).
 typedef struct {
   logic [63:0] addr;
   logic [7:0]  len;
