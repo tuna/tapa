@@ -191,7 +191,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
     strategy: PartitionStrategy,
     solver: &dyn Solver,
     opts: &SolveOpts,
-) -> Result<(Assignment, PartitionStrategy), IlpError> {
+) -> Result<Assignment, IlpError> {
     let strategy = resolve_strategy(graph, device, strategy);
     let constraints = if strategy == PartitionStrategy::MultiLevel {
         exact_resource_cap_constraints(device, block_limit)
@@ -210,7 +210,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
         solver,
         opts,
     )?;
-    Ok((assignment, strategy))
+    Ok(assignment)
 }
 
 fn exact_resource_cap_constraints(device: &Device, block_limit: f64) -> PlacementConstraints {

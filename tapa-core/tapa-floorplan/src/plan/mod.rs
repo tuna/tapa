@@ -218,7 +218,7 @@ pub fn plan_with_inputs_at_usage_limit_and_caps(
     let solver = CbcSolver::new();
     let opts = solve_options(options);
     let result = (|| {
-        let (assignment, solved_strategy) = floorplan_with_exact_resource_caps(
+        let assignment = floorplan_with_exact_resource_caps(
             &graph,
             &device,
             caps.logic_utilization_cap,
@@ -227,10 +227,6 @@ pub fn plan_with_inputs_at_usage_limit_and_caps(
             &solver,
             &opts,
         )?;
-        debug_assert_eq!(
-            solved_strategy, strategy,
-            "an explicitly resolved strategy must remain stable during placement",
-        );
         finish_plan(&graph, &device, options, &solver, &opts, assignment, caps)
     })();
     Ok(ExactDsePlanAttempt { caps, result })

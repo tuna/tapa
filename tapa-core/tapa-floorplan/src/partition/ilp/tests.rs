@@ -1073,7 +1073,7 @@ fn exact_multilevel_caps_apply_to_row_and_atomic_resource_rows() {
     let logic_limit = 0.7;
     let block_limit = 0.8;
 
-    let (_, strategy) = floorplan_with_exact_resource_caps(
+    floorplan_with_exact_resource_caps(
         &graph,
         &device,
         logic_limit,
@@ -1083,7 +1083,6 @@ fn exact_multilevel_caps_apply_to_row_and_atomic_resource_rows() {
         &SolveOpts::default(),
     )
     .expect("exact multilevel floorplan");
-    assert_eq!(strategy, PartitionStrategy::MultiLevel);
 
     let baseline_solver = RecordingSolver::first();
     floorplan_with_strategy(
@@ -1174,7 +1173,7 @@ fn exact_flat_candidates_keep_one_resource_cap() {
     let solver = RecordingSolver::first();
     let logic_limit = 0.7;
 
-    let (_, strategy) = floorplan_with_exact_resource_caps(
+    floorplan_with_exact_resource_caps(
         &graph,
         &device,
         logic_limit,
@@ -1184,7 +1183,6 @@ fn exact_flat_candidates_keep_one_resource_cap() {
         &SolveOpts::default(),
     )
     .expect("exact flat floorplan");
-    assert_eq!(strategy, PartitionStrategy::Flat);
 
     let models = solver.models.lock().expect("lock");
     assert_eq!(
