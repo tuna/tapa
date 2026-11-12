@@ -90,9 +90,11 @@ work.out/
 ├── report.json                # synthesis summary
 ├── report.yaml                # synthesis summary
 ├── template/                  # custom-RTL module shells, when needed
-├── templates_info.json        # custom-RTL port information, when needed
+├── templates_info.json        # custom-RTL port information
+├── pack_reports/              # HLS reports as tapa pack bundles them into the .xo
 ├── tapa.json                  # compiler state shared between stages
 ├── tapacc.json                # raw frontend output for debugging
+├── tapacc_shim.h              # header tapa analyze force-includes into the frontend
 ├── aie/                       # with AI Engine tasks
 │   ├── hw/                    # the AI Engine graph tapa synth compiles
 │   └── pl-control/            # the VCK5000 PL controller tapa pack builds
@@ -117,7 +119,7 @@ work.out/
 | `hls/TASK/project/` | Full Vitis HLS project retained by `--keep-hls-work-dir` for debugging an HLS failure. |
 | `report.json` / `report.yaml` | Timing and resource summaries after a successful `tapa synth`. These contain the same data in JSON and YAML formats. |
 | `report/` | Detailed per-task utilization reports produced by `--enable-synth-util`. |
-| `template/` and `templates_info.json` | Port shells and interface information for a task marked `[[tapa::target("ignore")]]`; used with `--custom-rtl`. |
+| `template/` and `templates_info.json` | Port shells and interface information for a task marked `[[tapa::target("ignore")]]`; used with `--custom-rtl`. `templates_info.json` is always written, as `{}` when no task is ignored. |
 | `floorplan-metrics.json` | Frequency and utilization information for the selected floorplan after `--run-impl` or `--dse`. |
 | `floorplan-timing.rpt` | Post-implementation timing report used to produce those metrics. |
 | `floorplan.xclbin` / `floorplan.vbin` | The winning implementation's bitstream from `--run-impl` or `--dse` (`.xclbin` from the Vitis backend, `.vbin` from SLASH). |
@@ -137,6 +139,11 @@ work.out/
   manually. If TAPA reports an incompatible version, rerun `tapa analyze`.
 - **`tapacc.json`** is raw frontend output retained for diagnostics. Later
   stages do not read it, so editing it has no effect.
+- **`tapacc_shim.h`** is written by `tapa analyze` and force-included into the
+  frontend only, so that it accepts the Vitis HLS headers; synthesis never
+  sees it.
+- **`pack_reports/`** holds the per-task HLS reports `tapa pack` bundles into
+  the `.xo`, with work-directory paths removed; each pack rewrites it.
 - **`floorplan.xdc`** contains the constraints produced by `tapa floorplan`.
   The package does not carry it; pass it, with
   `floorplan-connectivity.ini`, to `tapa link` (`--floorplan-xdc`,
