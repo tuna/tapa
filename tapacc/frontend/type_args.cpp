@@ -56,7 +56,9 @@ std::optional<int64_t> IntTemplateArg(clang::QualType type, unsigned idx) {
   if (spec == nullptr) return std::nullopt;
   const auto& args = spec->getTemplateArgs();
   if (idx >= args.size()) return std::nullopt;
-  return TemplateArgAsInt(args[idx]);
+  const clang::TemplateArgument& arg = args[idx];
+  if (arg.getKind() != clang::TemplateArgument::Integral) return std::nullopt;
+  return arg.getAsIntegral().getSExtValue();
 }
 
 std::string TemplateArgName(const clang::TemplateArgument& arg) {
@@ -68,13 +70,6 @@ std::string TemplateArgName(const clang::TemplateArgument& arg) {
   const clang::PrintingPolicy policy(options);
   arg.print(policy, os, /*IncludeType=*/false);
   return name;
-}
-
-std::optional<int64_t> TemplateArgAsInt(const clang::TemplateArgument& arg) {
-  if (arg.getKind() == clang::TemplateArgument::Integral) {
-    return arg.getAsIntegral().getSExtValue();
-  }
-  return std::nullopt;
 }
 
 uint32_t BitWidth(const clang::ASTContext& ctx, clang::QualType type) {

@@ -28,10 +28,6 @@ const clang::TemplateArgument* GetTemplateArg(clang::QualType type,
 // spelling is the element-type string port metadata carries.
 std::string TemplateArgName(const clang::TemplateArgument& arg);
 
-// A template argument as a compile-time integer, or nullopt if it is not
-// integral. Uses APSInt::getSExtValue (not raw APInt words) — §8.2.
-std::optional<int64_t> TemplateArgAsInt(const clang::TemplateArgument& arg);
-
 // The `idx`-th template argument as a compile-time integer, resolved via the
 // canonical class-template specialization so as-written non-type arguments are
 // evaluated (channel counts, FIFO depths, hmap sizes). nullopt if absent or
