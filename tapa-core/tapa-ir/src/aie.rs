@@ -615,6 +615,18 @@ impl AiePartition {
     }
 }
 
+/// A child invoke's name in the host program's scope chain: the top's
+/// children keep their local names; each deeper one prefixes the scope it
+/// is invoked in, with `__` — the spelling that must match the names
+/// `Builder::visit` gives kernels and `InlinedInstance::name`.
+fn scoped_name(scope: &str, local: std::borrow::Cow<'_, str>) -> String {
+    if scope.is_empty() {
+        local.into_owned()
+    } else {
+        format!("{scope}__{local}")
+    }
+}
+
 /// An upper task instance whose body a host program running the design
 /// against one fabric makes invoke by invoke.
 ///
@@ -664,12 +676,7 @@ pub fn inlined_instances(graph: &TaskGraph) -> Result<Vec<InlinedInstance>, AieE
             .filter(|(child, _)| mixed.contains(child.as_str()))
         {
             for (index, instance) in instances.iter().enumerate() {
-                let local = instance.canonical_name(child, index);
-                let name = if scope.is_empty() {
-                    local.into_owned()
-                } else {
-                    format!("{scope}__{local}")
-                };
+                let name = scoped_name(&scope, instance.canonical_name(child, index));
                 inlined.push(InlinedInstance {
                     parent: scope.clone(),
                     position: instance.position,
@@ -737,12 +744,7 @@ pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieErr
         let def = task(graph, task_name)?;
         for (child, instances) in &def.tasks {
             for (index, instance) in instances.iter().enumerate() {
-                let local = instance.canonical_name(child, index);
-                let name = if scope.is_empty() {
-                    local.into_owned()
-                } else {
-                    format!("{scope}__{local}")
-                };
+                let name = scoped_name(&scope, instance.canonical_name(child, index));
                 if mixed.contains(child.as_str()) {
                     scopes.push((name, child.as_str()));
                 } else if task(graph, child)?.synth == SynthTarget::Aie {
