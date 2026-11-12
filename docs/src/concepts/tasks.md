@@ -99,6 +99,11 @@ terminate on program completion.
 - Leaf templated tasks (template functions that compute directly) are
   supported. `tapa analyze` rejects a templated task that invokes other
   tasks.
+- A task's RTL module takes the task's name, so a task cannot share a name
+  with a Verilog module TAPA ships with the generated RTL (for example
+  `fifo`, `arbiter`, `async_mmap`, `relay_station` or an
+  `axi_crossbar_2x1` crossbar). `tapa analyze` rejects such a task and
+  names the module.
 
 ---
 

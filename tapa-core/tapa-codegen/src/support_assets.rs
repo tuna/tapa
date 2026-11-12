@@ -40,6 +40,32 @@ mod tests {
         assert!(!body.contains("if (reset)"));
     }
 
+    /// IR validation keeps tasks off the names of the modules these assets
+    /// declare; the list it checks must be exactly those modules.
+    #[test]
+    fn ir_support_modules_are_the_modules_the_assets_declare() {
+        let mut declared: Vec<String> = VerilogAssets::iter()
+            .flat_map(|name| {
+                let asset = VerilogAssets::get(&name).expect("iterated asset exists");
+                let source = String::from_utf8(asset.data.into_owned()).expect("UTF-8");
+                source
+                    .lines()
+                    .filter_map(|line| line.trim_start().strip_prefix("module "))
+                    .map(|rest| {
+                        rest.split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                            .next()
+                            .unwrap_or_default()
+                            .to_owned()
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        declared.sort();
+        let mut listed: Vec<&str> = tapa_ir::SUPPORT_MODULES.to_vec();
+        listed.sort_unstable();
+        assert_eq!(declared, listed);
+    }
+
     #[test]
     fn async_mmap_catalog_constants_match_embedded_bridge() {
         let asset = VerilogAssets::get("async_mmap.v").expect("async mmap bridge asset");

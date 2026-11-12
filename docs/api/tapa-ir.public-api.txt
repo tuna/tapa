@@ -2149,6 +2149,7 @@ impl<T> core::convert::From<T> for tapa_ir::graph::TaskGraph
 pub fn tapa_ir::graph::TaskGraph::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::graph::TaskGraph where T: for<'de> serde_core::de::Deserialize<'de>
 pub const tapa_ir::graph::SCHEMA_VERSION: u32
+pub const tapa_ir::graph::SUPPORT_MODULES: &[&str]
 pub fn tapa_ir::graph::ring_count_plio(&str) -> alloc::string::String
 pub fn tapa_ir::graph::ring_plio(&str) -> alloc::string::String
 pub fn tapa_ir::graph::ring_registers(&str) -> [tapa_ir::graph::RingRegister; 3]
@@ -6454,6 +6455,7 @@ pub unsafe fn tapa_ir::work_state::WorkState::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_ir::work_state::WorkState
 pub fn tapa_ir::work_state::WorkState::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::work_state::WorkState where T: for<'de> serde_core::de::Deserialize<'de>
+pub const tapa_ir::SUPPORT_MODULES: &[&str]
 pub fn tapa_ir::async_mmap_bridge_instance_name(&str) -> alloc::string::String
 pub fn tapa_ir::axi_pipeline_instance_name(&tapa_ir::floorplan::AxiEndpoint, tapa_ir::floorplan::AxiChannel) -> alloc::string::String
 pub fn tapa_ir::control_pipeline_instance_name(&str, tapa_ir::floorplan::ControlChannel) -> alloc::string::String

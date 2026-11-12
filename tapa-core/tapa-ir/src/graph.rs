@@ -103,6 +103,60 @@ pub fn ring_count_plio(port: &str) -> String {
     format!("{}_count", crate::port::sanitize_array_name(port))
 }
 
+/// The Verilog modules TAPA ships beside the RTL of every design.
+///
+/// They are `tapa-codegen`'s support assets. A task's RTL module takes the
+/// task's name, so a task may take none of these names, nor that of a
+/// generated `axi_crossbar_{S}x{M}` crossbar.
+pub const SUPPORT_MODULES: &[&str] = &[
+    "arbiter",
+    "async_mmap",
+    "axi_crossbar",
+    "axi_crossbar_addr",
+    "axi_crossbar_rd",
+    "axi_crossbar_wr",
+    "axi_register_rd",
+    "axi_register_wr",
+    "axis_to_stream_adapter",
+    "burst_split",
+    "detect_burst",
+    "fifo",
+    "fifo_almost_full",
+    "fifo_bram",
+    "fifo_bram_almost_full",
+    "fifo_fwd",
+    "fifo_reg",
+    "fifo_srl",
+    "fifo_srl_almost_full",
+    "fifo_srl_almost_full_internal",
+    "frame_channel",
+    "frame_ring",
+    "generate_last",
+    "priority_encoder",
+    "relay_station",
+    "ring_count",
+    "stream_to_axis_adapter",
+    "tapa_control_pipeline",
+    "tapa_control_pipeline_stage",
+    "tapa_global_controller",
+    "tapa_hs_pipeline",
+    "tapa_hs_pipeline_body",
+    "tapa_hs_pipeline_head",
+    "tapa_hs_pipeline_head_gate",
+    "tapa_local_controller",
+];
+
+/// Whether `name` is a module TAPA ships with a design (see
+/// [`SUPPORT_MODULES`]).
+fn is_support_module(name: &str) -> bool {
+    let crossbar = name.strip_prefix("axi_crossbar_").and_then(|shape| {
+        let (slaves, masters) = shape.split_once('x')?;
+        let digits = |text: &str| !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit());
+        Some(digits(slaves) && digits(masters))
+    });
+    SUPPORT_MODULES.contains(&name) || crossbar == Some(true)
+}
+
 /// Root of the unified task graph.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -146,9 +200,9 @@ impl TaskGraph {
     ///
     /// # Errors
     ///
-    /// A schema version other than [`SCHEMA_VERSION`], an invalid
-    /// invoke-site constant, a stream of depth 0, or a stream shallower
-    /// than a frame it carries.
+    /// A schema version other than [`SCHEMA_VERSION`], a task named after
+    /// a [support module](SUPPORT_MODULES), an invalid invoke-site constant,
+    /// a stream of depth 0, or a stream shallower than a frame it carries.
     pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
             return Err(ParseError::UnsupportedSchemaVersion {
@@ -162,10 +216,26 @@ impl TaskGraph {
                 supported: SCHEMA_VERSION,
             });
         }
+        self.validate_task_names()?;
         self.validate_literals()?;
         self.validate_stream_depths()?;
         self.validate_frame_depths()?;
         self.validate_frame_channels()
+    }
+
+    /// No task takes the name of a module TAPA ships with the design: one
+    /// of the two would replace the other in the generated RTL.
+    fn validate_task_names(&self) -> Result<(), ParseError> {
+        match self.tasks.keys().find(|name| is_support_module(name)) {
+            Some(name) => Err(ParseError::Schema {
+                path: format!("tasks.{name}"),
+                message: format!(
+                    "task `{name}` has the name of the Verilog module `{name}` that TAPA \
+                     ships with the generated RTL; rename the task"
+                ),
+            }),
+            None => Ok(()),
+        }
     }
 
     /// A stream a task declares holds at least one element. With a depth of
@@ -726,6 +796,27 @@ mod tests {
         );
         assert!(message.contains("`Mid.out` moves frames of 8"), "{message}");
         TaskGraph::from_json(&graph(8)).expect("depth 8 holds a frame of 8");
+    }
+
+    #[test]
+    fn a_task_named_after_a_support_module_is_rejected() {
+        let graph = |name: &str| {
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "{name}", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{"{name}": {{"level": "lower", "srcs": [],
+                    "include_dirs": [], "defines": [], "synth": "hls", "readable_name": "",
+                    "ports": [], "tasks": {{}}, "fifos": {{}}}}}}}}"#
+            )
+        };
+        for name in ["fifo", "relay_station", "axi_crossbar_2x1"] {
+            let message = TaskGraph::from_json(&graph(name))
+                .expect_err(name)
+                .to_string();
+            assert!(message.contains(&format!("module `{name}`")), "{message}");
+        }
+        for name in ["fifos", "axi_crossbar_2", "axi_crossbar_axb"] {
+            TaskGraph::from_json(&graph(name)).expect(name);
+        }
     }
 
     #[test]

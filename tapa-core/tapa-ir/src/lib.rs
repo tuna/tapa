@@ -45,6 +45,7 @@ pub use floorplan::{
 };
 pub use graph::{
     ring_count_plio, ring_plio, ring_registers, FrameChannel, Ring, RingRegister, TaskGraph,
+    SUPPORT_MODULES,
 };
 pub use instance::{Arg, ArgSource, TaskInstance, WireValue};
 pub use interconnect::{EndpointRef, InterconnectDefinition};
