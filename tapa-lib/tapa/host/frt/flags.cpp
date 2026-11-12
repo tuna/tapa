@@ -1,4 +1,3 @@
-#include <cstdint>
 #include <cstdlib>
 #include <string>
 
@@ -50,13 +49,6 @@ void SetBoolEnvIf(const char* name, bool val) {
   }
 }
 
-void SetUintEnvIf(const char* name, uint64_t val) {
-  if (val != 0) {
-    const std::string text = std::to_string(val);
-    setenv(name, text.c_str(), 1);
-  }
-}
-
 }  // namespace
 
 // Which backend runs a bitstream is decided once, in Rust
@@ -77,7 +69,10 @@ void ForwardFlagsToEnv() {
   SetBoolEnvIf("FRT_XSIM_SAVE_WAVEFORM", FLAGS_xsim_save_waveform);
   SetEnvIf("FRT_COSIM_WORK_DIR", FLAGS_cosim_work_dir);
   SetBoolEnvIf("FRT_COSIM_WORK_DIR_PARALLEL", FLAGS_cosim_work_dir_parallel);
-  SetUintEnvIf("FRT_COSIM_TIMEOUT_SECONDS", FLAGS_cosim_timeout_seconds);
+  if (FLAGS_cosim_timeout_seconds != 0) {
+    SetEnvIf("FRT_COSIM_TIMEOUT_SECONDS",
+             std::to_string(FLAGS_cosim_timeout_seconds));
+  }
   SetEnvIf("FRT_XSIM_PART_NUM", FLAGS_xsim_part_num);
   SetBoolEnvIf("FRT_COSIM_SETUP_ONLY", FLAGS_cosim_setup_only);
   SetBoolEnvIf("FRT_COSIM_RESUME_FROM_POST_SIM",
