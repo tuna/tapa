@@ -13,4 +13,8 @@ namespace tapa::internal {
 
 std::string StrCat(std::initializer_list<std::string_view> pieces);
 
+// The physical cores this process may run on: under `taskset`, a container's
+// cpuset or a batch scheduler's allocation, only the cores it was given.
+int get_physical_core_count();
+
 }  // namespace tapa::internal

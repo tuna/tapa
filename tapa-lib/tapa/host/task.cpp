@@ -12,7 +12,6 @@
 #include <atomic>
 #include <deque>
 #include <exception>
-#include <fstream>
 #include <functional>
 #include <list>
 #include <map>
@@ -29,11 +28,8 @@
 #include <sys/mman.h>
 #include <time.h>
 
-#ifdef __APPLE__
-#include <sys/sysctl.h>
-#endif
-
 #include "tapa/host/frt/instance.h"
+#include "tapa/host/private_util.h"
 
 namespace tapa {
 
@@ -752,22 +748,6 @@ uint64_t get_time_ns() {
 void ensure_split_stack_runtime_ready() {
 #ifdef BOOST_USE_SEGMENTED_STACKS
   if (__morestack_load_mmap != nullptr) __morestack_load_mmap();
-#endif
-}
-
-int get_physical_core_count() {
-#ifdef __APPLE__
-  int count = 0;
-  size_t size = sizeof(count);
-  if (sysctlbyname("hw.physicalcpu", &count, &size, nullptr, 0) == 0 &&
-      count > 0) {
-    return count;
-  }
-  return std::thread::hardware_concurrency();
-#else
-  std::ifstream cpuinfo("/proc/cpuinfo");
-  if (const int count = count_physical_cores(cpuinfo); count > 0) return count;
-  return std::thread::hardware_concurrency();
 #endif
 }
 

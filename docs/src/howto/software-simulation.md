@@ -40,9 +40,10 @@ TAPA_CONCURRENCY=1 ./vadd
 ```
 
 ```admonish note
-`TAPA_CONCURRENCY` defaults to the physical CPU core count; a value below 1
-means 1. Set it to `1` for a simpler scheduling interleaving at the cost of
-simulation speed. One
+`TAPA_CONCURRENCY` defaults to the physical CPU cores the process may run
+on: under `taskset` or a batch scheduler's allocation, only those. A value
+below 1 means 1. Set it to `1` for a simpler scheduling interleaving at the
+cost of simulation speed. One
 worker still interleaves tasks at blocking points; it does not run each task
 to completion. On macOS the host library runs each task on a thread of its
 own and ignores `TAPA_CONCURRENCY`.
@@ -83,7 +84,8 @@ TAPA writes one log file per named stream. Unnamed streams are not logged. The f
 Vitis HLS C simulation executes dataflow functions sequentially rather than
 reproducing their cycle-by-cycle concurrency. TAPA instead schedules each task
 as a coroutine. A blocking stream operation yields so another task can run;
-worker threads (`TAPA_CONCURRENCY`, defaulting to the physical core count) can
+worker threads (`TAPA_CONCURRENCY`, defaulting to the physical cores the
+process may run on) can
 also run tasks in parallel. With `tapa::stream<T, Depth>`, the same depth
 limits apply, so producers experience backpressure when a FIFO fills.
 

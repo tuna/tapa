@@ -177,9 +177,9 @@ The `tapa synth` step. Runs Vitis HLS on each task extracted during `tapa analyz
 
 Environment variable controlling the worker threads that run task coroutines.
 Set to `1` to use one worker with cooperative interleaving at blocking points;
-it does not run each task to completion. The default is the host's physical
-CPU core count. On macOS each task runs on a thread of its own, and the
-variable has no effect.
+it does not run each task to completion. The default is the number of physical
+CPU cores the process may run on. On macOS each task runs on a thread of its
+own, and the variable has no effect.
 
 ---
 
