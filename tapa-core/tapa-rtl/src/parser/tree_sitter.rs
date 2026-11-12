@@ -168,7 +168,7 @@ fn extract_ansi_port(
                 has_type_spec = true;
                 direction = parse_direction(text_of(child, src).trim());
             }
-            "port_identifier" | "simple_identifier" => {
+            "port_identifier" | "simple_identifier" | "escaped_identifier" => {
                 name = Some(text_of(child, src).to_owned());
             }
             _ => {}

@@ -11,6 +11,21 @@ use crate::signal::{Signal, SignalKind};
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
+/// An identifier as Verilog source. An escaped identifier (`\a[0]`) runs to
+/// the next whitespace, so it carries its terminating space; without it a
+/// following `,`, `;`, `(` or `[` would join the name.
+pub struct Ident<'a>(pub &'a str);
+
+impl fmt::Display for Ident<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.0)?;
+        if self.0.starts_with('\\') {
+            f.write_str(" ")?;
+        }
+        Ok(())
+    }
+}
+
 fn write_indent(f: &mut fmt::Formatter<'_>, level: usize) -> fmt::Result {
     for _ in 0..level {
         f.write_str("  ")?;
@@ -86,7 +101,7 @@ fn write_statement(f: &mut fmt::Formatter<'_>, stmt: &Statement, indent: usize) 
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident(name) => f.write_str(name),
+            Self::Ident(name) => write!(f, "{}", Ident(name)),
             Self::Lit(val) => f.write_str(val),
             Self::BinOp { lhs, op, rhs } => write!(f, "({lhs} {op} {rhs})"),
             Self::Index { base, index } => write!(f, "{base}[{index}]"),
@@ -130,7 +145,7 @@ impl fmt::Display for Port {
         if let Some(w) = &self.width {
             write!(f, " {w}")?;
         }
-        write!(f, " {}", self.name)
+        write!(f, " {}", Ident(&self.name))
     }
 }
 
@@ -152,19 +167,19 @@ impl fmt::Display for Signal {
         if let Some(w) = &self.width {
             write!(f, " {w}")?;
         }
-        write!(f, " {};", self.name)
+        write!(f, " {};", Ident(&self.name))
     }
 }
 
 impl fmt::Display for PortArg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, ".{}({})", self.port_name, self.connection)
+        write!(f, ".{}({})", Ident(&self.port_name), self.connection)
     }
 }
 
 impl fmt::Display for ParamArg {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, ".{}({})", self.param_name, self.value)
+        write!(f, ".{}({})", Ident(&self.param_name), self.value)
     }
 }
 

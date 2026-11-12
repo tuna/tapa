@@ -272,7 +272,7 @@ impl MutableModule {
                 if let Some(w) = &port.width {
                     let _ = write!(out, " {w}");
                 }
-                let _ = writeln!(out, " {}{comma}", port.name);
+                let _ = writeln!(out, " {}{comma}", crate::emit::Ident(&port.name));
             } else {
                 let _ = writeln!(out, "  {port}{comma}");
             }
@@ -773,6 +773,44 @@ endmodule
         assert!(
             reparsed.find_port("test_out").is_some(),
             "should find added port"
+        );
+    }
+
+    /// An escaped identifier ends at whitespace, so emission must keep a
+    /// space between it and the punctuation that follows.
+    #[test]
+    fn escaped_identifiers_survive_emit_then_reparse() {
+        let source = "\
+module Escaped (
+  \\in[0] ,
+  \\out.q ,
+  \\q-n
+);
+input \\in[0] ;
+output reg [3:0] \\out.q ;
+output \\q-n ;
+wire \\w[1] ;
+assign \\q-n = \\in[0] ;
+endmodule
+";
+        let module = VerilogModule::parse(source).expect("parse");
+        let mut mm = MutableModule::from_parsed(module);
+        mm.add_signal(reg("\\out.q")).expect("port-shadowing reg");
+        mm.add_instance(
+            ModuleInstance::new("Child", "\\child[0]")
+                .with_ports(vec![PortArg::new("\\in[0]", Expr::ident("\\w[1]"))]),
+        );
+        let emitted = mm.emit();
+        let reparsed = VerilogModule::parse(&emitted)
+            .unwrap_or_else(|error| panic!("{error}\nemitted:\n{emitted}"));
+        assert_eq!(reparsed.ports, mm.inner.ports, "emitted:\n{emitted}");
+        assert!(
+            reparsed.signals.iter().any(|s| s.name == "\\w[1]"),
+            "emitted:\n{emitted}"
+        );
+        assert!(
+            emitted.contains(".\\in[0] (\\w[1] )"),
+            "emitted:\n{emitted}"
         );
     }
 
