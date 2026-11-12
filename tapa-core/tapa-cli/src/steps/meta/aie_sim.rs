@@ -32,6 +32,10 @@ pub enum AieSim {
 /// The file naming a directory as a package, and what it says.
 const MANIFEST: &str = "manifest.json";
 
+/// Written as a build starts, so that a build that failed partway, which has
+/// already replaced whatever was there, can be rerun into the same path.
+const BUILD_MARKER: &str = ".tapa-aie-sim-build";
+
 /// Cycles a graph that never returns runs before the host ends it.
 const RUN_FOREVER_CYCLES: u64 = 100_000;
 
@@ -76,13 +80,7 @@ pub fn package(
         CliError::InvalidArg("`--aie-sim` builds a package at `--output`; name it".to_string())
     })?;
     let output = std::path::absolute(output)?;
-    // The build wipes its directory, so it may only replace a package.
-    if output.exists() && !output.join(MANIFEST).is_file() {
-        return Err(CliError::InvalidArg(format!(
-            "`{}` exists and is not an AI Engine simulation package; name a new path",
-            output.display()
-        )));
-    }
+    check_replaceable(&output)?;
     let state = work_io::load(&ctx.work_dir)?;
     // The simulators move a PL-less top's frames by GMIO.
     let partition =
@@ -109,6 +107,7 @@ pub fn package(
             }),
         },
     )?;
+    std::fs::write(output.join(BUILD_MARKER), b"")?;
     ctx.with_tool_runner(|runner| -> Result<()> {
         Ok(tapa_xilinx::tools::aie::compile(runner, &job)?)
     })?;
@@ -120,6 +119,18 @@ pub fn package(
         manifest.simulator,
         output.display()
     );
+    Ok(())
+}
+
+/// The build wipes its directory, so it may only replace what a build wrote:
+/// a package, or the remains of a build that failed.
+fn check_replaceable(output: &Path) -> Result<()> {
+    if output.exists() && !output.join(MANIFEST).is_file() && !output.join(BUILD_MARKER).is_file() {
+        return Err(CliError::InvalidArg(format!(
+            "`{}` exists and is not an AI Engine simulation package; name a new path",
+            output.display()
+        )));
+    }
     Ok(())
 }
 
@@ -145,4 +156,27 @@ fn manifest(sim: AieSim, graph: &tapa_ir::Graph, partition: &AiePartition) -> Re
         inlined: tapa_ir::inlined_instances(graph)?,
         memories: tapa_ir::memory_crossings(graph)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A build replaces only what a build wrote: a finished package, or the
+    /// remains of one that failed (a kernel that did not compile), which the
+    /// user reruns into the same path once fixed. Anything else is kept.
+    #[test]
+    fn a_failed_build_may_be_rerun_in_place_but_other_directories_are_kept() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let output = dir.path().join("pkg");
+        check_replaceable(&output).expect("a new path");
+        std::fs::create_dir(&output).expect("mkdir");
+        std::fs::write(output.join("notes.txt"), "mine").expect("user file");
+        check_replaceable(&output).expect_err("a directory no build wrote");
+        std::fs::write(output.join(BUILD_MARKER), b"").expect("marker");
+        check_replaceable(&output).expect("a failed build");
+        std::fs::remove_file(output.join(BUILD_MARKER)).expect("rm marker");
+        std::fs::write(output.join(MANIFEST), "{}").expect("manifest");
+        check_replaceable(&output).expect("a package");
+    }
 }
