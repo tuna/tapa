@@ -351,14 +351,27 @@ fn array_name_parts(name: &str) -> Option<(&str, &str, &str)> {
 /// Resolve the peek port belonging to stream `name` on `module`. Array
 /// elements (`in_q[0]`) map to `{base}_peek_{idx}{tail}{suffix}`; scalar
 /// streams go through the usual `{name}{infix}_peek{suffix}` infix search.
+/// Vitis HLS spells the one channel of a one-channel array (`in[0]` of an
+/// `istreams<T, 1>`) like a scalar stream, `in_peek_dout`, as
+/// `VerilogModule::get_port_of` finds its other ports.
 fn resolve_peek_port_name(module: &VerilogModule, name: &str, suffix: &str) -> Option<String> {
+    let scalar = |name: &str| {
+        module
+            .get_port_of(name, &format!("_peek{suffix}"))
+            .map(|p| p.name.clone())
+    };
     if let Some((base, idx, tail)) = array_name_parts(name) {
         let candidate = format!("{base}_peek_{idx}{tail}{suffix}");
-        return module.find_port(&candidate).map(|p| p.name.clone());
+        return module
+            .find_port(&candidate)
+            .map(|p| p.name.clone())
+            .or_else(|| {
+                (idx == "0" && tail.is_empty())
+                    .then(|| scalar(base))
+                    .flatten()
+            });
     }
-    module
-        .get_port_of(name, &format!("_peek{suffix}"))
-        .map(|p| p.name.clone())
+    scalar(name)
 }
 
 #[cfg(test)]

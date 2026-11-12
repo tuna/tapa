@@ -237,6 +237,48 @@ fn build_child_instance_connects_array_istream_peek_inputs() {
     );
 }
 
+/// Vitis HLS names the ports of a one-channel stream array like a scalar
+/// stream's (`in_s_dout`, `in_peek_dout`); a task that peeks reads the peek
+/// ports, so they must be bound as the `_s` ones are.
+#[test]
+fn build_child_instance_connects_one_channel_array_istream_peek_inputs() {
+    use std::collections::BTreeMap;
+    let sig = InstanceSignals::new("one_0", false);
+    let child_rtl = VerilogModule::parse(
+        "module one(\n\
+             input wire ap_clk,\n\
+             input wire [32:0] in_s_dout,\n\
+             input wire in_s_empty_n,\n\
+             output wire in_s_read,\n\
+             input wire [32:0] in_peek_dout,\n\
+             input wire in_peek_empty_n,\n\
+             output wire in_peek_read\n\
+             ); endmodule",
+    )
+    .unwrap();
+    let mut args = BTreeMap::new();
+    args.insert(
+        "in[0]".to_owned(),
+        Arg::named("q[0]".to_owned(), ArgCategory::Istream),
+    );
+    let text = build_child_instance_test(
+        "one",
+        "one_0",
+        &sig,
+        &args,
+        &ChildMmapBindings::default(),
+        Some(&child_rtl),
+    )
+    .to_string();
+    for binding in [
+        ".in_s_dout(q_0_dout)",
+        ".in_peek_dout(q_0_dout)",
+        ".in_peek_empty_n(q_0_empty_n)",
+    ] {
+        assert!(text.contains(binding), "missing {binding}:\n{text}");
+    }
+}
+
 #[test]
 fn build_child_instance_passes_stream_ports_through_with_s_infix() {
     // A middle/upper task that passes its own stream PORT straight through
