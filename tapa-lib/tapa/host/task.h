@@ -288,14 +288,6 @@ struct top_stream_use<iframes<T, N>> : top_stream_use_of<T, true> {};
 template <typename T, uint64_t N>
 struct top_stream_use<oframes<T, N>> : top_stream_use_of<T, false> {};
 
-// std::bind wrapper ensuring left-to-right argument evaluation.
-struct binder {
-  template <typename F, typename... Args>
-  binder(F&& f, Args&&... args)
-      : result(std::bind(std::forward<F>(f), std::forward<Args>(args)...)) {}
-  std::function<void()> result;
-};
-
 template <typename T>
 struct function_traits : public function_traits<decltype(&T::operator())> {};
 template <typename R, typename... Args>
@@ -470,11 +462,12 @@ struct invoker {
   template <typename Func, size_t... Is, typename... CapturedArgs>
   static auto functor_with_accessors(Func&& func, std::index_sequence<Is...>,
                                      CapturedArgs&&... args) {
-    // Aggregate initialization evaluates args left-to-right; std::bind copies.
-    return binder{
-        func, accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
-                  std::forward<CapturedArgs>(args))...}
-        .result;
+    // Braced initialization evaluates the accessors left to right.
+    std::tuple<std::decay_t<std::tuple_element_t<Is, Params>>...> values{
+        accessor<std::tuple_element_t<Is, Params>, CapturedArgs>::access(
+            std::forward<CapturedArgs>(args))...};
+    return
+        [func = FuncType(func), values]() mutable { std::apply(func, values); };
   }
 };
 
