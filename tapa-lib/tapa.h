@@ -22,9 +22,6 @@
 
 #endif
 
-// Add compatibility layers for TAPA to behave like vendor-specific tools.
-// Compatible layer are meant to behave like a specific vendor, such as
-// Vitis HLS's hls::stream, where the simulation depth is infinite.
-// It is compilable (synthesizable) for the specific vendor, but we also
-// strive to make it compilable for other vendors.
+// Vendor-migration compatibility layers, such as Vitis HLS's hls::stream
+// with infinite simulation depth.
 #include "tapa/compat.h"  // IWYU pragma: export

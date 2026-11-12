@@ -10,11 +10,10 @@
 
 #include "tapa/base/util.h"
 
-// One `vec_t` for every target. The three targets used to carry three copies of
-// this file whose only real difference was where the HLS pragmas went, so the
-// pragmas live in macros here and the bodies are written once. On any target
-// but Xilinx HLS they expand to nothing, which is why no non-HLS compiler ever
-// sees an unrecognized `#pragma`.
+// The host, Xilinx HLS and parse-only stub share this `vec_t`; the AI Engine
+// has a native-vector implementation in tapa/aie/vec.h. HLS pragmas live in
+// macros here and expand to nothing elsewhere, so no non-HLS compiler sees an
+// unrecognized `#pragma`.
 //
 // Including this header requires the target's `CHECK_GE`/`CHECK_LE` to already
 // be defined; each target's `vec.h` includes its own `logging.h` first.

@@ -126,8 +126,7 @@ AieSimulation Instance::SimulatesAie() const {
 
 void Instance::SetBufferArg(int index, const void* ptr, size_t bytes,
                             BufferAccess access) {
-  // The FRT C ABI takes a mutable pointer. Read-only mmaps expose a const
-  // element pointer, so const-cast here as the former BufferArg did; the
+  // The FRT C ABI takes a mutable pointer even for a read-only mmap; the
   // direction is conveyed by `access`, not pointer constness.
   CheckFfi(frt_instance_set_buffer_arg_typed(
                impl_->handle, index,

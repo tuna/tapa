@@ -28,10 +28,9 @@
 #include <ostream>
 #include <type_traits>
 
-// The packet members are tapa::u<W>, so this header needs the integer
-// layer, not just the layering comment that used to stand in for it
-// (under the Xilinx target int.h is inert and the umbrella's hls/int.h
-// alias applies).
+// The packet members are tapa::u<W>, so this header needs the integer layer
+// (under the Xilinx target int.h is inert and the umbrella's hls/int.h alias
+// applies).
 #include "tapa/base/int.h"
 #include "tapa/base/util.h"
 
