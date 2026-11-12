@@ -108,6 +108,10 @@ pub struct DistributedControlPlan {
     children: BTreeMap<String, ChildControlPlan>,
     scopes: Vec<ScopeControlPlan>,
     root_completion_signals: Option<Vec<String>>,
+    /// The `drained` nets of the top's output rings: the root is done only
+    /// once each holds, but a drained ring is also the idle state, so they
+    /// never gate its clear.
+    drained_signals: Vec<String>,
     flush_cycles: u32,
 }
 
@@ -210,6 +214,7 @@ impl DistributedControlPlan {
             children,
             scopes: Vec::new(),
             root_completion_signals: None,
+            drained_signals: drained_signals(state),
             flush_cycles,
         };
         plan.retain_scopes(state, mmap_connections)?;
@@ -224,6 +229,7 @@ impl DistributedControlPlan {
             children: BTreeMap::new(),
             scopes: Vec::new(),
             root_completion_signals: None,
+            drained_signals: drained_signals(state),
             flush_cycles: 0,
         };
         let task = &state.data_design().tasks[&state.design.top];
@@ -548,7 +554,7 @@ impl DistributedControlPlan {
         module.add_signal(wire(CHILDREN_CLEAR))?;
         module.add_signal(wire(FABRIC_RESET_N))?;
 
-        let (done, clear) = done_and_clear(completion_signals);
+        let (done, clear) = done_and_clear(completion_signals, &self.drained_signals);
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_DONE), done));
         module.add_assign(ContinuousAssign::new(Expr::ident(CHILDREN_CLEAR), clear));
         module.add_instance(
@@ -586,7 +592,7 @@ impl DistributedControlPlan {
         let release = scope_signal(Some(&scope.instance), "release");
         module.add_signal(wire(&start))?;
         module.add_signal(wire(&release))?;
-        let (done, clear) = done_and_clear(&scope.completion_signals);
+        let (done, clear) = done_and_clear(&scope.completion_signals, &[]);
         module.add_instance(
             ModuleInstance::new(
                 "tapa_global_controller",
@@ -611,15 +617,27 @@ impl DistributedControlPlan {
 }
 
 /// A controller's `children_done` and `children_clear` conditions: every
-/// completion signal high, and every one low.
-fn done_and_clear(completion_signals: &[String]) -> (Expr, Expr) {
-    let done = Expr::all(completion_signals.iter().map(Expr::ident));
+/// completion signal high and every `drained` net held, and every
+/// completion signal low.
+fn done_and_clear(completion_signals: &[String], drained: &[String]) -> (Expr, Expr) {
+    let done = Expr::all(completion_signals.iter().chain(drained).map(Expr::ident));
     let clear = Expr::all(
         completion_signals
             .iter()
             .map(|signal| Expr::logical_not(Expr::ident(signal))),
     );
     (done, clear)
+}
+
+/// The `drained` nets of the top's output rings (see `rings`).
+fn drained_signals(state: &TopologyWithRtl) -> Vec<String> {
+    state
+        .data_design()
+        .rings()
+        .iter()
+        .filter(|ring| !ring.input)
+        .map(|ring| super::rings::drained_name(&ring.port))
+        .collect()
 }
 
 /// Validate the top control AXI-Lite placement against the global controller

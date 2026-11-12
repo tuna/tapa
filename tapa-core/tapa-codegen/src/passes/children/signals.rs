@@ -162,23 +162,22 @@ pub fn generate_child_signals(
     }
 
     // An output ring holds the top's done until its frames are in memory;
-    // the ring pass declares and drives the net.
-    if stage.task_name == design.top {
+    // the ring pass declares and drives the net. A distributed control plan
+    // gates its root controller's done on the net itself.
+    if stage.task_name == design.top && stage.control_plan.is_none() {
         for ring in design.rings().iter().filter(|ring| !ring.input) {
             let drained = crate::passes::rings::drained_name(&ring.port);
             stage.is_done_signals.push(drained.clone());
-            if stage.control_plan.is_none() {
-                if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
-                    let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
-                        &drained,
-                        tapa_rtl::port::Direction::Input,
-                    ));
-                }
-                stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+            if let Some(fsm_mm) = stage.fsms.get_mut(stage.task_name) {
+                let _ = fsm_mm.add_port(tapa_rtl::mutation::simple_port(
                     &drained,
-                    Expr::ident(&drained),
+                    tapa_rtl::port::Direction::Input,
                 ));
             }
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                &drained,
+                Expr::ident(&drained),
+            ));
         }
     }
 

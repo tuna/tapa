@@ -755,3 +755,204 @@ int main() {
   return 0;
 }
 "#;
+
+/// An output ring holds the top's done until the frames its task released
+/// are in memory, under every control: the per-task FSM, a floorplan's
+/// distributed controllers, and a flattened top's scoped ones. Its drained
+/// state is also the idle one, so it must not keep a distributed top from
+/// starting.
+#[test]
+fn an_output_ring_holds_done_until_its_frames_are_in_memory() {
+    use common::run_manifest::{generate_manifest, rtl_file};
+
+    for (floorplanned, flattened) in [(false, false), (true, false), (false, true)] {
+        let mut state = ring_state(floorplanned, flattened);
+        let manifest = generate_manifest(&mut state);
+        let mut sources = vec![("top.v", rtl_file(&manifest, "top.v").as_str())];
+        if let Some(fsm) = manifest.files().get("rtl/top_fsm.v") {
+            sources.push(("top_fsm.v", fsm));
+        }
+        sources.push(("worker.v", RING_WORKER));
+        run_cosim(
+            "top",
+            &[],
+            &[
+                "frame_ring.v",
+                "async_mmap.v",
+                "detect_burst.v",
+                "generate_last.v",
+                "burst_split.v",
+                "relay_station.v",
+                "fifo.v",
+                "fifo_fwd.v",
+                "fifo_srl.v",
+                "fifo_bram.v",
+                "tapa_control.v",
+                "tapa_hs_pipeline.v",
+            ],
+            &sources,
+            RING_TESTBENCH,
+        );
+    }
+}
+
+/// A top whose task writes `n` elements, a frame of 4, to the top's output
+/// ring `out`.
+fn ring_state(floorplanned: bool, flattened: bool) -> tapa_codegen::rtl_state::TopologyWithRtl {
+    use common::{design, parse_module, task};
+    use serde_json::json;
+    use std::collections::BTreeMap;
+    use tapa_ir::{
+        global_controller_instance_name, local_controller_instance_name, ControlChannel,
+        FloorplanResult, PipelineRoute, PipelineScheme, RoutedChannel,
+    };
+
+    let top = task("top", "upper", |t| {
+        t["ports"] = json!([
+            {"cat": "scalar", "name": "n", "type": "uint32_t", "width": 32},
+            {"cat": "ostream", "name": "out", "type": "uint32_t", "width": 32, "ring": 4}
+        ]);
+        t["tasks"] = json!({"worker": [{"name": "worker#0", "args": {
+            "count": {"arg": "n", "cat": "scalar"},
+            "o": {"arg": "out", "cat": "ostream"}
+        }}]});
+        t["fifos"] = json!({"out": {"produced_by": ["worker", 0]}});
+    });
+    let worker = task("worker", "lower", |t| {
+        t["ports"] = json!([
+            {"cat": "scalar", "name": "count", "type": "uint32_t", "width": 32},
+            {"cat": "ostream", "name": "o", "type": "uint32_t", "width": 32, "frame": 4}
+        ]);
+    });
+    let mut state = tapa_codegen::rtl_state::TopologyWithRtl::new(design(
+        "top",
+        "xilinx-vitis",
+        &[("top", top), ("worker", worker)],
+    ));
+    state
+        .attach_module(
+            "top",
+            parse_module(
+                "module top(input wire ap_clk, input wire ap_rst_n, input wire ap_start,\n\
+                 output wire ap_done, output wire ap_idle, output wire ap_ready,\n\
+                 input wire [31:0] n);\nendmodule",
+            ),
+        )
+        .unwrap();
+    state
+        .attach_module("worker", parse_module(RING_WORKER))
+        .unwrap();
+    if flattened {
+        state.flat_projection =
+            Some(tapa_ir::transforms::flatten_with_origins(&state.design).unwrap());
+    }
+    if floorplanned {
+        let worker = "worker#0";
+        let (central, remote) = ("SLOT_X0Y0".to_owned(), "SLOT_X1Y0".to_owned());
+        let routes = [
+            ControlChannel::Launch,
+            ControlChannel::Reset,
+            ControlChannel::Completion,
+        ]
+        .into_iter()
+        .map(|channel| PipelineRoute {
+            channel: RoutedChannel::Control {
+                instance: worker.to_owned(),
+                channel,
+            },
+            route: if channel == ControlChannel::Completion {
+                vec![remote.clone(), central.clone()]
+            } else {
+                vec![central.clone(), remote.clone()]
+            },
+            scheme: PipelineScheme::Single,
+            reg_regions: Vec::new(),
+        })
+        .collect();
+        state.floorplan = Some(FloorplanResult {
+            device: "u280".to_owned(),
+            grid: (2, 1),
+            regions: BTreeMap::from([
+                (global_controller_instance_name().to_owned(), central),
+                (worker.to_owned(), remote.clone()),
+                (local_controller_instance_name(worker), remote.clone()),
+                ("out".to_owned(), remote),
+            ]),
+            routes,
+            slot_usage: BTreeMap::new(),
+        });
+    }
+    state
+}
+
+const RING_WORKER: &str = "
+module worker(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+              output wire ap_done, output wire ap_idle, output wire ap_ready,
+              input wire [31:0] count,
+              output wire [32:0] o_s_din, input wire o_s_full_n, output wire o_s_write);
+  reg busy = 0;
+  reg finished = 0;
+  reg [31:0] index = 0;
+  assign o_s_write = busy && o_s_full_n;
+  assign o_s_din = {1'b0, index};
+  assign ap_done = finished;
+  assign ap_ready = finished;
+  assign ap_idle = !busy && !finished;
+  always @(posedge ap_clk) begin
+    if (!ap_rst_n) begin
+      busy <= 0; finished <= 0; index <= 0;
+    end else begin
+      finished <= 0;
+      if (!busy && !finished && ap_start) begin
+        busy <= 1; index <= 0;
+      end else if (o_s_write) begin
+        index <= index + 1;
+        if (index + 1 == count) begin busy <= 0; finished <= 1; end
+      end
+    end
+  end
+endmodule
+";
+
+const RING_TESTBENCH: &str = r#"
+#include "Vtop.h"
+#include <cstdio>
+#include <deque>
+#include <memory>
+// Two runs each write a frame; memory acknowledges a burst 50 cycles after
+// its last beat. ap_done must come, and only after that acknowledgement.
+int main() {
+  auto d = std::make_unique<Vtop>();
+  auto tick = [&]() { d->ap_clk = 1; d->eval(); d->ap_clk = 0; d->eval(); };
+  d->ap_clk = 0; d->ap_rst_n = 0; d->ap_start = 0; d->n = 4;
+  d->m_axi_out_AWREADY = 1; d->m_axi_out_WREADY = 1; d->m_axi_out_ARREADY = 1;
+  for (int i = 0; i < 16; ++i) tick();
+  d->ap_rst_n = 1;
+  for (int i = 0; i < 16; ++i) tick();
+  std::deque<long> responses;  // cycles at which each burst's B is due
+  long cycle = 0;
+  for (int run = 0; run < 2; ++run) {
+    d->ap_start = 1;
+    long acked = -1, done = -1;
+    for (int i = 0; i < 1000 && done < 0; ++i, ++cycle) {
+      d->m_axi_out_BVALID = !responses.empty() && responses.front() <= cycle;
+      d->eval();
+      if (d->m_axi_out_WVALID && d->m_axi_out_WLAST) responses.push_back(cycle + 50);
+      if (d->m_axi_out_BVALID && d->m_axi_out_BREADY) {
+        responses.pop_front();
+        acked = cycle;
+      }
+      if (d->ap_done) done = cycle;
+      if (d->ap_ready) d->ap_start = 0;
+      tick();
+    }
+    if (done < 0 || acked < 0 || done <= acked) {
+      std::printf("FAIL: run %d done at %ld, its frame acknowledged at %ld\n", run, done,
+                  acked);
+      return 1;
+    }
+  }
+  std::printf("PASS\n");
+  return 0;
+}
+"#;

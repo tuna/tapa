@@ -6,7 +6,9 @@
 //! channel of a view, or an ordinary FIFO before a leaf's
 //! `[[tapa::frame(N)]]` stream port (see [`ring_fifo_width`]). An output
 //! ring holds the top's done until everything released into its channel is
-//! in memory (its `drained` net joins the children's `is_done` nets).
+//! in memory: its `drained` net gates the top's done beside the children's
+//! `is_done` nets, but not a distributed controller's clear, since a drained
+//! ring is also the idle state.
 //!
 //! The PL kernel of an AI Engine top (see [`tapa_ir::TopFrames::Rings`])
 //! has no channel: each ring moves its frames to or from the argument's
