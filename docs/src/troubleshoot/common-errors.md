@@ -254,4 +254,23 @@ error.
 
 ---
 
+## `v++ 17-1396`: XO container failed integrity check
+
+**Symptom:** `tapa link` (or `v++ --link` on a TAPA `.xo`) logs
+`CRITICAL WARNING: [v++ 17-1396] The specified XO container failed integrity check: '<name>.xo'`,
+and the link then continues.
+
+**Cause:** Vivado's `package_xo` signs the archive it writes, in its ZIP
+comment, over the archive's exact bytes. `tapa pack` then rewrites the `.xo`:
+it removes timestamps, absolute paths and random IDs so that repeated builds
+are byte-identical, and adds `tapa.json` and the HLS reports, which `tapa
+link` and fast cosimulation read. Any rewrite, even one that keeps every
+entry's content, invalidates the signature, so every TAPA `.xo` triggers
+this warning.
+
+**Fix:** None is needed. The warning is harmless: `v++` links the `.xo`
+normally, and the kernel it contains is the one Vivado packaged.
+
+---
+
 **See also:** [Deadlocks & Hangs](deadlocks-and-hangs.md) | [Cosimulation Issues](cosim-issues.md)
