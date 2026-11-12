@@ -73,8 +73,7 @@ sudo yum install gcc-c++ libxcrypt-compat
 
 ### Fedora
 
-For Fedora 34 and newer. Fedora 39 and newer may have minor issues due to system
-C library changes and Vitis HLS tool incompatibility.
+For Fedora 34 and newer (see the caveats for Fedora 39+ in the table above):
 
 ```bash
 sudo yum install gcc-c++ libxcrypt-compat

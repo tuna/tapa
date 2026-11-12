@@ -124,23 +124,14 @@ tapa link \
 Artifact produced: `vadd.xilinx_u55c_gen3x16_xdma_3_202210_1.hw.xclbin`
 
 ```admonish note
-`v++` accepts only platforms supported by the installed Vitis version. If
-linking fails with `ERROR: [v++ 60-1299] The specified platform is not
-supported`, rerun Stage 1 with a `--platform` that matches both your board
-and Vitis installation. See [Common Errors](../troubleshoot/common-errors.md).
-```
-
-```admonish note
-`tapa link` builds a PL kernel's hardware bitstream only. For a Vitis
-hardware-emulation build (`v++ --target hw_emu`), invoke `v++` directly as
-shown in [Vitis Cosimulation](../howto/vitis-cosim.md). A top on the AI
-Engine with no PL kernel is the exception: `tapa link --sim` builds its
-hardware emulation (see [AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
-```
-
-```admonish warning
-Hardware binary generation typically takes several hours. Plan accordingly,
-and ensure your machine will remain available for the full duration.
+`tapa link` builds a PL kernel's hardware bitstream only, which typically
+takes several hours. For a Vitis hardware-emulation build
+(`v++ --target hw_emu`), invoke `v++` directly as shown in
+[Vitis Cosimulation](../howto/vitis-cosim.md). A top on the AI Engine with
+no PL kernel is the exception: `tapa link --sim` builds its hardware
+emulation (see [AI Engine Tasks](../howto/aie.md#a-top-with-no-pl-kernel)).
+If linking fails with `[v++ 60-1299]`, the platform is not supported by your
+Vitis version — see [Common Errors](../troubleshoot/common-errors.md).
 ```
 
 ## Stage 4 — On-board execution

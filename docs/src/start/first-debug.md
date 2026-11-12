@@ -61,15 +61,10 @@ mkdir -p /tmp/tapa-stream-logs
 TAPA_STREAM_LOG_DIR=/tmp/tapa-stream-logs ./vadd
 ```
 
-Log format:
-
-- **Primitive types** (`int`, `float`, …) are written as decimal text, one
-  value per line.
-- **Structs without `operator<<`** are written as little-endian hex.
-- **Structs with `operator<<`** are written using your operator.
-
-After the run, inspect the files under `/tmp/tapa-stream-logs/` to trace data
-as it flows through each stream and locate where incorrect values first appear.
+The log format depends on the element type — see
+[Stream logging](../howto/software-simulation.md#stream-logging). After the
+run, inspect the files under `/tmp/tapa-stream-logs/` to trace data as it
+flows through each stream and locate where incorrect values first appear.
 
 ## Common mistakes to check
 
