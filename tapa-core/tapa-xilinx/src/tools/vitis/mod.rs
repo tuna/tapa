@@ -497,7 +497,7 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         ));
     }
     let timing_text = fs_err::read_to_string(&resolved.timing_report)?;
-    let timing = parse_kernel_timing_summary(&timing_text, Some(job.target_mhz))?;
+    let timing = parse_kernel_timing_summary(&timing_text, job.target_mhz)?;
 
     Ok(LinkOutput {
         bitstream: resolved.output_xclbin,

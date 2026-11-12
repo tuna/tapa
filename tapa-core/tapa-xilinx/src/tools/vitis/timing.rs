@@ -26,12 +26,8 @@ pub struct KernelTiming {
 /// The kernel clock is identified by its reported `Frequency(MHz)` matching
 /// `target_mhz`, which is robust to platform-specific clock names: Vitis names
 /// it `ap_clk` on some platforms and `clk_kernel_00_unbuffered_net` (or
-/// similar) on Alveo shell platforms. When the target is unknown (`None`),
-/// the parser falls back to the historical `ap_clk` name.
-pub(crate) fn parse_kernel_timing_summary(
-    report: &str,
-    target_mhz: Option<u32>,
-) -> Result<KernelTiming> {
+/// similar) on Alveo shell platforms.
+pub(crate) fn parse_kernel_timing_summary(report: &str, target_mhz: u32) -> Result<KernelTiming> {
     let kernel_clock = identify_kernel_clock(report, target_mhz)?;
     parse_named_clock_timing_summary(report, &kernel_clock)
 }
@@ -76,42 +72,21 @@ pub(crate) fn parse_named_clock_whs(report: &str, clock: &str) -> Result<f64> {
     finite("clock WHS(ns)", parse_field(&row, "WHS(ns)")?)
 }
 
-/// Decide which clock row in the `Clock Summary` is the kernel clock.
-///
-/// Preference order:
-/// 1. A clock whose reported `Frequency(MHz)` matches `target_mhz` (within
-///    tolerance). This is the robust, platform-agnostic signal.
-/// 2. Otherwise a clock literally named `ap_clk` (the historical TAPA / HLS
-///    convention).
-fn identify_kernel_clock(report: &str, target_mhz: Option<u32>) -> Result<String> {
-    let clocks = clock_rows(report, "Clock Summary")?;
-    let by_frequency = target_mhz.map(f64::from).and_then(|target| {
-        clocks
-            .iter()
-            .find_map(|row| {
-                let freq = parse_field(row, "Frequency(MHz)").ok()?;
-                ((freq - target).abs() <= FREQUENCY_MATCH_TOLERANCE_MHZ).then(|| row.clock_name())
-            })
-            .map(str::to_string)
-    });
-    if let Some(clock) = by_frequency {
-        return Ok(clock);
-    }
-
-    clocks
+/// Find the clock row in the `Clock Summary` whose frequency matches the
+/// requested kernel frequency.
+fn identify_kernel_clock(report: &str, target_mhz: u32) -> Result<String> {
+    let target = f64::from(target_mhz);
+    clock_rows(report, "Clock Summary")?
         .iter()
-        .find_map(|row| (row.clock_name() == "ap_clk").then(|| row.clock_name().to_string()))
+        .find_map(|row| {
+            let freq = parse_field(row, "Frequency(MHz)").ok()?;
+            ((freq - target).abs() <= FREQUENCY_MATCH_TOLERANCE_MHZ)
+                .then(|| row.clock_name().to_string())
+        })
         .ok_or_else(|| {
-            let detail = match target_mhz {
-                Some(target) => {
-                    format!(
-                        "no kernel clock matching target frequency {target} MHz or named `ap_clk` \
-                         in `Clock Summary`"
-                    )
-                }
-                None => "missing `ap_clk` row in `Clock Summary`".to_string(),
-            };
-            XilinxError::TimingSummaryParse(detail)
+            XilinxError::TimingSummaryParse(format!(
+                "no kernel clock matching target frequency {target_mhz} MHz in `Clock Summary`"
+            ))
         })
 }
 
@@ -289,7 +264,7 @@ other               0.500         0.000
 
     #[test]
     fn parses_kernel_rows_instead_of_global_wns() {
-        let timing = parse_kernel_timing_summary(&report("2.500", "400.000", "-0.173"), Some(400))
+        let timing = parse_kernel_timing_summary(&report("2.500", "400.000", "-0.173"), 400)
             .expect("valid timing summary");
         assert!((timing.reported_target_period_ns - 2.5).abs() < 1e-12);
         assert!((timing.reported_target_mhz - 400.0).abs() < 1e-12);
@@ -300,7 +275,7 @@ other               0.500         0.000
 
     #[test]
     fn positive_slack_reduces_achieved_period() {
-        let timing = parse_kernel_timing_summary(&report("2.500", "400.000", "0.200"), Some(400))
+        let timing = parse_kernel_timing_summary(&report("2.500", "400.000", "0.200"), 400)
             .expect("valid timing summary");
         assert!((timing.achieved_period_ns - 2.3).abs() < 1e-12);
         assert!((timing.fmax_mhz - (1000.0 / 2.3)).abs() < 1e-12);
@@ -308,27 +283,23 @@ other               0.500         0.000
 
     #[test]
     fn rejects_missing_or_ambiguous_kernel_rows() {
-        // No clock at the target frequency AND no `ap_clk` fallback: the parser
-        // cannot identify the kernel clock.
+        // No clock at the target frequency: the parser cannot identify the
+        // kernel clock.
         let no_match = report("2.500", "400.000", "-0.173").replace("ap_clk", "kernel_clk");
-        parse_kernel_timing_summary(&no_match, Some(500)).expect_err("unmatched target must fail");
-
-        // `target_mhz = None` falls back to the `ap_clk` name; removing it fails.
-        let no_ap_clk = report("2.500", "400.000", "-0.173").replace("ap_clk", "kernel_clk");
-        parse_kernel_timing_summary(&no_ap_clk, None).expect_err("missing ap_clk must fail");
+        parse_kernel_timing_summary(&no_match, 500).expect_err("unmatched target must fail");
 
         let duplicate_clock = report("2.500", "400.000", "-0.173").replace(
             "other   {0.000 0.500}        1.000           1000.000",
             "ap_clk  {0.000 0.500}        1.000           1000.000",
         );
-        parse_kernel_timing_summary(&duplicate_clock, Some(400))
+        parse_kernel_timing_summary(&duplicate_clock, 400)
             .expect_err("duplicate Clock Summary row must fail");
 
         let duplicate_intra = report("2.500", "400.000", "-0.173").replace(
             "other               0.500         0.000",
             "ap_clk              0.500         0.000",
         );
-        parse_kernel_timing_summary(&duplicate_intra, Some(400))
+        parse_kernel_timing_summary(&duplicate_intra, 400)
             .expect_err("duplicate Intra Clock row must fail");
     }
 
@@ -366,7 +337,7 @@ clk_kernel_01_unbuffered_net   0.445        0.000
 | Inter Clock Table
 | -----------------
 ";
-        let timing = parse_kernel_timing_summary(alveo, Some(333)).expect("alveo parse");
+        let timing = parse_kernel_timing_summary(alveo, 333).expect("alveo parse");
         assert!((timing.reported_target_period_ns - 3.0).abs() < 1e-9);
         assert!((timing.reported_target_mhz - 333.333).abs() < 1e-3);
         assert!((timing.wns_ns - (-1.548)).abs() < 1e-9);
@@ -376,27 +347,27 @@ clk_kernel_01_unbuffered_net   0.445        0.000
 
     #[test]
     fn rejects_invalid_source_values_and_denominator() {
-        // `None` selects `ap_clk` by name so the value validation below is the
-        // thing under test, not clock identification.
+        // Use the matching target so value validation is the thing under test,
+        // not clock identification.
         for invalid in ["0", "-1", "NaN", "inf"] {
             assert!(
-                parse_kernel_timing_summary(&report(invalid, "400.000", "-0.173"), None).is_err(),
+                parse_kernel_timing_summary(&report(invalid, "400.000", "-0.173"), 400).is_err(),
                 "period {invalid} must fail",
             );
             assert!(
-                parse_kernel_timing_summary(&report("2.500", invalid, "-0.173"), None).is_err(),
+                parse_kernel_timing_summary(&report("2.500", invalid, "-0.173"), 400).is_err(),
                 "frequency {invalid} must fail",
             );
         }
         for invalid in ["NaN", "inf", "-inf"] {
             assert!(
-                parse_kernel_timing_summary(&report("2.500", "400.000", invalid), None).is_err(),
+                parse_kernel_timing_summary(&report("2.500", "400.000", invalid), 400).is_err(),
                 "WNS {invalid} must fail",
             );
         }
         for wns in ["2.500", "3.000"] {
             assert!(
-                parse_kernel_timing_summary(&report("2.500", "400.000", wns), Some(400)).is_err(),
+                parse_kernel_timing_summary(&report("2.500", "400.000", wns), 400).is_err(),
                 "nonpositive achieved period from WNS {wns} must fail",
             );
         }
@@ -406,6 +377,6 @@ clk_kernel_01_unbuffered_net   0.445        0.000
     fn rejects_duplicate_sections() {
         let one = report("2.500", "400.000", "-0.173");
         let duplicate = format!("{one}\n{one}");
-        parse_kernel_timing_summary(&duplicate, Some(400)).expect_err("duplicate sections fail");
+        parse_kernel_timing_summary(&duplicate, 400).expect_err("duplicate sections fail");
     }
 }
