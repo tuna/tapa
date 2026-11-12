@@ -45,15 +45,11 @@ const FABRIC_RESET_MAX_FANOUT: u32 = 256;
 #[must_use]
 pub fn fabric_reset_signal(distributed_control: bool) -> tapa_rtl::signal::Signal {
     use tapa_protocol::HANDSHAKE_RST;
-    use tapa_rtl::mutation::{wire, wire_with_attribute};
+    let mut signal = wire(HANDSHAKE_RST);
     if distributed_control {
-        wire_with_attribute(
-            HANDSHAKE_RST,
-            format!("max_fanout = {FABRIC_RESET_MAX_FANOUT}"),
-        )
-    } else {
-        wire(HANDSHAKE_RST)
+        signal.attribute = Some(format!("max_fanout = {FABRIC_RESET_MAX_FANOUT}"));
     }
+    signal
 }
 
 struct ChildEntry {

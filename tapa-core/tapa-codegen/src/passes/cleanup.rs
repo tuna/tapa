@@ -4,6 +4,7 @@ use tapa_protocol::{
     HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY, HANDSHAKE_RST, HANDSHAKE_RST_N,
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr};
+use tapa_rtl::signal::SignalKind;
 
 use super::distributed_control::{self, DistributedControlPlan};
 use crate::state::views::{DesignView, ModuleTable};
@@ -24,7 +25,16 @@ pub(super) fn cleanup_hls_artifacts(
         mm.cleanup_hls_artifacts();
         mm.body_text.clear();
         mm.demote_output_port_regs_to_wires();
-        mm.demote_signal_regs_to_wires(&[HANDSHAKE_DONE, HANDSHAKE_IDLE, HANDSHAKE_READY]);
+        for signal in &mut mm.inner.signals {
+            if signal.kind == SignalKind::Reg
+                && matches!(
+                    signal.name.as_str(),
+                    HANDSHAKE_DONE | HANDSHAKE_IDLE | HANDSHAKE_READY
+                )
+            {
+                signal.kind = SignalKind::Wire;
+            }
+        }
         let _ = mm.add_signal(distributed_control::fabric_reset_signal(
             control_plan.is_some(),
         ));

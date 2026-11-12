@@ -173,16 +173,6 @@ impl MutableModule {
             .retain(|s| !(s.kind == SignalKind::Reg && output_ports.contains(s.name.as_str())));
     }
 
-    /// Convert selected parsed reg signals into wires.
-    pub fn demote_signal_regs_to_wires(&mut self, names: &[&str]) {
-        let names: BTreeSet<_> = names.iter().copied().collect();
-        for signal in &mut self.inner.signals {
-            if names.contains(signal.name.as_str()) && signal.kind == SignalKind::Reg {
-                signal.kind = SignalKind::Wire;
-            }
-        }
-    }
-
     /// Clean up HLS-generated artifacts from the body text:
     /// - Remove `_regslice_both` instances
     /// - Remove `ap_ST_fsm_stateN_blk` signals
@@ -362,20 +352,6 @@ pub fn wire(name: impl Into<String>) -> Signal {
         kind: SignalKind::Wire,
         width: None,
         attribute: None,
-    }
-}
-
-/// Helper to create a simple 1-bit wire carrying a synthesis attribute.
-///
-/// `attribute` is rendered as `(* {attribute} *)` before the declaration,
-/// e.g. `wire_with_attribute("ap_rst", "max_fanout = 256")` emits
-/// `(* max_fanout = 256 *) wire ap_rst;`.
-pub fn wire_with_attribute(name: impl Into<String>, attribute: impl Into<String>) -> Signal {
-    Signal {
-        name: name.into(),
-        kind: SignalKind::Wire,
-        width: None,
-        attribute: Some(attribute.into()),
     }
 }
 
@@ -715,28 +691,6 @@ endmodule
             !emitted.contains("output reg out_read"),
             "stale output reg should not remain:\n{emitted}"
         );
-    }
-
-    #[test]
-    fn demote_signal_regs_to_wires_emits_net_signals() {
-        let source = "
-module VitisTop (
-    ap_clk
-);
-input ap_clk;
-reg ap_done;
-reg ap_idle;
-reg keep_reg;
-endmodule
-";
-        let module = VerilogModule::parse(source).unwrap();
-        let mut mm = MutableModule::from_parsed(module);
-        mm.demote_signal_regs_to_wires(&["ap_done", "ap_idle"]);
-
-        let emitted = mm.emit();
-        assert!(emitted.contains("wire ap_done;"), "got:\n{emitted}");
-        assert!(emitted.contains("wire ap_idle;"), "got:\n{emitted}");
-        assert!(emitted.contains("reg keep_reg;"), "got:\n{emitted}");
     }
 
     #[test]
