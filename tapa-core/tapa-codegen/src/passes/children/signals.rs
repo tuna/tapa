@@ -195,7 +195,16 @@ fn wire_child_instance(
     declare_parent_handshake_wires(stage, &inst.sig, inst.is_autorun);
     register_fsm_handshake_ports(stage, &inst.sig, inst.is_autorun);
     add_fsm_control_logic(stage, &inst.sig, inst.is_autorun);
-    apply_control_plan_or_pipelines(stage, inst)?;
+    if let Some(plan) = stage.control_plan {
+        plan.instantiate_child(
+            stage.modules,
+            stage.task_name,
+            &inst.logical_inst_name,
+            &inst.sig,
+        )?;
+    } else {
+        pipeline_instance_signals(stage, inst.child_name, &inst.inst_name, inst.args);
+    }
     let mmap_bindings = build_mmap_bindings(stage, inst, idx);
     let (reset_n, bridge_reset) =
         instance_reset_exprs(stage.control_plan.is_some(), &inst.logical_inst_name);
@@ -303,25 +312,6 @@ fn add_fsm_control_logic(
             fsm_mm.add_assign(generate_is_done_assign(sig));
         }
     }
-}
-
-/// Route child control through the distributed plan or the FSM pipeline.
-fn apply_control_plan_or_pipelines(
-    stage: &mut ChildStageCtx<'_, '_>,
-    inst: &ChildInstance<'_>,
-) -> Result<(), crate::error::CodegenError> {
-    if let Some(plan) = stage.control_plan {
-        plan.instantiate_child(
-            stage.modules,
-            stage.task_name,
-            &inst.logical_inst_name,
-            &inst.sig,
-        )?;
-    } else {
-        // Declare per-instance pipeline signals for scalar/mmap args
-        pipeline_instance_signals(stage, inst.child_name, &inst.inst_name, inst.args);
-    }
-    Ok(())
 }
 
 /// Return the pipeline and FSM-input wire names for a pipelined argument.
