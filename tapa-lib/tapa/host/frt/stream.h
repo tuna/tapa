@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include <glog/logging.h>
@@ -20,6 +21,10 @@ template <typename T>
 class Stream {
  public:
   explicit Stream(uint64_t depth) {
+    // The queue's depth is 32 bits; a deeper one must not silently wrap.
+    CHECK_LE(depth, std::numeric_limits<uint32_t>::max())
+        << "a stream of depth " << depth
+        << " is deeper than a shared-memory queue holds";
     std::array<char, 4096> path_buf{};
     handle_ = frt_shmq_create(static_cast<uint32_t>(depth == 0 ? 1 : depth),
                               StreamCodec<T>::kBytes, path_buf.data(),

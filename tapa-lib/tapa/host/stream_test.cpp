@@ -320,6 +320,14 @@ TEST(StreamCompletionDeathTest, HybridForwarderMarksDestinationDone) {
       "still empty after every kernel instance finished");
 }
 
+// A depth past 32 bits used to wrap: 2^32 + 1 became 1.
+TEST(StreamDepthDeathTest, DepthPast32BitsIsRejected) {
+  using too_deep_t = tapa::stream<char, (uint64_t{1} << 32) + 1>;
+  EXPECT_DEATH(
+      { too_deep_t too_deep("too_deep"); },
+      "is deeper than a shared-memory queue holds");
+}
+
 TEST(StreamCompletionDeathTest, StillBlockedAfterCompletionAborts) {
   EXPECT_DEATH(
       {
