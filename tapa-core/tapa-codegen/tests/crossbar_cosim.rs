@@ -7,9 +7,8 @@
 //! back, with random lengths and stalls, while the memory stalls every
 //! channel at random and returns responses of different IDs out of order.
 //! Every task reads what it wrote, and every burst reaches the channel its
-//! address names, inside that channel and a 4 KiB page. The memory returns
-//! each read burst whole: the crossbar does not take read data interleaved
-//! across IDs.
+//! address names, inside that channel and a 4 KiB page. The memory
+//! interleaves the beats of read bursts of different IDs, as AXI lets it.
 
 mod common;
 
@@ -120,7 +119,8 @@ endmodule
 ";
 
 /// The memory: per channel, with random stalls; it returns write responses
-/// and read bursts of different IDs out of order, each ID's in order.
+/// and read beats of different IDs out of order, each ID's in order, and
+/// may switch ID after any read beat.
 const TESTBENCH: &str = r#"
 #include "Vtop.h"
 #include <cstdint>
@@ -202,10 +202,8 @@ struct Channel {
     C.bv = -1;                                                                 \
   }                                                                            \
   if (C.r >= 0 && d->P##RREADY) {                                              \
-    if (++C.ar[C.r].done == C.ar[C.r].beats) {                                 \
-      C.ar.erase(C.ar.begin() + C.r);                                          \
-      C.r = -1;                                                                \
-    }                                                                          \
+    if (++C.ar[C.r].done == C.ar[C.r].beats) C.ar.erase(C.ar.begin() + C.r);   \
+    C.r = -1;                                                                  \
   }
 
 static bool run(uint64_t seed) {

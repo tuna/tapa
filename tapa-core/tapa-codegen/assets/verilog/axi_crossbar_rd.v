@@ -22,6 +22,13 @@ THE SOFTWARE.
 
 */
 
+/*
+ * TAPA change to the upstream RTL (verilog-axi 516bd5d): an S interface
+ * takes the R valid routed to it by ID, not the raw R valid of the M
+ * interface it is granted, so a memory may interleave read data across IDs,
+ * as AXI allows; upstream's successor, taxi, does the same.
+ */
+
 // Language: Verilog 2001
 
 `resetall
@@ -346,18 +353,20 @@ generate
         );
 
         // read response mux
+        wire [M_COUNT-1:0]     r_routed_valid; // TAPA: R valid routed here by ID
         wire [S_ID_WIDTH-1:0]  m_axi_rid_mux    = {decerr_m_axi_rid_reg, int_m_axi_rid} >> r_grant_encoded*M_ID_WIDTH;
         wire [DATA_WIDTH-1:0]  m_axi_rdata_mux  = {{DATA_WIDTH{1'b0}}, int_m_axi_rdata} >> r_grant_encoded*DATA_WIDTH;
         wire [1:0]             m_axi_rresp_mux  = {2'b11, int_m_axi_rresp} >> r_grant_encoded*2;
         wire                   m_axi_rlast_mux  = {decerr_m_axi_rlast_reg, int_m_axi_rlast} >> r_grant_encoded;
         wire [RUSER_WIDTH-1:0] m_axi_ruser_mux  = {{RUSER_WIDTH{1'b0}}, int_m_axi_ruser} >> r_grant_encoded*RUSER_WIDTH;
-        wire                   m_axi_rvalid_mux = ({decerr_m_axi_rvalid_reg, int_m_axi_rvalid} >> r_grant_encoded) & r_grant_valid;
+        wire                   m_axi_rvalid_mux = ({decerr_m_axi_rvalid_reg, r_routed_valid} >> r_grant_encoded) & r_grant_valid;
         wire                   m_axi_rready_mux;
 
         assign int_axi_rready[m*M_COUNT +: M_COUNT] = (r_grant_valid && m_axi_rready_mux) << r_grant_encoded;
         assign decerr_m_axi_rready = (r_grant_valid && m_axi_rready_mux) && (r_grant_encoded == M_COUNT_P1-1);
 
         for (n = 0; n < M_COUNT; n = n + 1) begin
+            assign r_routed_valid[n] = int_axi_rvalid[n*S_COUNT+m];
             assign r_request[n] = int_axi_rvalid[n*S_COUNT+m] && !r_grant[n];
             assign r_acknowledge[n] = r_grant[n] && int_axi_rvalid[n*S_COUNT+m] && m_axi_rlast_mux && m_axi_rready_mux;
         end
