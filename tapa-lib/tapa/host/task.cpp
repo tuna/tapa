@@ -905,7 +905,10 @@ void schedule_cleanup(const std::function<void()>&) {}
 task::task() {
   std::unique_lock<std::mutex> lock(internal::mtx);
   ++internal::active_task_count;
-  if (internal::top_task == nullptr) {
+  // Only the invoke's own thread starts one: a detached task outliving an
+  // invoke would otherwise become the next invoke's top, which then waits
+  // on nothing.
+  if (internal::top_task == nullptr && internal::thread_invoke == 0) {
     internal::top_task = this;
     ++internal::invokes_begun;
   }
