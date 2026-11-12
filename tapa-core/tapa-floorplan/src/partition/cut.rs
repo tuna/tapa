@@ -5,7 +5,9 @@
 //! placement ILP be reused for the row-level and column-level passes of
 //! multilevel placement.
 
-use crate::device::model::{bounded_border_capacity, Coor, Device};
+use tapa_ir::Area;
+
+use crate::device::model::{bounded_border_capacity, Coor, Device, Slot};
 
 /// A clean bipartition of the current candidate regions.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,38 +101,51 @@ fn push_if_clean_and_binding(
 /// (partially overlapping borders) contribute nothing to this pair's border,
 /// so the cut never credits capacity the crossing wires cannot physically use.
 ///
+/// A cell pair with a slot that has no fabric contributes nothing: a route
+/// across it would end in that slot or, passing through, leave a Body
+/// register there, and the router admits neither (its register budget for
+/// such a slot is zero). Counting the pair would let placement plan
+/// crossings no route can carry, e.g. through U250's shell-only `X1Y1`.
+///
 /// `None` when any cell pair on the shared border is unconstrained, or when
 /// the bounded pairs sum past `u64` — either way the pair cannot bind.
 fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
     let shared_x = lhs.dl_x.max(rhs.dl_x)..=lhs.ur_x.min(rhs.ur_x);
     let shared_y = lhs.dl_y.max(rhs.dl_y)..=lhs.ur_y.min(rhs.ur_y);
-    // Each arm names the two facing declarations of one cell pair: the side
+    // Each arm names one cell pair and its two facing declarations: the side
     // `lhs` presents to `rhs`, then the side `rhs` presents back.
-    let facing: Vec<(u64, u64)> = if lhs.is_south_neighbor_of(rhs) {
+    let facing: Vec<(&Slot, &Slot, u64, u64)> = if lhs.is_south_neighbor_of(rhs) {
         shared_x
             .filter_map(|x| device.slot(x, lhs.ur_y).zip(device.slot(x, rhs.dl_y)))
-            .map(|(near, far)| (near.wire_cap.north, far.wire_cap.south))
+            .map(|(near, far)| (near, far, near.wire_cap.north, far.wire_cap.south))
             .collect()
     } else if lhs.is_north_neighbor_of(rhs) {
         shared_x
             .filter_map(|x| device.slot(x, lhs.dl_y).zip(device.slot(x, rhs.ur_y)))
-            .map(|(near, far)| (near.wire_cap.south, far.wire_cap.north))
+            .map(|(near, far)| (near, far, near.wire_cap.south, far.wire_cap.north))
             .collect()
     } else if lhs.is_west_neighbor_of(rhs) {
         shared_y
             .filter_map(|y| device.slot(lhs.ur_x, y).zip(device.slot(rhs.dl_x, y)))
-            .map(|(near, far)| (near.wire_cap.east, far.wire_cap.west))
+            .map(|(near, far)| (near, far, near.wire_cap.east, far.wire_cap.west))
             .collect()
     } else {
         shared_y
             .filter_map(|y| device.slot(lhs.dl_x, y).zip(device.slot(rhs.ur_x, y)))
-            .map(|(near, far)| (near.wire_cap.west, far.wire_cap.east))
+            .map(|(near, far)| (near, far, near.wire_cap.west, far.wire_cap.east))
             .collect()
     };
 
-    facing.into_iter().try_fold(0_u64, |total, (near, far)| {
-        total.checked_add(bounded_border_capacity(near, far)?)
-    })
+    facing
+        .into_iter()
+        .try_fold(0_u64, |total, (near, far, near_cap, far_cap)| {
+            let capacity = if near.area == Area::default() || far.area == Area::default() {
+                0
+            } else {
+                bounded_border_capacity(near_cap, far_cap)?
+            };
+            total.checked_add(capacity)
+        })
 }
 
 #[cfg(test)]
@@ -151,11 +166,15 @@ mod tests {
         find_cuts_for_regions(device, &regions)
     }
 
+    /// An ordinary slot: some fabric, and the given vertical budgets.
     fn mk_slot(x: u32, y: u32, north: u64, south: u64) -> Slot {
         Slot {
             x,
             y,
-            area: Area::default(),
+            area: Area {
+                lut: 1,
+                ..Area::default()
+            },
             centroid_x: i64::from(x),
             centroid_y: i64::from(y),
             pblock_ranges: Vec::new(),
@@ -323,6 +342,28 @@ mod tests {
             .map(|c| c.name)
             .collect();
         assert_eq!(names, ["y=0", "y=1", "y=2"]);
+    }
+
+    /// U250's `X1Y1` is all shell. Its SLR borders lead nowhere a route may
+    /// go, so the row cuts beside it hold only column 0's budget, while the
+    /// y=2 cut keeps both columns.
+    #[test]
+    fn u250_row_cuts_skip_the_shell_slot_borders() {
+        let device = select_device("u250").expect("u250");
+        assert_eq!(device.slot(1, 1).expect("X1Y1").area, Area::default());
+        let one_column = usable_wire_capacity(11_520);
+        let capacities: Vec<(String, u64)> = find_all_slot_cuts(&device)
+            .into_iter()
+            .map(|cut| (cut.name, cut.capacity))
+            .collect();
+        assert_eq!(
+            capacities,
+            [
+                ("y=0".to_string(), one_column),
+                ("y=1".to_string(), one_column),
+                ("y=2".to_string(), 2 * one_column),
+            ]
+        );
     }
 
     #[test]
