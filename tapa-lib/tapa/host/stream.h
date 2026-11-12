@@ -422,7 +422,7 @@ template <typename T>
 class istream : virtual public internal::basic_stream<T> {
  public:
   /// Returns true if the stream is empty (non-blocking, non-destructive).
-  bool empty() {
+  bool empty() const {
     bool is_empty = this->get_queue().empty();
     if (is_empty) {
       internal::yield(this->get_name(), "empty");
@@ -434,7 +434,7 @@ class istream : virtual public internal::basic_stream<T> {
 
   /// Sets @p is_eot and returns true if next token is available (non-blocking,
   /// non-destructive).
-  bool try_eot(bool& is_eot) {
+  bool try_eot(bool& is_eot) const {
     if (!empty()) {
       is_eot = this->get_queue().front().eot;
       return true;
@@ -443,7 +443,7 @@ class istream : virtual public internal::basic_stream<T> {
   }
 
   /// Returns true if next token is EoT; sets @p is_success to availability.
-  bool eot(bool& is_success) {
+  bool eot(bool& is_success) const {
     bool eot = false;
     is_success = try_eot(eot);
     return eot;
@@ -451,7 +451,7 @@ class istream : virtual public internal::basic_stream<T> {
 
   /// Sets @p value to the next non-EoT token and returns true if available
   /// (non-blocking).
-  bool try_peek(T& value) {
+  bool try_peek(T& value) const {
     if (!empty()) {
       auto elem = this->get_queue().front();
       if (elem.eot) {
@@ -464,21 +464,21 @@ class istream : virtual public internal::basic_stream<T> {
   }
 
   /// Returns next token value and sets @p is_success (non-blocking, non-EoT).
-  T peek(bool& is_success) {
+  T peek(bool& is_success) const {
     T val;
     is_success = try_peek(val);
     return val;
   }
 
   /// Returns next token value or @c T() if empty (non-blocking, non-EoT).
-  T peek(std::nullptr_t) {
+  T peek(std::nullptr_t) const {
     T val{};
     try_peek(val);
     return val;
   }
 
   /// Returns next token and sets @p is_success and @p is_eot (non-blocking).
-  T peek(bool& is_success, bool& is_eot) {
+  T peek(bool& is_success, bool& is_eot) const {
     if (!empty()) {
       auto elem = this->get_queue().front();
       is_success = true;
@@ -581,7 +581,7 @@ template <typename T>
 class ostream : virtual public internal::basic_stream<T> {
  public:
   /// Returns true if the stream is full (non-blocking, non-destructive).
-  bool full() {
+  bool full() const {
     bool is_full = this->get_queue().full();
     if (is_full) {
       internal::yield(this->get_name(), "full");

@@ -192,20 +192,27 @@ TEST(StreamNameTest, StreamsHaveIndexedNames) {
 template <typename T>
 void CheckEmptyStreamReads(const T& value) {
   tapa::stream<T, 1> data_q("empty_reads");
-  EXPECT_EQ(data_q.peek(nullptr), T{});
+  // Observing a stream does not change it, so it works through a const
+  // reference, as on the other targets.
+  const tapa::istream<T>& observer = data_q;
+  EXPECT_EQ(observer.peek(nullptr), T{});
   EXPECT_EQ(data_q.read(nullptr), T{});
 
   data_q.write(value);
-  EXPECT_EQ(data_q.peek(nullptr), value);
-  EXPECT_FALSE(data_q.empty());
+  EXPECT_EQ(observer.peek(nullptr), value);
+  EXPECT_FALSE(observer.empty());
+  EXPECT_TRUE(static_cast<const tapa::ostream<T>&>(data_q).full());
   EXPECT_EQ(data_q.read(nullptr), value);
-  EXPECT_TRUE(data_q.empty());
-  EXPECT_EQ(data_q.peek(nullptr), T{});
+  EXPECT_TRUE(observer.empty());
+  EXPECT_EQ(observer.peek(nullptr), T{});
   EXPECT_EQ(data_q.read(nullptr), T{});
 
   data_q.close();
+  bool is_eot = false;
+  EXPECT_TRUE(observer.try_eot(is_eot));
+  EXPECT_TRUE(is_eot);
   data_q.open();
-  EXPECT_EQ(data_q.peek(nullptr), T{});
+  EXPECT_EQ(observer.peek(nullptr), T{});
   EXPECT_EQ(data_q.read(nullptr), T{});
 }
 
