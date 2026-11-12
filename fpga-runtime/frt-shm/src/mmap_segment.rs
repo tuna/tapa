@@ -46,6 +46,15 @@ impl MmapSegment {
         &self.path
     }
 
+    /// Removes the file behind a segment this process created now rather
+    /// than on drop, for a process that may exit without dropping it; the
+    /// mapping stays usable.
+    pub fn unlink(&self) {
+        if self.owner {
+            let _ = std::fs::remove_file(&self.path);
+        }
+    }
+
     pub fn as_slice(&self) -> &[u8] {
         &self.mmap
     }

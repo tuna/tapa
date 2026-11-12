@@ -170,6 +170,11 @@ impl SharedMemoryQueue {
     pub fn path(&self) -> &Path {
         self.seg.path()
     }
+
+    /// See [`MmapSegment::unlink`].
+    pub fn unlink(&self) {
+        self.seg.unlink();
+    }
 }
 
 fn validate_header(bytes: &[u8]) -> std::io::Result<QueueLayout> {

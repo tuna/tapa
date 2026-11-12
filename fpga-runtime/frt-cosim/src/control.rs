@@ -48,6 +48,13 @@ impl Control {
         }
     }
 
+    /// See [`frt_shm::MmapSegment::unlink`].
+    pub fn unlink(&self) {
+        let queues = self.queues.lock().expect("control queues");
+        queues.0.unlink();
+        queues.1.unlink();
+    }
+
     /// Reads the register at `offset`.
     pub fn read(&self, offset: u32) -> Result<u32> {
         self.call(Request::Read { offset })

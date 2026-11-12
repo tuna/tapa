@@ -122,6 +122,18 @@ impl CosimContext {
         self.resize_buffer_with(name, size, MmapSegment::create)
     }
 
+    /// Removes the files behind every segment and queue this process
+    /// created, which stay mapped: a run that is killed may be followed by
+    /// an exit that never drops the context (see
+    /// [`frt_shm::MmapSegment::unlink`]).
+    pub fn unlink(&self) {
+        self.buffers.values().for_each(MmapSegment::unlink);
+        self.streams.values().for_each(SharedMemoryQueue::unlink);
+        if let Some(control) = &self.control {
+            control.unlink();
+        }
+    }
+
     pub fn bind_stream_path(&mut self, name: &str, path: &str) -> Result<()> {
         if !self.streams.contains_key(name) {
             return Err(std::io::Error::new(

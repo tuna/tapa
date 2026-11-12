@@ -70,7 +70,7 @@ pub struct CosimDevice {
     ctx: CosimContext,
     runner: Box<dyn SimRunner>,
     tb_dir: TbDir,
-    _extract_dir: tempfile::TempDir,
+    extract_dir: tempfile::TempDir,
     setup_only: bool,
     resume_from_post_sim: bool,
     timeout_seconds: Option<u64>,
@@ -165,7 +165,7 @@ impl CosimDevice {
             ctx,
             runner,
             tb_dir,
-            _extract_dir: extract_dir,
+            extract_dir,
             setup_only: opts.setup_only,
             resume_from_post_sim: opts.resume_from_post_sim,
             timeout_seconds: opts.timeout_seconds,
@@ -859,6 +859,15 @@ impl Device for CosimDevice {
             }
             SimulationState::Finished(_) => {}
         }
+        // A host may exit right after a kill without dropping the device,
+        // as its SIGINT handler does: remove the files it would leave in
+        // /dev/shm and the temporary directories. A work directory the user
+        // chose stays.
+        self.ctx.unlink();
+        if let TbDir::Temp(dir) = &self.tb_dir {
+            let _ = std::fs::remove_dir_all(dir.path());
+        }
+        let _ = std::fs::remove_dir_all(self.extract_dir.path());
         Ok(())
     }
 
@@ -935,7 +944,7 @@ mod tests {
             ctx,
             runner: Box::new(SleepRunner { sleep_seconds }),
             tb_dir: TbDir::Temp(tempfile::tempdir().expect("create temp dir")),
-            _extract_dir: tempfile::tempdir().expect("create extract dir"),
+            extract_dir: tempfile::tempdir().expect("create extract dir"),
             setup_only: false,
             resume_from_post_sim: false,
             timeout_seconds: None,
@@ -1037,6 +1046,88 @@ mod tests {
         assert!(dev
             .is_finished()
             .expect("killed simulation should be finished"));
+    }
+
+    /// The host's SIGINT handler kills the run and exits without dropping
+    /// the device: the kill itself removes what the run would leave in
+    /// /dev/shm and the temporary directories, and what the run left in
+    /// its buffers can still be read back.
+    #[test]
+    fn kill_removes_the_runs_files_but_keeps_its_buffers_readable() {
+        let mut dev = make_test_device(5.0);
+        dev.spec.args = vec![
+            ArgSpec {
+                name: "buf0".to_owned(),
+                id: 0,
+                kind: ArgKind::Mmap {
+                    data_width: 32,
+                    addr_width: 64,
+                },
+            },
+            ArgSpec {
+                name: "s".to_owned(),
+                id: 1,
+                kind: ArgKind::Stream {
+                    width: 32,
+                    depth: 2,
+                    dir: StreamDir::In,
+                    protocol: StreamProtocol::ApFifo,
+                },
+            },
+        ];
+        dev.arg_names = HashMap::from([(0, "buf0".to_owned()), (1, "s".to_owned())]);
+        dev.ctx = CosimContext::new(&dev.spec).expect("create cosim context");
+        let mut host_word = 10u32;
+        dev.set_buffer_arg(
+            0,
+            (&raw mut host_word).cast::<u8>(),
+            std::mem::size_of_val(&host_word),
+            BufferAccess::ReadWrite,
+        )
+        .expect("set buffer");
+        dev.exec().expect("spawn simulation");
+        let files = [
+            dev.ctx.buffers["buf0"].path().to_owned(),
+            dev.ctx.streams["s"].path().to_owned(),
+            dev.tb_dir.path().to_owned(),
+            dev.extract_dir.path().to_owned(),
+        ];
+        assert!(files.iter().all(|file| file.exists()), "{files:?}");
+
+        dev.kill().expect("kill simulation");
+        for file in &files {
+            assert!(!file.exists(), "{} outlived the kill", file.display());
+        }
+        dev.ctx
+            .buffers
+            .get_mut("buf0")
+            .expect("mmap buffer")
+            .as_mut_slice()[..4]
+            .copy_from_slice(&42u32.to_le_bytes());
+        dev.read_from_device().expect("read back");
+        assert_eq!(host_word, 42);
+    }
+
+    /// Setup-only mode leaves its segments for the resumed run: it never
+    /// kills, and it reports the run finished, so closing it does not.
+    #[test]
+    fn setup_only_keeps_its_segments() {
+        let mut dev = make_test_device_with_mmap(false);
+        dev.setup_only = true;
+        let mut host_word = 10u32;
+        dev.set_buffer_arg(
+            0,
+            (&raw mut host_word).cast::<u8>(),
+            std::mem::size_of_val(&host_word),
+            BufferAccess::ReadWrite,
+        )
+        .expect("set buffer");
+        dev.write_to_device().expect("upload");
+        dev.exec().expect("set up");
+        assert!(dev.is_finished().expect("set up is complete"));
+        dev.finish().expect("finish");
+        assert!(dev.ctx.buffers["buf0"].path().exists());
+        assert!(dev.tb_dir.path().join("dpi_config.json").exists());
     }
 
     #[test]
