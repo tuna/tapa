@@ -17,25 +17,19 @@ namespace tapa::cc {
 
 namespace {
 
-// An integral template argument at `idx` as a channel count, or nullopt.
-std::optional<uint32_t> IntArg(const clang::ParmVarDecl* param, unsigned idx) {
-  if (const auto n = IntTemplateArg(param->getType(), idx)) {
-    return static_cast<uint32_t>(*n);
-  }
-  return std::nullopt;
-}
-
-// An hmap parameter's channel size, which the graph records in 32 bits;
-// one that does not fit is an error rather than a wrapped value.
-std::optional<uint32_t> ChanSize(const clang::ASTContext& ctx,
-                                 const clang::ParmVarDecl* param) {
-  const auto n = IntTemplateArg(param->getType(), 2);
+// An integral template argument at `idx`, which the task graph records in
+// 32 bits, or nullopt when the argument is absent. One that does not fit is
+// an error rather than a wrapped value.
+std::optional<uint32_t> IntArg(const clang::ASTContext& ctx,
+                               const clang::ParmVarDecl* param, unsigned idx,
+                               const char* what) {
+  const auto n = IntTemplateArg(param->getType(), idx);
   if (!n) return std::nullopt;
   if (*n < 0 || *n > std::numeric_limits<uint32_t>::max()) {
     ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
-                     "tapa::hmap parameter '%0' has chan_size %1; a channel "
-                     "holds at most 2^32 - 1 elements")
-        << param->getNameAsString() << std::to_string(*n);
+                     "parameter '%0' has %1 %2; the task graph records it in "
+                     "32 bits")
+        << param->getNameAsString() << what << std::to_string(*n);
     return std::nullopt;
   }
   return static_cast<uint32_t>(*n);
@@ -160,7 +154,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       case TapaKind::kMmaps: {
         // Expand to one `mmap` port per channel (name[i]).
-        const uint32_t n = IntArg(param, 1).value_or(0);
+        const uint32_t n = IntArg(ctx, param, 1, "channel count").value_or(0);
         for (uint32_t i = 0; i < n; ++i) {
           ports.push_back(Port{ArrayNameAt(name, static_cast<int>(i)),
                                TapaKind::kMmap, elem + "*", elem_width,
@@ -172,9 +166,9 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       case TapaKind::kHmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width,
-                             IntArg(param, 1), ChanSize(ctx, param),
-                             std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt});
+                             IntArg(ctx, param, 1, "chan_count"),
+                             IntArg(ctx, param, 2, "chan_size"), std::nullopt,
+                             std::nullopt, std::nullopt, std::nullopt});
         break;
 
       case TapaKind::kIStream:
@@ -186,7 +180,8 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
 
       case TapaKind::kIStreams:
       case TapaKind::kOStreams:
-        ports.push_back(Port{name, kind, elem, elem_width, IntArg(param, 1),
+        ports.push_back(Port{name, kind, elem, elem_width,
+                             IntArg(ctx, param, 1, "channel count"),
                              std::nullopt, std::nullopt, std::nullopt,
                              std::nullopt, std::nullopt});
         break;
@@ -195,8 +190,8 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kIFrames:
       case TapaKind::kOFrames:
         ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
-                             std::nullopt, IntArg(param, 1), std::nullopt,
-                             std::nullopt, std::nullopt});
+                             std::nullopt, IntArg(ctx, param, 1, "frame size"),
+                             std::nullopt, std::nullopt, std::nullopt});
         break;
 
       default:

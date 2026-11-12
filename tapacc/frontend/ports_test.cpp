@@ -113,6 +113,22 @@ TEST(Ports, HmapChanSizeFitsIn32Bits) {
   }
 }
 
+// The other integral template arguments the graph records in 32 bits are
+// range-checked like an hmap's chan_size: a negative count is an error
+// rather than a wrapped value.
+TEST(Ports, IntegralArgsFitIn32Bits) {
+  for (const char* signature : {
+           "void probe(tapa::hmap<char, -1, 8> h);",
+           "void probe(tapa::istreams<float, -1> s);",
+           "void probe(tapa::mmaps<float, -2> m);",
+       }) {
+    auto b = ParseProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_GT(diags.errors, 0u) << signature;
+  }
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",
