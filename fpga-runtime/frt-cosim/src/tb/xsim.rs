@@ -150,15 +150,12 @@ impl<'a> XsimTbGenerator<'a> {
 
     pub fn render_tcl(&self, tb_dir: &Path) -> Result<String> {
         let template = TclTemplate {
-            tb_dir: tb_dir.to_string_lossy().to_string(),
+            tb_dir: tcl_word(tb_dir),
             part_num: self.part_num.to_owned(),
-            verilog_files: path_strings(&self.spec.verilog_files),
-            tcl_files: path_strings(&self.spec.tcl_files),
-            xci_files: path_strings(&self.spec.xci_files),
-            tb_sv_file: tb_dir
-                .join(format!("tb_{}.sv", self.spec.top_name))
-                .to_string_lossy()
-                .to_string(),
+            verilog_files: tcl_words(&self.spec.verilog_files),
+            tcl_files: tcl_words(&self.spec.tcl_files),
+            xci_files: tcl_words(&self.spec.xci_files),
+            tb_sv_file: tcl_word(&tb_dir.join(format!("tb_{}.sv", self.spec.top_name))),
             tb_top: format!("tb_{}", self.spec.top_name),
             dpi_sv_root: self
                 .dpi_lib
@@ -182,11 +179,25 @@ impl<'a> XsimTbGenerator<'a> {
     }
 }
 
-fn path_strings(paths: &[PathBuf]) -> Vec<String> {
-    paths
-        .iter()
-        .map(|p| p.to_string_lossy().into_owned())
-        .collect()
+/// `path` as one Tcl word, whatever it holds: a work directory may have
+/// spaces or other characters Tcl would split or substitute on. The
+/// escapes also hold inside the template's double quotes.
+fn tcl_word(path: &Path) -> String {
+    let mut word = String::new();
+    for c in path.to_string_lossy().chars() {
+        if matches!(
+            c,
+            ' ' | '\t' | '"' | '$' | '[' | ']' | '{' | '}' | '\\' | ';'
+        ) {
+            word.push('\\');
+        }
+        word.push(c);
+    }
+    word
+}
+
+fn tcl_words(paths: &[PathBuf]) -> Vec<String> {
+    paths.iter().map(|path| tcl_word(path)).collect()
 }
 
 fn sv_literal(width_bits: u32, bytes_le: &[u8]) -> String {
@@ -224,6 +235,45 @@ fn detect_axi_port_width(verilog_contents: &[String], port_name: &str) -> usize 
 mod tests {
     use super::*;
     use crate::metadata::{ArgKind, ArgSpec, Mode};
+
+    /// A work directory, and the files under it, may have spaces and other
+    /// characters Tcl splits or substitutes on: each stays one word.
+    #[test]
+    fn tcl_paths_stay_one_word() {
+        let spec = KernelSpec {
+            top_name: "Top".to_owned(),
+            mode: Mode::Vitis,
+            args: Vec::new(),
+            part_num: None,
+            verilog_files: vec![PathBuf::from("/x/a b/Top.v")],
+            tcl_files: vec![PathBuf::from("/x/a b/[ip].tcl")],
+            xci_files: Vec::new(),
+            scalar_register_map: HashMap::new(),
+            inlined: Vec::new(),
+            memories: Vec::new(),
+            rings: Vec::new(),
+        };
+        let tcl = XsimTbGenerator::new(
+            &spec,
+            Path::new("/tmp/libfrt_dpi_xsim.so"),
+            &HashMap::new(),
+            &HashMap::new(),
+            "xcu55c-fsvh2892-2L-e",
+            XsimOptions::default(),
+        )
+        .render_tcl(Path::new("/work/my run $1;{x}"))
+        .expect("render Tcl");
+        for line in [
+            r"create_project -force cosim /work/my\ run\ \$1\;\{x\}/run -part",
+            r#"set ORIG_RTL_PATH "/work/my\ run\ \$1\;\{x\}""#,
+            r"add_files -norecurse -scan_for_includes [list /x/a\ b/Top.v]",
+            r"source /x/a\ b/\[ip\].tcl",
+            r"add_files [list /work/my\ run\ \$1\;\{x\}/tb_Top.sv]",
+            r#"set custom_tcl "/work/my\ run\ \$1\;\{x\}/xsim_init.tcl""#,
+        ] {
+            assert!(tcl.contains(line), "missing `{line}` in:\n{tcl}");
+        }
+    }
 
     #[test]
     fn detects_axi_port_widths() {

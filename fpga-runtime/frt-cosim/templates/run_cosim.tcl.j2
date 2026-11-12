@@ -1,17 +1,17 @@
 create_project -force cosim {{ tb_dir }}/run -part {{ part_num }}
 set ORIG_RTL_PATH "{{ tb_dir }}"
 {% for f in verilog_files %}
-add_files -norecurse -scan_for_includes {{ f }}
+add_files -norecurse -scan_for_includes [list {{ f }}]
 {% endfor %}
 {% for f in tcl_files %}
 source {{ f }}
 {% endfor %}
 {% for f in xci_files %}
-add_files -norecurse -scan_for_includes {{ f }}
+add_files -norecurse -scan_for_includes [list {{ f }}]
 {% endfor %}
 upgrade_ip -quiet [get_ips *]
 set_property SOURCE_SET sources_1 [get_filesets sim_1]
-add_files {{ tb_sv_file }}
+add_files [list {{ tb_sv_file }}]
 set_property top {{ tb_top }} [get_filesets sim_1]
 set_property XELAB.MT_LEVEL off [get_filesets sim_1]
 {% if legacy %}
@@ -30,7 +30,13 @@ puts $custom_tcl_fd "run all"
 puts $custom_tcl_fd "quit"
 {% endif %}
 close $custom_tcl_fd
+{% if start_gui %}
 set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl -objects [get_filesets sim_1]
+{% else %}
+# The generated simulate.sh does not quote this path, so a batch run names
+# it relative to the simulation directory and copies it there below.
+set_property -name {xsim.simulate.custom_tcl} -value xsim_init.tcl -objects [get_filesets sim_1]
+{% endif %}
 set_property -name {xsim.simulate.runtime} -value {0ns} -objects [get_filesets sim_1]
 {% if start_gui %}
 launch_simulation
@@ -51,6 +57,7 @@ if {$sim_dir eq ""} {
   error "no generated simulation scripts under $sim_base"
 }
 cd $sim_dir
+file copy -force $custom_tcl xsim_init.tcl
 foreach step {compile elaborate simulate} {
   exec ./$step.sh >@stdout 2>@stderr
 }

@@ -311,8 +311,14 @@ fn xsim_hls_tb_snapshot() {
         tcl.contains("set custom_tcl \"/tmp/tb/xsim_init.tcl\""),
         "{tcl}"
     );
+    // The generated simulate.sh does not quote the script's path: a batch
+    // run names it relative to the simulation directory and copies it there.
     assert!(
-        tcl.contains("set_property -name {xsim.simulate.custom_tcl} -value $custom_tcl"),
+        tcl.contains("set_property -name {xsim.simulate.custom_tcl} -value xsim_init.tcl"),
+        "{tcl}"
+    );
+    assert!(
+        tcl.contains("file copy -force $custom_tcl xsim_init.tcl"),
         "{tcl}"
     );
     assert!(
@@ -707,7 +713,7 @@ fn xsim_tcl_includes_xci_tcl_and_legacy_elab_property() {
     let tcl = generator
         .render_tcl(std::path::Path::new("/tmp/tb"))
         .expect("render tcl");
-    assert!(tcl.contains("add_files -norecurse -scan_for_includes /tmp/ip/example.xci"));
+    assert!(tcl.contains("add_files -norecurse -scan_for_includes [list /tmp/ip/example.xci]"));
     assert!(tcl.contains("source /tmp/ip/setup_ip.tcl"));
     assert!(tcl.contains("upgrade_ip -quiet [get_ips *]"));
     assert!(tcl.contains("set_property -name {xelab.more_options}"));

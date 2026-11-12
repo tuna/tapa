@@ -59,7 +59,7 @@ compiler. Gflags accepts both `-cosim_work_dir` and `--cosim_work_dir`.
 | Flag | Description |
 |------|-------------|
 | `-xsim_part_num <part>` | Override the FPGA part recorded in the archive. Usually unnecessary. |
-| `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this flag, a temporary directory is used and deleted after the run. |
+| `-cosim_work_dir <dir>` | Persistent working directory for simulation artifacts. Without this flag, a temporary directory is used and deleted after the run. Its path may contain spaces under xsim; Verilator's build (GNU Make) refuses them. |
 | `-xsim_save_waveform` | Save simulation waveforms to a `.wdb` file in the work directory. Pair with `-cosim_work_dir`; without it, the temporary directory and all waveforms are deleted after the run. |
 | `-xsim_start_gui` | Open the Vivado GUI for interactive debugging during simulation. |
 | `-cosim_simulator <backend>` | Simulator backend: `xsim` (default, Linux only, requires Vivado) or `verilator` (Linux/macOS, no Vivado required, needs Verilator 5.044+). |
