@@ -50,7 +50,7 @@ inline constexpr char kTapaStubDecls[] = R"cpp(
     T& operator[](unsigned long long);
   };
   template <typename T, int N>
-  struct mmaps {};
+  struct mmaps { mmap<T>& operator[](int); };
   struct burst { template <typename O, typename N> burst(O, N); }; struct request_ostream { void write(long long); void write(const burst&); };
   template <typename T> struct async_mmap { request_ostream read_addr, write_addr; istream<T> read_data; ostream<T> write_data; istream<unsigned char> write_resp; };
   template <typename T, int N, long long S>

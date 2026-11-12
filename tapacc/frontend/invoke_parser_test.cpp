@@ -786,6 +786,25 @@ TEST(InvokeParser, AStreamHoldsAtLeastOneElement) {
       << run.diags[1];
 }
 
+TEST(InvokeParser, AnMmapsRegionIsNotBoundByIndex) {
+  // `mmaps::operator[]` returns a reference, so an indexed region fell to
+  // the generic message, which says an mmap channel is what it wants.
+  constexpr char kCode[] = R"cpp(
+    void Fill(tapa::mmap<int> m) {}
+    void Top(tapa::mmaps<int, 2> ms) {
+      tapa::task().invoke(Fill, ms[0]).invoke(Fill, ms);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/mmaps_index.cpp", kCode}}, "Top",
+      testing::TempDir() + "/mmaps_index", {"-std=c++17"});
+  ASSERT_FALSE(run.diags.empty()) << run.json;
+  EXPECT_NE(run.diags.front().find(
+                "a region of tapa::mmaps cannot be bound by index"),
+            std::string::npos)
+      << run.diags.front();
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>

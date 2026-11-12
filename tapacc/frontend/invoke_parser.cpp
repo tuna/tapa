@@ -685,6 +685,18 @@ void ParseInvocations(
           }
         }
 
+        // `mmaps::operator[]` hands out a reference, so an indexed region
+        // arrives here, not as an indexed stream does.
+        if (const auto* op = llvm::dyn_cast<clang::CXXOperatorCallExpr>(arg);
+            op != nullptr && op->getOperator() == clang::OO_Subscript &&
+            ClassifyTapaType(op->getArg(0)->getType()) == TapaKind::kMmaps) {
+          ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                           arg->getBeginLoc(),
+                           "a region of tapa::mmaps cannot be bound by index; "
+                           "pass the whole mmaps, which hands each invocation "
+                           "its next region");
+          continue;
+        }
         ReportCustomDiag(
             uc.ctx, clang::DiagnosticsEngine::Error, arg->getBeginLoc(),
             "cannot bind a %0 here; each invoke argument after the task must "
