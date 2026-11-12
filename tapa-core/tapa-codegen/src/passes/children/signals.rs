@@ -531,7 +531,6 @@ fn add_async_mmap_bridges(
             .map_or(64, |c| c.geometry.data_width());
         let request_width = async_mmap::request_width(child_rtl, child_port);
         let shared = matches!(binding, ChildMmapBinding::Crossbar { .. });
-        let connect_optional_axi_ports = !shared;
         // A memory several tasks share has a bridge per task, each named
         // after its crossbar slave; an unshared one keeps the name the
         // floorplan constrains.
@@ -554,7 +553,9 @@ fn add_async_mmap_bridges(
                 enabled,
                 data_width,
                 request_width,
-                connect_optional_axi_ports,
+                // The M-AXI pass drives the memory's optional address
+                // outputs (`m_axi::tie_optional_address_ports`).
+                false,
                 binding
                     .id_widths()
                     .map_or(tapa_protocol::AXI_ID_WIDTH, |(wire, _)| wire),

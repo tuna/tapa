@@ -110,12 +110,12 @@ async_mmap #(
   .rst(ap_rst),
   .m_axi_AWADDR(m_axi_mem_AWADDR),
   .m_axi_AWBURST(m_axi_mem_AWBURST),
-  .m_axi_AWCACHE(m_axi_mem_AWCACHE),
+  .m_axi_AWCACHE(),
   .m_axi_AWID(m_axi_mem_AWID),
   .m_axi_AWLEN(m_axi_mem_AWLEN),
-  .m_axi_AWLOCK(m_axi_mem_AWLOCK),
-  .m_axi_AWPROT(m_axi_mem_AWPROT),
-  .m_axi_AWQOS(m_axi_mem_AWQOS),
+  .m_axi_AWLOCK(),
+  .m_axi_AWPROT(),
+  .m_axi_AWQOS(),
   .m_axi_AWREADY(m_axi_mem_AWREADY),
   .m_axi_AWSIZE(m_axi_mem_AWSIZE),
   .m_axi_AWVALID(m_axi_mem_AWVALID),
@@ -130,12 +130,12 @@ async_mmap #(
   .m_axi_BVALID(m_axi_mem_BVALID),
   .m_axi_ARADDR(m_axi_mem_ARADDR),
   .m_axi_ARBURST(m_axi_mem_ARBURST),
-  .m_axi_ARCACHE(m_axi_mem_ARCACHE),
+  .m_axi_ARCACHE(),
   .m_axi_ARID(m_axi_mem_ARID),
   .m_axi_ARLEN(m_axi_mem_ARLEN),
-  .m_axi_ARLOCK(m_axi_mem_ARLOCK),
-  .m_axi_ARPROT(m_axi_mem_ARPROT),
-  .m_axi_ARQOS(m_axi_mem_ARQOS),
+  .m_axi_ARLOCK(),
+  .m_axi_ARPROT(),
+  .m_axi_ARQOS(),
   .m_axi_ARREADY(m_axi_mem_ARREADY),
   .m_axi_ARSIZE(m_axi_mem_ARSIZE),
   .m_axi_ARVALID(m_axi_mem_ARVALID),
@@ -239,4 +239,12 @@ AsyncTop_control_s_axi #(
 );
 
 assign ap_rst = !ap_rst_n;
+assign m_axi_mem_AWLOCK = 1'b0;
+assign m_axi_mem_AWCACHE = 4'b0011;
+assign m_axi_mem_AWPROT = 3'b000;
+assign m_axi_mem_AWQOS = 4'b0000;
+assign m_axi_mem_ARLOCK = 1'b0;
+assign m_axi_mem_ARCACHE = 4'b0011;
+assign m_axi_mem_ARPROT = 3'b000;
+assign m_axi_mem_ARQOS = 4'b0000;
 endmodule //AsyncTop

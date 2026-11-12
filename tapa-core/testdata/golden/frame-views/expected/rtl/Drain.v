@@ -209,4 +209,12 @@ frame_channel #(
 );
 
 assign ap_rst = !ap_rst_n;
+assign m_axi_dst_AWLOCK = 1'b0;
+assign m_axi_dst_AWCACHE = 4'b0011;
+assign m_axi_dst_AWPROT = 3'b000;
+assign m_axi_dst_AWQOS = 4'b0000;
+assign m_axi_dst_ARLOCK = 1'b0;
+assign m_axi_dst_ARCACHE = 4'b0011;
+assign m_axi_dst_ARPROT = 3'b000;
+assign m_axi_dst_ARQOS = 4'b0000;
 endmodule //Drain

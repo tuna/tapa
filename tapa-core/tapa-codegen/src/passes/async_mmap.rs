@@ -327,10 +327,8 @@ pub fn build_bridge_instance(
         if let Some(info) = m_axi_channel(channel) {
             for port in info.ports {
                 let suffix = port.suffix;
-                let connect_optional = connect_optional_axi_ports
-                    && (!channel_enabled || active_m_axi_prefix == inactive_m_axi_prefix);
                 let wire = Expr::ident(format!("{channel_prefix}{suffix}"));
-                let connection = if !(port.is_compact || connect_optional) {
+                let connection = if !(port.is_compact || connect_optional_axi_ports) {
                     Expr::lit("")
                 } else if matches!(port.width_rule(), AxiWidth::Id) && wire_id_width > AXI_ID_WIDTH
                 {
@@ -605,7 +603,7 @@ mod tests {
             },
             512,
             AXI_ADDR_WIDTH,
-            true,
+            false,
             AXI_ID_WIDTH,
             Expr::ident("bridge_reset"),
         );

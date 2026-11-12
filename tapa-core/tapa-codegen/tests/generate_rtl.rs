@@ -2220,7 +2220,7 @@ fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
             ".m_axi_ARADDR(__tapa_axi_chan_0_child_ARADDR)",
             ".m_axi_AWADDR(m_axi_chan_0_AWADDR)",
             ".m_axi_ARLOCK()",
-            ".m_axi_AWLOCK(m_axi_chan_0_AWLOCK)",
+            ".m_axi_AWLOCK()",
         ],
         &[
             ".rst(ap_rst)",
@@ -2236,10 +2236,17 @@ fn test_generate_rtl_pipelines_only_enabled_async_mmap_channels() {
             "assign m_axi_chan_0_ARCACHE = 4'b0011",
             "assign m_axi_chan_0_ARPROT = 3'b000",
             "assign m_axi_chan_0_ARQOS = 4'b0000",
+            "assign m_axi_chan_0_AWCACHE = 4'b0011",
         ],
         &[],
     );
-    check(top_v, &[], &["assign m_axi_chan_0_AWLOCK"]);
+    // One driver for each optional address output, routed channel or not.
+    for channel in ["AR", "AW"] {
+        for signal in ["LOCK", "CACHE", "PROT", "QOS"] {
+            let assign = format!("assign m_axi_chan_0_{channel}{signal} =");
+            assert_eq!(top_v.matches(&assign).count(), 1, "{assign}\n{top_v}");
+        }
+    }
 }
 
 #[test]

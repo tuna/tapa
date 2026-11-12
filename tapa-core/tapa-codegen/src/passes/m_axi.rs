@@ -507,6 +507,20 @@ pub(crate) fn add_crossbar_slave_id_padding(
     }
 }
 
+/// Drive the optional address-channel outputs of the M-AXI port `name`
+/// with the values a Vitis HLS `m_axi` adapter drives on a channel it uses.
+/// The compact interface a task's children connect leaves them out, so this
+/// is the one place every path to memory gets them.
+fn tie_optional_address_ports(module: &mut MutableModule, name: &str) {
+    let prefix = format!("{M_AXI_PREFIX}{}", sanitize_array_name(name));
+    for (stem, value) in OPTIONAL_AXI_ADDRESS_PORTS {
+        module.add_assign(ContinuousAssign::new(
+            Expr::ident(format!("{prefix}_{}", stem.to_ascii_uppercase())),
+            Expr::lit(value),
+        ));
+    }
+}
+
 /// Add M-AXI ports, crossbar instances, and emit crossbar aux files.
 ///
 /// The connections were validated when the stage inputs were prepared.
@@ -518,31 +532,22 @@ pub(crate) fn add_m_axi_and_crossbars(
 ) {
     for conn in mmap_conns.values() {
         if let Some(mm) = modules.get_mut(task_name) {
-            if conn.geometry.is_hmap() {
-                for channel_idx in 0..conn.channel_count() {
-                    add_m_axi_ports_with_id_width(
-                        mm,
-                        &format!("{}_{}", conn.arg_name, channel_idx),
-                        conn.geometry.data_width(),
-                        AXI_ADDR_WIDTH,
-                        conn.id_width(),
-                    );
-                }
-            } else if needs_crossbar(conn) || conn.id_width() > 1 {
+            let ports = if conn.geometry.is_hmap() {
+                (0..conn.channel_count())
+                    .map(|channel_idx| format!("{}_{}", conn.arg_name, channel_idx))
+                    .collect()
+            } else {
+                vec![conn.arg_name.clone()]
+            };
+            for port in &ports {
                 add_m_axi_ports_with_id_width(
                     mm,
-                    &conn.arg_name,
+                    port,
                     conn.geometry.data_width(),
                     AXI_ADDR_WIDTH,
                     conn.id_width(),
                 );
-            } else {
-                add_m_axi_ports(
-                    mm,
-                    &conn.arg_name,
-                    conn.geometry.data_width(),
-                    AXI_ADDR_WIDTH,
-                );
+                tie_optional_address_ports(mm, port);
             }
         }
         if needs_crossbar(conn) {

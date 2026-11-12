@@ -7,10 +7,10 @@ use tapa_ir::{
     axi_pipeline_instance_name, AxiChannel, AxiEndpoint, FloorplanResult, MemoryBank, RoutedChannel,
 };
 use tapa_protocol::{m_axi_channel, HANDSHAKE_CLK, HANDSHAKE_RST, M_AXI_PREFIX};
-use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
+use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 
-use super::{invalid_floorplan, parse_atomic_region, OPTIONAL_AXI_ADDRESS_PORTS};
+use super::{invalid_floorplan, parse_atomic_region};
 use crate::error::CodegenError;
 use crate::rtl_state::DirectMmapInterface;
 use crate::state::views::ModuleTable;
@@ -227,17 +227,6 @@ impl DirectAxiPipelinePlan {
                     &child_prefix,
                     &top_prefix,
                 )?);
-            }
-
-            for (name, value) in OPTIONAL_AXI_ADDRESS_PORTS.into_iter().filter(|(name, _)| {
-                (name.starts_with("ar") && interface.channel_widths.read_address != 0)
-                    || (name.starts_with("aw") && interface.channel_widths.write_address != 0)
-            }) {
-                let suffix = name.to_ascii_uppercase();
-                module.add_assign(ContinuousAssign::new(
-                    Expr::ident(format!("{top_prefix}_{suffix}")),
-                    Expr::lit(value),
-                ));
             }
         }
         Ok(())
