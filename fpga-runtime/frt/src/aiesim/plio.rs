@@ -1,10 +1,14 @@
 //! The PLIO text files the AI Engine simulators read and write.
 //!
 //! Every TAPA PLIO carries 32-bit words, so a file holds one beat per line
-//! as decimal 32-bit integers. An input beat is followed by a `TLAST` line;
-//! an output file interleaves `T <time> <unit>` timestamp lines and `TLAST`
-//! markers with the data lines. The live relay writes and reads both as the
-//! data arrives, so each side keeps the partial beat or line between calls.
+//! as decimal 32-bit integers. A `TLAST` line marks the beat on the line
+//! after it, in the files the simulators write as in those they read: an
+//! output file interleaves `T <time> <unit>` timestamp lines and `TLAST`
+//! markers with the data lines, and every input beat follows a `TLAST`
+//! line, as every beat into the AI Engine carries TLAST on hardware (the
+//! interface holds a lone 32-bit word without it). The live relay writes and
+//! reads both as the data arrives, so each side keeps the partial beat or
+//! line between calls.
 
 /// Turns a stream of words into input beat lines.
 pub struct BeatWriter {
@@ -52,8 +56,9 @@ fn render(words: &[u32], beat_words: usize) -> String {
     let mut out = String::new();
     for beat in words.chunks(beat_words) {
         let line: Vec<String> = beat.iter().map(|w| w.cast_signed().to_string()).collect();
+        out.push_str("TLAST\n");
         out.push_str(&line.join(" "));
-        out.push_str("\nTLAST\n");
+        out.push('\n');
     }
     out
 }
@@ -151,11 +156,14 @@ mod tests {
     fn input_beats_pad_to_a_whole_transfer_and_output_timestamps_scale() {
         let mut writer = BeatWriter::new(4, 4);
         assert_eq!(writer.push(&[1, 2, 3]), "");
-        assert_eq!(writer.push(&[0xffff_ffff, 5]), "1 2 3 -1\nTLAST\n");
-        assert_eq!(writer.finish(), "5 0 0 0\nTLAST\n");
+        assert_eq!(writer.push(&[0xffff_ffff, 5]), "TLAST\n1 2 3 -1\n");
+        assert_eq!(writer.finish(), "TLAST\n5 0 0 0\n");
         let mut frames = BeatWriter::new(2, 4);
-        assert_eq!(frames.push(&[1, 2]), "1 2\nTLAST\n");
-        assert_eq!(frames.finish(), "0 0\nTLAST\n", "a partial frame is padded");
+        assert_eq!(frames.push(&[1, 2]), "TLAST\n1 2\n");
+        assert_eq!(frames.finish(), "TLAST\n0 0\n", "a partial frame is padded");
+        // aiesimulator applies a `TLAST` line to the beat after it: a lone
+        // word with its `TLAST` after it waited forever in the interface.
+        assert_eq!(BeatWriter::new(1, 1).push(&[63]), "TLAST\n63\n");
 
         let mut parser = LineParser::default();
         let mut words = Vec::new();
