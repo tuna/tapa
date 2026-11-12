@@ -5,7 +5,7 @@ use std::fs;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use tapa_floorplan::device::{
+use tapa_floorplan::device::model::{
     Device, DeviceAnchor, DirCaps, PlacementStyle, PlannedResources, Slot, UNIT_DIST_X, UNIT_DIST_Y,
 };
 use tapa_ir::Area;

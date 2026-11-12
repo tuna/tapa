@@ -26,7 +26,7 @@ pub(super) enum Platform {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 #[repr(u8)]
-pub enum ShellType {
+pub(super) enum ShellType {
     #[default]
     Service = 1,
     Compute = 2,
