@@ -550,11 +550,22 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         Some(clock) => parse_named_clock_timing_summary(&timing_text, &clock)?,
         None => parse_kernel_timing_summary(&timing_text, job.target_mhz)?,
     };
+    // A kernel clock that misses timing is scaled down by v++ to what the
+    // routed design achieves, and the xclbin records that clock.
+    let recorded_mhz = timing.fmax_mhz.min(f64::from(job.target_mhz));
+    if recorded_mhz < f64::from(job.target_mhz) {
+        log::warn!(
+            "Vitis routed kernel timing did not meet {} MHz (WNS {:.3} ns); v++ scales the \
+             kernel clock down to about {recorded_mhz:.1} MHz",
+            job.target_mhz,
+            timing.wns_ns,
+        );
+    }
 
     Ok(LinkOutput {
         bitstream: resolved.output_xclbin,
         requested_mhz: job.target_mhz,
-        recorded_mhz: f64::from(job.target_mhz),
+        recorded_mhz,
         timing: Some(timing),
         timing_report: Some(resolved.timing_report),
         stdout,
@@ -788,6 +799,10 @@ ap_clk             -0.100       -1.000
         let output = run_vitis_link(&runner, &fixture.job).expect("full link succeeds");
 
         assert_eq!(output.bitstream, fixture.job.output_xclbin);
+        // WNS -0.100 ns on the 3.333 ns kernel period: v++ scales the clock
+        // to 1000 / 3.433 MHz, and that is what the xclbin runs at.
+        assert_eq!(output.requested_mhz, 300);
+        assert!((output.recorded_mhz - 1000.0 / 3.433).abs() < 1e-9);
         let calls = runner.calls();
         assert_eq!(calls.len(), 1);
         assert_eq!(calls[0].program, "custom-vpp");

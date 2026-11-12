@@ -364,11 +364,12 @@ for the guided workflows.
 A SLASH link succeeds whenever slashkit produces a vbin: a missed kernel
 clock derates the recorded frequency with a warning instead of failing, and
 `link-metrics.json` records requested versus recorded MHz, the kernel WNS,
-and the pinned SLASH commit. A Vitis link reports the routed kernel WNS and
-Fmax from its post-route report either way, and warns when they miss the
-requested clock, which v++ may then lower in the xclbin. A SLASH `--sim` link has no routed
-timing report — its metrics record the commit and the requested versus
-recorded MHz only. The `.zip` of a top on the AI Engine with no PL kernel
+and the pinned SLASH commit. A Vitis link reads the routed kernel timing from
+its post-route report and reports its WNS and Fmax; a missed kernel clock is
+scaled down by v++ to what the routed design achieves, and the link warns and
+reports that clock. A SLASH `--sim` link has no routed timing report — its
+metrics record the commit and the requested versus recorded MHz only. The
+`.zip` of a top on the AI Engine with no PL kernel
 links the graph alone: it reports no kernel timing and leaves the `.xsa`
 beside the xclbin for packaging an SD image (see [AI Engine
 Tasks](../howto/aie.md#a-top-with-no-pl-kernel)). On a VCK5000 such a top
