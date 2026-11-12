@@ -140,8 +140,9 @@ The `--bitstream` flag is what controls which backend runs:
   `async_mmap` by value is a compile error.
 - mmap arguments are passed **by value** (`tapa::mmap<T>`), not by reference.
 - Scalar arguments (plain C++ types such as `int`, `float`, `uint64_t`) are
-  passed by value. A task may modify its local copy, but that modification is
-  not returned to the host or parent; use an mmap or stream for results.
+  passed by value, and `tapa analyze` rejects one taken by reference. A task
+  may modify its local copy, but that modification is not returned to the
+  host or parent; use an mmap or stream for results.
   Integer constant expressions passed through task `.invoke(...)`, including
   named `constexpr` and constant-initialized `const` integers, are converted to
   the child scalar parameter type, including numeric conversion to `float` and

@@ -143,6 +143,21 @@ TEST(Ports, EveryParameterIsNamed) {
   }
 }
 
+// A scalar by reference used to pass on the top with the reference's
+// 64-bit width, which sized its kernel.xml register.
+TEST(Ports, ScalarsArePassedByValue) {
+  for (const char* signature : {
+           "void probe(const int& n);",
+           "void probe(int& n);",
+           "void probe(float&& x);",
+       }) {
+    auto b = ParseProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_EQ(diags.errors, 1u) << signature;
+  }
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",

@@ -123,6 +123,15 @@ void CheckParamShape(const clang::ASTContext& ctx,
             "raw pointer task parameter '%0' is not a TAPA memory port; "
             "use tapa::mmap<T> by value for off-chip memory");
         builder.AddString(param->getNameAsString());
+      } else if (param->getType()->isReferenceType()) {
+        // A scalar port carries a value: the graph would record the
+        // reference's own width, and software simulation would share the
+        // caller's variable, which no hardware port does.
+        auto builder = ReportCustomDiag(
+            ctx, clang::DiagnosticsEngine::Error, param->getLocation(),
+            "scalar task parameter '%0' must be passed by value "
+            "(not by reference)");
+        builder.AddString(param->getNameAsString());
       }
       break;
   }
