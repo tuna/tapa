@@ -1508,4 +1508,142 @@ mod tests {
             "the middle slot needs its Single register and one for each vertical hop",
         );
     }
+
+    /// Strip whitespace so source checks survive reformatting.
+    fn squeeze(text: &str) -> String {
+        text.split_whitespace().collect()
+    }
+
+    /// Assert the codegen RTL rules the storage model encodes, and return
+    /// the Tail depth they give a crossing of `depth` and `body_level`.
+    fn codegen_rtl_tail_depth(depth: u32, body_level: u32) -> u32 {
+        let pipeline = squeeze(include_str!(
+            "../../../tapa-codegen/assets/verilog/tapa_hs_pipeline.v"
+        ));
+        for parameter in [
+            "parameterGRACE_PERIOD=BODY_LEVEL*2+2,",
+            "parameterREAL_DEPTH=GRACE_PERIOD+DEPTH+4,",
+            "fifo_almost_full#(",
+        ] {
+            assert!(
+                pipeline.contains(parameter),
+                "tapa_hs_pipeline.v: {parameter}"
+            );
+        }
+        for (name, source) in [
+            (
+                "fifo.v",
+                include_str!("../../../tapa-codegen/assets/verilog/fifo.v"),
+            ),
+            (
+                "relay_station.v",
+                include_str!("../../../tapa-codegen/assets/verilog/relay_station.v"),
+            ),
+        ] {
+            let source = squeeze(source);
+            let branch = |text: &str| {
+                source
+                    .find(text)
+                    .unwrap_or_else(|| panic!("{name}: no `{text}`"))
+            };
+            let uram = branch("if(DATA_WIDTH>=36&&DEPTH>=4096)begin:uram");
+            let bram = branch("elseif(DEPTH>=128)begin:bram");
+            let srl = branch("endelsebegin:srl");
+            assert!(uram < bram && bram < srl, "{name}: branch order");
+            assert!(
+                source[uram..bram].contains(r#".MEM_STYLE("ultra")"#),
+                "{name}: URAM style"
+            );
+        }
+        (body_level * 2 + 2) + depth + 4
+    }
+
+    /// The storage model above stands in for RTL that tapa-codegen emits and
+    /// this crate cannot depend on. Pin each assumption to the text it
+    /// models, so a change to either side alone fails here:
+    /// - a crossing's Tail is `tapa_hs_pipeline`'s `fifo_almost_full` of
+    ///   `REAL_DEPTH = GRACE_PERIOD + DEPTH + 4` entries, with
+    ///   `GRACE_PERIOD = BODY_LEVEL * 2 + 2`; AXI channels instantiate it
+    ///   with `DEPTH` 2;
+    /// - `fifo.v` and `relay_station.v` store a FIFO in URAM from 36 bits by
+    ///   4096 entries, else in block RAM from 128 entries, else in SRLs.
+    #[test]
+    fn storage_model_matches_the_codegen_rtl() {
+        let axi = squeeze(include_str!(
+            "../../../tapa-codegen/src/passes/axi_pipeline.rs"
+        ));
+        assert!(axi.contains(r#"ParamArg::new("DEPTH",Expr::int(2))"#));
+
+        let area = fifo_area;
+        assert!(area(36, 4096).uram > 0 && area(36, 4096).bram_18k == 0);
+        assert!(area(35, 4096).uram == 0 && area(35, 4096).bram_18k > 0);
+        assert!(area(36, 4095).uram == 0 && area(36, 4095).bram_18k > 0);
+        assert!(area(33, 128).bram_18k > 0 && area(33, 127).bram_18k == 0);
+
+        // A stream crossing two hops leaves one Single Body: BODY_LEVEL 1.
+        let depth = 16;
+        let graph = one_stream_graph(depth, Area::default(), Area::default());
+        let regions = placed_regions(
+            &graph,
+            &BTreeMap::from([
+                ("Producer_0".to_string(), (0, 0)),
+                ("Consumer_0".to_string(), (0, 2)),
+            ]),
+        );
+        let realized = realize_slot_usage(
+            &graph,
+            &regions,
+            &baseline_usage(&graph, &regions),
+            &[stream_route(&[(0, 0), (0, 1), (0, 2)], &[(0, 1)])],
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
+        )
+        .expect("stream crossing");
+        assert_eq!(
+            realized[&(0, 2)],
+            area(33, codegen_rtl_tail_depth(depth, 1))
+        );
+
+        // An AXI Double crossing of one hop: BODY_LEVEL 2. The Bodies add
+        // only flip-flops, so the Tail shows in the LUT count.
+        let graph = one_mmap_graph();
+        let regions = placed_regions(
+            &graph,
+            &BTreeMap::from([
+                ("Reader_0".to_string(), (1, 0)),
+                ("__tapa_bank_hbm_0".to_string(), (0, 0)),
+            ]),
+        );
+        let read_data = graph
+            .axi_nets()
+            .iter()
+            .find(|net| net.channel == tapa_ir::AxiChannel::ReadData)
+            .expect("read data");
+        let route = PlannedRoute {
+            channel: RoutedChannel::Axi {
+                endpoint: read_data.endpoint.clone(),
+                bank: read_data.bank,
+                channel: read_data.channel,
+            },
+            route: vec![(0, 0), (1, 0)],
+            scheme: PipelineScheme::Double,
+            reg_regions: vec![(0, 0), (1, 0)],
+        };
+        let baseline = baseline_usage(&graph, &regions);
+        let realized = realize_slot_usage(
+            &graph,
+            &regions,
+            &baseline,
+            &[route],
+            &select_device("u280").expect("u280"),
+            MAX_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
+        )
+        .expect("AXI crossing");
+        assert_eq!(
+            realized[&(1, 0)].lut - baseline[&(1, 0)].lut,
+            area(read_data.payload_width, codegen_rtl_tail_depth(2, 2)).lut,
+        );
+    }
 }
