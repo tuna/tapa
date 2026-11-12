@@ -165,18 +165,72 @@ fn archive_hpfm(bytes: &[u8]) -> Result<Vec<u8>> {
     Ok(xml)
 }
 
-/// The `.xsa`/`.dsa` under `<platform_path>/hw/`.
+/// The hardware archive (`.xsa`/`.dsa`) of the platform at `platform_path`:
+/// the one its `.xpfm` names as `hardwarePlatform`, which is what `v++`
+/// links against. A `hw/` directory may hold several (an extensible
+/// platform keeps its base `.xsa` beside the one it ships), so directory
+/// order is no answer. Without an `.xpfm`, the sole archive under `hw/`.
 fn platform_archive(platform_path: &Utf8PathBuf) -> Result<Utf8PathBuf> {
     if !platform_path.is_dir() {
         return Err(XilinxError::PlatformNotFound(platform_path.clone()));
     }
+    let xpfm = std::fs::read_dir(platform_path)?
+        .filter_map(std::result::Result::ok)
+        .map(|entry| crate::util::utf8(entry.path()))
+        .find(|path| path.extension() == Some("xpfm"));
+    if let Some(xpfm) = xpfm {
+        let named = xpfm_hardware_platform(&std::fs::read(&xpfm)?).map_err(|detail| {
+            XilinxError::DeviceConfig {
+                path: xpfm.clone(),
+                detail,
+            }
+        })?;
+        let archive = platform_path.join(named);
+        return if archive.is_file() {
+            Ok(archive)
+        } else {
+            Err(XilinxError::PlatformNotFound(archive))
+        };
+    }
     let hw = platform_path.join("hw");
     let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
-    entries
+    let archives: Vec<Utf8PathBuf> = entries
         .filter_map(|e| e.ok())
         .map(|e| crate::util::utf8(e.path()))
-        .find(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
-        .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))
+        .filter(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
+        .collect();
+    match archives.as_slice() {
+        [archive] => Ok(archive.clone()),
+        [] => Err(XilinxError::PlatformNotFound(hw)),
+        _ => Err(XilinxError::DeviceConfig {
+            path: hw,
+            detail: "the platform has several hardware archives and no `.xpfm` naming one".into(),
+        }),
+    }
+}
+
+/// The `<path>/<name>` of an `.xpfm`'s `hardwarePlatform` element.
+fn xpfm_hardware_platform(xml: &[u8]) -> std::result::Result<Utf8PathBuf, String> {
+    let mut reader = Reader::from_reader(xml);
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => return Err(format!("cannot parse the .xpfm platform XML: {e}")),
+            Ok(Event::Eof) => return Err("the .xpfm names no `hardwarePlatform`".into()),
+            Ok(Event::Start(ref e) | Event::Empty(ref e))
+                if local_name(e.name().0) == "hardwarePlatform" =>
+            {
+                let attr = |name| {
+                    attr_value(e, name)
+                        .map_err(|error| error.to_string())?
+                        .ok_or_else(|| format!("the .xpfm `hardwarePlatform` has no `{name}`"))
+                };
+                return Ok(Utf8PathBuf::from(attr("path")?).join(attr("name")?));
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
+    }
 }
 
 /// Whether the platform installed at `platform_path` is a Versal device,
@@ -353,6 +407,42 @@ mod tests {
         assert!(!platform(
             r#"<platformInfo><deviceInfo name="xcu55c-fsvh2892-2L-e" architecture="virtexuplusHBM"/></platformInfo>"#
         ));
+    }
+
+    /// An extensible platform keeps its base `.xsa` beside the one its
+    /// `.xpfm` names (`rapidstream_vhk158_pfm_202320_1`): the named one is
+    /// the platform, whatever order the directory lists them in.
+    #[test]
+    fn the_xpfm_names_the_hardware_archive() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = crate::util::utf8(dir.path());
+        std::fs::create_dir(root.join("hw")).unwrap();
+        let hpfm = |part: &str| {
+            build_xpfm_zip(&format!(
+                r#"<xd:platformInfo xmlns:xd="http://www.xilinx.com/xd">
+                  <xd:deviceInfo xd:name="{part}"/>
+                  <xd:systemClocks xd:defaultClock="0">
+                    <xd:clock xd:id="0" xd:period="5.000050"/>
+                  </xd:systemClocks>
+                </xd:platformInfo>"#
+            ))
+        };
+        std::fs::write(root.join("hw/a_base.xsa"), hpfm("xcbase")).unwrap();
+        std::fs::write(root.join("hw/z_ext.xsa"), hpfm("xcext")).unwrap();
+        assert!(matches!(
+            parse_device_info(&root, None, None),
+            Err(XilinxError::DeviceConfig { .. })
+        ));
+        std::fs::write(
+            root.join("pfm.xpfm"),
+            r#"<sdx:platform xmlns:sdx="http://www.xilinx.com/sdx"><sdx:hardwarePlatforms>
+               <sdx:hardwarePlatform sdx:name="z_ext.xsa" sdx:path="hw"/>
+               <sdx:hwEmuPlatform sdx:path="hw_emu" sdx:name="hw_emu.xsa"/>
+               </sdx:hardwarePlatforms></sdx:platform>"#,
+        )
+        .unwrap();
+        let info = parse_device_info(&root, None, None).expect("named archive");
+        assert_eq!(info.part_num, "xcext");
     }
 
     #[test]
