@@ -109,7 +109,7 @@ fn part_family(part: &str) -> &str {
 ///
 /// Matching is case-insensitive and accepts the table key (`u280`), the full
 /// part number (`xcu280-fsvh2892-2L-e`), or any part string in the same family
-/// (`xcu280-…`). `v80` remains an alias for `v80_service`.
+/// (`xcu280-…`). `v80` selects the default `v80_service` shell.
 pub fn select_device(part_num: &str) -> Result<Device, SelectError> {
     let query = part_num.trim().to_ascii_lowercase();
     let query = if query == "v80" {
@@ -171,7 +171,10 @@ mod tests {
         let service = select_device_with_shell(part, Some("service")).expect("service");
         let compute = select_device_with_shell(part, Some("compute")).expect("compute");
         assert_eq!(service.key, "v80_service");
-        assert_eq!(select_device("v80").expect("old alias"), service);
+        assert_eq!(
+            select_device("v80").expect("default service-shell alias"),
+            service
+        );
         assert_eq!(
             select_device(&service.key).expect("service result"),
             service
@@ -181,7 +184,7 @@ mod tests {
             service
         );
         assert_eq!(
-            select_device(part).expect("legacy part lookup").key,
+            select_device(part).expect("part-only lookup").key,
             service.key
         );
         assert_eq!(compute.key, "v80_compute");
