@@ -89,6 +89,8 @@ terminate on program completion.
 
 - Leaf tasks receive streams by reference (`istream<T>&`, `ostream<T>&`) and
   mmap interfaces by value (`mmap<T>`).
+- Every parameter of a task definition is a port named after the parameter,
+  so `tapa analyze` rejects an unnamed one.
 - An upper-level task body must contain only channel declarations,
   constants, `assert`s, and one `tapa::task()` statement chaining every
   `.invoke(...)` — no loops, arithmetic, or other computation. `tapa analyze`

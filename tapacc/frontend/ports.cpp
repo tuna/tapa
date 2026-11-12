@@ -139,6 +139,16 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
     const TapaKind kind = ClassifyTapaType(param);
     CheckParamShape(ctx, param, kind);
     const std::string name = param->getNameAsString();
+    if (name.empty()) {
+      // A port is known by its parameter's name, in the graph and in the
+      // vendor's RTL alike.
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                       param->getLocation(),
+                       "parameter %0 of task '%1' has no name; every task "
+                       "parameter is a port, which its name identifies")
+          << std::to_string(param->getFunctionScopeIndex() + 1)
+          << task->getNameAsString();
+    }
     const std::string elem = ElementTypeName(param);
     const uint32_t elem_width = IsStreamInterface(kind)
                                     ? StreamElementWidth(param)

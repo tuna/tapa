@@ -129,6 +129,20 @@ TEST(Ports, IntegralArgsFitIn32Bits) {
   }
 }
 
+// A port is known by its parameter's name: an unnamed parameter used to
+// become a port named "", which no vendor RTL port matches.
+TEST(Ports, EveryParameterIsNamed) {
+  for (const char* signature : {
+           "void probe(tapa::mmap<int> m, int);",
+           "void probe(tapa::istream<int>&, int n);",
+       }) {
+    auto b = ParseProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_EQ(diags.errors, 1u) << signature;
+  }
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",
