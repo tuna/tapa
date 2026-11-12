@@ -671,7 +671,7 @@ mod tests {
     /// those in every slot of this grid (clock-region columns 1, 3, 5, 7,
     /// rows 1-4); the platform's NoC solution places none of them, leaving the
     /// NoC compiler to pick each kernel port's NMU at link. So the memories
-    /// anchor nowhere, while control still enters at the CIPS side.
+    /// anchor nowhere.
     #[test]
     fn vck190_reaches_its_memories_through_the_noc() {
         let device = select_device("vck190").expect("vck190 resolves");
@@ -685,10 +685,24 @@ mod tests {
             assert_eq!(device.slots_with_tag(tag).count(), 0, "{tag}");
         }
         assert!(!device.reaches_through_noc("DDR[0]".parse().expect("bank")));
-        for (tag, expected) in [("CLK_RST", (0, 0)), ("S_AXI_CONTROL", (0, 0))] {
+    }
+
+    /// Kernel control, clock and reset all enter the fabric at the CIPS. In
+    /// the `xilinx_vck190_base_202410_1` block design, every `s_axi_control`
+    /// hangs off the `icn_ctrl_*` `smartconnect` tree rooted at
+    /// `CIPS_0/M_AXI_FPD` (the `cips_noc` master feeds only the AI Engine),
+    /// and `clk_wizard_0` and each `psr_*` reset block are driven from
+    /// `CIPS_0/pl0_ref_clk` and `pl0_resetn`. VC1902's one `PS9` site sits in
+    /// clock region X0Y1, inside slot (0,0)'s X0-X4, Y1-Y2.
+    #[test]
+    fn vck190_control_and_clock_enter_beside_the_cips() {
+        let device = select_device("vck190").expect("vck190 resolves");
+        let slot = device.slot(0, 0).expect("slot (0,0)");
+        assert_eq!(slot.pblock_ranges, ["CLOCKREGION_X0Y1:CLOCKREGION_X4Y2"]);
+        for tag in ["CLK_RST", "S_AXI_CONTROL"] {
             let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
             assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
-            assert_eq!((slots[0].x, slots[0].y), expected, "{tag}");
+            assert_eq!((slots[0].x, slots[0].y), (0, 0), "{tag}");
         }
     }
 
