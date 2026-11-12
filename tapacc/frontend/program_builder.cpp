@@ -311,6 +311,7 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.implicit_spec =
       sighting.is_spec &&
       def->getTemplateSpecializationKind() == clang::TSK_ImplicitInstantiation;
+  sighting.pattern = def->isDependentContext();
   sighting.key = KeyOf(mangler, def);
   sighting.site = DefinitionSite(def);
   if (sighting.is_spec) {
@@ -795,6 +796,12 @@ bool ProgramBuilder::MergeAndDiscover() {
     return false;
   }
   const std::string top_key = top_candidates[0]->key;
+  if (top_candidates[0]->pattern) {
+    // A task is concrete: its ports need their types' widths.
+    Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +
+         ") is a template; the top must be an ordinary function");
+    return false;
+  }
   if (top_candidates[0]->ignored) {
     Fail("tapa top-level task function cannot be ignored (defined at " +
          top_candidates[0]->loc + ")");

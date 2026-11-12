@@ -158,6 +158,8 @@ class ProgramBuilder {
     bool is_spec = false;
     bool implicit_spec = false;    // an implicit instantiation, only sighted
                                    // through the invoke that triggered it
+    bool pattern = false;          // a template pattern, typed by its
+                                   // parameters rather than concrete types
     bool task_shaped = false;      // the body builds a tapa::task
     bool ignored = false;          // [[tapa::target("ignore")]]
     bool explicit_target = false;  // a target attribute or mapping

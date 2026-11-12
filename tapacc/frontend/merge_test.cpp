@@ -379,6 +379,28 @@ TEST(Merge, DistinctTopDefinitionsAreAnError) {
   EXPECT_TRUE(Contains(error, "'Top' has multiple definitions"));
 }
 
+TEST(Merge, TemplateTopIsAnError) {
+  // A top found by its plain name is the template pattern, whose ports
+  // have dependent types: building them aborted on a Clang assertion.
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/template_top.cpp", R"cpp(
+                   template <typename T>
+                   void Leaf(tapa::istream<T>& in) {}
+                   template <typename T>
+                   void Top(tapa::istream<T>& x) {
+                     tapa::task().invoke(Leaf<T>, x);
+                   }
+                   template void Top<float>(tapa::istream<float>& x);
+                 )cpp"}},
+      "Top", TempRoot("merge", "template_top"), {"-std=c++17"});
+  EXPECT_FALSE(m.ok);
+  EXPECT_TRUE(
+      Contains(OneError(m.builder), "top-level task 'Top' (defined at "))
+      << OneError(m.builder);
+  EXPECT_TRUE(Contains(OneError(m.builder), "is a template"))
+      << OneError(m.builder);
+}
+
 // ── Single-TU discovery semantics carried over unchanged ───────────────
 
 constexpr char kProgram[] = R"cpp(
