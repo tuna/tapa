@@ -43,22 +43,16 @@ Each level has a distinct role:
 
 ## Minimal correct example
 
-The `VecAdd` function from the vector-add example is a top-level upper-level
-task. It instantiates three streams, then invokes four leaf tasks:
+The `VecAdd` top-level task from [the programming
+model](programming-model.md) is an upper-level task: it instantiates three
+streams, then invokes four leaf tasks, and nothing else:
 
 ```cpp
-void VecAdd(tapa::mmap<const float> a, tapa::mmap<const float> b,
-            tapa::mmap<float> c, uint64_t n) {
-  tapa::stream<float> a_q("a");
-  tapa::stream<float> b_q("b");
-  tapa::stream<float> c_q("c");
-
   tapa::task()
       .invoke(Mmap2Stream, a, n, a_q)
       .invoke(Mmap2Stream, b, n, b_q)
       .invoke(Add, a_q, b_q, c_q, n)
       .invoke(Stream2Mmap, c_q, c, n);
-}
 ```
 
 `Mmap2Stream`, `Add`, and `Stream2Mmap` are leaf tasks that each perform a

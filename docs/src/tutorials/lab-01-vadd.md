@@ -123,18 +123,9 @@ int64_t kernel_time_ns = tapa::invoke(
     tapa::write_only_mmap<float>(c), n);
 ```
 
-`tapa::invoke` is the host-side entry point. It is not the same as calling `VecAdd()` directly: calling `VecAdd()` would run it as a plain C++ function (software simulation without timing), while `tapa::invoke` selects the execution mode based on the bitstream path:
+`tapa::invoke` is the host-side entry point. It is not the same as calling `VecAdd()` directly: calling `VecAdd()` would run it as a plain C++ function (software simulation without timing), while `tapa::invoke` selects the execution backend from the bitstream path — the dispatch list is in [the programming model](../concepts/programming-model.md#minimal-correct-example).
 
-- Empty string (`""`) — software simulation. TAPA runs `VecAdd` as C++ but with stream and mmap semantics enforced by the runtime library. Fast, no FPGA required.
-- `.xo` (or `.zip`) file — fast cosimulation. The synthesized RTL runs inside a cycle-accurate simulator. Useful for verifying timing-sensitive behavior.
-- `.xclbin` file — Vitis hardware emulation if it was built with `--target hw_emu`, execution on a real FPGA if built with `--target hw`. The target recorded in the xclbin decides, not its file name (`.hw_emu.xclbin` and `.hw.xclbin` are only conventions).
-
-`tapa::read_only_mmap<const float>(a)` says the kernel reads `a`, so the
-runtime copies it to the device before execution and does not copy it back.
-`tapa::write_only_mmap<float>(c)` says the kernel writes `c`, so the runtime
-copies the results back afterward without an initial input copy. These
-wrappers select runtime transfers; they do not add C++ access restrictions
-beyond the element type's constness.
+The host-side wrappers describe what the kernel does with each buffer, and therefore which transfers the runtime performs: `tapa::read_only_mmap<const float>(a)` says the kernel reads `a`, so the runtime copies it to the device before execution and does not copy it back; `tapa::write_only_mmap<float>(c)` says the kernel writes `c`, so the runtime copies the results back afterward without an initial input copy. The full table is in [mmap — host-side wrappers](../concepts/mmap.md#host-side-wrappers).
 
 For the actual build and run commands, see [Your First Run](../start/first-run.md).
 

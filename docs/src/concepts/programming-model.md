@@ -179,11 +179,8 @@ tapa::invoke(VecAdd, FLAGS_bitstream,
              n);
 ```
 
-`tapa::invoke` examines the bitstream path at runtime and dispatches to the
-correct backend: software simulation (empty path), RTL cosimulation (`.xo`
-or `.zip`), Vitis hardware emulation or on-board execution (`.xclbin`, as the
-xclbin was built), a V80 through SLASH (`.vbin`), or an AI Engine simulator
-(a `tapa compile --aie-sim` package).
+Which backend runs is decided by the bitstream path, as listed under
+[Minimal correct example](#minimal-correct-example) above.
 
 ---
 
