@@ -277,7 +277,37 @@ TEST(VendorParity, MixedArithmeticResultWidths) {
   TAPA_CHECK_WIDTH(a12 / t20, va12 / vt20);
   TAPA_CHECK_WIDTH(s12 % b20, vs12 % vb20);
   TAPA_CHECK_WIDTH(a12 & t20, va12 & vt20);
+
+  // A builtin dividend, which the vendor types as if it were the divisor.
+  TAPA_CHECK_WIDTH(1000 / s12, 1000 / vs12);
+  TAPA_CHECK_WIDTH(1000 % a12, 1000 % va12);
+  TAPA_CHECK_WIDTH(-1 % b20, -1 % vb20);
+  TAPA_CHECK_WIDTH(7u / t20, 7u / vt20);
+  TAPA_CHECK_WIDTH(int64_t{-3} % s12, int64_t{-3} % vs12);
 #undef TAPA_CHECK_WIDTH
+}
+
+// A builtin dividend's quotient and remainder truncate into that type.
+TEST(VendorParity, BuiltinDividend) {
+  uint64_t state = 0xd1d;
+  for (int r = 0; r < 64; ++r) {
+    const std::vector<bool> bits = RandomBits(8, state);
+    i<8> s;
+    u<8> u8;
+    ap_int<8> vs;
+    ap_uint<8> vu8;
+    SetTapa(s, bits);
+    SetTapa(u8, bits);
+    SetVendor(vs, bits);
+    SetVendor(vu8, bits);
+    if (s.is_zero()) continue;
+    const int n = static_cast<int>(Next(state));
+    const std::string where = "n=" + std::to_string(n) + " x=" + TapaBits(s);
+    EXPECT_EQ(TapaBits(n / s), VendorBits(n / vs)) << "int / i8, " << where;
+    EXPECT_EQ(TapaBits(n % s), VendorBits(n % vs)) << "int % i8, " << where;
+    EXPECT_EQ(TapaBits(n / u8), VendorBits(n / vu8)) << "int / u8, " << where;
+    EXPECT_EQ(TapaBits(n % u8), VendorBits(n % vu8)) << "int % u8, " << where;
+  }
 }
 
 template <int W>

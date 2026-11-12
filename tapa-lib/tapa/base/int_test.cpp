@@ -95,6 +95,22 @@ TEST(IntTest, DivisionByUnsignedWorks) {
   EXPECT_EQ(a % b, 1);
 }
 
+TEST(IntTest, BuiltinDividendTakesTheVendorsSwappedType) {
+  // The vendor types `builtin / x` and `builtin % x` as `x / builtin` and
+  // `x % builtin` would be, and hardware computes the same: the exact
+  // result truncates into it.
+  const auto quotient = 1000 / tapa::i<8>(3);
+  static_assert(decltype(quotient)::width == 9, "i<8>'s div by an int");
+  EXPECT_EQ(quotient, -179);  // 333 in 9 signed bits
+  const auto remainder = -1 % tapa::u<32>(5);
+  static_assert(
+      decltype(remainder)::width == 32 && !decltype(remainder)::sign_flag,
+      "u<32>'s mod by an int");
+  EXPECT_EQ(remainder, tapa::u<32>(0xffffffffu));
+  // The divisor on the right keeps its own rule.
+  EXPECT_EQ(tapa::i<8>(-100) / 3, -33);
+}
+
 TEST(IntTest, MixedSignDivisionUsesWiderOperandSignedness) {
   // The wider unsigned operand makes the common type unsigned: the signed
   // dividend becomes 2**14 - 37 = 16347 before division.

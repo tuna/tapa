@@ -12,7 +12,8 @@
 //   * `if (x)` tests the FULL width (the vendor truncates its contextual
 //     bool conversion to 64 bits while its operator! is full-width; the
 //     consistent side is deliberate, not an oversight);
-//   * division truncates toward zero; the remainder keeps the dividend's sign.
+//   * division truncates toward zero; the remainder keeps the dividend's sign;
+//     a builtin dividend's results take the vendor's (swapped) types.
 // On synthesis targets tapa::u/i alias the vendor types instead
 // (tapa/xilinx/hls/int.h).
 
@@ -1382,32 +1383,58 @@ inline typename rtype<W1, S1, W2, S2>::arg1 operator>>(
 
 // ── Mixed with builtin integral operands ─────────────────────────────────
 
-#define TAPA_INT_BUILTIN_OP(op)                                 \
+#define TAPA_INT_BUILTIN_RHS_OP(op)                             \
   template <int W, bool S, typename T,                          \
             typename = internal::enable_if_integral<T>>         \
   inline auto operator op(const int_base<W, S>& a, T b)         \
       ->decltype(a op typename internal::to_base<T>::type(b)) { \
     return a op typename internal::to_base<T>::type(b);         \
-  }                                                             \
+  }
+#define TAPA_INT_BUILTIN_LHS_OP(op)                             \
   template <int W, bool S, typename T,                          \
             typename = internal::enable_if_integral<T>>         \
   inline auto operator op(T a, const int_base<W, S>& b)         \
       ->decltype(typename internal::to_base<T>::type(a) op b) { \
     return typename internal::to_base<T>::type(a) op b;         \
   }
+// A builtin dividend: the vendor types the quotient and the remainder as if
+// the builtin were the divisor, `rtype<W, S, builtin>` instead of
+// `rtype<builtin, W, S>`, and hardware computes the same, so
+// `1000 / i<8>(3)` is an `i<9>` holding -179. The exact result truncates
+// into that type.
+#define TAPA_INT_BUILTIN_DIVIDEND_OP(op, rt)                            \
+  template <int W, bool S, typename T,                                  \
+            typename = internal::enable_if_integral<T>,                 \
+            typename B = typename internal::to_base<T>::type>           \
+  inline typename rtype<W, S, B::width, B::sign_flag>::rt operator op(  \
+      T a, const int_base<W, S>& b) {                                   \
+    return typename rtype<W, S, B::width, B::sign_flag>::rt(B(a) op b); \
+  }
 
-TAPA_INT_BUILTIN_OP(+)
-TAPA_INT_BUILTIN_OP(-)
-TAPA_INT_BUILTIN_OP(*)
-TAPA_INT_BUILTIN_OP(/)
-TAPA_INT_BUILTIN_OP(%)
-TAPA_INT_BUILTIN_OP(&)
-TAPA_INT_BUILTIN_OP(|)
-TAPA_INT_BUILTIN_OP(^)
-TAPA_INT_BUILTIN_OP(<<)
-TAPA_INT_BUILTIN_OP(>>)
+TAPA_INT_BUILTIN_RHS_OP(+)
+TAPA_INT_BUILTIN_RHS_OP(-)
+TAPA_INT_BUILTIN_RHS_OP(*)
+TAPA_INT_BUILTIN_RHS_OP(/)
+TAPA_INT_BUILTIN_RHS_OP(%)
+TAPA_INT_BUILTIN_RHS_OP(&)
+TAPA_INT_BUILTIN_RHS_OP(|)
+TAPA_INT_BUILTIN_RHS_OP(^)
+TAPA_INT_BUILTIN_RHS_OP(<<)
+TAPA_INT_BUILTIN_RHS_OP(>>)
+TAPA_INT_BUILTIN_LHS_OP(+)
+TAPA_INT_BUILTIN_LHS_OP(-)
+TAPA_INT_BUILTIN_LHS_OP(*)
+TAPA_INT_BUILTIN_DIVIDEND_OP(/, div)
+TAPA_INT_BUILTIN_DIVIDEND_OP(%, mod)
+TAPA_INT_BUILTIN_LHS_OP(&)
+TAPA_INT_BUILTIN_LHS_OP(|)
+TAPA_INT_BUILTIN_LHS_OP(^)
+TAPA_INT_BUILTIN_LHS_OP(<<)
+TAPA_INT_BUILTIN_LHS_OP(>>)
 
-#undef TAPA_INT_BUILTIN_OP
+#undef TAPA_INT_BUILTIN_RHS_OP
+#undef TAPA_INT_BUILTIN_LHS_OP
+#undef TAPA_INT_BUILTIN_DIVIDEND_OP
 
 #define TAPA_INT_BUILTIN_REL(op)                          \
   template <int W, bool S, typename T,                    \
