@@ -34,9 +34,6 @@ pub struct PackageXoInputs {
     /// Optional per-port bus parameters, keyed by m_axi port name (no prefix).
     #[builder(default)]
     pub m_axi_params: Vec<(String, Vec<(String, String)>)>,
-    /// S_AXI interfaces to associate; defaults to `[s_axi_control]`.
-    #[builder(default = PackageXoInputs::default_s_axi())]
-    pub s_axi_ifaces: Vec<String>,
     /// Extra HLS report files to append under the packaged `.xo`'s
     /// `report/` tree before redaction. Each entry is `(source_path,
     /// archive_name)` — the archive name is taken verbatim, so the
@@ -47,13 +44,6 @@ pub struct PackageXoInputs {
     /// skip the bundle step.
     #[builder(default)]
     pub report_paths: Vec<(Utf8PathBuf, String)>,
-}
-
-impl PackageXoInputs {
-    #[must_use]
-    pub fn default_s_axi() -> Vec<String> {
-        vec![S_AXI_NAME.to_string()]
-    }
 }
 
 fn m_axi_port_names(args: &KernelXmlArgs) -> Vec<String> {
@@ -304,11 +294,7 @@ fn run_vivado_packaging(
     let xml = emit_kernel_xml(&inputs.kernel_xml)?;
     std::fs::write(&kernel_xml_path, xml.as_bytes())?;
 
-    let s_axi = if inputs.s_axi_ifaces.is_empty() {
-        PackageXoInputs::default_s_axi()
-    } else {
-        inputs.s_axi_ifaces.clone()
-    };
+    let s_axi = [S_AXI_NAME.to_string()];
     let m_axi = m_axi_port_names(&inputs.kernel_xml);
     let axis = axis_port_names(&inputs.kernel_xml);
     let bus_ifaces = render_bus_ifaces(&s_axi, &axis, &m_axi, &inputs.m_axi_params)?;
