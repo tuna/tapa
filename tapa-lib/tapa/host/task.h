@@ -308,11 +308,6 @@ struct function_traits<R (C::*)(Args...) const> {
   using return_type = R;
   using params = std::tuple<Args...>;
 };
-template <typename R, typename... Args>
-struct function_traits<R (&)(Args...)> {
-  using return_type = R;
-  using params = std::tuple<Args...>;
-};
 
 template <typename F, typename = void>
 struct is_callable : std::is_function<F> {};
