@@ -471,8 +471,7 @@ comparison of the exact real values.
 
 The portable types implement a commonly used subset. These vendor forms are
 not implemented and fail at compile time: `tapa::fixed` shift operators and
-its `&`/`|`/`^` against C integers, and the vendor's `to_string` hexfloat
-formatting for fixed-point. `tapa::u/i` additionally offer
+its `&`/`|`/`^` against C integers. `tapa::u/i` additionally offer
 `x.to_string(base, sign)` and stream extraction (`in >> x`).
 
 The text of `tapa::u/i`, from `x.to_string(base, sign)` (base 2 by default)
@@ -485,6 +484,23 @@ bits hex digits are uppercase, every such value gets the `0`, and zero is a
 bare `0`. `os << x` prints `x.to_string(16)`, `(8)` or `(10)` by the
 stream's basefield; the vendor reads `std::cout`'s instead, which is not
 reproduced.
+
+The text of `tapa::fixed/ufixed` is exactly the vendor's too.
+`x.to_string(base, sign)` (base 2 by default, signed by default as the type
+is) prints '-' and the magnitude for a negative value when `sign`, else the
+bit pattern; then the integer part as a `tapa::u<I + 1>` prints it, prefix
+and leading `0` included, or the prefix and `0` when `I <= 0`; then, for a
+nonzero fraction, a '.' and its exact decimal digits, or in base 2, 8 or 16
+every one of its `W - I` bits in groups from the top, hex ending in `p0`:
+`tapa::fixed<8, 4>(-1.5).to_string()` is `-0b01.1000`, `.to_string(16)` of
+`1.5` is `0x1.8p0`. With `I > W` the integer part is the vendor's: the
+pattern shifted up and cut back to `W + 1` bits. `os << x` prints the
+decimal `to_string` rounded half up to the stream's precision in
+significant digits, scientific when an integer needs more digits than that
+(`1.23e+03` at precision 3) or a fraction starts with four or more zeros
+(`9.91821e-05`), and pads it to the stream's width with its fill character as the vendor
+does; the basefield plays no part. Where the vendor's text is `-0`, which
+its output routine reads past, it prints `-0`.
 
 ### `tapa::axis<T, WUser, WId, WDest>`
 

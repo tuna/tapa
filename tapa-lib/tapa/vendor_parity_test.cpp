@@ -1097,6 +1097,91 @@ TEST(VendorParity, FixedToInteger) {
   }
 }
 
+// The text of a fixed-point value is the vendor's: `to_string` in every
+// radix, signed and not, and the ostream at several precisions and widths.
+// Values: random, zero, the sign bit alone, all ones, a few low bits (a
+// tiny fraction), and a few high bits (a large integer part).
+template <int W, int I, bool S, q_mode Q, o_mode O>
+void CheckFixedText(uint64_t& state, int rounds) {
+  using type = fx<W, I, S, Q, O, 0>;
+  for (int r = 0; r < rounds; ++r) {
+    std::vector<bool> bits = RandomBits(W, state);
+    for (int b = 0; b < W; ++b) {
+      switch (r % 6) {
+        case 1:
+          bits[b] = false;
+          break;
+        case 2:
+          bits[b] = b == W - 1;
+          break;
+        case 3:
+          bits[b] = true;
+          break;
+        case 4:
+          bits[b] = bits[b] && b < 3;
+          break;
+        case 5:
+          bits[b] = bits[b] && b >= W - 3;
+          break;
+      }
+    }
+    typename type::mine a;
+    typename type::theirs va;
+    SetPair(a, va, bits);
+    const std::string where = std::to_string(W) + "," + std::to_string(I) +
+                              (S ? " signed " : " unsigned ") + TapaBits(a.V);
+    EXPECT_EQ(a.to_string(), va.to_string()) << where;
+    for (const int radix : {2, 8, 10, 16}) {
+      for (const bool sign : {true, false}) {
+        EXPECT_EQ(a.to_string(radix, sign), va.to_string(radix, sign))
+            << "radix " << radix << " sign " << sign << ", " << where;
+      }
+    }
+    // The vendor's ostream reads past "-0" (a signed type with I > W prints
+    // its most negative values so) and fails; ours prints it as it is.
+    const std::string decimal = va.to_string(10, S);
+    if (decimal.find_first_of("123456789") == std::string::npos &&
+        decimal.find('-') != std::string::npos) {
+      std::ostringstream ours;
+      ours << a;
+      EXPECT_EQ(ours.str(), decimal) << where;
+      continue;
+    }
+    for (const int precision : {1, 3, 6, 10, 17, 40}) {
+      for (const int width : {0, 30}) {
+        std::ostringstream ours, vendor;
+        for (std::ostringstream* os : {&ours, &vendor}) {
+          os->precision(precision);
+          os->width(width);
+          os->fill('*');
+        }
+        ours << a;
+        vendor << va;
+        EXPECT_EQ(ours.str(), vendor.str())
+            << "precision " << precision << " width " << width << ", " << where;
+      }
+    }
+  }
+}
+
+TEST(VendorParity, FixedTextForms) {
+  uint64_t state = 0xf1ed;
+  CheckFixedText<8, 4, true, q_mode::trn, o_mode::wrap>(state, 60);
+  CheckFixedText<8, 4, false, q_mode::rnd, o_mode::sat>(state, 60);
+  CheckFixedText<12, 0, true, q_mode::rnd_conv, o_mode::sat_sym>(state, 60);
+  CheckFixedText<10, -3, true, q_mode::trn, o_mode::wrap>(state, 60);
+  CheckFixedText<10, -3, false, q_mode::trn_zero, o_mode::sat_zero>(state, 60);
+  CheckFixedText<6, 9, true, q_mode::trn, o_mode::wrap>(state, 60);
+  CheckFixedText<16, 16, false, q_mode::trn, o_mode::wrap>(state, 60);
+  CheckFixedText<32, 1, true, q_mode::rnd, o_mode::wrap_sm>(state, 60);
+  CheckFixedText<40, 20, true, q_mode::trn, o_mode::wrap>(state, 60);
+  CheckFixedText<70, 66, true, q_mode::trn, o_mode::sat>(state, 30);
+  CheckFixedText<96, 32, false, q_mode::trn, o_mode::wrap>(state, 30);
+  CheckFixedText<80, 70, true, q_mode::trn, o_mode::wrap>(state, 30);
+  CheckFixedText<1, 1, false, q_mode::trn, o_mode::wrap>(state, 12);
+  CheckFixedText<2, 1, true, q_mode::trn, o_mode::wrap>(state, 12);
+}
+
 TEST(VendorParity, FixedFromAndToNative) {
   const double reals[] = {0.0,
                           1.0,

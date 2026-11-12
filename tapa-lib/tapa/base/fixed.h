@@ -50,10 +50,12 @@ enum class o_mode {
 // tapa/xilinx/hls/fixed.h aliases the vendor types.
 #if !defined(TAPA_TARGET_XILINX_HLS_)
 
+#include <cassert>
 #include <climits>
 #include <cmath>
 #include <cstdint>
 #include <ostream>
+#include <string>
 #include <type_traits>
 #include <utility>
 
@@ -324,6 +326,9 @@ class fixed_base {
   int to_int() const { return static_cast<int>(to_int64()); }
   uint64_t to_uint64() const { return static_cast<uint64_t>(to_int64()); }
   int length() const { return W; }
+  /// The vendor's text of the value: radix 2, 8, 10 or 16, signed by
+  /// default as the type is (see the definition below).
+  std::string to_string(int radix = 2, bool sign = S) const;
 
 #define TAPA_FIXED_COMPOUND(op)              \
   template <typename T>                      \
@@ -669,10 +674,205 @@ TAPA_FIXED_INT_COMPARE(>)
 TAPA_FIXED_INT_COMPARE(>=)
 #undef TAPA_FIXED_INT_COMPARE
 
+// The vendor's ap_fixed text (Vitis 2025.2), quirks included.
+//
+// `to_string` prints, for a negative value when `sign`, '-' and then its
+// magnitude, else the bit pattern sign-extended by one bit. The integer
+// part is that of an ap_uint<I + 1> (tapa::u<I + 1>, prefix and leading
+// '0' digit included), or the radix prefix and "0" when I <= 0. A nonzero
+// fraction follows a '.': in decimal its exact digits, else every one of
+// its W - I bits, grouped from the top, the last group padded with zero
+// bits, and hex ending in "p0". Radix 2 is signed like any other.
+template <int W, int I, bool S, q_mode Q, o_mode O, int N>
+inline std::string fixed_base<W, I, S, Q, O, N>::to_string(int radix,
+                                                           bool sign) const {
+  switch (radix) {
+    case 2:
+    case 8:
+    case 10:
+    case 16:
+      break;
+    default:
+      assert(false && "to_string radix must be 2, 8, 10, or 16");
+      radix = 10;
+  }
+  const bool minus = sign && S && V.get_bit(W - 1);
+  i<W + 1> value(V);
+  if (minus) value = i<W + 1>(-value);
+  const u<W + 1> pattern(value);
+  std::string text = minus ? "-" : "";
+  if constexpr (I > 0) {
+    u<I + 1> whole;
+    if constexpr (W - I >= 0) {
+      whole = u<I + 1>(pattern >> (W - I));
+    } else {
+      // With I > W the vendor reads its range [W - I, W] of the W + 1 bits
+      // as the pattern shifted up and cut back to W + 1 bits.
+      whole = u<I + 1>(u<W + 1>(pattern << (I - W)));
+    }
+    text += internal::vendor_text(whole, radix, false);
+  } else {
+    text += radix == 16 ? "0x0" : radix == 8 ? "0o0" : radix == 2 ? "0b0" : "0";
+  }
+  constexpr int F = W - I > 1 ? W - I : 1;
+  // Sign-extended: an unsigned fraction of a negative value wraps.
+  const u<F> fraction = W - I > 0 ? u<F>(value) : u<F>(0);
+  if (fraction.is_zero()) return text;
+  text += '.';
+  if (radix == 10) {
+    // Every binary fraction has a finite decimal expansion.
+    u<F + 4> rest(fraction);
+    while (!rest.is_zero()) {
+      const u<F + 4> times10(rest * 10u);
+      text += char('0' + (times10 >> F).to_uint64());
+      rest = u<F + 4>(u<F>(times10));
+    }
+    return text;
+  }
+  const int step = radix == 16 ? 4 : radix == 8 ? 3 : 1;
+  for (int top = F - 1; top >= 0; top -= step) {
+    unsigned digit = 0;
+    for (int b = top; b > top - step; --b) {
+      digit = digit * 2 + (b >= 0 && fraction.get_bit(b) ? 1 : 0);
+    }
+    text += char(digit < 10 ? '0' + digit : 'a' + digit - 10);
+  }
+  if (radix == 16) text += "p0";
+  return text;
+}
+
+namespace internal {
+
+// The vendor's scientific form of an unsigned decimal string: its
+// significant digits as d.ddd, then e+XX or e-XX (at least two exponent
+// digits), or nothing for an exponent of 0.
+inline std::string vendor_scientific(const std::string& digits) {
+  if (digits.empty()) return digits;
+  const auto significant = [](char c) { return c >= '1' && c <= '9'; };
+  size_t point = digits.find('.');
+  if (point == std::string::npos) point = digits.size();
+  size_t first = 0;
+  while (!significant(digits[first])) ++first;
+  int exponent = first > point
+                     ? static_cast<int>(point) - static_cast<int>(first)
+                     : static_cast<int>(point) - static_cast<int>(first) - 1;
+  std::string tail;
+  if (exponent != 0) {
+    tail = exponent < 0 ? "e-" : "e+";
+    if (exponent < 0) exponent = -exponent;
+    if (exponent < 10) tail += '0';
+    tail += std::to_string(exponent);
+  }
+  size_t last = digits.size() - 1;
+  while (!significant(digits[last])) --last;
+  std::string text(1, digits[first]);
+  if (first != last) {
+    text += '.';
+    for (size_t k = first + 1; k <= last; ++k) {
+      if (digits[k] != '.') text += digits[k];
+    }
+  }
+  return text + tail;
+}
+
+// The vendor's decimal text of an ap_fixed reduced to `precision`
+// significant digits, as its ostream prints it: digits beyond the
+// precision round half up, and a number that then needs more digits than
+// it shows, or a fraction with four or more leading zeros, goes
+// scientific.
+inline std::string vendor_precision(const std::string& text, int precision) {
+  const auto significant = [](char c) { return c >= '1' && c <= '9'; };
+  if (text.find_first_not_of(".0") == std::string::npos) return "0";
+  // "-0", from a signed type with I > W (see `to_string`): the vendor reads
+  // past its text looking for a significant digit; print it as it is.
+  if (text.find_first_of("123456789") == std::string::npos) return text;
+  const int length = static_cast<int>(text.size());
+  int first = 0;
+  while (!significant(text[first])) ++first;
+  int last = length - 1;
+  while (!significant(text[last])) --last;
+  int point = static_cast<int>(text.find('.'));
+  if (point < 0) point = length;
+  const bool minus = text[0] == '-';
+  int cut;  // the position whose digit decides the rounding
+  if (point > last) {
+    if (last - first + 1 <= precision) return text;
+    cut = first + precision;
+  } else if (point < first) {
+    if (last - first + 1 <= precision) {
+      if (first - point - 1 < 4) return text;
+      return minus ? "-" + vendor_scientific(text.substr(1))
+                   : vendor_scientific(text);
+    }
+    cut = first + precision;
+  } else {
+    if (last - first <= precision) return text;
+    cut = first + precision + 1;
+  }
+  // One more leading digit for the carry; the sign's place serves.
+  std::string digits = minus ? "0" + text.substr(1) : (++cut, "0" + text);
+  bool carry = digits[cut] > '4';
+  for (int k = cut - 1; k >= 0 && carry; --k) {
+    if (digits[k] == '.') continue;
+    if (digits[k] == '9') {
+      digits[k] = '0';
+    } else {
+      ++digits[k];
+      carry = false;
+    }
+  }
+  int start = 0;
+  if (digits[0] != '1') {
+    while (!significant(digits[start])) ++start;
+  }
+  int counted = 0;
+  for (size_t k = start; k < digits.size(); ++k) {
+    if (digits[k] == '.') continue;
+    if (++counted > precision) digits[k] = '0';
+  }
+  size_t end = digits.size();
+  if (digits.find('.') != std::string::npos) {
+    for (int k = static_cast<int>(digits.size()) - 1; k >= 0; --k) {
+      if (digits[k] == '.') {
+        end = k;
+        break;
+      }
+      if (digits[k] != '0') {
+        end = k + 1;
+        break;
+      }
+    }
+  }
+  digits = digits[0] == '1' ? digits.substr(0, end) : digits.substr(1, end - 1);
+  const std::string sign = minus ? "-" : "";
+  const size_t dot = digits.find('.');
+  if (dot != std::string::npos) {
+    size_t k = dot + 1;
+    while (k < digits.size() && digits[k] == '0') ++k;
+    return sign + (k - dot - 1 < 4 ? digits : vendor_scientific(digits));
+  }
+  if (static_cast<int>(digits.size()) <= precision) return sign + digits;
+  return sign + vendor_scientific(digits);
+}
+
+}  // namespace internal
+
+// The vendor's ostream text: the decimal `to_string` reduced to the
+// stream's precision and padded to its width with its fill character, as
+// the vendor pads (the first fill character takes the stream's width
+// itself). Like the vendor's, it ignores the basefield.
 template <int W, int I, bool S, q_mode Q, o_mode O, int N>
 inline std::ostream& operator<<(std::ostream& os,
                                 const fixed_base<W, I, S, Q, O, N>& x) {
-  return os << x.to_double();
+  const unsigned width = static_cast<unsigned>(os.width());
+  const int precision = static_cast<int>(os.precision());
+  const char fill = os.fill();
+  const std::string text =
+      internal::vendor_precision(x.to_string(10, S), precision);
+  if (width > text.size()) {
+    for (unsigned k = 0; k < width - text.size(); ++k) os << fill;
+  }
+  return os << text;
 }
 
 // The double conversion, out of line because it needs the class complete.

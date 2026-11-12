@@ -205,6 +205,25 @@ TEST(FixedTest, StreamsAsItsValue) {
   EXPECT_EQ(os.str(), "1.5");
 }
 
+// The vendor's text, recorded from Vitis 2025.2's ap_fixed: `to_string`
+// prints every fraction bit outside decimal, and the ostream rounds the
+// exact decimal to the stream's precision, going scientific as the vendor
+// does.
+TEST(FixedTest, TextIsTheVendors) {
+  EXPECT_EQ((fixed<8, 4>(-1.5)).to_string(), "-0b01.1000");
+  EXPECT_EQ((fixed<8, 4>(1.5)).to_string(16), "0x1.8p0");
+  EXPECT_EQ((fixed<16, -2>(0.0001)).to_string(10), "0.00009918212890625");
+  const auto printed = [](const auto& value, int precision) {
+    std::ostringstream os;
+    os.precision(precision);
+    os << value;
+    return os.str();
+  };
+  EXPECT_EQ(printed(fixed<32, 20>(1234.5678), 3), "1.23e+03");
+  EXPECT_EQ(printed(fixed<32, 20>(1234.5678), 6), "1234.57");
+  EXPECT_EQ(printed(fixed<16, -2>(0.0001), 6), "9.91821e-05");
+}
+
 // `x = 0` has to pick the literal over a conversion to the fixed type, or
 // it is ambiguous against the implicit copy assignment. Designs reset
 // buffers this way.
