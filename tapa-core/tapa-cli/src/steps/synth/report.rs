@@ -647,8 +647,8 @@ mod tests {
     }
 
     /// `synth: ignore` tasks are skipped by HLS, so they reach the report
-    /// with an empty `clock_period` annotation. That must read as zero (the
-    /// value `analyze` used to seed) instead of failing the whole report.
+    /// with an empty `clock_period` annotation. That must read as zero
+    /// instead of failing the whole report.
     #[test]
     fn unsynthesized_task_clock_period_reads_as_zero() {
         let dir = tempfile::tempdir().expect("tempdir");

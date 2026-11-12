@@ -15,9 +15,7 @@ use super::hls_sources::{
     stage_hls_sources, TaskSources, TREE_MANIFEST_HEADER, TREE_MANIFEST_NAME,
 };
 
-/// `count` child instances with empty args and step 0, mirroring
-/// the `[{"args": {}, "step": 0}, ...]` JSON the untyped fixtures
-/// used.
+/// `count` child instances with empty args and step 0.
 pub fn instances(count: usize) -> Vec<TaskInstance> {
     vec![
         TaskInstance {

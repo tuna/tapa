@@ -1,7 +1,8 @@
 //! CFLAGS/LDFLAGS construction for compiling TAPA programs.
 //!
-//! The vendor include resolution and macOS sysroot probe live behind
-//! pluggable closures so unit tests can drive deterministic fixtures.
+//! Builds the TAPA include cascade shared by `tapa g++` and `tapacc`,
+//! resolves the local Vitis HLS vendor includes, probes the macOS
+//! sysroot, and lists the link flags for the static runtime.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -110,11 +111,9 @@ pub fn get_tapa_ldflags() -> Vec<String> {
     for lib in &libs {
         out.push(format!("-L{}", lib.display()));
     }
-    // The `-lfrt_cpp` C++ shim is folded into libtapa; `-lfrt` now resolves to
-    // the static libfrt.a (no shared libfrt.so is shipped). A shared library
-    // used to carry FRT's native dependencies transitively — with static
-    // linking they must be listed explicitly, after `-lfrt` (see
-    // `rustc --print native-static-libs` for the `frt` crate).
+    // `-lfrt` resolves to the static libfrt.a, whose native dependencies are
+    // not carried transitively and must be listed explicitly, after `-lfrt`
+    // (see `rustc --print native-static-libs` for the `frt` crate).
     //
     // No XRT library is listed: frt dlopens `libxrt_coreutil` when a design
     // is first run on hardware, so no XRT symbol is referenced at link time.

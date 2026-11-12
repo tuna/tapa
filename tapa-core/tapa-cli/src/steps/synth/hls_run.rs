@@ -515,9 +515,9 @@ mod tests {
         );
     }
 
-    /// User `-I` paths previously won over the mirror. Exercise real
-    /// compiler lookup for both include spellings; tapacc deliberately
-    /// leaves the angle spelling unchanged.
+    /// The rewritten-tree `-I` roots must win over the user's `-I` paths
+    /// for both include spellings; tapacc deliberately leaves the angle
+    /// spelling unchanged. Exercises real compiler lookup.
     #[test]
     fn task_cflags_select_mirror_for_quoted_and_angle_includes() {
         use std::process::Command;
