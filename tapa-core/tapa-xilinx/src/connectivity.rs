@@ -189,7 +189,9 @@ pub fn parse_slash_config(
     slash_bindings(&parse_slash(input, top, platform)?, top, ports, platform)
 }
 
-/// Validate a SLASH configuration and add the one kernel clock when absent.
+/// Validate a SLASH configuration and add the one kernel clock and the
+/// platform's `shell=` line when absent. The shell is always named because
+/// slashkit's own default is compute, not service.
 /// Existing clock sections must all name the sole `nk` instance at exactly the
 /// requested frequency. Returns the resolved bindings alongside the prepared
 /// text so callers need not parse the same config twice.
@@ -203,7 +205,7 @@ pub fn prepare_slash_config(
     let parsed = parse_slash(input, top, platform)?;
     let bindings = slash_bindings(&parsed, top, ports, platform)?;
     let mut config = enforce_slash_clock(input, &parsed, requested_hz)?;
-    if !parsed.has_shell && platform.shell != "service" {
+    if !parsed.has_shell {
         insert_shell_line(input, &mut config, platform.shell);
     }
     Ok((bindings, config))
@@ -569,9 +571,14 @@ mod tests {
             let (_, prepared) =
                 prepare_slash_config(&input, "Top", &[slash_port("a")], 200_000_000, platform)
                     .expect("available interface");
-            assert_eq!(
-                prepared.contains("shell=compute"),
-                platform.shell == "compute"
+            // slashkit builds the compute shell when `shell=` is absent, so
+            // the service shell must be named too.
+            assert!(
+                prepared.starts_with(&format!(
+                    "[connectivity] # shell selection\nshell={}\n",
+                    platform.shell
+                )),
+                "{prepared}"
             );
             parse_slash_config(&prepared, "Top", &[slash_port("a")], platform)
                 .expect("prepared config");
@@ -611,8 +618,7 @@ mod tests {
 
     #[test]
     fn slash_config_accepts_matching_clock_and_rejects_drift() {
-        let input =
-            "[connectivity]\nnk=VecAdd:1:VecAdd_0\n\n[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n";
+        let input = "[connectivity]\nshell=service\nnk=VecAdd:1:VecAdd_0\n\n[clock]\nkrnl=VecAdd_0\nfreqhz=300000000\n";
         assert_eq!(
             prepare_slash_config(input, "VecAdd", &[slash_port("a")], 300_000_000, service())
                 .expect("matching clock")
