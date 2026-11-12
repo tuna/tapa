@@ -40,8 +40,9 @@ TAPA_CONCURRENCY=1 ./vadd
 ```
 
 ```admonish note
-`TAPA_CONCURRENCY` defaults to the physical CPU core count. Set it to `1`
-for a simpler scheduling interleaving at the cost of simulation speed. One
+`TAPA_CONCURRENCY` defaults to the physical CPU core count; a value below 1
+means 1. Set it to `1` for a simpler scheduling interleaving at the cost of
+simulation speed. One
 worker still interleaves tasks at blocking points; it does not run each task
 to completion. On macOS the host library runs each task on a thread of its
 own and ignores `TAPA_CONCURRENCY`.

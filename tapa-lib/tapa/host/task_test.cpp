@@ -112,18 +112,22 @@ TEST(TaskTest, TapaConcurrencyOneWorker) {
   EXPECT_TRUE(result_q.empty());
 }
 
-TEST(TaskTest, TapaConcurrencyZeroFallsBackToOneWorker) {
-  tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", "0");
-  tapa::stream<int, 1> data_q("bounded0w");
-  tapa::stream<int, kBoundedN> result_q("result0w");
-  tapa::task()
-      .invoke(BoundedProducer, data_q, kBoundedN)
-      .invoke(BoundedConsumer, data_q, result_q, kBoundedN);
-  for (int i = 0; i < kBoundedN; ++i) {
-    ASSERT_FALSE(result_q.empty()) << "item " << i << " missing";
-    EXPECT_EQ(result_q.read(), i);
+// A negative count must not turn into an unsigned one: it used to start
+// threads until the process ran out.
+TEST(TaskTest, TapaConcurrencyBelowOneFallsBackToOneWorker) {
+  for (const char* concurrency : {"0", "-1"}) {
+    tapa_testing::ScopedSetEnv env("TAPA_CONCURRENCY", concurrency);
+    tapa::stream<int, 1> data_q("bounded0w");
+    tapa::stream<int, kBoundedN> result_q("result0w");
+    tapa::task()
+        .invoke(BoundedProducer, data_q, kBoundedN)
+        .invoke(BoundedConsumer, data_q, result_q, kBoundedN);
+    for (int i = 0; i < kBoundedN; ++i) {
+      ASSERT_FALSE(result_q.empty()) << "item " << i << " missing";
+      EXPECT_EQ(result_q.read(), i);
+    }
+    EXPECT_TRUE(result_q.empty());
   }
-  EXPECT_TRUE(result_q.empty());
 }
 
 void NestedJoinNoOp() {}

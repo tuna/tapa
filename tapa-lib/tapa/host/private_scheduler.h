@@ -142,7 +142,8 @@ class thread_pool {
     ensure_split_stack_runtime_ready();
     size_t worker_count;
     if (auto concurrency = getenv("TAPA_CONCURRENCY")) {
-      worker_count = atoi(concurrency);
+      // Below one, as when it does not parse, falls back to one below.
+      worker_count = std::max(atoi(concurrency), 0);
     } else {
       worker_count = get_physical_core_count();
     }
