@@ -492,29 +492,6 @@ fn hop_objective(candidates: &Candidates, path_vars: &[Vec<LpVar>]) -> LinExpr {
     terms.into_expr()
 }
 
-/// Pin the achieved primary objective and re-solve minimizing the stable
-/// candidate-path index, whose optimum is unique per net (candidates are
-/// enumerated shortest/simplest first). Equal-quality routes therefore
-/// resolve deterministically across solver versions. Falls back to the
-/// primary incumbent when the refinement yields none.
-fn refine_lexicographic(
-    lp: &mut LpModel,
-    solver: &dyn Solver,
-    opts: &SolveOpts,
-    primary: &crate::solver::LpSolution,
-    path_vars: &[Vec<LpVar>],
-) -> Result<Option<crate::solver::LpSolution>, RouteError> {
-    let pin = lp.objective.clone();
-    Ok(crate::solver::lexicographic::refine(
-        lp,
-        solver,
-        opts,
-        pin,
-        primary.objective,
-        path_vars,
-    )?)
-}
-
 /// Route every net, returning a chosen slot path (`src` first, `dst` last) per
 /// net in input order.
 pub fn route_nets(
@@ -615,7 +592,15 @@ pub fn route_nets(
     // Lexicographic tie-break: pin the achieved objective, then minimize the
     // stable candidate-path index so equal-quality routes resolve
     // identically across solver versions.
-    let refined = refine_lexicographic(&mut lp, solver, &route_opts, &solution, &path_vars)?;
+    let pin = lp.objective.clone();
+    let refined = crate::solver::lexicographic::refine(
+        &mut lp,
+        solver,
+        &route_opts,
+        pin,
+        solution.objective,
+        &path_vars,
+    )?;
     if refined.is_none() {
         log::warn!(
             "the routing lexicographic refinement found no incumbent; these routes are still \
