@@ -1,6 +1,8 @@
 mod aie_top;
 mod api;
 pub mod device;
+#[cfg(test)]
+mod fake;
 pub mod metadata;
 mod pl_control;
 mod rings;

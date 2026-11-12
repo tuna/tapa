@@ -286,7 +286,13 @@ impl Device for XrtAieTopDevice {
                         })?;
                     }
                     let elapsed = crate::elapsed_ns(started);
-                    // The drain run fills the transfer each output left posted.
+                    // The drain run fills the transfer each output left
+                    // posted. With no output there is none, and no kernel
+                    // takes a drain flag: a run would be a whole one more,
+                    // taking the next invoke's input.
+                    if outputs.is_empty() {
+                        return Ok(elapsed);
+                    }
                     for (pump, _, _) in &outputs {
                         pump.drain.store(true, Ordering::Release);
                     }
@@ -432,5 +438,76 @@ fn run_pump(api: &Api, gmio: &GmioApi, device: Shared, pump: &Pump) -> Result<()
             }
             pump.delivered.fetch_add(1, Ordering::AcqRel);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::xrt::fake::{Fake, API, GMIO};
+    use frt_shm::SharedMemoryQueue;
+
+    /// A top on the AI Engine with the given GMIOs, over `fake`.
+    fn device(fake: &'static Fake, gmios: Vec<GmioArgument>) -> XrtAieTopDevice {
+        let drains = gmios
+            .iter()
+            .any(|gmio| !gmio.input)
+            .then(|| "tapa_aie.drain_k".to_owned())
+            .into_iter()
+            .collect();
+        XrtAieTopDevice {
+            api: &API,
+            gmio: &GMIO,
+            device: fake.handle(),
+            graph: fake.handle(),
+            meta: AieGraph {
+                name: "tapa_aie".into(),
+                run_forever: false,
+                cores: Vec::new(),
+                iterations: Vec::new(),
+                rtps: Vec::new(),
+                drains,
+            },
+            scalars: HashMap::new(),
+            pumps: gmios
+                .into_iter()
+                .map(|gmio| {
+                    Arc::new(Pump {
+                        name: CString::new(gmio.name.clone()).expect("name"),
+                        frames: FrameQueue::new(gmio.name.clone(), 4),
+                        gmio,
+                        delivered: AtomicU64::new(0),
+                        drain: AtomicBool::new(false),
+                        idle: AtomicBool::new(true),
+                    })
+                })
+                .collect(),
+            threads: Vec::new(),
+            run: None,
+            finished: false,
+            compute_ns: 0,
+        }
+    }
+
+    /// The drain run retires the transfer an output leaves posted; a graph
+    /// that writes no GMIO has none and takes no drain flag, so a second
+    /// run would be a whole one, taking the next invoke's input.
+    #[test]
+    fn a_graph_writing_no_gmio_runs_once_per_invoke() {
+        let fake = Fake::leak();
+        let queue = SharedMemoryQueue::create("aie_top_input", 4, 5).expect("queue");
+        let input = GmioArgument {
+            index: 0,
+            name: "in".into(),
+            input: true,
+            element_words: 1,
+            transfer_words: 4,
+        };
+        let mut top = device(fake, vec![input]);
+        top.set_stream_arg(0, &queue.path().to_string_lossy())
+            .expect("bind");
+        top.exec().expect("exec");
+        top.finish().expect("finish");
+        assert_eq!(fake.count("graph_run"), 1, "{:?}", fake.calls());
     }
 }
