@@ -171,19 +171,19 @@ pub fn plan_with_retry_ceiling_and_solvers(
 /// a plan can report how many times it paid `max_seconds`.
 struct CountingSolver<'a> {
     inner: &'a dyn crate::solver::Solver,
-    calls: std::sync::atomic::AtomicUsize,
+    calls: std::cell::Cell<usize>,
 }
 
 impl<'a> CountingSolver<'a> {
     fn new(inner: &'a dyn crate::solver::Solver) -> Self {
         Self {
             inner,
-            calls: std::sync::atomic::AtomicUsize::new(0),
+            calls: std::cell::Cell::new(0),
         }
     }
 
     fn count(&self) -> usize {
-        self.calls.load(std::sync::atomic::Ordering::Relaxed)
+        self.calls.get()
     }
 }
 
@@ -193,8 +193,7 @@ impl crate::solver::Solver for CountingSolver<'_> {
         model: &crate::solver::LpModel,
         opts: &SolveOpts,
     ) -> Result<crate::solver::LpSolution, crate::solver::SolverError> {
-        self.calls
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.calls.set(self.calls.get() + 1);
         self.inner.solve(model, opts)
     }
 }
