@@ -255,7 +255,10 @@ std::string EditSink::getRewrittenText(clang::SourceRange range) const {
 }
 
 std::string EditSink::getRewrittenText(clang::CharSourceRange range) const {
-  if (splices_ == nullptr) return rewriter_.getRewrittenText(range);
+  if (splices_ == nullptr || !range.getBegin().isFileID() ||
+      !range.getEnd().isFileID()) {
+    return rewriter_.getRewrittenText(range);
+  }
   // An edit inside a macro invocation waits in its splice until the session
   // flushes it, so text read before then -- a guard's signature stub --
   // takes each edited invocation wholly in range as its splice renders it.

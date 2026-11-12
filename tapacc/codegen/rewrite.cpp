@@ -673,16 +673,22 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     // Each variant, and the stub, is rewritten on its own copy of the
     // definition, which then replaces it whole: an edit of the main sink
     // inside it (a removed attribute) would shift the replaced range.
-    const auto scratch = [&](clang::Rewriter& rewriter) {
+    // Each copy composes its macro edits into splices of its own, which
+    // its rewritten text then renders.
+    const auto scratch = [&](clang::Rewriter& rewriter,
+                             std::optional<MacroSplices>& splices) {
       EditSink sink(ctx, rewriter);
       sink.TrackFile(edits.getSourceMgr().getFileID(definition.getBegin()),
                      [](clang::SourceLocation, unsigned, llvm::StringRef) {
                        return true;
                      });
+      session.ScratchSplices(splices);
+      if (splices) sink.RouteMacroEdits(&*splices);
       return sink;
     };
     clang::Rewriter stub_rewriter(edits.getSourceMgr(), edits.getLangOpts());
-    EditSink stub_edits = scratch(stub_rewriter);
+    std::optional<MacroSplices> stub_splices;
+    EditSink stub_edits = scratch(stub_rewriter, stub_splices);
     RemoveParamAttrs(func, stub_edits);
     RemoveFuncAttrs(func, stub_edits);
     const std::string stub =
@@ -695,9 +701,11 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
       const Backend& backend = BackendFor(model.target, backends);
       clang::Rewriter variant_rewriter(edits.getSourceMgr(),
                                        edits.getLangOpts());
-      EditSink variant_edits = scratch(variant_rewriter);
+      std::optional<MacroSplices> variant_splices;
+      EditSink variant_edits = scratch(variant_rewriter, variant_splices);
       rewrite_body(model, backend, variant_edits);
-      guarded += variant_edits.getRewrittenText(definition);
+      guarded += variant_edits.getRewrittenText(
+          clang::CharSourceRange::getTokenRange(definition));
       guarded += "\n";
     }
     guarded += GuardStubClosing(stub);

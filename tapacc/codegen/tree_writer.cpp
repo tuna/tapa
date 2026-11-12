@@ -385,10 +385,12 @@ TreeSession::TreeSession(clang::ASTContext& ctx,
                          const clang::syntax::TokenBuffer* tokens,
                          std::vector<ExpansionPragma> pragmas)
     : rewriter_(ctx.getSourceManager(), ctx.getLangOpts()),
-      edits_(ctx, rewriter_) {
+      edits_(ctx, rewriter_),
+      tokens_(tokens),
+      pragmas_(std::move(pragmas)) {
   clang::SourceManager& sm = ctx.getSourceManager();
   if (tokens != nullptr) {
-    splices_.emplace(*tokens, sm, std::move(pragmas));
+    splices_.emplace(*tokens, sm, pragmas_);
     edits_.RouteMacroEdits(&*splices_);
   }
   // Insertions routed through EditSink compose with the same synthetic
@@ -407,6 +409,12 @@ TreeSession::TreeSession(clang::ASTContext& ctx,
     });
     buffers_by_file_[file] = ptr;
     buffers_.emplace(path, std::move(buffer));
+  }
+}
+
+void TreeSession::ScratchSplices(std::optional<MacroSplices>& splices) const {
+  if (tokens_ != nullptr) {
+    splices.emplace(*tokens_, rewriter_.getSourceMgr(), pragmas_);
   }
 }
 

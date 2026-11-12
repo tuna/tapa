@@ -209,6 +209,10 @@ class TreeSession {
               std::vector<ExpansionPragma> pragmas = {});
 
   EditSink& edits() { return edits_; }
+  // Splices of their own for an edit sink that rewrites a scratch copy of
+  // a definition, over the same recorded tokens and pragmas; left empty
+  // when this session recorded none.
+  void ScratchSplices(std::optional<MacroSplices>& splices) const;
   TreeFileBuffer* BufferForPath(llvm::StringRef path);
   TreeFileBuffer* BufferForLocation(clang::SourceLocation loc);
   bool InsertGuardOpening(clang::SourceRange range, llvm::StringRef opening,
@@ -227,6 +231,8 @@ class TreeSession {
  private:
   clang::Rewriter rewriter_;
   EditSink edits_;
+  const clang::syntax::TokenBuffer* tokens_;
+  std::vector<ExpansionPragma> pragmas_;
   std::optional<MacroSplices> splices_;
   std::map<std::string, std::unique_ptr<TreeFileBuffer>> buffers_;
   std::map<clang::FileID, TreeFileBuffer*> buffers_by_file_;

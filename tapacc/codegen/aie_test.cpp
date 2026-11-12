@@ -632,6 +632,30 @@ TEST(AieTest, RecursiveUpperTasksAreRejectedInsteadOfLooping) {
   EXPECT_TRUE(AnyDiagContains(run, "task invocation cycle"));
 }
 
+// Each target variant of a shared helper is rewritten on a scratch copy.
+// An attribute a macro spells used to fail there ("this run recorded no
+// token stream"): the copies now compose macro edits into splices of their
+// own.
+TEST(AieTest, HelperVariantsRewriteThroughMacros) {
+  const TreePipelineRun run = Analyze(
+      "helper_macro", Design(R"cpp(
+#define PIPE [[tapa::pipeline]]
+        void Copy(tapa::istream<float>& in, tapa::ostream<float>& out, int n) {
+          PIPE for (int i = 0; i < n; ++i) out.write(in.read());
+        }
+        [[tapa::target("aie")]]
+        void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+          Copy(a, c, n);
+        }
+      )cpp"));
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? "" : run.diags.front());
+  const std::string& tu = run.files.at("helper_macro.cpp");
+  EXPECT_NE(tu.find("#elif "), std::string::npos) << tu;
+  EXPECT_NE(tu.find("chess_prepare_for_pipelining"), std::string::npos) << tu;
+  EXPECT_NE(tu.find("_Pragma(\"HLS pipeline\")"), std::string::npos) << tu;
+  EXPECT_EQ(tu.find("PIPE for"), std::string::npos) << tu;
+}
+
 TEST(AieTest, APlTaskMustNotCloseThroughHelpersAliasesOrUpperTasks) {
   const std::string add = R"cpp(
     [[tapa::target("aie")]]
