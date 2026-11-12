@@ -15,7 +15,7 @@ use tapa_xilinx::tools::aie::graph::{render_graph, GraphOptions, KernelSource, S
 use tapa_xilinx::tools::aie::{AieCompileJob, AieDevice, AieTarget};
 
 use crate::error::{CliError, Result};
-use crate::tapacc::discover::find_resource;
+use crate::tapacc::discover::{find_resource, Resource};
 
 /// How a PL-less top's frames reach the host on `platform` (see
 /// [`TopFrames`]): through rings where only TAPA's PL controller drives the
@@ -209,7 +209,7 @@ pub fn prepare(
             break;
         }
     }
-    if let Ok(lib) = find_resource("tapa-lib-include") {
+    if let Ok(lib) = find_resource(Resource::TapaLibInclude) {
         include_dirs.push(crate::util::utf8(lib));
     }
     Ok(AieCompileJob::builder()

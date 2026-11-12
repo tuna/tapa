@@ -13,37 +13,51 @@ use regex::Regex;
 
 use crate::error::{CliError, Result};
 
-/// Resource-name → candidate relative paths, in priority order: the
-/// first existing match wins.
-static POTENTIAL_PATHS: &[(&str, &[&str])] = &[
-    ("fpga-runtime-include", &["fpga-runtime", "usr/include"]),
-    (
-        "fpga-runtime-lib",
-        &["fpga-runtime/cargo", "fpga-runtime", "usr/lib"],
-    ),
-    (
-        "tapa-extra-runtime-include",
-        &[
-            "tapa-system-include/tapa-extra-runtime-include",
-            "tapa-lib/extra-runtime-include",
-            "usr/include",
-        ],
-    ),
-    ("tapa-lib-include", &["tapa-lib", "usr/include"]),
-    ("tapa-lib-lib", &["tapa-lib", "usr/lib"]),
-    (
-        "tapa-system-include",
-        &[
-            "tapa-system-include/tapa-system-include",
-            "usr/share/tapa/system-include",
-        ],
-    ),
-    ("tapacc-binary", &["tapacc/tapacc", "usr/bin/tapacc"]),
-];
+/// Resources shipped beside the CLI, with candidate paths in priority order.
+#[derive(Clone, Copy)]
+pub(crate) enum Resource {
+    FpgaRuntimeInclude,
+    FpgaRuntimeLib,
+    TapaExtraRuntimeInclude,
+    TapaLibInclude,
+    TapaLibLib,
+    TapaSystemInclude,
+    TapaccBinary,
+}
+
+impl Resource {
+    fn candidates(self) -> (&'static str, &'static [&'static str]) {
+        match self {
+            Self::FpgaRuntimeInclude => ("fpga-runtime-include", &["fpga-runtime", "usr/include"]),
+            Self::FpgaRuntimeLib => (
+                "fpga-runtime-lib",
+                &["fpga-runtime/cargo", "fpga-runtime", "usr/lib"],
+            ),
+            Self::TapaExtraRuntimeInclude => (
+                "tapa-extra-runtime-include",
+                &[
+                    "tapa-system-include/tapa-extra-runtime-include",
+                    "tapa-lib/extra-runtime-include",
+                    "usr/include",
+                ],
+            ),
+            Self::TapaLibInclude => ("tapa-lib-include", &["tapa-lib", "usr/include"]),
+            Self::TapaLibLib => ("tapa-lib-lib", &["tapa-lib", "usr/lib"]),
+            Self::TapaSystemInclude => (
+                "tapa-system-include",
+                &[
+                    "tapa-system-include/tapa-system-include",
+                    "usr/share/tapa/system-include",
+                ],
+            ),
+            Self::TapaccBinary => ("tapacc-binary", &["tapacc/tapacc", "usr/bin/tapacc"]),
+        }
+    }
+}
 
 /// Override the search anchor for tests: when the override is set, we
 /// walk its parents instead of the binary's parents.
-pub(crate) fn search_anchor() -> PathBuf {
+pub(super) fn search_anchor() -> PathBuf {
     static OVERRIDE: OnceLock<Option<PathBuf>> = OnceLock::new();
     OVERRIDE
         .get_or_init(|| std::env::var_os("TAPA_CLI_SEARCH_ANCHOR").map(PathBuf::from))
@@ -55,23 +69,16 @@ pub(crate) fn search_anchor() -> PathBuf {
         })
 }
 
-/// Resolve a `POTENTIAL_PATHS` key to an absolute path. Walks the parents
-/// of [`search_anchor`] in order, trying each candidate suffix; the first
+/// Resolve a resource to an absolute path. Walks the parents of
+/// [`search_anchor`] in order, trying each candidate suffix; the first
 /// existing path wins.
-pub fn find_resource(name: &str) -> Result<PathBuf> {
-    find_resource_from(name, &search_anchor())
+pub(crate) fn find_resource(resource: Resource) -> Result<PathBuf> {
+    find_resource_from(resource, &search_anchor())
 }
 
 /// Same as [`find_resource`] but with an explicit anchor (used in tests).
-fn find_resource_from(name: &str, anchor: &Path) -> Result<PathBuf> {
-    let suffixes = POTENTIAL_PATHS
-        .iter()
-        .find(|(k, _)| *k == name)
-        .map(|(_, v)| *v)
-        .ok_or_else(|| CliError::TapaccNotFound {
-            name: name.to_string(),
-            searched: format!("unknown resource key `{name}`"),
-        })?;
+fn find_resource_from(resource: Resource, anchor: &Path) -> Result<PathBuf> {
+    let (name, suffixes) = resource.candidates();
 
     let mut tried: Vec<String> = Vec::new();
     for suffix in suffixes {
@@ -121,10 +128,9 @@ fn push_unique(paths: &mut Vec<PathBuf>, path: PathBuf) {
     }
 }
 
-/// Resolve a clang-family helper (`tapacc-binary`). Verifies the resolved
-/// file prints a parseable `--version`; otherwise surfaces a typed error.
-pub fn find_clang_binary(name: &str) -> Result<PathBuf> {
-    let path = find_resource(name)?;
+/// Resolve `tapacc` and verify that it prints a parseable `--version`.
+pub(crate) fn find_tapacc() -> Result<PathBuf> {
+    let path = find_resource(Resource::TapaccBinary)?;
     verify_clang_version(&path)?;
     Ok(path.canonicalize().unwrap_or(path))
 }
@@ -177,7 +183,7 @@ mod tests {
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(&target, b"#!/bin/sh\nexit 0").unwrap();
 
-        let resolved = find_resource_from("tapacc-binary", &nested).unwrap();
+        let resolved = find_resource_from(Resource::TapaccBinary, &nested).unwrap();
         assert_eq!(resolved, target);
     }
 
@@ -190,7 +196,7 @@ mod tests {
         fs::create_dir_all(target.parent().unwrap()).unwrap();
         fs::write(&target, b"#!/bin/sh\nexit 0").unwrap();
 
-        let resolved = find_resource_from("tapacc-binary", &nested).unwrap();
+        let resolved = find_resource_from(Resource::TapaccBinary, &nested).unwrap();
         assert_eq!(resolved, target);
     }
 
@@ -206,16 +212,16 @@ mod tests {
 
         let anchor = bin.join("tapa");
 
-        let resolved_tapacc = find_resource_from("tapacc-binary", &anchor).unwrap();
+        let resolved_tapacc = find_resource_from(Resource::TapaccBinary, &anchor).unwrap();
         assert_eq!(resolved_tapacc, tapacc);
-        let resolved_include = find_resource_from("tapa-system-include", &anchor).unwrap();
+        let resolved_include = find_resource_from(Resource::TapaSystemInclude, &anchor).unwrap();
         assert_eq!(resolved_include, system_include);
     }
 
     #[test]
     fn missing_resource_carries_searched_paths() {
         let dir = tempfile::tempdir().unwrap();
-        let err = find_resource_from("tapacc-binary", dir.path()).unwrap_err();
+        let err = find_resource_from(Resource::TapaccBinary, dir.path()).unwrap_err();
         if let CliError::TapaccNotFound { name, searched } = &err {
             assert_eq!(name, "tapacc-binary");
             assert!(
@@ -225,13 +231,6 @@ mod tests {
         } else {
             panic!("expected TapaccNotFound, got {err:?}");
         }
-    }
-
-    #[test]
-    fn unknown_resource_key_errors() {
-        let dir = tempfile::tempdir().unwrap();
-        let err = find_resource_from("does-not-exist", dir.path()).unwrap_err();
-        assert!(matches!(err, CliError::TapaccNotFound { .. }));
     }
 
     #[test]

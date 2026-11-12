@@ -13,7 +13,7 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work as work_io;
 use crate::tapacc::cflags::{get_remote_hls_cflags, get_tapacc_cflags};
-use crate::tapacc::discover::find_resource;
+use crate::tapacc::discover::{find_resource, Resource};
 
 use super::device_resolve::resolve_device_info;
 use super::hls_run::{run_hls_for_tasks, HlsReuse, HlsRunOptions};
@@ -377,7 +377,7 @@ fn build_hls_cflags(remote: bool) -> Vec<String> {
     flags.push("-DTAPA_TARGET_DEVICE_".to_string());
     flags.push("-DTAPA_TARGET_XILINX_HLS_".to_string());
     // Vitis HLS requires `-I` (not `-isystem`) to locate gflags during build.
-    if let Ok(p) = find_resource("tapa-extra-runtime-include") {
+    if let Ok(p) = find_resource(Resource::TapaExtraRuntimeInclude) {
         flags.push(format!("-I{}", p.display()));
     }
     flags

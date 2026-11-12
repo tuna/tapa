@@ -7,17 +7,20 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use crate::tapacc::discover::{find_resource, search_anchor};
+use crate::tapacc::discover::{find_resource, search_anchor, Resource};
 
 /// Base TAPA include flags plus warning suppressions. Order is
 /// significant so vendor headers cascade correctly through `tapacc`.
 pub fn get_tapa_cflags() -> Vec<String> {
     let mut flags = Vec::<String>::new();
 
-    if let Ok(tapa_lib_include) = find_resource("tapa-lib-include") {
+    if let Ok(tapa_lib_include) = find_resource(Resource::TapaLibInclude) {
         if tapa_lib_include.join("tapa.h").exists() {
             flags.push(format!("-isystem{}", tapa_lib_include.display()));
-            for resource in ["fpga-runtime-include", "tapa-extra-runtime-include"] {
+            for resource in [
+                Resource::FpgaRuntimeInclude,
+                Resource::TapaExtraRuntimeInclude,
+            ] {
                 if let Ok(extra) = find_resource(resource) {
                     if extra != tapa_lib_include {
                         flags.push(format!("-isystem{}", extra.display()));
@@ -79,7 +82,7 @@ pub fn get_remote_hls_cflags() -> Vec<String> {
 /// `-idirafter <tapa-system-include>` if available.
 pub fn get_system_cflags() -> Vec<String> {
     let mut flags = macos_sysroot_flags();
-    if let Ok(p) = find_resource("tapa-system-include") {
+    if let Ok(p) = find_resource(Resource::TapaSystemInclude) {
         flags.push(format!("-idirafter{}", p.display()));
     }
     flags
@@ -88,8 +91,8 @@ pub fn get_system_cflags() -> Vec<String> {
 /// LDFLAGS for linking TAPA programs.
 ///
 /// Derives `-L` and
-/// `-Wl,-rpath` from `find_resource("fpga-runtime-lib")` /
-/// `find_resource("tapa-lib-lib")`, plus every external library
+/// `-Wl,-rpath` from `find_resource(Resource::FpgaRuntimeLib)` /
+/// `find_resource(Resource::TapaLibLib)`, plus every external library
 /// directory the Bazel runfiles tree provides (gflags, glog, boost).
 /// Without the runfiles dirs, links from
 /// the `bazel run //tapa-core:tapa -- g++` wrapper would fail to resolve
@@ -97,10 +100,10 @@ pub fn get_system_cflags() -> Vec<String> {
 pub fn get_tapa_ldflags() -> Vec<String> {
     use std::collections::BTreeSet;
     let mut libs: BTreeSet<PathBuf> = BTreeSet::new();
-    if let Ok(p) = find_resource("fpga-runtime-lib") {
+    if let Ok(p) = find_resource(Resource::FpgaRuntimeLib) {
         libs.insert(p);
     }
-    if let Ok(p) = find_resource("tapa-lib-lib") {
+    if let Ok(p) = find_resource(Resource::TapaLibLib) {
         libs.insert(p);
     }
     libs.extend(find_external_lib_in_runfiles());

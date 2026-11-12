@@ -17,7 +17,7 @@ use crate::error::{CliError, Result};
 use crate::state::json::write_bytes_atomic;
 use crate::state::work::{self as work_io, WorkState};
 use crate::tapacc::cflags::{get_system_cflags, get_tapacc_cflags};
-use crate::tapacc::discover::find_clang_binary;
+use crate::tapacc::discover::find_tapacc;
 
 /// Verbatim `tapacc` stdout, kept under the work dir for provenance and
 /// debugging. **Nothing reads this back** — `analyze` parses `tapacc`'s
@@ -245,7 +245,7 @@ pub fn run(args: &AnalyzeArgs, ctx: &CliContext) -> Result<()> {
     let tapacc = if let Some(p) = args.tapacc.as_ref() {
         p.clone()
     } else {
-        find_clang_binary("tapacc-binary")?
+        find_tapacc()?
     };
 
     // Vitis HLS only supports up to C++14; keep it after user flags.
@@ -381,13 +381,13 @@ mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         // Build an isolated tempdir that doubles as both:
-        //   - the search anchor for `find_resource` (POTENTIAL_PATHS roots)
+        //   - the search anchor for `find_resource` search roots
         //   - the work_dir for the analyze step.
         let dir = tempfile::tempdir().expect("tempdir");
         let root = dir.path();
 
         // Plant a fake `tapacc` binary that satisfies
-        // `find_clang_binary`'s `--version` probe and emits a fixed graph.
+        // `find_tapacc`'s `--version` probe and emits a fixed graph.
         let tapacc_dir = root.join("tapacc");
         fs::create_dir_all(&tapacc_dir).expect("mkdir tapacc");
         let tapacc = tapacc_dir.join("tapacc");
