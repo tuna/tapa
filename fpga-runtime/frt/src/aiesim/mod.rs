@@ -164,6 +164,9 @@ struct Run {
     child: Child,
     started: Instant,
     exited: Arc<AtomicBool>,
+    /// The host killed the run: an output stops waiting for the host to
+    /// take its elements, which it may never do.
+    killed: Arc<AtomicBool>,
     relays: Vec<(Plio, JoinHandle<Result<()>>)>,
 }
 
@@ -260,6 +263,7 @@ impl AieSimDevice {
             child,
             started: Instant::now(),
             exited: Arc::new(AtomicBool::new(false)),
+            killed: Arc::new(AtomicBool::new(false)),
             relays: Vec::new(),
         })
     }
@@ -278,7 +282,11 @@ impl AieSimDevice {
         for plio in self.streams() {
             let queue = self.queue(plio)?;
             let file = plio_file(run.dir.path(), plio);
-            let (relay, exited) = (plio.clone(), Arc::clone(&run.exited));
+            let (relay, exited, killed) = (
+                plio.clone(),
+                Arc::clone(&run.exited),
+                Arc::clone(&run.killed),
+            );
             let handle = std::thread::Builder::new()
                 .name(format!("aiesim-{}", plio.name))
                 .spawn(move || {
@@ -286,7 +294,7 @@ impl AieSimDevice {
                     if relay.input {
                         relay_input(&file, &queue, &relay, &exited)
                     } else {
-                        relay_output(&file, &queue, &relay, &exited)
+                        relay_output(&file, &queue, &relay, &exited, &killed)
                     }
                 })?;
             run.relays.push((plio.clone(), handle));
@@ -504,7 +512,10 @@ impl Device for AieSimDevice {
 
     fn kill(&mut self) -> Result<()> {
         match &mut self.state {
-            State::Live(run) | State::Replaying { run, .. } => kill_group(&run.child),
+            State::Live(run) | State::Replaying { run, .. } => {
+                run.killed.store(true, Ordering::Release);
+                kill_group(&run.child);
+            }
             State::Recording { stop, .. } => {
                 stop.store(true, Ordering::Release);
                 self.state = State::Finished { compute_ns: 0 };
@@ -547,6 +558,7 @@ impl Drop for AieSimDevice {
     fn drop(&mut self) {
         match &mut self.state {
             State::Live(run) | State::Replaying { run, .. } => {
+                run.killed.store(true, Ordering::Release);
                 kill_group(&run.child);
                 let _ = run.child.wait();
                 run.exited.store(true, Ordering::Release);
@@ -689,9 +701,16 @@ fn set_blocking(file: &File) -> Result<()> {
 }
 
 /// Simulator output file -> host queue, until the simulator has exited and
-/// the file is read to its end. Words short of a whole element at the end
-/// are the zero padding of the final beat and are dropped.
-fn relay_output(file: &Path, queue: &str, plio: &Plio, exited: &AtomicBool) -> Result<()> {
+/// the file is read to its end, or the host killed the run. Words short of
+/// a whole element at the end are the zero padding of the final beat and
+/// are dropped.
+fn relay_output(
+    file: &Path,
+    queue: &str,
+    plio: &Plio,
+    exited: &AtomicBool,
+    killed: &AtomicBool,
+) -> Result<()> {
     let mut queue = SharedMemoryQueue::open(queue)?;
     check_width(&queue, plio)?;
     let width = queue.width();
@@ -723,6 +742,9 @@ fn relay_output(file: &Path, queue: &str, plio: &Plio, exited: &AtomicBool) -> R
             let mut element: Vec<u8> = value.iter().flat_map(|w| w.to_le_bytes()).collect();
             element.resize(width, 0);
             while queue.try_push(&element).is_err() {
+                if killed.load(Ordering::Acquire) {
+                    return Ok(());
+                }
                 std::thread::sleep(POLL);
             }
         }
