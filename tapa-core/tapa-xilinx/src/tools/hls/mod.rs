@@ -351,13 +351,16 @@ enum StageDir<'a> {
 }
 
 /// Bounded retry wrapper keyed on the production transient-failure
-/// predicate. Retries back off exponentially; under `cfg(test)` the sleep
-/// is skipped so unit tests can drive the budget to exhaustion instantly.
+/// predicate. Retries back off exponentially; `sleep` receives each backoff
+/// delay — production passes [`std::thread::sleep`], tests a recorder, so
+/// unit tests drive the budget to exhaustion without waiting out the real
+/// schedule.
 fn run_hls_with_retry_impl(
     runner: &dyn ToolRunner,
     job: &HlsJob,
     max_attempts: u32,
     stage: StageDir<'_>,
+    sleep: impl Fn(Duration) + 'static,
 ) -> Result<HlsOutput> {
     let max_attempts = max_attempts.max(1);
     let backoff = ExponentialBuilder::default()
@@ -388,15 +391,7 @@ fn run_hls_with_retry_impl(
     })
     .retry(backoff)
     .when(|err| matches!(err, RetryError::Transient))
-    .sleep(|dur| {
-        // Unit tests run the retry loop to exhaustion; skipping the real
-        // backoff sleep there keeps the suite instant. Production builds
-        // (and integration tests against the real tool) always sleep.
-        #[cfg(not(test))]
-        std::thread::sleep(dur);
-        #[cfg(test)]
-        let _ = dur;
-    })
+    .sleep(sleep)
     .call();
 
     match result {
@@ -414,7 +409,13 @@ pub fn run_hls_with_retry(
     job: &HlsJob,
     max_attempts: u32,
 ) -> Result<HlsOutput> {
-    run_hls_with_retry_impl(runner, job, max_attempts, StageDir::Ephemeral)
+    run_hls_with_retry_impl(
+        runner,
+        job,
+        max_attempts,
+        StageDir::Ephemeral,
+        std::thread::sleep,
+    )
 }
 
 /// Same as [`run_hls_with_retry`] but uses a caller-owned stage
@@ -430,7 +431,13 @@ pub fn run_hls_with_retry_in_stage(
     max_attempts: u32,
     stage_dir: &camino::Utf8Path,
 ) -> Result<HlsOutput> {
-    run_hls_with_retry_impl(runner, job, max_attempts, StageDir::Borrowed(stage_dir))
+    run_hls_with_retry_impl(
+        runner,
+        job,
+        max_attempts,
+        StageDir::Borrowed(stage_dir),
+        std::thread::sleep,
+    )
 }
 
 #[cfg(test)]
@@ -451,6 +458,10 @@ mod tests {
             .hdl_out_dir(tmp.join("hdl"))
             .build()
     }
+
+    /// Injected sleeper for retry tests: exercises the backoff schedule
+    /// without waiting it out.
+    fn no_sleep(_: Duration) {}
 
     #[test]
     fn tcl_contains_required_steps() {
@@ -742,7 +753,8 @@ mod tests {
                 },
             );
         }
-        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        let err =
+            run_hls_with_retry_impl(&runner, &job, 3, StageDir::Ephemeral, no_sleep).unwrap_err();
         assert!(
             matches!(err, XilinxError::HlsRetryExhausted { attempts: 3 }),
             "expected retry budget to be exhausted, got {err:?}"
@@ -774,7 +786,8 @@ mod tests {
                 },
             );
         }
-        let err = run_hls_with_retry(&runner, &job, 3).unwrap_err();
+        let err =
+            run_hls_with_retry_impl(&runner, &job, 3, StageDir::Ephemeral, no_sleep).unwrap_err();
         assert!(matches!(
             err,
             XilinxError::HlsRetryExhausted { attempts: 3 }
@@ -798,11 +811,11 @@ mod tests {
         assert!(matches!(err, XilinxError::ToolFailure { code: 2, .. }));
     }
 
-    /// `run_hls_with_retry_in_stage` uses the caller-provided dir
-    /// without creating or deleting a tempdir — lets the `--keep-hls-work-dir`
-    /// flow preserve the Vitis project after a failure.
+    /// A borrowed stage dir is reused across retries without creating or
+    /// deleting a tempdir — lets the `--keep-hls-work-dir` flow preserve
+    /// the Vitis project after a failure.
     #[test]
-    fn run_hls_with_retry_in_stage_reuses_caller_dir() {
+    fn in_stage_retry_reuses_caller_dir() {
         let tmp = tempfile::tempdir().unwrap();
         let persistent = Utf8PathBuf::from_path_buf(tmp.path().join("persistent-stage")).unwrap();
         fs_err::create_dir_all(&persistent).unwrap();
@@ -824,7 +837,9 @@ mod tests {
                 },
             );
         }
-        let err = run_hls_with_retry_in_stage(&runner, &job, 2, &persistent).unwrap_err();
+        let err =
+            run_hls_with_retry_impl(&runner, &job, 2, StageDir::Borrowed(&persistent), no_sleep)
+                .unwrap_err();
         assert!(matches!(
             err,
             XilinxError::HlsRetryExhausted { attempts: 2 }
@@ -835,8 +850,9 @@ mod tests {
         );
     }
 
-    /// `run_hls_with_retry` skips the real backoff sleep in unit-test
-    /// builds, so even five attempts complete instantly.
+    /// The retry loop hands each backoff delay to the injected sleeper; a
+    /// recording sleeper keeps unit tests off the real schedule while
+    /// pinning the delays to the configured exponential budget.
     #[test]
     fn retry_budget_exhausted_with_zero_delay() {
         let tmp = tempfile::tempdir().unwrap();
@@ -852,16 +868,23 @@ mod tests {
                 },
             );
         }
-        let start = std::time::Instant::now();
-        let err = run_hls_with_retry(&runner, &job, 5).unwrap_err();
-        let elapsed = start.elapsed();
+        let sleeps = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+        let recorded = std::rc::Rc::clone(&sleeps);
+        let err = run_hls_with_retry_impl(&runner, &job, 5, StageDir::Ephemeral, move |dur| {
+            recorded.borrow_mut().push(dur);
+        })
+        .unwrap_err();
         assert!(matches!(
             err,
             XilinxError::HlsRetryExhausted { attempts: 5 }
         ));
+        let sleeps = sleeps.borrow();
+        assert_eq!(sleeps.len(), 4, "one backoff delay per retry: {sleeps:?}");
         assert!(
-            elapsed < Duration::from_millis(100),
-            "retry loop must not insert delays, took {elapsed:?}"
+            sleeps
+                .iter()
+                .all(|&d| (Duration::from_millis(500)..=Duration::from_secs(30)).contains(&d)),
+            "delays stay within the configured backoff budget: {sleeps:?}"
         );
     }
 
