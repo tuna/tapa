@@ -284,13 +284,6 @@ class TreeWriter {
 // (virtual files).
 std::string CanonicalPath(llvm::StringRef name);
 
-// The path set the mirror owns for one TU: every input main file plus every
-// include target reached through a non-system search entry. Both frontend
-// passes use this exact predicate so indexing and tree materialization cannot
-// disagree about whether a source file is user code.
-std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
-                                    const std::vector<IncludeDirective>& log);
-
 // The subset of a TU's mirror closure for which its SourceManager has bytes,
 // keyed by canonical path. The index and rewrite passes build their FileID
 // filters from this same mapping; TreeSession builds its buffers from it.

@@ -68,22 +68,18 @@ void IncludeRecorder::InclusionDirective(
   log_->push_back(std::move(record));
 }
 
-std::set<std::string> MirrorClosure(const std::vector<std::string>& main_files,
-                                    const std::vector<IncludeDirective>& log) {
+std::map<std::string, clang::FileID> MirrorFiles(
+    clang::ASTContext& ctx, const std::vector<std::string>& main_files,
+    const std::vector<IncludeDirective>& log) {
+  clang::SourceManager& sm = ctx.getSourceManager();
+  // Both frontend passes use this predicate so indexing and tree
+  // materialization agree about whether a source file is user code.
   std::set<std::string> mirrored(main_files.begin(), main_files.end());
   for (const IncludeDirective& record : log) {
     if (!record.resolved.empty() && !record.from_system_search) {
       mirrored.insert(record.resolved);
     }
   }
-  return mirrored;
-}
-
-std::map<std::string, clang::FileID> MirrorFiles(
-    clang::ASTContext& ctx, const std::vector<std::string>& main_files,
-    const std::vector<IncludeDirective>& log) {
-  clang::SourceManager& sm = ctx.getSourceManager();
-  const std::set<std::string> mirrored = MirrorClosure(main_files, log);
   std::map<std::string, clang::FileID> files;
   auto remember = [&](const std::string& path, clang::FileID file) {
     files.try_emplace(path, file);
