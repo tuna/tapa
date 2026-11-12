@@ -562,6 +562,37 @@ mod tests {
         }
     }
 
+    /// Each tool takes its own installation, so one flow may mix releases:
+    /// on the VCK5000, HLS and the AI Engine compiler from a newer Vitis
+    /// than the 2022.2 `v++` that links the platform.
+    #[test]
+    fn each_tool_takes_its_own_installation() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = |name: &str| {
+            let dir = tmp.path().join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("settings64.sh"), "").unwrap();
+            dir.display().to_string()
+        };
+        let (hls, vitis, vivado) = (root("hls"), root("vitis"), root("vivado"));
+        for (tool, want) in [
+            ("vitis_hls", &hls),
+            ("vivado", &vivado),
+            ("aiecompiler", &vitis),
+            ("v++", &vitis),
+        ] {
+            let inv = ToolInvocation::new(tool)
+                .env("XILINX_HLS", hls.as_str())
+                .env("XILINX_VITIS", vitis.as_str())
+                .env("XILINX_VIVADO", vivado.as_str());
+            assert_eq!(
+                local_xilinx_settings(&inv),
+                Some(PathBuf::from(want).join("settings64.sh")),
+                "{tool}"
+            );
+        }
+    }
+
     #[test]
     fn local_runner_ignores_xilinx_roots_for_unrelated_tools() {
         let inv = ToolInvocation::new("sh").env("XILINX_HLS", "/definitely/missing");

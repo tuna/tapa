@@ -471,6 +471,34 @@ does not invent a PL report or refresh stale reports; it also does not create
 root reports when none exist. The compiler output and console remain available
 until a later full PL synth writes the root report.
 
+### Mixing Vitis releases
+
+Each tool runs from its own installation, whose `settings64.sh` TAPA sources
+first: `vitis_hls` from `XILINX_HLS` and `vivado` from `XILINX_VIVADO`, each
+falling back to `XILINX_VITIS`, and `aiecompiler` and `v++` from
+`XILINX_VITIS`. Running the steps one at a time, each with its own roots,
+compiles with a newer release than the platform's. The VCK5000 platform
+`xilinx_vck5000_gen4x8_qdma_2_202220_1` is a Vitis 2022.2 platform, whose AI
+Engine compiler miscompiles `tests/apps/fft2d` and stalls on
+`tests/apps/cannon`, and PL frame ports need Vitis HLS 2024.1 or newer; so
+synthesize with 2024.1, then pack and link with 2022.2:
+
+```bash
+export XILINX_VITIS=/opt/Xilinx/Vitis/2024.1 \
+  XILINX_HLS=/opt/Xilinx/Vitis_HLS/2024.1 XILINX_VIVADO=/opt/Xilinx/Vivado/2024.1
+tapa --work-dir work.out analyze -f fft2d.cpp -t Fft2d \
+  --target=RowPass:aie --target=ColPass:aie
+tapa --work-dir work.out synth --platform xilinx_vck5000_gen4x8_qdma_2_202220_1
+export XILINX_VITIS=/opt/Xilinx/Vitis/2022.2 \
+  XILINX_HLS=/opt/Xilinx/Vitis_HLS/2022.2 XILINX_VIVADO=/opt/Xilinx/Vivado/2022.2
+tapa --work-dir work.out pack -o fft2d.xo
+tapa link --package fft2d.xo -o fft2d.xclbin
+```
+
+Vivado 2022.2 and 2023.1 hang in `opt_design` on the RTL that Vitis HLS
+2024.1 writes for the PL frame ports of `tests/functional/frame-views`;
+synthesize those with Vitis HLS 2025.2 instead.
+
 ## Running the xclbin
 
 `tapa::invoke` on the `.xclbin` runs both halves through XRT, with the
