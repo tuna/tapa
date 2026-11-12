@@ -84,7 +84,7 @@ pub(super) fn warn_unimplemented_templates(
 /// Expand user-supplied `--custom-rtl` CLI paths. Files are accepted
 /// verbatim; directories are walked recursively for any regular-file
 /// entries.
-pub(super) fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
+fn expand_custom_rtl_paths(rtl_paths: &[PathBuf]) -> Result<Vec<PathBuf>> {
     let mut out = Vec::<PathBuf>::new();
     for path in rtl_paths {
         if !path.exists() {

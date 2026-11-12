@@ -35,7 +35,7 @@ use crate::globals::GlobalArgs;
 /// Env var consulted before falling back to `$HOME/.taparc`. Tests use
 /// this to point the loader at a temporary directory; production users
 /// do not need to set it.
-pub const TAPARC_PATH_ENV: &str = "TAPA_RC_PATH";
+const TAPARC_PATH_ENV: &str = "TAPA_RC_PATH";
 
 /// Resolve the on-disk path to `~/.taparc`. Returns `None` when neither
 /// `TAPA_RC_PATH` nor `HOME` is set.

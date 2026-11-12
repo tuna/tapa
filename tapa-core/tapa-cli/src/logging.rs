@@ -6,7 +6,7 @@ use log::LevelFilter;
 ///
 /// Clamp `(quiet - verbose)` to the `Debug`–`Error` range. Additional
 /// verbosity does not enable `Trace`.
-pub fn level_for(verbose: u8, quiet: u8) -> LevelFilter {
+fn level_for(verbose: u8, quiet: u8) -> LevelFilter {
     let raw = i32::from(quiet) - i32::from(verbose);
     let raw = raw.clamp(-1, 3);
     match raw {

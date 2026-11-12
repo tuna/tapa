@@ -16,7 +16,7 @@ use tapa_ir::WorkState;
 /// codegen wires them straight through without storage — a top-level
 /// stream port has no FIFO on the RTL side at all, so the depth is a
 /// pure cosimulation-buffer fact.
-pub(super) const DEFAULT_STREAM_DEPTH: u32 = 16;
+const DEFAULT_STREAM_DEPTH: u32 = 16;
 
 /// AXI address width stamped onto every top-level direct mmap port.
 ///
@@ -27,7 +27,7 @@ pub(super) const DEFAULT_STREAM_DEPTH: u32 = 16;
 /// instantiated with `ADDR_WIDTH = 64`, and Vitis HLS defaults `m_axi`
 /// addresses to 64 bits. Stamping that uniform value lets `frt-cosim`
 /// size its model from the archive instead of assuming 64 itself.
-pub(super) const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
+const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
 
 /// Return `state` with the cosim port metadata stamped on the top
 /// task's applicable ports, for the archive's embedded `tapa.json`

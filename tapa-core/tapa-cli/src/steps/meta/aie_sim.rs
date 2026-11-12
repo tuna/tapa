@@ -30,7 +30,7 @@ pub enum AieSim {
 }
 
 /// The file naming a directory as a package, and what it says.
-pub const MANIFEST: &str = "manifest.json";
+const MANIFEST: &str = "manifest.json";
 
 /// Cycles a graph that never returns runs before the host ends it.
 const RUN_FOREVER_CYCLES: u64 = 100_000;

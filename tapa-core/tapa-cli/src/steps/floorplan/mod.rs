@@ -29,19 +29,19 @@ use crate::steps::synth::rtl_codegen::{
 mod implementation;
 
 /// Name of the emitted pblock constraints file in the work directory.
-pub const FLOORPLAN_XDC: &str = "floorplan.xdc";
+pub(crate) const FLOORPLAN_XDC: &str = "floorplan.xdc";
 /// Name of the exact Vitis connectivity input staged with a floorplan.
-pub const FLOORPLAN_CONNECTIVITY: &str = "floorplan-connectivity.ini";
+pub(crate) const FLOORPLAN_CONNECTIVITY: &str = "floorplan-connectivity.ini";
 
 /// A connectivity input read once, syntax-checked, and retained verbatim for
 /// both planning and the later link step.
 #[derive(Debug)]
-pub(crate) struct ConnectivityInput {
+struct ConnectivityInput {
     pub bytes: Vec<u8>,
     pub bindings: MemoryBindings,
 }
 
-pub(crate) fn read_connectivity<E: std::fmt::Display>(
+fn read_connectivity<E: std::fmt::Display>(
     path: Option<&Path>,
     parse: impl FnOnce(&str) -> std::result::Result<MemoryBindings, E>,
 ) -> Result<Option<ConnectivityInput>> {

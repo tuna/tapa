@@ -22,7 +22,7 @@ use super::{FLOORPLAN_CONNECTIVITY, FLOORPLAN_XDC};
 
 pub(super) const IMPLEMENTATION_TIMING_REPORT: &str = "floorplan-timing.rpt";
 pub(super) const IMPLEMENTATION_METRICS: &str = "floorplan-metrics.json";
-pub(super) const IMPLEMENTATION_BITSTREAM: &str = "floorplan.vbin";
+const IMPLEMENTATION_BITSTREAM: &str = "floorplan.vbin";
 
 const CANDIDATE_ROOT: &str = "dse";
 const CANDIDATE_DIAGNOSTICS: &str = "candidates.json";

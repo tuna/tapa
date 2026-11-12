@@ -46,7 +46,7 @@ const LATEST_TARBALL_URL: &str =
 const CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Set to disable the automatic release check entirely.
-pub const NO_UPDATE_CHECK_ENV: &str = "TAPA_NO_UPDATE_CHECK";
+const NO_UPDATE_CHECK_ENV: &str = "TAPA_NO_UPDATE_CHECK";
 
 /// Arguments of `tapa update` (`tapa upgrade`).
 #[derive(Debug, Parser)]
