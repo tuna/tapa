@@ -147,7 +147,8 @@ impl TaskGraph {
     /// # Errors
     ///
     /// A schema version other than [`SCHEMA_VERSION`], an invalid
-    /// invoke-site constant, or a stream shallower than a frame it carries.
+    /// invoke-site constant, a stream of depth 0, or a stream shallower
+    /// than a frame it carries.
     pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
             return Err(ParseError::UnsupportedSchemaVersion {
@@ -162,8 +163,29 @@ impl TaskGraph {
             });
         }
         self.validate_literals()?;
+        self.validate_stream_depths()?;
         self.validate_frame_depths()?;
         self.validate_frame_channels()
+    }
+
+    /// A stream a task declares holds at least one element. With a depth of
+    /// 0 its writer could never write, yet software simulation runs it
+    /// anyway and its RTL FIFO never fills, overwriting what it holds.
+    fn validate_stream_depths(&self) -> Result<(), ParseError> {
+        for (task_name, task) in &self.tasks {
+            for (stream, fifo) in &task.fifos {
+                if fifo.depth == Some(0) {
+                    return Err(ParseError::Schema {
+                        path: format!("tasks.{task_name}.fifos.{stream}.depth"),
+                        message: format!(
+                            "stream `{stream}` of task `{task_name}` has depth 0; a \
+                             stream holds at least one element"
+                        ),
+                    });
+                }
+            }
+        }
+        Ok(())
     }
 
     /// Both ends of a stream agree on the frame where both move frames, and a
@@ -704,6 +726,44 @@ mod tests {
         );
         assert!(message.contains("`Mid.out` moves frames of 8"), "{message}");
         TaskGraph::from_json(&graph(8)).expect("depth 8 holds a frame of 8");
+    }
+
+    #[test]
+    fn a_stream_of_depth_zero_is_rejected() {
+        let graph = |depth: u32| {
+            let task = |level: &str, cat: &str, tasks: &str, fifos: &str| {
+                format!(
+                    r#"{{"level": "{level}", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "",
+                        "ports": [{{"cat": "{cat}", "name": "s", "type": "int", "width": 32}}],
+                        "tasks": {{{tasks}}}, "fifos": {{{fifos}}}}}"#
+                )
+            };
+            let top = task(
+                "upper",
+                "scalar",
+                r#""P": [{"args": {"s": {"arg": "q", "cat": "ostream"}}}],
+                   "C": [{"args": {"s": {"arg": "q", "cat": "istream"}}}]"#,
+                &format!(
+                    r#""q": {{"depth": {depth}, "produced_by": ["P", 0],
+                              "consumed_by": ["C", 0]}}"#
+                ),
+            );
+            let producer = task("lower", "ostream", "", "");
+            let consumer = task("lower", "istream", "", "");
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{"T": {top}, "P": {producer}, "C": {consumer}}}}}"#
+            )
+        };
+        let message = TaskGraph::from_json(&graph(0))
+            .expect_err("a stream of depth 0")
+            .to_string();
+        assert!(
+            message.contains("tasks.T.fifos.q.depth") && message.contains("depth 0"),
+            "{message}"
+        );
+        TaskGraph::from_json(&graph(1)).expect("a stream of depth 1");
     }
 
     #[test]

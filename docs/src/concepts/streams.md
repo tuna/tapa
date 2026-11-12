@@ -301,7 +301,8 @@ the FIFO) is in memory.
   effectively infinite while its hardware depth remains `Depth`.
 - Stream depth affects FPGA resource usage. Start with the default depth of
   2 and increase it only when a measured burst or rate mismatch requires
-  more storage. Check the synthesis resource report after changing it.
+  more storage. Check the synthesis resource report after changing it. A
+  stream holds at least one element: `tapa analyze` rejects a depth of 0.
 
 ---
 
