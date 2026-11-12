@@ -543,6 +543,24 @@ TEST(Rewrite, AttrThatCannotLowerIsAnError) {
   }
 }
 
+// A C++14 digit separator is no character literal: blanking from it to
+// the next quote used to hide a leaked attribute in between.
+TEST(Rewrite, DigitSeparatorsDoNotHideALeak) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/separator.cpp", R"cpp(
+                   constexpr int kLow = 1'000;
+                   [[tapa::partition("complete")]] void Leaf(tapa::istream<int>& in) { in.read(); }
+                   constexpr int kHigh = 2'000;
+                   constexpr char kQuote = u8'q';
+                   void Top(tapa::istream<int>& in) { tapa::task().invoke(Leaf, in); }
+                 )cpp"}},
+      "Top", TempRoot("rewrite", "separator"), {"-std=c++17"});
+  EXPECT_FALSE(run.ok);
+  ASSERT_EQ(run.diags.size(), 1u) << run.json;
+  EXPECT_TRUE(Contains(run.diags.front(), "[[tapa::partition]]"))
+      << run.diags.front();
+}
+
 // `[[tapa::target]]` takes the values `--target TASK:TARGET` does; `hls` builds
 // the task in the design's flow, and a retired flow value is an error.
 TEST(Rewrite, TargetTakesTheCliMappingValues) {

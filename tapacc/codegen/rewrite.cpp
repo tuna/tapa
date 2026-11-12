@@ -316,6 +316,23 @@ void LowerParamAttrs(const clang::FunctionDecl* func, const Backend& backend,
 // as an attribute). The scan must not report those. Blanking them (every
 // non-newline byte, so line numbers still match) keeps the guard about
 // actual attribute text.
+// Whether the quote at `i` separates digits (`1'000`, C++14) rather than
+// opening a character literal: the token it is in starts as a number, not
+// as an encoding prefix such as `u8`.
+bool IsDigitSeparator(const std::string& code, size_t i) {
+  size_t begin = i;
+  while (begin > 0 &&
+         (std::isalnum(static_cast<unsigned char>(code[begin - 1])) != 0 ||
+          code[begin - 1] == '_' || code[begin - 1] == '.' ||
+          code[begin - 1] == '\'')) {
+    --begin;
+  }
+  const auto digit = [&](size_t at) {
+    return at < i && std::isdigit(static_cast<unsigned char>(code[at])) != 0;
+  };
+  return digit(begin) || (code[begin] == '.' && digit(begin + 1));
+}
+
 std::string BlankCommentsAndStrings(llvm::StringRef code) {
   std::string out = code.str();
   const size_t n = out.size();
@@ -341,6 +358,9 @@ std::string BlankCommentsAndStrings(llvm::StringRef code) {
     } else if (out[i] == '/' && i + 1 < n && out[i + 1] == '*') {
       end = out.find("*/", i + 2);
       end = end == std::string::npos ? n : end + 2;
+    } else if (out[i] == '\'' && IsDigitSeparator(out, i)) {
+      ++i;
+      continue;
     } else if (out[i] == '"' || out[i] == '\'') {
       const char quote = out[i];
       end = i + 1;
