@@ -42,9 +42,6 @@ pub struct HlsJob {
     /// Optional HLS `other_configs` TCL fragment. Appended verbatim.
     #[builder(default)]
     pub other_configs: String,
-    /// Solution name; defaults to the task name when empty.
-    #[builder(default)]
-    pub solution_name: String,
 }
 
 impl HlsJob {
@@ -174,7 +171,7 @@ pub(crate) fn build_hls_tcl(job: &HlsJob) -> Result<String> {
     };
     askama::Template::render(&Template {
         top: &job.top_name,
-        solution: solution_name(job),
+        solution: &job.top_name,
         part: &job.target_part,
         clock: &job.clock_period,
         other: &other,
@@ -242,16 +239,6 @@ fn run_hls_attempt(
     runner.run(&inv)
 }
 
-/// Name of the HLS solution subdirectory — mirrors the TCL template's
-/// `open_solution "<solution>"` value.
-fn solution_name(job: &HlsJob) -> &str {
-    if job.solution_name.is_empty() {
-        &job.top_name
-    } else {
-        &job.solution_name
-    }
-}
-
 fn normalize_staged_reports(dir: &camino::Utf8Path) -> std::io::Result<()> {
     for entry in walkdir::WalkDir::new(dir) {
         let entry = entry?;
@@ -283,8 +270,7 @@ fn harvest_and_stage(
     // local filesystem (Local: it wrote directly under `cwd`; Remote:
     // `run_once` downloaded `cwd` back into place via the rootfs
     // mirror). We just need to copy the caller-facing slices out.
-    let solution = solution_name(job);
-    let syn_rel: Utf8PathBuf = ["project", solution, "syn"].iter().collect();
+    let syn_rel: Utf8PathBuf = ["project", &job.top_name, "syn"].iter().collect();
 
     // Validate the fresh project before replacing the previous output. An
     // old report or helper module must never make an incomplete run succeed.

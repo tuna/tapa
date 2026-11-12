@@ -53,7 +53,6 @@ fn run_vadd_hls<R: ToolRunner>(runner: &R) {
         .clock_period("3.33".into())
         .reports_out_dir(reports.clone())
         .hdl_out_dir(hdl.clone())
-        .solution_name("solution1".into())
         .build();
     let out = match run_hls_with_retry(runner, &job, 3) {
         Ok(out) => out,
@@ -162,7 +161,6 @@ fn vitis_hls_round_trips_shared_vadd_fixture() {
         .clock_period("3.33".into())
         .reports_out_dir(reports.clone())
         .hdl_out_dir(hdl.clone())
-        .solution_name("solution1".into())
         .build();
     let runner: Box<dyn ToolRunner> = if let Some(cfg) = common::has_remote_config() {
         let session = Arc::new(SshSession::new(cfg));
