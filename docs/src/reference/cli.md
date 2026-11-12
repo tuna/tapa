@@ -331,7 +331,8 @@ tapa --work-dir work.out pack -o vadd.xo
 
 Link a packaged TAPA kernel into a hardware or simulation bitstream. The
 package's recorded flow target picks the backend: `xilinx-vitis` runs
-`v++ --link` (and `v++ --package` with AI Engine sidecars, or on the graph
+`v++ --link` (and `v++ --package` with AI Engine sidecars, on a Versal
+platform such as the VCK5000, whose link makes an `.xsa`, or on the graph
 alone for a top on the AI Engine), `xilinx-slash` runs SLASH's `slashkit`
 against the service shell. Both run through the tool
 runner, so they execute on the `--remote-host` machine when one is configured.

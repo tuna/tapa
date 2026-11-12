@@ -147,6 +147,12 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                 )
             })?;
             let artifacts = link_work.join("artifacts");
+            // A platform installed elsewhere, as for a remote runner, is
+            // left to v++ to judge.
+            let versal = crate::steps::synth::resolve_platform_dir(&platform)
+                .map(|dir| tapa_xilinx::platform_is_versal(&dir))
+                .transpose()?
+                .unwrap_or(false);
             Ok(LinkPlan::Vitis(
                 VitisLinkJob::builder()
                     .kernel_name(state.graph.top.clone())
@@ -156,6 +162,7 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
                     .work_dir(link_work.clone())
                     .artifacts_dir(artifacts.clone())
                     .output_xclbin(crate::util::utf8(&args.output))
+                    .versal(versal)
                     .report_dir(artifacts.join("reports"))
                     .log_dir(artifacts.join("logs"))
                     .temp_dir(link_work.join("vitis.tmp"))

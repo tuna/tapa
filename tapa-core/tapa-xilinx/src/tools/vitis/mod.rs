@@ -90,6 +90,11 @@ pub struct VitisLinkJob {
     /// timing hook/report, Vitis reports, and Vitis logs.
     pub artifacts_dir: Utf8PathBuf,
     pub output_xclbin: Utf8PathBuf,
+    /// The platform is a Versal device (`platform_is_versal`): `v++ --link`
+    /// makes an `.xsa`, which `v++ --package` turns into `output_xclbin`, as
+    /// for a design with an AI Engine graph on any platform.
+    #[builder(default)]
+    pub versal: bool,
     pub report_dir: Utf8PathBuf,
     pub log_dir: Utf8PathBuf,
     /// Vitis implementation project. This path must be outside
@@ -215,7 +220,7 @@ impl<'a> ResolvedJob<'a> {
         if aie.is_some() && job.mode == VitisLinkMode::PostRouteTiming {
             return link_error("AI Engine sidecars require a full Vitis link");
         }
-        let link_output = if aie.is_some() {
+        let link_output = if aie.is_some() || job.versal {
             let stem = output_xclbin
                 .file_stem()
                 .ok_or_else(|| XilinxError::VitisLink("xclbin path has no file stem".into()))?;
@@ -368,7 +373,9 @@ fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg(ToolValue::path(&resolved.temp_dir))
         .arg("--optimize")
         .arg("3");
-    if resolved.aie.is_some() {
+    // On Versal, `--kernel_frequency` 300 lands at 303.03 MHz, which the
+    // timing summary then lacks; the default-clock flag lands on target.
+    if resolved.aie.is_some() || job.versal {
         inv = inv
             .arg("--clock.defaultFreqHz")
             .arg((u64::from(job.target_mhz) * 1_000_000).to_string());
@@ -436,12 +443,14 @@ fn build_link_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     inv
 }
 
+/// Whether a full link makes an `.xsa` that `v++ --package` turns into the
+/// xclbin: with an AI Engine graph, or on a Versal platform.
+fn packages(resolved: &ResolvedJob<'_>) -> bool {
+    resolved.job.mode == VitisLinkMode::Full && resolved.link_output != resolved.output_xclbin
+}
+
 fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     let job = resolved.job;
-    let aie = resolved
-        .aie
-        .as_ref()
-        .expect("package invocation is only built for AIE links");
     let mut inv = ToolInvocation::new(job.vpp.clone())
         .arg("--package")
         .arg("--target")
@@ -451,7 +460,11 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
         .arg("--save-temps")
         .arg("--temp_dir")
         .arg(ToolValue::path(&resolved.package_temp_dir));
-    if aie.pl_control.is_some() {
+    if resolved
+        .aie
+        .as_ref()
+        .is_some_and(|aie| aie.pl_control.is_some())
+    {
         // The PL controller starts the graph once it has set the RTPs;
         // otherwise the xclbin's load starts it, with every RTP at 0.
         inv = inv.arg("--package.defer_aie_run");
@@ -459,12 +472,15 @@ fn build_package_invocation(resolved: &ResolvedJob<'_>) -> ToolInvocation {
     inv = inv
         .arg("--output")
         .arg(ToolValue::path(&resolved.output_xclbin))
-        .arg(ToolValue::path(&resolved.link_output))
-        .arg(ToolValue::path(&aie.libadf));
+        .arg(ToolValue::path(&resolved.link_output));
+    inv.uploads = vec![resolved.link_output.clone()];
+    if let Some(aie) = &resolved.aie {
+        inv = inv.arg(ToolValue::path(&aie.libadf));
+        inv.uploads.push(aie.libadf.clone());
+    }
     inv.cwd = Some(resolved.work_dir.clone());
     inv.env
         .insert("HOME".into(), ToolValue::path(&resolved.work_dir));
-    inv.uploads = vec![resolved.link_output.clone(), aie.libadf.clone()];
     inv.downloads = vec![resolved.artifacts_dir.clone()];
     if !resolved.output_xclbin.starts_with(&resolved.artifacts_dir) {
         inv.downloads.push(resolved.output_xclbin.clone());
@@ -522,7 +538,7 @@ pub fn run_vitis_link(runner: &dyn ToolRunner, job: &VitisLinkJob) -> Result<Lin
         ));
     }
 
-    let (stdout, stderr) = if resolved.aie.is_some() {
+    let (stdout, stderr) = if packages(&resolved) {
         let package_output = runner.run(&build_package_invocation(&resolved))?;
         if package_output.exit_code != 0 {
             return Err(super::tool_failure(&job.vpp, package_output));
@@ -809,6 +825,46 @@ ap_clk             -0.100       -1.000
         assert!(!calls[0].local_args().iter().any(|arg| arg == "--to_step"));
         assert!(calls[0].downloads.contains(&fixture.job.output_xclbin));
         assert_eq!(output.timing_report, Some(fixture.timing_report()));
+    }
+
+    /// v++ makes an `.xsa` for any design on a Versal platform ("[v++
+    /// 82-4223] Output file type of .xsa is required"), and packages a
+    /// PL-only one with no graph to add or start; its kernel clock is set
+    /// as an AI Engine link sets it.
+    #[test]
+    fn versal_pl_link_produces_xsa_then_packages_xclbin() {
+        let mut fixture = Fixture::new();
+        fixture.job.mode = VitisLinkMode::Full;
+        fixture.job.versal = true;
+        let xsa = fixture
+            .job
+            .output_xclbin
+            .parent()
+            .expect("output parent")
+            .join("Top.xsa");
+        let runner = MockToolRunner::new();
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(&xsa, b"xsa".to_vec());
+        runner.attach_download(fixture.timing_report(), timing_report());
+        runner.push_ok("v++", ToolOutput::default());
+        runner.attach_download(&fixture.job.output_xclbin, b"xclbin".to_vec());
+
+        run_vitis_link(&runner, &fixture.job).expect("Versal link succeeds");
+
+        let calls = runner.calls();
+        assert_eq!(calls.len(), 2);
+        let link_args = calls[0].local_args();
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--output", xsa.as_str()]));
+        assert!(link_args
+            .windows(2)
+            .any(|args| args == ["--clock.defaultFreqHz", "300000000"]));
+        assert!(!link_args.iter().any(|arg| arg == "--kernel_frequency"));
+        let package_args = calls[1].local_args();
+        assert_eq!(package_args[0], "--package");
+        assert_eq!(package_args.last(), Some(&xsa.to_string()));
+        assert!(!package_args.iter().any(|arg| arg.contains("defer_aie_run")));
     }
 
     #[test]

@@ -49,7 +49,9 @@ mod util;
 pub use runtime::value::ToolValue;
 
 pub use error::{Result, XilinxError};
-pub use platform::device::{parse_device_info, parse_hpfm_xml, parse_xpfm, DeviceInfo};
+pub use platform::device::{
+    parse_device_info, parse_hpfm_xml, parse_xpfm, platform_is_versal, DeviceInfo,
+};
 pub use platform::kernel_xml::{
     emit_kernel_xml, emit_slash_hls_data, render_slash_registers, KernelXmlArgs, KernelXmlPort,
     PortCategory,

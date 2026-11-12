@@ -127,6 +127,11 @@ pub fn parse_hpfm_xml(xml: &[u8]) -> Result<DeviceInfo> {
 /// Parse an `.xpfm`-adjacent ZIP (`.xsa` / `.dsa`) that holds one
 /// `.hpfm` XML entry.
 pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
+    parse_hpfm_xml(&archive_hpfm(bytes)?)
+}
+
+/// The `.hpfm` XML entry of a platform archive (`.xsa` / `.dsa`).
+fn archive_hpfm(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| {
         XilinxError::DeviceConfig {
             path: Utf8PathBuf::new(),
@@ -157,7 +162,49 @@ pub fn parse_xpfm(bytes: &[u8]) -> Result<DeviceInfo> {
     )]
     let mut xml = Vec::with_capacity(entry.size() as usize);
     entry.read_to_end(&mut xml)?;
-    parse_hpfm_xml(&xml)
+    Ok(xml)
+}
+
+/// The `.xsa`/`.dsa` under `<platform_path>/hw/`.
+fn platform_archive(platform_path: &Utf8PathBuf) -> Result<Utf8PathBuf> {
+    if !platform_path.is_dir() {
+        return Err(XilinxError::PlatformNotFound(platform_path.clone()));
+    }
+    let hw = platform_path.join("hw");
+    let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
+    entries
+        .filter_map(|e| e.ok())
+        .map(|e| crate::util::utf8(e.path()))
+        .find(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
+        .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))
+}
+
+/// Whether the platform installed at `platform_path` is a Versal device,
+/// its `deviceInfo` declaring the `versal` architecture: `v++ --link` makes
+/// an `.xsa` for it, which `v++ --package` turns into the xclbin.
+pub fn platform_is_versal(platform_path: &Utf8PathBuf) -> Result<bool> {
+    let archive_path = platform_archive(platform_path)?;
+    let xml = archive_hpfm(&std::fs::read(&archive_path)?)?;
+    let mut reader = Reader::from_reader(xml.as_slice());
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Err(e) => {
+                return Err(XilinxError::DeviceConfig {
+                    path: archive_path,
+                    detail: format!("cannot parse the .hpfm platform XML: {e}"),
+                });
+            }
+            Ok(Event::Eof) => return Ok(false),
+            Ok(Event::Start(ref e) | Event::Empty(ref e))
+                if local_name(e.name().0) == "deviceInfo" =>
+            {
+                return Ok(attr_value(e, "architecture")?.as_deref() == Some("versal"));
+            }
+            Ok(_) => {}
+        }
+        buf.clear();
+    }
 }
 
 /// Resolve the `.xsa`/`.dsa` file under `<platform_path>/hw/`, then
@@ -167,17 +214,7 @@ pub fn parse_device_info(
     part_num_override: Option<&str>,
     clock_period_override: Option<&str>,
 ) -> Result<DeviceInfo> {
-    if !platform_path.is_dir() {
-        return Err(XilinxError::PlatformNotFound(platform_path.clone()));
-    }
-    let hw = platform_path.join("hw");
-    let entries = std::fs::read_dir(&hw).map_err(|_| XilinxError::PlatformNotFound(hw.clone()))?;
-    let archive_path = entries
-        .filter_map(|e| e.ok())
-        .map(|e| crate::util::utf8(e.path()))
-        .find(|p| p.extension().is_some_and(|x| x == "xsa" || x == "dsa"))
-        .ok_or_else(|| XilinxError::PlatformNotFound(hw.clone()))?;
-
+    let archive_path = platform_archive(platform_path)?;
     let bytes = std::fs::read(&archive_path)?;
     let mut info = parse_xpfm(&bytes).map_err(|e| match e {
         XilinxError::DeviceConfig { detail, .. } => XilinxError::DeviceConfig {
@@ -296,6 +333,26 @@ mod tests {
         }
         let err = parse_xpfm(&out.into_inner()).unwrap_err();
         assert!(matches!(err, XilinxError::DeviceConfig { .. }));
+    }
+
+    /// A Versal platform's `deviceInfo` names its architecture (the
+    /// VCK5000's, abridged); an Alveo shell's names another.
+    #[test]
+    fn platform_is_versal_reads_the_device_architecture() {
+        let platform = |hpfm: &str| {
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::create_dir(dir.path().join("hw")).unwrap();
+            std::fs::write(dir.path().join("hw/hw.xsa"), build_xpfm_zip(hpfm)).unwrap();
+            platform_is_versal(&crate::util::utf8(dir.path())).unwrap()
+        };
+        assert!(platform(
+            r#"<xd:platformInfo xmlns:xd="http://www.xilinx.com/xd">
+              <xd:deviceInfo xd:name="xcvc1902-vsvd1760-2MP-e-S" xd:architecture="versal"/>
+            </xd:platformInfo>"#
+        ));
+        assert!(!platform(
+            r#"<platformInfo><deviceInfo name="xcu55c-fsvh2892-2L-e" architecture="virtexuplusHBM"/></platformInfo>"#
+        ));
     }
 
     #[test]
