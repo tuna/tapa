@@ -21,14 +21,13 @@ namespace {
 constexpr char kLeftoverLogCountEnvVar[] = "TAPA_STREAM_LEFTOVER_LOG_COUNT";
 
 int GetLeftoverLogCount() {
-  int n = 10;  // Log up to 10 by default.
+  constexpr int kDefault = 10;
   if (const char* env = getenv(kLeftoverLogCountEnvVar); env != nullptr) {
-    if (n = atoi(env); n <= 0) {
-      LOG(ERROR) << "invalid " << kLeftoverLogCountEnvVar << " value '" << env
-                 << "'; expected a positive integer";
-    }
+    if (const int n = atoi(env); n > 0) return n;
+    LOG(ERROR) << "invalid " << kLeftoverLogCountEnvVar << " value '" << env
+               << "'; expected a positive integer, logging up to " << kDefault;
   }
-  return n;
+  return kDefault;
 }
 
 }  // namespace

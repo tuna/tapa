@@ -35,6 +35,8 @@ using namespace std::string_view_literals;
 using ::tapa::internal::StrCat;
 using ::tapa_testing::ScopedLogSinkMock;
 using ::tapa_testing::ScopedSetEnv;
+using ::testing::_;
+using ::testing::AnyNumber;
 using ::testing::HasSubstr;
 using ::testing::InSequence;
 using ::testing::NiceMock;
@@ -374,7 +376,9 @@ TEST(LeftoverLogTest, InvalidLeftoverLogCountIsReported) {
 
   EXPECT_CALL(
       log, Error("invalid TAPA_STREAM_LEFTOVER_LOG_COUNT value 'x'; expected a "
-                 "positive integer"));
+                 "positive integer, logging up to 10"));
+  EXPECT_CALL(log, Warning(_)).Times(AnyNumber());
+  EXPECT_CALL(log, Warning(HasSubstr("'foo' leftover: 2333")));
 }
 
 }  // namespace
