@@ -716,6 +716,27 @@ TEST(InvokeParser, AStreamPortGoesToOneTask) {
       << run.diags[1];
 }
 
+TEST(InvokeParser, AnInvokeBindsEveryParameter) {
+  // A defaulted parameter left unbound used to pass as a port with no
+  // argument; `invoke` reaches the task through a function reference, which
+  // applies no default.
+  constexpr char kCode[] = R"cpp(
+    void Leaf(tapa::mmap<int> m, int n = 4);
+    void Leaf(tapa::mmap<int> m, int n) {}
+    void Top(tapa::mmap<int> a, tapa::mmap<int> b, int n) {
+      tapa::task().invoke(Leaf, a).invoke(Leaf, b, n);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/arity.cpp", kCode}}, "Top",
+      testing::TempDir() + "/arity", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 1u) << run.json;
+  EXPECT_NE(run.diags.front().find(
+                "invoke binds 1 port arguments to task 'Leaf', which has 2"),
+            std::string::npos)
+      << run.diags.front();
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>

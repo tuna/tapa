@@ -438,6 +438,19 @@ void ParseInvocations(
                        "names no task to instantiate");
       continue;
     }
+    // `invoke` forwards its arguments to the task through a function
+    // reference, which applies no default argument: one per parameter.
+    if (const unsigned params = InvokeCallee(invoke)->getNumParams(),
+        bound = static_cast<unsigned>(InvokePortArgs(invoke).size());
+        bound != params) {
+      ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                       invoke->getArg(0)->getBeginLoc(),
+                       "invoke binds %0 port arguments to task '%1', which "
+                       "has %2 parameters; bind every parameter once")
+          << std::to_string(bound) << InvokeCallee(invoke)->getNameAsString()
+          << std::to_string(params);
+      continue;
+    }
     const InvokeMode mode = GetInvokeMode(invoke);
     bool has_executable = false;
     std::string task_name;
