@@ -47,7 +47,7 @@ pub struct PackArgs {
     pub custom_rtl: Vec<PathBuf>,
 }
 
-pub(super) fn published_floorplan_xdc(work_dir: &Path, state: &WorkState) -> Result<()> {
+fn published_floorplan_xdc(work_dir: &Path, state: &WorkState) -> Result<()> {
     if state.floorplan.is_none() {
         return Ok(());
     }
@@ -91,7 +91,7 @@ fn apply_pack_overlays(args: &PackArgs, ctx: &CliContext, rtl_dir: &Path) -> Res
 /// `<work_dir>/hls/<task>/report/` directory. The zip and xo paths
 /// both walk this layout; file selection, staging, and redaction stay
 /// per-path.
-pub(super) fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathBuf)>> {
+fn hls_task_report_dirs(work_dir: &Path) -> Result<Vec<(String, PathBuf)>> {
     let hls_root = work_dir.join("hls");
     let mut out = Vec::new();
     if !hls_root.is_dir() {
