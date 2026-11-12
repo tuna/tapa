@@ -647,6 +647,34 @@ TEST(AieTest, APlTaskMustNotCloseThroughHelpersAliasesOrUpperTasks) {
   }
 }
 
+TEST(AieTest, APlTaskMustNotCloseIntoAPlUpperTaskOfAnAiEngineTask) {
+  // The reader is the AI Engine task a PL upper task hands the stream to:
+  // only a directly invoked AI Engine reader used to be checked.
+  const std::string add = R"cpp(
+    [[tapa::target("aie")]]
+    void Inner(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+      for (int i = 0; i < n; ++i) c.write(a.read());
+    }
+    [[tapa::target("hls")]]
+    void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+      tapa::task().invoke(Inner, a, c, n);
+    }
+  )cpp";
+  const TreePipelineRun run =
+      Analyze("upper_reader_eot", Design(add, R"cpp(
+                void Load(tapa::mmap<const float> mem, int n,
+                          tapa::ostream<float>& out) {
+                  for (int i = 0; i < n; ++i) out.write(mem[i]);
+                  out.close();
+                }
+              )cpp"));
+  EXPECT_FALSE(run.ok);
+  EXPECT_TRUE(AnyDiagContains(
+      run,
+      "task 'Load' closes its stream 'out', which feeds the AI Engine "
+      "task 'Inner' through 'a_q' in 'Top'"));
+}
+
 TEST(AieTest, ForwardDeclarationsCarryFramesWithoutLeaking) {
   const std::string code = Design(R"cpp(
     void Add([[tapa::frame(64)]] tapa::istream<float>& a,

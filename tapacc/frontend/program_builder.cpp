@@ -1166,16 +1166,51 @@ bool ProgramBuilder::CheckAieEot() {
     }
     return close_cache[&task] = std::move(closed);
   };
+  // The AI Engine task a stream bound to `port` of `task` reaches, the task
+  // itself or one a PL upper task hands the port to, or empty.
+  std::map<std::pair<const TaskModel*, std::string>, std::string> aie_cache;
+  std::function<std::string(const TaskModel&, const std::string&)> aie_reader =
+      [&](const TaskModel& task, const std::string& port) -> std::string {
+    if (task.target == SynthTarget::kAie) return task.name;
+    const auto key = std::make_pair(&task, port);
+    if (const auto it = aie_cache.find(key); it != aie_cache.end()) {
+      return it->second;
+    }
+    std::string reader;
+    for (const auto& [child_name, instances] : task.instances) {
+      const auto child = by_name.find(child_name);
+      if (child == by_name.end()) continue;
+      for (const auto& instance : instances) {
+        for (const auto& [child_port, arg] : instance.args) {
+          if (reader.empty() && !arg.arg.empty() &&
+              ArrayBaseName(arg.arg) == port) {
+            reader = aie_reader(*child->second, ArrayBaseName(child_port));
+          }
+        }
+      }
+    }
+    return aie_cache[key] = reader;
+  };
   for (const auto& [key, task] : tasks_) {
     const TaskModel& upper = task.model;
     for (const auto& [fifo, stream] : upper.streams) {
       if (!stream.produced_by || !stream.consumed_by) continue;
       const auto producer = by_name.find(stream.produced_by->task);
       const auto consumer = by_name.find(stream.consumed_by->task);
-      if (producer == by_name.end() || consumer == by_name.end() ||
-          consumer->second->target != SynthTarget::kAie) {
+      if (producer == by_name.end() || consumer == by_name.end()) continue;
+      const auto readers = upper.instances.find(consumer->first);
+      if (readers == upper.instances.end() ||
+          stream.consumed_by->index >= readers->second.size()) {
         continue;
       }
+      std::string reader;
+      for (const auto& [port, arg] :
+           readers->second[stream.consumed_by->index].args) {
+        if (reader.empty() && arg.arg == fifo) {
+          reader = aie_reader(*consumer->second, ArrayBaseName(port));
+        }
+      }
+      if (reader.empty()) continue;
       const auto instances = upper.instances.find(producer->first);
       if (instances == upper.instances.end() ||
           stream.produced_by->index >= instances->second.size()) {
@@ -1187,8 +1222,8 @@ bool ProgramBuilder::CheckAieEot() {
         const std::string base = ArrayBaseName(port);
         if (closed_ports(*producer->second).count(base) == 0) continue;
         Fail("task '" + producer->first + "' closes its stream '" + base +
-             "', which feeds the AI Engine task '" + consumer->first +
-             "' through '" + fifo + "' in '" + upper.name +
+             "', which feeds the AI Engine task '" + reader + "' through '" +
+             fifo + "' in '" + upper.name +
              "'; AI Engine streams carry no end-of-transmission token, so "
              "send an element count instead of closing the stream");
         return false;
