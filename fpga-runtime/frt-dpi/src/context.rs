@@ -95,13 +95,14 @@ mod tests {
     #[test]
     fn parse_valid_config() {
         let json = r#"{
-          "buffers": { "a": { "path": "/tmp/buf_a", "size_bytes": 4096 } },
+          "buffers": { "a": { "path": "/tmp/buf_a", "base_addr": 268435456 } },
           "streams": {
             "s": { "path": "/tmp/stream_s", "dpi_width_bytes": 5 }
           }
         }"#;
         let cfg: DpiConfig = serde_json::from_str(json).expect("json");
         assert_eq!(cfg.buffers["a"].path, "/tmp/buf_a");
+        assert_eq!(cfg.buffers["a"].base_addr, 0x1000_0000);
         assert_eq!(cfg.streams["s"].path, "/tmp/stream_s");
         assert_eq!(cfg.streams["s"].dpi_width_bytes, 5);
     }

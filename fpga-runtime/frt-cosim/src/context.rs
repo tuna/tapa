@@ -3,6 +3,7 @@ use crate::error::Result;
 use crate::metadata::{ArgKind, KernelSpec};
 use frt_shm::config::{BufferEntry, DpiConfig, StreamEntry};
 use frt_shm::{MmapSegment, SharedMemoryQueue};
+use serde::Deserialize as _;
 use std::collections::HashMap;
 
 /// Size of the segment an mmap argument gets before the host binds one.
@@ -22,25 +23,24 @@ pub struct CosimContext {
 }
 
 impl CosimContext {
-    // Resume only reopens buffers. Its legacy input may omit live stream
-    // attachment metadata, so it deliberately accepts the parsed JSON view.
+    /// Reopen only buffers for resume. The caller separately validates the
+    /// config's stream attachments against the kernel spec.
     pub fn open_from_config(spec: &KernelSpec, config: &serde_json::Value) -> Result<Self> {
         let mut buffers = HashMap::new();
         let mut base_addresses = HashMap::new();
 
         for arg in &spec.args {
             if let ArgKind::Mmap { .. } = &arg.kind {
-                let entry = &config["buffers"][&arg.name];
-                let path = entry["path"].as_str().ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidData,
-                        format!("buffer `{}` has no path in dpi_config.json", arg.name),
-                    )
-                })?;
-                let base = entry["base_addr"].as_u64().unwrap_or(0);
-                let seg = MmapSegment::open(path)?;
+                let entry =
+                    BufferEntry::deserialize(&config["buffers"][&arg.name]).map_err(|error| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidData,
+                            format!("invalid buffer `{}` in dpi_config.json: {error}", arg.name),
+                        )
+                    })?;
+                let seg = MmapSegment::open(&entry.path)?;
                 buffers.insert(arg.name.clone(), seg);
-                base_addresses.insert(arg.name.clone(), base);
+                base_addresses.insert(arg.name.clone(), entry.base_addr);
             }
         }
 

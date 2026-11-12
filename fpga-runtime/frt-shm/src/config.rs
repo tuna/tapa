@@ -6,7 +6,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BufferEntry {
-    #[serde(default)]
     pub base_addr: u64,
     pub path: String,
 }
