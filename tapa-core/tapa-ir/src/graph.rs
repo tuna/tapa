@@ -203,7 +203,8 @@ impl TaskGraph {
     /// A schema version other than [`SCHEMA_VERSION`], a task named after
     /// a [support module](SUPPORT_MODULES), an invalid invoke-site constant,
     /// an argument bound to a port its child lacks or of another category,
-    /// a stream of depth 0, or a stream shallower than a frame it carries.
+    /// a stream of depth 0, a frame of 0 elements, or a stream shallower
+    /// than a frame it carries.
     pub fn validate(&self) -> Result<(), ParseError> {
         if self.schema_version > SCHEMA_VERSION {
             return Err(ParseError::UnsupportedSchemaVersion {
@@ -221,6 +222,7 @@ impl TaskGraph {
         self.validate_literals()?;
         self.validate_named_args()?;
         self.validate_stream_depths()?;
+        self.validate_frame_sizes()?;
         self.validate_frame_depths()?;
         self.validate_frame_channels()
     }
@@ -238,6 +240,24 @@ impl TaskGraph {
             }),
             None => Ok(()),
         }
+    }
+
+    /// A frame holds at least one element; the frame channel's bank count
+    /// and its memory port's width divide by and count down from the size.
+    fn validate_frame_sizes(&self) -> Result<(), ParseError> {
+        for (task_name, task) in &self.tasks {
+            if let Some(index) = task.ports.iter().position(|port| port.frame == Some(0)) {
+                return Err(ParseError::Schema {
+                    path: format!("tasks.{task_name}.ports[{index}].frame"),
+                    message: format!(
+                        "port `{}` of task `{task_name}` moves frames of 0 elements; a frame \
+                         holds at least one",
+                        task.ports[index].name
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 
     /// A stream a task declares holds at least one element. With a depth of
@@ -940,6 +960,39 @@ mod tests {
             "{message}"
         );
         TaskGraph::from_json(&graph(1)).expect("a stream of depth 1");
+    }
+
+    #[test]
+    fn a_frame_of_zero_elements_is_rejected() {
+        let graph = |frame: u32| {
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{
+                    "T": {{"level": "upper", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [],
+                        "tasks": {{"P": [{{"args": {{"o": {{"arg": "q", "cat": "oframes"}}}}}}],
+                                  "C": [{{"args": {{"i": {{"arg": "q", "cat": "istream"}}}}}}]}},
+                        "fifos": {{"q": {{"depth": 2, "produced_by": ["P", 0],
+                                         "consumed_by": ["C", 0]}}}}}},
+                    "P": {{"level": "lower", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [{{"cat": "oframes",
+                        "name": "o", "type": "int", "width": 32, "frame": {frame}}}],
+                        "tasks": {{}}, "fifos": {{}}}},
+                    "C": {{"level": "lower", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [{{"cat": "istream",
+                        "name": "i", "type": "int", "width": 32}}],
+                        "tasks": {{}}, "fifos": {{}}}}}}}}"#
+            )
+        };
+        let message = TaskGraph::from_json(&graph(0))
+            .expect_err("a frame of 0")
+            .to_string();
+        assert!(message.contains("tasks.P.ports[0].frame"), "{message}");
+        let graph = TaskGraph::from_json(&graph(2)).expect("a frame of 2");
+        let channel = graph
+            .frame_channel(&graph.tasks["T"], "q")
+            .expect("a channel");
+        assert_eq!((channel.frame, channel.banks), (2, 2));
     }
 
     #[test]
