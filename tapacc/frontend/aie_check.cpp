@@ -146,9 +146,43 @@ const char* AieStreamOpProblem(llvm::StringRef op, unsigned num_args) {
   return nullptr;
 }
 
-// Every member call on a TAPA stream in a body.
+// Follows each function a body calls, and each constructor it runs with its
+// member initializers, into its definition, once: the AI Engine compiler
+// inlines them all into the kernel, so they are the kernel's code too.
+template <typename Derived>
+class CalleeWalker : public clang::RecursiveASTVisitor<Derived> {
+ public:
+  bool VisitCallExpr(clang::CallExpr* call) {
+    Follow(call->getDirectCallee());
+    return true;
+  }
+
+  bool VisitCXXConstructExpr(clang::CXXConstructExpr* construct) {
+    Follow(construct->getConstructor());
+    return true;
+  }
+
+ private:
+  void Follow(const clang::FunctionDecl* callee) {
+    const clang::FunctionDecl* def = nullptr;
+    if (callee == nullptr || !callee->hasBody(def) ||
+        !visited_.insert(def).second) {
+      return;
+    }
+    if (const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(def)) {
+      for (const clang::CXXCtorInitializer* init : ctor->inits()) {
+        this->TraverseStmt(init->getInit());
+      }
+    }
+    this->TraverseStmt(def->getBody());
+  }
+
+  std::set<const clang::FunctionDecl*> visited_;
+};
+
+// Every member call on a TAPA stream in a body and the code it calls.
 template <typename F>
-class StreamCalls : public clang::RecursiveASTVisitor<StreamCalls<F>> {
+class StreamCalls : public CalleeWalker<StreamCalls<F>> {
  public:
   explicit StreamCalls(F visit) : visit_(std::move(visit)) {}
 
@@ -167,7 +201,9 @@ class StreamCalls : public clang::RecursiveASTVisitor<StreamCalls<F>> {
   F visit_;
 };
 
-class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
+// The bytes of the local variables of a body and the code it calls, which
+// share the kernel's stack, each counted once.
+class LocalVars : public CalleeWalker<LocalVars> {
  public:
   explicit LocalVars(const clang::ASTContext& ctx) : ctx_(ctx) {}
 
@@ -182,39 +218,11 @@ class LocalVars : public clang::RecursiveASTVisitor<LocalVars> {
     return true;
   }
 
-  // The AI Engine compiler inlines what the body calls, so the locals of
-  // every function it reaches share the kernel's stack: each counts once.
-  bool VisitCallExpr(clang::CallExpr* call) {
-    const clang::FunctionDecl* callee = call->getDirectCallee();
-    const clang::FunctionDecl* def = nullptr;
-    if (callee != nullptr && callee->hasBody(def) &&
-        visited_.insert(def).second) {
-      TraverseStmt(def->getBody());
-    }
-    return true;
-  }
-
-  // A constructor is a call too, with its member initializers.
-  bool VisitCXXConstructExpr(clang::CXXConstructExpr* construct) {
-    const clang::FunctionDecl* def = nullptr;
-    if (!construct->getConstructor()->hasBody(def) ||
-        !visited_.insert(def).second) {
-      return true;
-    }
-    for (const clang::CXXCtorInitializer* init :
-         llvm::cast<clang::CXXConstructorDecl>(def)->inits()) {
-      TraverseStmt(init->getInit());
-    }
-    TraverseStmt(def->getBody());
-    return true;
-  }
-
   uint64_t bytes() const { return bytes_; }
 
  private:
   const clang::ASTContext& ctx_;
   uint64_t bytes_ = 0;
-  std::set<const clang::FunctionDecl*> visited_;
 };
 
 }  // namespace

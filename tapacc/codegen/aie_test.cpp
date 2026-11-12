@@ -505,6 +505,17 @@ TEST(AieTest, IneligibleConstructsAreRejectedAtTheirSite) {
            c.close();
          })cpp",
        "'close' in AI Engine task 'Add' has no AI Engine form"},
+      // The code the task calls runs on the AI Engine too.
+      {"helper_close", R"cpp(
+         void Finish(tapa::ostream<float>& out) {
+           out.close();
+         }
+         [[tapa::target("aie")]]
+         void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
+           for (int i = 0; i < n; ++i) c.write(a.read());
+           Finish(c);
+         })cpp",
+       "'close' in AI Engine task 'Add' has no AI Engine form"},
       {"peek", R"cpp(
          [[tapa::target("aie")]]
          void Add(tapa::istream<float>& a, tapa::ostream<float>& c, int n) {
