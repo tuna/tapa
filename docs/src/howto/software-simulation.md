@@ -97,22 +97,9 @@ property of the generated hardware. Use fast cosimulation for RTL validation.
 
 ## Debugging with GDB
 
-Software simulation runs as ordinary host code, so GDB works as normal:
-
-```bash
-gdb ./vadd
-```
-
-Then set a breakpoint on any TAPA task function by name:
-
-```gdb
-(gdb) b VecAdd
-(gdb) run
-```
-
-Breakpoints and watchpoints work on the host CPU. Backtraces show the
-currently running coroutine on each worker thread; suspended coroutines are
-not separate native threads.
+Software simulation runs as ordinary host code, so GDB (and sanitizers) work
+without any special setup — see [Your First Debug
+Cycle](../start/first-debug.md) for the workflow.
 
 ## Validation
 

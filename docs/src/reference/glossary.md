@@ -78,9 +78,8 @@ of frame slots in device memory (`[[tapa::ring(S)]]`).
 
 The optional `tapa floorplan` step, run between `synth` and `pack`. It places
 tasks across SLRs, balances resource usage, and pipelines channels that cross
-SLR boundaries to improve timing. It regenerates the RTL that `pack`
-packages and writes `floorplan.xdc`, which `tapa link` applies through
-`--floorplan-xdc`.
+SLR boundaries to improve timing. See [CLI Commands](cli.md#tapa-floorplan)
+for what it writes and how `tapa link` applies it.
 
 ---
 
