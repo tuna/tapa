@@ -723,7 +723,7 @@ impl Device for XrtDevice {
             }
             self.stop_graph()?;
         }
-        for ring in &self.rings {
+        for ring in &mut self.rings {
             ring.deliver_all()?;
         }
         if std::mem::take(&mut self.readback_scheduled) {

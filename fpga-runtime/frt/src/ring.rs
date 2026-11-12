@@ -100,16 +100,6 @@ impl RingPump {
         Ok(self.host.load(Ordering::Acquire) == written)
     }
 
-    /// Waits until the host has every output frame the kernel has written.
-    pub fn deliver_all(&self, access: &dyn RingAccess) -> Result<()> {
-        if self.layout.input {
-            return Ok(());
-        }
-        let written = access.read_register(self.layout.kernel_frames)?;
-        self.frames
-            .wait_for(|| Ok(self.host.load(Ordering::Acquire) == written))
-    }
-
     /// Moves the ring's frames until the device stops the pump.
     pub fn run(&self, access: &dyn RingAccess) -> Result<()> {
         let layout = &self.layout;
@@ -255,7 +245,7 @@ mod tests {
             std::thread::spawn(move || pump.run(ring.as_ref()))
         };
         ring.registers.lock().expect("registers")[1] = 2;
-        pump.deliver_all(ring.as_ref()).expect("deliver");
+        wait(|| pump.delivered(ring.as_ref()).expect("delivered"));
         let mut slot = [0u8; 2];
         assert!(queue.pop_into(&mut slot));
         assert_eq!(slot, [7, 0]);

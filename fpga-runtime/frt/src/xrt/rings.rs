@@ -258,9 +258,16 @@ impl XrtRing {
         self.pump.delivered(self.access.as_ref())
     }
 
-    /// Waits until [`Self::delivered`].
-    pub(super) fn deliver_all(&self) -> Result<()> {
-        self.pump.deliver_all(self.access.as_ref())
+    /// Waits until [`Self::delivered`], or fails with why the pump stopped
+    /// first: the frames it has not delivered will not come.
+    pub(super) fn deliver_all(&mut self) -> Result<()> {
+        while !self.delivered()? {
+            if let Some(error) = self.failure() {
+                return Err(error);
+            }
+            std::thread::sleep(POLL);
+        }
+        Ok(())
     }
 
     /// Why the pump stopped, if it did.
