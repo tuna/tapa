@@ -370,8 +370,9 @@ fn cached_hls_output(
     options: &HlsRunOptions,
 ) -> Result<HlsOutput> {
     let csynth = find_and_parse_csynth(&layout.reports_dir, task_name)?;
-    let clock = ClockPeriod::from_nanoseconds_str(&csynth.target_clock_period_ns);
-    if csynth.part != options.part_num || clock.ok() != Some(options.clock_period) {
+    if csynth.part != options.part_num
+        || !report_clock_matches(&csynth.target_clock_period_ns, options.clock_period)
+    {
         return Err(CliError::Codegen(format!(
             "cached HLS report for `{task_name}` does not match requested part {} and clock {} ns",
             options.part_num, options.clock_period,
@@ -385,6 +386,27 @@ fn cached_hls_output(
         stdout: String::new(),
         stderr: String::new(),
     })
+}
+
+/// Whether a csynth report's `TargetClockPeriod` records the requested
+/// period. Vitis HLS writes it rounded to two decimals (a 3.333 ns request
+/// reads back as `3.33`, 3.336 ns as `3.34`), so the two agree when they are
+/// within half a unit of the report's last written digit.
+fn report_clock_matches(reported: &str, requested: ClockPeriod) -> bool {
+    let reported = reported.trim();
+    let Ok(period) = ClockPeriod::from_nanoseconds_str(reported) else {
+        return false;
+    };
+    let decimals = reported
+        .split_once('.')
+        .map_or(0, |(_, fraction)| fraction.len());
+    let tolerance_ps = match decimals {
+        0 => 500,
+        1 => 50,
+        2 => 5,
+        _ => 0,
+    };
+    period.picoseconds().abs_diff(requested.picoseconds()) <= tolerance_ps
 }
 
 /// Reload and parse the task's top-level csynth report on an mtime-skip
@@ -427,6 +449,12 @@ mod tests {
     }
 
     fn seed_cached_settings(work: &Path) {
+        seed_cached_settings_at(work, "3.33");
+    }
+
+    /// Seed the settings a successful HLS run at `clock` records, beside a
+    /// report that carries the clock as Vitis HLS 2025.2 writes it: `3.33`.
+    fn seed_cached_settings_at(work: &Path, clock: &str) {
         let layout = TaskHlsLayout::new(work, "Add");
         let job = HlsJob::builder()
             .task_name("Add".into())
@@ -434,7 +462,7 @@ mod tests {
             .srcs(vec![crate::util::utf8(work.join("rewritten/Add.cpp"))])
             .cflags(vec![format!("-I{}", work.join("rewritten").display())])
             .target_part("xcvu37p".into())
-            .clock_period("3.33".into())
+            .clock_period(clock.into())
             .reports_out_dir(layout.reports_dir.clone())
             .hdl_out_dir(layout.hdl_dir.clone())
             .build();
@@ -638,6 +666,41 @@ mod tests {
         .expect_err("a required cache miss must fail");
         assert!(error.to_string().contains("missing or stale"), "{error}");
         assert!(runner.calls().is_empty(), "a strict miss must not run HLS");
+    }
+
+    /// Vitis HLS writes the target period to two decimals, so a platform's
+    /// 3.333 ns default reads back as `3.33`; the cache recorded for that
+    /// very request must still hit, and a report a whole digit off must not.
+    #[test]
+    fn cache_hit_accepts_the_report_rounding_of_the_requested_clock() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let work = tmp.path();
+        seed_rewritten(work);
+        let hdl = work.join("hls").join("Add").join("verilog");
+        fs::create_dir_all(&hdl).unwrap();
+        seed_cached_settings_at(work, "3.333");
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        fs::write(hdl.join("Add.v"), b"module Add(); endmodule\n").unwrap();
+        let design = leaf_design();
+        let runner = MockToolRunner::new();
+        let required = HlsRunOptions {
+            clock_period: ClockPeriod::from_picoseconds(3333),
+            reuse: HlsReuse::Required,
+            ..skip_hls_options()
+        };
+        let sources = fixtures::staged(work, &design);
+        run_hls_for_tasks(&runner, work, &design, &sources, &required)
+            .expect("the report's `3.33` records the 3.333 ns request");
+
+        let fixtures = HlsRunOptions {
+            clock_period: ClockPeriod::from_picoseconds(3340),
+            reuse: HlsReuse::Fixtures,
+            ..skip_hls_options()
+        };
+        let error = run_hls_for_tasks(&runner, work, &design, &sources, &fixtures)
+            .expect_err("a `3.33` report does not record a 3.34 ns request");
+        assert!(error.to_string().contains("does not match"), "{error}");
+        assert!(runner.calls().is_empty(), "neither path may run HLS");
     }
 
     #[test]
