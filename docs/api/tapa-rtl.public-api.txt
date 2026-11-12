@@ -550,9 +550,7 @@ pub fn tapa_rtl::mutation::MutableModule::add_port(&mut self, tapa_rtl::port::Po
 pub fn tapa_rtl::mutation::MutableModule::add_signal(&mut self, tapa_rtl::signal::Signal) -> core::result::Result<(), tapa_rtl::BuilderError>
 pub fn tapa_rtl::mutation::MutableModule::cleanup_hls_artifacts(&mut self)
 pub fn tapa_rtl::mutation::MutableModule::demote_output_port_regs_to_wires(&mut self)
-pub fn tapa_rtl::mutation::MutableModule::demote_signal_regs_to_wires(&mut self, &[&str])
 pub fn tapa_rtl::mutation::MutableModule::emit(&self) -> alloc::string::String
-pub fn tapa_rtl::mutation::MutableModule::ensure_signal_kind(&mut self, &str, tapa_rtl::signal::SignalKind)
 pub fn tapa_rtl::mutation::MutableModule::from_parsed(tapa_rtl::module::VerilogModule) -> Self
 pub fn tapa_rtl::mutation::MutableModule::remove_port(&mut self, &str)
 impl core::marker::Freeze for tapa_rtl::mutation::MutableModule
@@ -584,7 +582,6 @@ pub fn tapa_rtl::mutation::wide_port(impl core::convert::Into<alloc::string::Str
 pub fn tapa_rtl::mutation::wide_reg(impl core::convert::Into<alloc::string::String>, &str, &str) -> tapa_rtl::signal::Signal
 pub fn tapa_rtl::mutation::wide_wire(impl core::convert::Into<alloc::string::String>, &str, &str) -> tapa_rtl::signal::Signal
 pub fn tapa_rtl::mutation::wire(impl core::convert::Into<alloc::string::String>) -> tapa_rtl::signal::Signal
-pub fn tapa_rtl::mutation::wire_with_attribute(impl core::convert::Into<alloc::string::String>, impl core::convert::Into<alloc::string::String>) -> tapa_rtl::signal::Signal
 pub mod tapa_rtl::param
 pub struct tapa_rtl::param::Parameter
 pub tapa_rtl::param::Parameter::default: tapa_rtl::expression::Expression
