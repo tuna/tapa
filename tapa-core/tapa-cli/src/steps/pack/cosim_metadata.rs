@@ -1,9 +1,7 @@
-//! Cosim port metadata for the `xilinx-hls` zip archive.
+//! Cosim port metadata for ZIP packages.
 //!
-//! The zip `tapa pack` emits for the `xilinx-hls` target is the
-//! hardware-cosimulation package: it embeds `tapa.json`, which
-//! `frt-cosim` — a separate Cargo workspace under `fpga-runtime/` —
-//! projects into the simulator's argument list.
+//! The HLS and SLASH ZIPs embed `tapa.json`, which `frt-cosim` projects
+//! into the simulator's argument list.
 //! [`stamp_cosim_port_metadata`] fills the optional per-port cosim
 //! metadata (`stream_depth` / `mmap_addr_width` on
 //! [`tapa_ir::port::Port`]) on the archive's embedded state copy, so the
@@ -17,11 +15,8 @@ use tapa_ir::WorkState;
 /// `depth` for external top-level FIFOs (kernel-boundary streams), and
 /// codegen wires them straight through without storage — a top-level
 /// stream port has no FIFO on the RTL side at all, so the depth is a
-/// pure cosimulation-buffer fact. 16 is the value `frt-cosim` has
-/// always assumed (and still applies for pre-field archives), so
-/// stamping it makes the archive say out loud what the runtime would
-/// have assumed anyway.
-pub const DEFAULT_STREAM_DEPTH: u32 = 16;
+/// pure cosimulation-buffer fact.
+pub(super) const DEFAULT_STREAM_DEPTH: u32 = 16;
 
 /// AXI address width stamped onto every top-level direct mmap port.
 ///
@@ -32,7 +27,7 @@ pub const DEFAULT_STREAM_DEPTH: u32 = 16;
 /// instantiated with `ADDR_WIDTH = 64`, and Vitis HLS defaults `m_axi`
 /// addresses to 64 bits. Stamping that uniform value lets `frt-cosim`
 /// size its model from the archive instead of assuming 64 itself.
-pub const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
+pub(super) const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
 
 /// Return `state` with the cosim port metadata stamped on the top
 /// task's applicable ports, for the archive's embedded `tapa.json`
@@ -46,7 +41,7 @@ pub const DEFAULT_MMAP_ADDR_WIDTH: u32 = 64;
 /// from some producer keeps it — pack fills a schema gap, it does not
 /// override.
 #[must_use]
-pub fn stamp_cosim_port_metadata(state: &WorkState) -> WorkState {
+pub(super) fn stamp_cosim_port_metadata(state: &WorkState) -> WorkState {
     let mut state = state.clone();
     if let Some(top_task) = state.graph.tasks.get_mut(&state.graph.top) {
         for port in &mut top_task.ports {

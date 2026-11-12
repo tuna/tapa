@@ -23,12 +23,12 @@ use crate::context::CliContext;
 use crate::error::{CliError, Result};
 use crate::state::work::{self as work_io, WorkState};
 
-mod cosim_compat;
+mod cosim_metadata;
 mod custom_rtl;
 mod kernel_xml_ports;
 pub(crate) mod vitis_packaging;
 
-use cosim_compat::stamp_cosim_port_metadata;
+use cosim_metadata::stamp_cosim_port_metadata;
 use custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use vitis_packaging::{pack_slash, pack_vitis};
 
@@ -248,7 +248,7 @@ fn add_dir_to_zip(
 /// when the synth step emitted one, plus a copy of the `tapa.json` state
 /// file carrying the compile context, stamped with the cosim port
 /// metadata `frt-cosim` reads (the work-dir file itself stays verbatim;
-/// see [`cosim_compat`]). Output defaults to `work.zip` in the caller's
+/// see [`cosim_metadata`]). Output defaults to `work.zip` in the caller's
 /// CWD and is always normalized to a `.zip` suffix.
 fn pack_hls_zip(args: &PackArgs, ctx: &CliContext, state: &WorkState) -> Result<()> {
     let work_dir = ctx.work_dir.as_path();
