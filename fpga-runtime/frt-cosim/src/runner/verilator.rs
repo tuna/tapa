@@ -55,11 +55,14 @@ fn resolve_verilator_bin(
 }
 
 fn verilator_root_env(verilator_bin: &Path) -> Option<PathBuf> {
-    if let Some(root) = std::env::var_os("VERILATOR_ROOT") {
-        return Some(PathBuf::from(root));
-    }
-    // Check candidates that have $ROOT/include/verilated.h — the layout
-    // Verilator expects when VERILATOR_ROOT is set.
+    std::env::var_os("VERILATOR_ROOT")
+        .map(PathBuf::from)
+        .or_else(|| verilator_root_from_layout(verilator_bin))
+}
+
+/// The root implied by the binary's install layout: the candidate holding
+/// `include/verilated.h`, the layout Verilator expects under `VERILATOR_ROOT`.
+fn verilator_root_from_layout(verilator_bin: &Path) -> Option<PathBuf> {
     [
         // Standard layout: bin is at $ROOT/bin/verilator
         verilator_bin
@@ -893,7 +896,7 @@ endmodule
     }
 
     #[test]
-    fn verilator_root_env_uses_bin_parent_parent_when_valid() {
+    fn verilator_root_from_layout_uses_bin_parent_parent_when_valid() {
         let tmp = tempfile::tempdir().expect("tempdir");
         let root = tmp.path().join("verilator+");
         let bin = root.join("bin/verilator");
@@ -902,11 +905,11 @@ endmodule
         std::fs::write(root.join("include/verilated.h"), []).expect("write verilated.h");
         std::fs::create_dir_all(bin.parent().expect("bin parent")).expect("mkdir bin");
         std::fs::write(&bin, []).expect("write bin");
-        assert_eq!(verilator_root_env(&bin).expect("root"), root);
+        assert_eq!(verilator_root_from_layout(&bin).expect("root"), root);
     }
 
     #[test]
-    fn verilator_root_env_skips_system_install() {
+    fn verilator_root_from_layout_skips_system_install() {
         // System installs (Homebrew, apt) have include/verilated.h under
         // share/verilator/, not directly under the prefix. Verilator knows
         // its own root in this case, so we should not override it.
@@ -918,7 +921,7 @@ endmodule
         std::fs::write(root.join("share/verilator/include/verilated.h"), []).expect("write");
         std::fs::create_dir_all(bin.parent().expect("bin parent")).expect("mkdir bin");
         std::fs::write(&bin, []).expect("write bin");
-        assert!(verilator_root_env(&bin).is_none() || std::env::var_os("VERILATOR_ROOT").is_some());
+        assert!(verilator_root_from_layout(&bin).is_none());
     }
 
     #[test]
