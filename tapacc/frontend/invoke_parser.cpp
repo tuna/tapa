@@ -1,5 +1,6 @@
 #include "invoke_parser.h"
 
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -385,15 +386,26 @@ void CollectStreamDecls(UpperTaskContext& uc, const clang::FunctionDecl* func) {
       const auto* var = llvm::dyn_cast<clang::VarDecl>(d);
       if (var == nullptr) continue;
       const std::string name = var->getNameAsString();
+      // A FIFO holds at least one element (a writer of an empty one blocks
+      // forever), and the graph records its depth in 32 bits.
+      const auto depth_of = [&](unsigned index) -> uint64_t {
+        const int64_t depth = IntTemplateArg(var->getType(), index).value_or(0);
+        if (depth < 1 || depth > std::numeric_limits<uint32_t>::max()) {
+          ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                           var->getLocation(),
+                           "stream '%0' has depth %1; a stream holds 1 to "
+                           "2^32 - 1 elements")
+              << name << std::to_string(static_cast<uint64_t>(depth));
+        }
+        return static_cast<uint64_t>(depth);
+      };
       switch (ClassifyTapaType(var->getType())) {
         case TapaKind::kStream:
           uc.task.streams[name] =
-              StreamDecl{static_cast<uint64_t>(
-                             IntTemplateArg(var->getType(), 1).value_or(0)),
-                         var, std::nullopt, std::nullopt};
+              StreamDecl{depth_of(1), var, std::nullopt, std::nullopt};
           break;
         case TapaKind::kStreams: {
-          const uint64_t depth = IntTemplateArg(var->getType(), 2).value_or(0);
+          const uint64_t depth = depth_of(2);
           const int64_t n = IntTemplateArg(var->getType(), 1).value_or(0);
           for (int64_t i = 0; i < n; ++i) {
             uc.task.streams[ArrayNameAt(name, i)] =

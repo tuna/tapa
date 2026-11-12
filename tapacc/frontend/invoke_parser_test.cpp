@@ -757,6 +757,35 @@ TEST(InvokeParser, MemoryArgumentsNameParentParameters) {
       << run.diags.front();
 }
 
+TEST(InvokeParser, AStreamHoldsAtLeastOneElement) {
+  // A FIFO of depth 0 never takes a token (software simulation blocks its
+  // writer forever), and used to pass on to the hardware as is.
+  constexpr char kCode[] = R"cpp(
+    void Src(tapa::ostream<int>& out) {}
+    void Snk(tapa::istream<int>& in) {}
+    void Top() {
+      tapa::stream<int, 0> q;
+      tapa::streams<int, 2, 0> qs;
+      tapa::stream<int, 1> ok;
+      tapa::task()
+          .invoke(Src, q)
+          .invoke(Snk, q)
+          .invoke<0, 2>(Src, qs)
+          .invoke<0, 2>(Snk, qs)
+          .invoke(Src, ok)
+          .invoke(Snk, ok);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/depth.cpp", kCode}}, "Top",
+      testing::TempDir() + "/depth", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 2u) << run.json;
+  EXPECT_NE(run.diags[0].find("stream 'q' has depth 0"), std::string::npos)
+      << run.diags[0];
+  EXPECT_NE(run.diags[1].find("stream 'qs' has depth 0"), std::string::npos)
+      << run.diags[1];
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>
