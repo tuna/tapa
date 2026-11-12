@@ -32,11 +32,10 @@ pub fn extract_embedded_xml(xclbin: &[u8]) -> Result<String> {
 
 /// Extract the platform VBNV string from the xclbin2 binary header.
 ///
-/// The old C++ runtime read `axlf_top->m_header.m_platformVBNV` (a 64-byte
-/// null-terminated string at offset 352) which always contains the full
-/// platform identifier (e.g. `xilinx_u250_gen3x16_xdma_4_1_202210_1`).
-/// The XML `<platform name="...">` attribute may carry a shorter value in
-/// some xclbin versions, so we prefer the header field.
+/// `axlf_top->m_header.m_platformVBNV` is a 64-byte null-terminated string
+/// at offset 352 and contains the full platform identifier (for example,
+/// `xilinx_u250_gen3x16_xdma_4_1_202210_1`). The XML `<platform name="...">`
+/// attribute may carry a shorter value in some xclbin versions.
 pub fn extract_platform_vbnv(xclbin: &[u8]) -> Option<String> {
     const PLATFORM_VBNV_OFFSET: usize = 352;
     const PLATFORM_VBNV_LEN: usize = 64;

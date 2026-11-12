@@ -148,8 +148,7 @@ mod tests {
     #[test]
     fn transfers_follow_what_the_kernel_does() {
         // A buffer the kernel reads has to be loaded from the host first;
-        // one it writes has to be stored back. Getting this backwards is
-        // the failure the old double inversion invited.
+        // one it writes has to be stored back.
         assert!(BufferAccess::ReadOnly.loads_from_host());
         assert!(!BufferAccess::ReadOnly.stores_to_host());
         assert!(BufferAccess::WriteOnly.stores_to_host());

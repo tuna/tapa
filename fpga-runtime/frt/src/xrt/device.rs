@@ -406,8 +406,7 @@ fn va_scalar(id: u32, host_type: &str, bytes: &[u8]) -> Result<VaScalar> {
 /// running, no thread mutates the environment under them. Concurrent
 /// first-time opens on several threads serialize on the `OnceLock`;
 /// later opens (whatever their xclbin's mode) reuse the first
-/// bootstrap's outcome, which the `XCL_EMULATION_MODE`-already-set
-/// early-out made true of the old per-open code path as well.
+/// bootstrap's outcome.
 pub(super) fn bootstrap_emulation_env_once(target: XclbinTarget, platform: &str) -> Result<()> {
     static BOOTSTRAP: std::sync::OnceLock<std::result::Result<(), String>> =
         std::sync::OnceLock::new();

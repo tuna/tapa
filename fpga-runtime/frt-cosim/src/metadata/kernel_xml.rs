@@ -329,9 +329,8 @@ fn resolve_arg(arg: RawArg, ports: &HashMap<String, PortInfo>) -> Result<ArgSpec
 }
 
 /// Scalar register width must match the kernel's declaration or XRT
-/// rejects the argument, so there is no silent default: every historical
-/// wrong-width bug surfaced as an opaque argument-setting failure at run
-/// time. `hostSize` is the generator's logical C width in
+/// rejects the argument, so there is no silent default. `hostSize` is the
+/// generator's logical C width in
 /// bytes; `size` is the `s_axi` register footprint, 4-byte-padded for
 /// sub-32-bit scalars (a `uint16_t` arg ships `hostSize="0x2"` with
 /// `size="0x4"`); `type` can be a bare typedef name. Rank accordingly.

@@ -148,8 +148,8 @@ pub(super) const SYNC_GMIO_TO_AIE: c_int = 2;
 pub(super) const SYNC_AIE_TO_GMIO: c_int = 3;
 
 /// What a graph with GMIOs needs on top of [`Api`], which XRT's embedded
-/// runtime alone provides: resolved only when such a graph opens, so other
-/// XRT installs load as before.
+/// runtime alone provides. Resolve it only when such a graph opens so other
+/// XRT installations do not need these symbols.
 pub struct GmioApi {
     /// `xrtSyncBOAIENB(device, bo, gmio, direction, size, offset)`: posts a
     /// transfer of a buffer to or from a GMIO.

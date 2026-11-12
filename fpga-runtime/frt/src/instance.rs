@@ -11,10 +11,6 @@ pub enum Simulator {
 }
 
 /// How a bitstream runs, as decided by what kind of file it is.
-///
-/// The one place that decision is made: the C++ host used to sniff the
-/// same extensions to pick which flags to forward, and the FFI layer
-/// sniffed them again to pick a constructor.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ExecutionMode {
     /// A SLASH `.vbin` on a V80 through VRT.

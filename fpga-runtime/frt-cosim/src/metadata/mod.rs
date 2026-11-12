@@ -158,8 +158,8 @@ fn load_xo_spec<R: Read + std::io::Seek>(
             rings = state.graph.rings();
             return Ok(());
         }
-        // TAPA generates `<TopName>_control_s_axi.v`; hand-crafted XO files
-        // may use the legacy `s_axi_control.v` name.
+        // TAPA generates `<TopName>_control_s_axi.v`; pre-2021 Vitis HLS
+        // and hand-crafted XO files may use `s_axi_control.v`.
         if name.ends_with("_control_s_axi.v") || name.ends_with("s_axi_control.v") {
             scalar_register_map =
                 tapa_protocol::control_register_offsets(&std::fs::read_to_string(path)?)

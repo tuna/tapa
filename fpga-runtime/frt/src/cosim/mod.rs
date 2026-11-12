@@ -1191,9 +1191,8 @@ mod tests {
 
         std::env::set_current_dir(&prev_cwd).expect("restore cwd");
 
-        // A relative work dir used to reach the generated Tcl verbatim while
-        // the simulator ran with that same directory as its CWD, so the
-        // testbench resolved as `cosim_work/cosim_work/tb_*.sv`.
+        // Absolute paths keep the generated Tcl and the simulator's CWD
+        // from each prepending the relative work directory.
         let plain = plain.expect("plain work dir");
         assert!(
             plain.path().is_absolute(),
@@ -1341,7 +1340,7 @@ mod tests {
     #[test]
     fn resume_set_stream_arg_empty_path_is_a_no_op() {
         let mut dev = make_resume_stream_test_device();
-        // Empty paths short-circuit before any stream validation, as before.
+        // Empty paths short-circuit before any stream validation.
         dev.set_stream_arg(0, "")
             .expect("empty shm path is a no-op");
         dev.set_stream_arg(1, "")
