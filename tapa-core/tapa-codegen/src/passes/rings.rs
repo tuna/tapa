@@ -19,7 +19,8 @@
 use tapa_ir::port::ArgCategory;
 use tapa_ir::{Ring, RingRegister};
 use tapa_protocol::{
-    AXI_ADDR_WIDTH, HANDSHAKE_CLK, HANDSHAKE_IDLE, HANDSHAKE_RST, HANDSHAKE_START, M_AXI_PREFIX,
+    AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK, HANDSHAKE_IDLE, HANDSHAKE_RST, HANDSHAKE_START,
+    M_AXI_PREFIX,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -111,6 +112,7 @@ pub(super) fn instantiate_rings(
             width,
             request_width,
             true,
+            AXI_ID_WIDTH,
             Expr::ident(HANDSHAKE_RST),
         ));
         let drained = drained_name(&ring.port);

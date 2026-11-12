@@ -66,7 +66,9 @@ impl ChildMmapBinding {
         }
     }
 
-    fn id_widths(&self) -> Option<(u32, u32)> {
+    /// The ID widths of a crossbar route: its slave wires', and the
+    /// child's own.
+    pub(super) fn id_widths(&self) -> Option<(u32, u32)> {
         match self {
             Self::Crossbar {
                 wire_id_width,

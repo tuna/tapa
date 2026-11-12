@@ -555,6 +555,9 @@ fn add_async_mmap_bridges(
                 data_width,
                 request_width,
                 connect_optional_axi_ports,
+                binding
+                    .id_widths()
+                    .map_or(tapa_protocol::AXI_ID_WIDTH, |(wire, _)| wire),
                 bridge_reset.clone(),
             ));
         }

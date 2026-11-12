@@ -1725,6 +1725,58 @@ fn test_generate_rtl_parent_crossbar_zero_extends_narrow_child_ids() {
     );
 }
 
+/// An `async_mmap` bridge on a crossbar slave whose ID wires are wider than
+/// its own takes their low bits, as a narrow direct child does, so only the
+/// crossbar's padding drives the upper ones.
+#[test]
+fn test_generate_rtl_parent_crossbar_slices_async_mmap_bridge_ids() {
+    let top = task("top", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "mem", "type": "Elem*", "width": 512}]);
+        t["tasks"] = serde_json::json!({
+            "copy": [{"args": {"mem": {"arg": "mem", "cat": "async_mmap"}}}],
+            "mid": [{"args": {"data": {"arg": "mem", "cat": "mmap"}}}]
+        });
+    });
+    let copy = task("copy", "lower", |t| {
+        t["ports"] = serde_json::json!([
+            {"cat": "async_mmap", "name": "mem", "type": "Elem*", "width": 512}
+        ]);
+    });
+    let mid = task("mid", "upper", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "data", "type": "Elem*", "width": 512}]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("copy", copy), ("mid", mid)],
+    );
+
+    let manifest = run_manifest(
+        prog,
+        &[],
+        &[
+            ("top", &handshake_module_src("top")),
+            ("copy", ASYNC_COPY_MODULE_SRC),
+            ("mid", &wide_axi_id_module_src("mid")),
+        ],
+    );
+
+    check(
+        rtl_file(&manifest, "top.v"),
+        &[
+            "wire [1:0] m_axi_mem_s0_ARID;",
+            ".m_axi_ARID(m_axi_mem_s0_ARID[0:0])",
+            ".m_axi_AWID(m_axi_mem_s0_AWID[0:0])",
+            ".m_axi_BID(m_axi_mem_s0_BID[0:0])",
+            ".m_axi_RID(m_axi_mem_s0_RID[0:0])",
+            "assign m_axi_mem_s0_ARID[1:1] = 1'd0;",
+        ],
+        &[".m_axi_ARID(m_axi_mem_s0_ARID)"],
+    );
+}
+
 #[test]
 #[allow(
     clippy::too_many_lines,

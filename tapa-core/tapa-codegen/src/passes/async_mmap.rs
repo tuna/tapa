@@ -7,8 +7,8 @@
 use std::collections::BTreeSet;
 
 use tapa_protocol::{
-    m_axi_channel, m_axi_compact_suffixes, AXI_ADDR_WIDTH, HANDSHAKE_CLK, ISTREAM_SUFFIXES,
-    M_AXI_PREFIX, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
+    m_axi_channel, m_axi_compact_suffixes, AxiWidth, AXI_ADDR_WIDTH, AXI_ID_WIDTH, HANDSHAKE_CLK,
+    ISTREAM_SUFFIXES, M_AXI_PREFIX, OSTREAM_SUFFIXES, STREAM_DATA_SUFFIXES,
 };
 use tapa_rtl::builder::{Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
@@ -275,6 +275,7 @@ pub fn build_bridge_instance(
     data_width: u32,
     request_width: u32,
     connect_optional_axi_ports: bool,
+    wire_id_width: u32,
     reset: Expr,
 ) -> ModuleInstance {
     let bytes = data_width / 8;
@@ -328,10 +329,17 @@ pub fn build_bridge_instance(
                 let suffix = port.suffix;
                 let connect_optional = connect_optional_axi_ports
                     && (!channel_enabled || active_m_axi_prefix == inactive_m_axi_prefix);
-                let connection = if port.is_compact || connect_optional {
-                    Expr::ident(format!("{channel_prefix}{suffix}"))
-                } else {
+                let wire = Expr::ident(format!("{channel_prefix}{suffix}"));
+                let connection = if !(port.is_compact || connect_optional) {
                     Expr::lit("")
+                } else if matches!(port.width_rule(), AxiWidth::Id) && wire_id_width > AXI_ID_WIDTH
+                {
+                    // The bridge's IDs are `AXI_ID_WIDTH` bits: a crossbar
+                    // slave's wider ID wires take them in their low bits,
+                    // and the crossbar's ID padding drives the rest.
+                    Expr::range(wire, Expr::int(u64::from(AXI_ID_WIDTH - 1)), Expr::int(0))
+                } else {
+                    wire
                 };
                 ports.push(PortArg::new(format!("m_axi{suffix}"), connection));
             }
@@ -556,6 +564,7 @@ mod tests {
             512,
             width,
             true,
+            AXI_ID_WIDTH,
             Expr::ident("bridge_reset"),
         );
         assert!(inst.to_string().contains("ReqLenWidth(32)"), "got:\n{inst}");
@@ -597,6 +606,7 @@ mod tests {
             512,
             AXI_ADDR_WIDTH,
             true,
+            AXI_ID_WIDTH,
             Expr::ident("bridge_reset"),
         );
         let text = inst.to_string();
