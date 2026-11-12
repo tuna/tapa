@@ -15,7 +15,7 @@ class FileFuncCollector : public clang::RecursiveASTVisitor<FileFuncCollector> {
   std::vector<const clang::FunctionDecl*> funcs;
 
   bool VisitFunctionDecl(clang::FunctionDecl* func) {
-    if (func->isGlobal() &&
+    if (func->isGlobal() && !llvm::isa<clang::CXXMethodDecl>(func) &&
         IsInSourceFiles(ctx_, func->getLocation(), files_) && func->hasBody()) {
       funcs.push_back(func);
     }
@@ -27,11 +27,12 @@ class FileFuncCollector : public clang::RecursiveASTVisitor<FileFuncCollector> {
   const std::set<clang::FileID>& files_;
 };
 
-// Definitions `isGlobal()` excludes: `static` functions, functions in an
-// anonymous namespace, and non-static methods. They are helpers like any
-// other and need the inline policy, but they are collected separately
-// because task discovery indexes by bare name — a method sharing a name
-// with a task would read as a redefinition.
+// Definitions that are no free function with external linkage: `static`
+// functions, functions in an anonymous namespace, and methods, static ones
+// included (`isGlobal()` holds for those). They are helpers like any other
+// and need the inline policy, but they are collected separately because
+// task discovery indexes by bare name — a method sharing a name with a
+// task would read as a redefinition.
 class LocalFuncCollector
     : public clang::RecursiveASTVisitor<LocalFuncCollector> {
  public:
@@ -41,7 +42,8 @@ class LocalFuncCollector
   std::vector<const clang::FunctionDecl*> funcs;
 
   bool VisitFunctionDecl(clang::FunctionDecl* func) {
-    if (!func->isGlobal() && func->isThisDeclarationADefinition() &&
+    if ((!func->isGlobal() || llvm::isa<clang::CXXMethodDecl>(func)) &&
+        func->isThisDeclarationADefinition() &&
         IsInSourceFiles(ctx_, func->getLocation(), files_) &&
         // An implicit or compiler-supplied body has no source to rewrite.
         !func->isImplicit() && !func->isDefaulted() && !func->isDeleted()) {

@@ -330,7 +330,27 @@ TEST(Merge, InternalLinkageInvokedTaskIsAnError) {
   EXPECT_FALSE(m.ok);
   const std::string error = OneError(m.builder);
   EXPECT_TRUE(Contains(error, "'SLeaf' invoked by 'Top'"));
-  EXPECT_TRUE(Contains(error, "internal linkage"));
+  EXPECT_TRUE(Contains(error, "not an externally linked free function"));
+}
+
+TEST(Merge, StaticMemberFunctionTaskIsAnError) {
+  // isGlobal() holds for a static member function, which used to pass as a
+  // task although tasks must be free functions.
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{
+          "/proj/a.cpp",
+          "struct Kernels {\n"
+          "  static void Leaf(tapa::istream<float>& in,\n"
+          "                   tapa::ostream<float>& out) {}\n"
+          "};\n"
+          "void Top(tapa::istream<float>& x, tapa::ostream<float>& y) {\n"
+          "  tapa::task().invoke(Kernels::Leaf, x, y);\n"
+          "}\n"}},
+      "Top", TempRoot("merge", "static_member"), {"-std=c++17"});
+  EXPECT_FALSE(m.ok);
+  const std::string error = OneError(m.builder);
+  EXPECT_TRUE(Contains(error, "'Leaf' invoked by 'Top'")) << error;
+  EXPECT_TRUE(Contains(error, "a member function")) << error;
 }
 
 // ── Rule 5: the top ────────────────────────────────────────────────────

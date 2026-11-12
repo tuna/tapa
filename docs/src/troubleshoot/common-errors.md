@@ -167,9 +167,9 @@ void Top(tapa::mmaps<int, 4> mem) {
 
 ## Task with internal linkage
 
-**Symptom:** `tapacc` reports that a task `has internal linkage (static or anonymous namespace); tasks must have external linkage`, or that a function `builds a tapa::task() but is not an externally linked global function (static, anonymous namespace, or a member function), so it can never be a task`.
+**Symptom:** `tapacc` reports that a task invoked by another `is not an externally linked free function (static, anonymous namespace, or a member function); tasks must be`, or that a function `builds a tapa::task() but is not an externally linked global function (static, anonymous namespace, or a member function), so it can never be a task`.
 
-**Cause:** A task is an RTL module instantiated by its parent, referenced across translation units. A `static` function, a function in an anonymous namespace, or a member function has internal or class linkage and can never fill that role.
+**Cause:** A task is an RTL module instantiated by its parent, referenced across translation units. A `static` function, a function in an anonymous namespace, or a member function (a `static` one included) has internal or class linkage and can never fill that role.
 
 **Fix:** Give the task external linkage: move it out of the anonymous namespace, drop the `static`, or make it a free function.
 

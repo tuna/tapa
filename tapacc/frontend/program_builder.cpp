@@ -336,7 +336,8 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
           << PresumedLocString(ctx, TargetAttr(def)->getLocation());
     }
   }
-  sighting.internal = !def->isGlobal();
+  // isGlobal() holds for a static member function, which is no task either.
+  sighting.internal = !def->isGlobal() || llvm::isa<clang::CXXMethodDecl>(def);
   sighting.level = LevelOf(def);
   sighting.target = ResolveTarget(def, default_target_);
   sighting.loc = PresumedLocString(ctx, def->getLocation());
@@ -874,8 +875,8 @@ bool ProgramBuilder::MergeAndDiscover() {
       if (callee.internal) {
         Fail("task '" + callee.name + "' invoked by '" + edge.caller_name +
              "' at " + edge.loc +
-             " has internal linkage (static or "
-             "anonymous namespace); tasks must have external linkage");
+             " is not an externally linked free function (static, "
+             "anonymous namespace, or a member function); tasks must be");
         return false;
       }
       discover(callee,
