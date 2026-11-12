@@ -190,11 +190,11 @@ data flow stops.
 
 ## Stream depth tuning reference
 
-Start with the default depth of 2 to stress the handshake protocol. Increase
-depth only to accommodate a measured burst or rate mismatch, and check the
-resulting resource report. A larger FIFO provides storage; it does not prove
-that the protocol is correct or resolve a structural deadlock. Re-run with a
-small depth after fixes to expose lingering count and backpressure bugs.
+Start with the default depth of 2 to stress the handshake protocol, increase
+it only for a measured burst or rate mismatch (see the stream-depth item in
+[Performance Tuning](../howto/performance-tuning.md#prioritized-checklist)),
+and re-run with a small depth after fixes to expose lingering count and
+backpressure bugs.
 
 ---
 

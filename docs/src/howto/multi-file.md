@@ -118,16 +118,9 @@ per-file `-c` syntax.
 
 ## Common errors
 
-**Task has no definition in any scanned translation unit.** The invocation has
-a declaration, but the definition's source was not passed with `-f`, or its
-signature does not match the declaration.
-
-**Task is defined differently or builds a different task graph.** A shared
-definition differs between translation units. Make the signature and invoked
-children identical; move intentional variants into separate task functions.
-
-**Header not found.** Add the required include directory with `-c -I<dir>` for
-kernel analysis and with the corresponding include flag for the host build.
-
-See [Common Errors](../troubleshoot/common-errors.md) for the full diagnostics
-and fixes.
+Multi-file builds most often fail with *task has no definition in any
+scanned translation unit* (a defining source was not passed with `-f`) or
+*task builds a different task graph in two translation units* (a shared
+definition varies between them); a missing `-I` flag shows up as *header not
+found*. See [Common Errors](../troubleshoot/common-errors.md) for the full
+diagnostics and fixes.

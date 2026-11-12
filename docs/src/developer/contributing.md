@@ -27,20 +27,11 @@ TAPA uses GitHub Actions for continuous integration:
 ### Documentation
 
 - Update the documentation in the `docs/src/` directory for any new features
-  or changes.
-- Use Markdown format for documentation files.
-- Preview your changes locally with a live-reloading server. Bazel fetches
-  mdBook for you, so nothing needs to be installed first:
-
-  ```bash
-  bazel run //docs:serve
-  ```
-
-- To produce the static HTML site instead (output: `bazel-bin/docs/book.tar.gz`):
-
-  ```bash
-  bazel build //docs:build
-  ```
+  or changes, in the same commit as the code (see `AGENTS.md`).
+- To preview changes or build the HTML site, use the mdBook targets in
+  [Building from Source — Build the
+  Documentation](build.md#build-the-documentation); Bazel fetches mdBook, so
+  nothing needs to be installed first.
 
 ### Testing
 
