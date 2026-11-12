@@ -19,14 +19,16 @@ pub enum ConnectivityParseError {
     MalformedEntry { line: usize, text: String },
 
     #[error(
-        "line {line}: malformed `sp` binding `{value}`; expected `kernel.port:HBM[n]` or `kernel.port:DDR[n]`"
+        "line {line}: malformed `sp` binding `{value}`; expected `kernel.port:HBM[n]`, `kernel.port:DDR[n]`, `kernel.port:DDR` or `kernel.port:LPDDR`"
     )]
     MalformedBinding { line: usize, value: String },
 
     #[error("line {line}: malformed memory endpoint `{endpoint}`; expected `kernel.port`")]
     MalformedEndpoint { line: usize, endpoint: String },
 
-    #[error("line {line}: unknown memory target `{target}`; expected `HBM[n]` or `DDR[n]`")]
+    #[error(
+        "line {line}: unknown memory target `{target}`; expected `HBM[n]`, `DDR[n]`, `DDR` or `LPDDR`"
+    )]
     UnknownTarget { line: usize, target: String },
 
     #[error(
@@ -319,11 +321,13 @@ fn slash_bindings(
     }
     let bindings = parse_vitis_config(&normalized).map_err(|error| error.to_string())?;
     for binding in bindings.iter() {
-        let limit = match binding.bank.kind {
-            MemoryKind::Hbm => platform.hbm_ports,
-            MemoryKind::Ddr => platform.ddr_ports,
+        // The normalized entries above are all indexed `HBM` or `DDR`.
+        let available = match (binding.bank.kind, binding.bank.index) {
+            (MemoryKind::Hbm, Some(index)) => index < platform.hbm_ports,
+            (MemoryKind::Ddr, Some(index)) => index < platform.ddr_ports,
+            _ => false,
         };
-        if binding.bank.index >= limit {
+        if !available {
             return Err(format!(
                 "{} is not available on {}",
                 binding.bank, platform.name
@@ -611,7 +615,7 @@ mod tests {
             bindings.get("VecAdd", "a"),
             Some(MemoryBank {
                 kind: MemoryKind::Hbm,
-                index: 0,
+                index: Some(0),
             })
         );
     }
@@ -667,7 +671,7 @@ mod tests {
             bindings.get("kernel_1", "input"),
             Some(MemoryBank {
                 kind: MemoryKind::Hbm,
-                index: 3,
+                index: Some(3),
             }),
             "HBM binding must be parsed",
         );
@@ -675,7 +679,7 @@ mod tests {
             bindings.get("kernel_1", "output"),
             Some(MemoryBank {
                 kind: MemoryKind::Ddr,
-                index: 1,
+                index: Some(1),
             }),
             "DDR binding must be parsed",
         );
@@ -692,6 +696,21 @@ mod tests {
             "HBM[31]",
             "bank display must match configuration syntax",
         );
+    }
+
+    /// Versal base platforms name their memories without an index:
+    /// `platforminfo` on `xilinx_vck190_base_202410_1` lists the sp tags
+    /// `DDR` and `LPDDR` only, and v++ rejects `DDR[0]` there.
+    #[test]
+    fn parses_unindexed_versal_memory_tags() {
+        let config = "[connectivity]\nsp=VecAdd.a:DDR\nsp=VecAdd.b:LPDDR\n";
+        let bindings = parse_vitis_config(config).expect("parse Versal tags");
+        for (port, kind) in [("a", MemoryKind::Ddr), ("b", MemoryKind::Lpddr)] {
+            assert_eq!(
+                bindings.get("VecAdd", port),
+                Some(MemoryBank { kind, index: None }),
+            );
+        }
     }
 
     #[test]
@@ -718,7 +737,7 @@ mod tests {
             bindings.get("Sextans", "edge_list_ch[0]"),
             Some(MemoryBank {
                 kind: MemoryKind::Hbm,
-                index: 1,
+                index: Some(1),
             }),
             "bracketed port name must be retained verbatim",
         );
@@ -726,7 +745,7 @@ mod tests {
             bindings.get("Sextans", "edge_list_ch[7]"),
             Some(MemoryBank {
                 kind: MemoryKind::Hbm,
-                index: 8,
+                index: Some(8),
             }),
         );
     }
@@ -758,11 +777,11 @@ mod tests {
                 first_line: 2,
                 first_bank: MemoryBank {
                     kind: MemoryKind::Hbm,
-                    index: 0,
+                    index: Some(0),
                 },
                 second_bank: MemoryBank {
                     kind: MemoryKind::Ddr,
-                    index: 1,
+                    index: Some(1),
                 },
             },
             "conflict diagnostics must retain source locations and banks",

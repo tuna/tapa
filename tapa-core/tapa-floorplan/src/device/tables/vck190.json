@@ -1,6 +1,10 @@
 {
     "cols": 2,
     "key": "vck190",
+    "noc_memory": [
+        "DDR",
+        "LPDDR"
+    ],
     "part_num": "xcvc1902-vsva2197-2MP-e-S",
     "platform_name": "xilinx_vck190_base_202410_1",
     "rows": 2,
@@ -19,8 +23,6 @@
                 "CLOCKREGION_X0Y1:CLOCKREGION_X4Y2"
             ],
             "tags": [
-                "DDR[0]",
-                "DDR[1]",
                 "S_AXI_CONTROL",
                 "CLK_RST"
             ],
@@ -55,10 +57,6 @@
             "centroid_y": 0,
             "pblock_ranges": [
                 "CLOCKREGION_X5Y1:CLOCKREGION_X9Y2"
-            ],
-            "tags": [
-                "DDR[2]",
-                "DDR[3]"
             ],
             "x": 1,
             "y": 0

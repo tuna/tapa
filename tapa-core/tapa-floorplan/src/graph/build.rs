@@ -227,7 +227,9 @@ impl FloorGraphBuilder {
         Ok(streams)
     }
 
-    /// Expand exact memory interfaces into bank terminals and directed AXI nets.
+    /// Expand exact memory interfaces into bank terminals and directed AXI
+    /// nets. An interface bound to a bank in `noc` enters the hard NoC beside
+    /// its task, so it gets neither: nothing to anchor, no fabric crossing.
     #[allow(
         clippy::too_many_lines,
         reason = "memory graph construction validates and expands every interface in one pass"
@@ -237,6 +239,7 @@ impl FloorGraphBuilder {
         flat: &TaskGraph,
         top: &tapa_ir::Task,
         memory: &[MemoryInterface],
+        noc: &std::collections::BTreeSet<MemoryBank>,
     ) -> Result<Vec<AxiNet>, GraphError> {
         let expected = expected_memory_interfaces(flat, top, &self.task_endpoints)?;
         let mut provided = BTreeMap::<AxiEndpoint, &MemoryInterface>::new();
@@ -299,6 +302,9 @@ impl FloorGraphBuilder {
         let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
         for (endpoint, expected_endpoint) in &expected {
             let interface = provided[endpoint];
+            if noc.contains(&interface.bank) {
+                continue;
+            }
             let task_vertex = expected_endpoint.task_vertex;
             let enabled_channels = interface
                 .channel_widths
@@ -609,17 +615,14 @@ fn control_launch_width(
 }
 
 fn bank_terminal_name(bank: MemoryBank) -> String {
-    format!(
-        "__tapa_bank_{}_{index}",
-        bank_kind_name(bank),
-        index = bank.index
-    )
-}
-
-fn bank_kind_name(bank: MemoryBank) -> &'static str {
-    match bank.kind {
+    let kind = match bank.kind {
         tapa_ir::MemoryKind::Hbm => "hbm",
         tapa_ir::MemoryKind::Ddr => "ddr",
+        tapa_ir::MemoryKind::Lpddr => "lpddr",
+    };
+    match bank.index {
+        Some(index) => format!("__tapa_bank_{kind}_{index}"),
+        None => format!("__tapa_bank_{kind}"),
     }
 }
 

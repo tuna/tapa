@@ -802,7 +802,7 @@ mod tests {
                         },
                         bank: MemoryBank {
                             kind: MemoryKind::Hbm,
-                            index: 0,
+                            index: Some(0),
                         },
                         channel: AxiChannel::ReadData,
                     },

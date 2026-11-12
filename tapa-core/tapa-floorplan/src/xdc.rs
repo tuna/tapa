@@ -1384,7 +1384,7 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
                     endpoint,
                     bank: MemoryBank {
                         kind: MemoryKind::Hbm,
-                        index: 0,
+                        index: Some(0),
                     },
                     channel: AxiChannel::ReadData,
                 },

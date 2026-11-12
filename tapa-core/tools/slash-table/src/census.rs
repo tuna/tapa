@@ -252,6 +252,7 @@ impl Census {
             placement: PlacementStyle::SlrAssignment,
             planned_resources: PlannedResources::default(),
             usage_ceiling: None,
+            noc_memory: Vec::new(),
             user_pblock_name: Some(pblock.to_owned()),
             slots,
             anchors,

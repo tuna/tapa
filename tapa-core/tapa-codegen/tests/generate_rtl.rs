@@ -1226,7 +1226,7 @@ fn direct_axi_routes() -> Vec<tapa_ir::PipelineRoute> {
     let endpoint = direct_axi_endpoint();
     let bank = MemoryBank {
         kind: MemoryKind::Hbm,
-        index: 0,
+        index: Some(0),
     };
     [
         AxiChannel::ReadAddress,
@@ -2074,7 +2074,7 @@ fn async_mmap_state(floorplanned: bool) -> TopologyWithRtl {
         };
         let bank = MemoryBank {
             kind: MemoryKind::Hbm,
-            index: 0,
+            index: Some(0),
         };
         let mut routes = [AxiChannel::ReadAddress, AxiChannel::ReadData]
             .into_iter()

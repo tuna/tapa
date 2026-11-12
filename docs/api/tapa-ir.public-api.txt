@@ -917,6 +917,7 @@ pub mod tapa_ir::connectivity
 pub enum tapa_ir::connectivity::MemoryKind
 pub tapa_ir::connectivity::MemoryKind::Ddr
 pub tapa_ir::connectivity::MemoryKind::Hbm
+pub tapa_ir::connectivity::MemoryKind::Lpddr
 impl core::clone::Clone for tapa_ir::connectivity::MemoryKind
 pub fn tapa_ir::connectivity::MemoryKind::clone(&self) -> tapa_ir::connectivity::MemoryKind
 impl core::cmp::Eq for tapa_ir::connectivity::MemoryKind
@@ -1023,7 +1024,7 @@ pub unsafe fn tapa_ir::connectivity::DuplicateMemoryEndpoint::clone_to_uninit(&s
 impl<T> core::convert::From<T> for tapa_ir::connectivity::DuplicateMemoryEndpoint
 pub fn tapa_ir::connectivity::DuplicateMemoryEndpoint::from(T) -> T
 pub struct tapa_ir::connectivity::MemoryBank
-pub tapa_ir::connectivity::MemoryBank::index: u32
+pub tapa_ir::connectivity::MemoryBank::index: core::option::Option<u32>
 pub tapa_ir::connectivity::MemoryBank::kind: tapa_ir::connectivity::MemoryKind
 impl core::clone::Clone for tapa_ir::connectivity::MemoryBank
 pub fn tapa_ir::connectivity::MemoryBank::clone(&self) -> tapa_ir::connectivity::MemoryBank
@@ -3676,6 +3677,7 @@ impl<T> serde_core::de::DeserializeOwned for tapa_ir::floorplan::ControlChannel 
 pub enum tapa_ir::MemoryKind
 pub tapa_ir::MemoryKind::Ddr
 pub tapa_ir::MemoryKind::Hbm
+pub tapa_ir::MemoryKind::Lpddr
 impl core::clone::Clone for tapa_ir::connectivity::MemoryKind
 pub fn tapa_ir::connectivity::MemoryKind::clone(&self) -> tapa_ir::connectivity::MemoryKind
 impl core::cmp::Eq for tapa_ir::connectivity::MemoryKind
@@ -5593,7 +5595,7 @@ impl<T> core::convert::From<T> for tapa_ir::interconnect::InterconnectDefinition
 pub fn tapa_ir::interconnect::InterconnectDefinition::from(T) -> T
 impl<T> serde_core::de::DeserializeOwned for tapa_ir::interconnect::InterconnectDefinition where T: for<'de> serde_core::de::Deserialize<'de>
 pub struct tapa_ir::MemoryBank
-pub tapa_ir::MemoryBank::index: u32
+pub tapa_ir::MemoryBank::index: core::option::Option<u32>
 pub tapa_ir::MemoryBank::kind: tapa_ir::connectivity::MemoryKind
 impl core::clone::Clone for tapa_ir::connectivity::MemoryBank
 pub fn tapa_ir::connectivity::MemoryBank::clone(&self) -> tapa_ir::connectivity::MemoryBank

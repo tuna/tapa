@@ -705,7 +705,7 @@ mod tests {
                 },
                 bank: tapa_ir::MemoryBank {
                     kind: tapa_ir::MemoryKind::Hbm,
-                    index: 0,
+                    index: Some(0),
                 },
                 channel_widths: tapa_ir::AxiChannelWidths {
                     read_address: 80,

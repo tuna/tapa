@@ -198,6 +198,7 @@ mod tests {
             placement: PlacementStyle::default(),
             planned_resources: PlannedResources::default(),
             usage_ceiling: None,
+            noc_memory: Vec::new(),
             user_pblock_name: None,
             anchors: Vec::new(),
             slots,

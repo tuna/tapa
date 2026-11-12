@@ -470,7 +470,7 @@ mod tests {
     fn bank(index: u32) -> MemoryBank {
         MemoryBank {
             kind: MemoryKind::Hbm,
-            index,
+            index: Some(index),
         }
     }
 

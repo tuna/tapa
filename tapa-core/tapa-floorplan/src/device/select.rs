@@ -665,25 +665,27 @@ mod tests {
         }
     }
 
-    /// VC1902's four NoC memory controllers sit in the bottom row at
-    /// clock regions X0Y0, X3Y0, X6Y0 and X10Y0. The table's memory-facing
-    /// row is y=0, whose left slot spans CR columns X0-X4 and whose right
-    /// slot spans X5-X9, so the first two controllers face the left slot.
+    /// `platforminfo` on `xilinx_vck190_base_202410_1` lists the sp tags
+    /// `DDR` and `LPDDR` only (v++ rejects `DDR[0]`). Each is served by 28
+    /// NoC slave ports, one per PL `NMU512` site, and VC1902 has 6 to 8 of
+    /// those in every slot of this grid (clock-region columns 1, 3, 5, 7,
+    /// rows 1-4); the platform's NoC solution places none of them, leaving the
+    /// NoC compiler to pick each kernel port's NMU at link. So the memories
+    /// anchor nowhere, while control still enters at the CIPS side.
     #[test]
-    fn vck190_external_interfaces_have_exact_unique_slots() {
+    fn vck190_reaches_its_memories_through_the_noc() {
         let device = select_device("vck190").expect("vck190 resolves");
         assert_eq!(
             device.platform_name.as_deref(),
             Some("xilinx_vck190_base_202410_1")
         );
-        for (tag, expected) in [
-            ("DDR[0]", (0, 0)),
-            ("DDR[1]", (0, 0)),
-            ("DDR[2]", (1, 0)),
-            ("DDR[3]", (1, 0)),
-            ("CLK_RST", (0, 0)),
-            ("S_AXI_CONTROL", (0, 0)),
-        ] {
+        for tag in ["DDR", "LPDDR"] {
+            let bank = tag.parse().expect("memory tag");
+            assert!(device.reaches_through_noc(bank), "{tag}");
+            assert_eq!(device.slots_with_tag(tag).count(), 0, "{tag}");
+        }
+        assert!(!device.reaches_through_noc("DDR[0]".parse().expect("bank")));
+        for (tag, expected) in [("CLK_RST", (0, 0)), ("S_AXI_CONTROL", (0, 0))] {
             let slots = device.slots_with_tag(tag).collect::<Vec<_>>();
             assert_eq!(slots.len(), 1, "{tag} must identify exactly one slot");
             assert_eq!((slots[0].x, slots[0].y), expected, "{tag}");

@@ -250,6 +250,12 @@ pub struct Device {
     /// Optional physical terminal locations that refine the centroid wire cost.
     #[serde(default)]
     pub anchors: Vec<DeviceAnchor>,
+    /// Memory `sp` tags the platform reaches through the hard NoC from every
+    /// slot, such as a Versal base platform's `DDR` and `LPDDR`. A port bound
+    /// to one enters the NoC beside its task wherever the task lands, so it
+    /// anchors nothing and crosses no slot boundary in fabric.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub noc_memory: Vec<String>,
 }
 
 /// A semantic error in a parsed device table.
@@ -337,6 +343,12 @@ pub enum DeviceValidationError {
         /// The tag anchoring logic to an empty slot.
         tag: String,
     },
+    /// A NoC memory entry must be a memory tag of the table's own platform
+    /// that no slot also anchors.
+    #[error(
+        "NoC memory `{0}` must be a memory tag, appear on no slot, and come with a platform_name"
+    )]
+    InvalidNocMemory(String),
     /// A physical anchor does not refer to a unique tag on this device.
     #[error("physical anchor `{tag}` must match exactly one slot tag (found {matches})")]
     InvalidAnchorTag {
@@ -389,6 +401,15 @@ impl Device {
                         });
                     }
                 }
+            }
+        }
+
+        for tag in &self.noc_memory {
+            if tag.parse::<tapa_ir::MemoryBank>().is_err()
+                || self.platform_name.is_none()
+                || self.slots_with_tag(tag).next().is_some()
+            {
+                return Err(DeviceValidationError::InvalidNocMemory(tag.clone()));
             }
         }
 
@@ -543,6 +564,13 @@ impl Device {
         self.slots
             .iter()
             .filter(move |slot| slot.tags.iter().any(|candidate| candidate == tag))
+    }
+
+    /// Whether `bank` is one of the memories the platform reaches through
+    /// the hard NoC from every slot.
+    #[must_use]
+    pub fn reaches_through_noc(&self, bank: tapa_ir::MemoryBank) -> bool {
+        self.noc_memory.contains(&bank.to_string())
     }
 
     /// Physical anchor location in quarter units of the centroid metric.
@@ -718,6 +746,7 @@ mod tests {
             placement: PlacementStyle::default(),
             planned_resources: PlannedResources::default(),
             usage_ceiling: None,
+            noc_memory: Vec::new(),
             user_pblock_name: None,
             anchors: Vec::new(),
             slots: vec![

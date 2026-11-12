@@ -318,9 +318,16 @@ fn prepare_plan(
 ) -> Result<(crate::device::model::Device, FloorGraph), PlanError> {
     let device = device_for_state(state)?;
     validate_memory_platform(state, &device, !inputs.memory.is_empty())?;
+    // A bank the platform reaches through the NoC from every slot anchors
+    // nothing; any other bank anchors to the one slot that carries it.
+    let mut noc_banks = std::collections::BTreeSet::new();
     let mut validated_banks = std::collections::BTreeSet::new();
     for bank in inputs.memory.iter().map(|interface| interface.bank) {
         if !validated_banks.insert(bank) {
+            continue;
+        }
+        if device.reaches_through_noc(bank) {
+            noc_banks.insert(bank);
             continue;
         }
         let matches = device.slots_with_tag(&bank.to_string()).count();
@@ -349,6 +356,7 @@ fn prepare_plan(
     let graph = FloorGraph::build_with_projection(
         projection,
         &inputs.memory,
+        &noc_banks,
         active_control,
         control_anchor,
     )?;
@@ -829,7 +837,7 @@ mod tests {
             },
             bank: MemoryBank {
                 kind: tapa_ir::MemoryKind::Ddr,
-                index: 0,
+                index: Some(0),
             },
             channel_widths: tapa_ir::AxiChannelWidths {
                 read_address: 80,
@@ -841,10 +849,10 @@ mod tests {
             bridge_instance: None,
         };
 
-        for part in [
-            "xcu250-figd2104-2L-e",
-            "xcu280-fsvh2892-2L-e",
-            "xcvc1902-vsva2197-2MP-e-S",
+        for (part, modeled) in [
+            ("xcu250-figd2104-2L-e", "DDR[0]"),
+            ("xcu280-fsvh2892-2L-e", "DDR[0]"),
+            ("xcvc1902-vsva2197-2MP-e-S", "DDR"),
         ] {
             let mut state = WorkState::new(graph.clone());
             state.flow.part_num = Some(part.to_string());
@@ -857,7 +865,7 @@ mod tests {
             // An index no device models — a typo in the connectivity file —
             // must be caught before CBC is handed an unsolvable problem.
             let mut unmodeled = interface.clone();
-            unmodeled.bank.index = 99;
+            unmodeled.bank.index = Some(99);
             let error = plan_with_inputs(
                 &state,
                 &PlanOptions::default(),
@@ -873,13 +881,15 @@ mod tests {
                 "{part}: expected a bank-tag error, got {error:?}"
             );
 
-            // Every table models `DDR[0]`, so the same call must get past the
-            // bank check (it still fails later on this stub graph).
+            // A bank the table models must get past the bank check (the call
+            // still fails later on this stub graph).
+            let mut modeled_interface = interface.clone();
+            modeled_interface.bank = modeled.parse().expect("memory tag");
             let error = plan_with_inputs(
                 &state,
                 &PlanOptions::default(),
                 &PlanInputs {
-                    memory: vec![interface.clone()],
+                    memory: vec![modeled_interface],
                     control: None,
                     projection: None,
                 },
@@ -887,9 +897,93 @@ mod tests {
             .expect_err("the stub graph cannot be planned");
             assert!(
                 !matches!(error, PlanError::BankTag { .. }),
-                "{part}: DDR[0] must resolve to a slot, got {error:?}"
+                "{part}: {modeled} must resolve, got {error:?}"
             );
         }
+    }
+
+    /// VCK190's `DDR` and `LPDDR` enter the NoC beside each task, so a plan
+    /// gives their ports no terminal and no fabric route: the readers place
+    /// for their own area alone, and nothing is pipelined.
+    #[test]
+    fn vck190_noc_memory_needs_no_terminal_or_route() {
+        let reader = |name: &str| {
+            serde_json::json!({
+                "readable_name": name, "srcs": [format!("{name}.cpp")], "include_dirs": [],
+                "defines": [], "level": "lower", "synth": "hls",
+                "ports": [{"cat": "mmap", "name": "data", "type": "int*", "width": 32}],
+                "self_area": {"lut": 150_000, "ff": 150_000}
+            })
+        };
+        let graph = tapa_ir::TaskGraph::from_json(
+            &serde_json::json!({
+                "schema_version": 4, "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [],
+                        "defines": [], "level": "upper", "synth": "hls",
+                        "ports": [
+                            {"cat": "mmap", "name": "a", "type": "int*", "width": 32},
+                            {"cat": "mmap", "name": "b", "type": "int*", "width": 32}
+                        ],
+                        "tasks": {
+                            "A": [{"args": {"data": {"arg": "a", "cat": "mmap"}}, "step": 0}],
+                            "B": [{"args": {"data": {"arg": "b", "cat": "mmap"}}, "step": 0}]
+                        },
+                        "fifos": {}
+                    },
+                    "A": reader("A"),
+                    "B": reader("B")
+                }
+            })
+            .to_string(),
+        )
+        .expect("parse");
+        let interface = |instance: &str, top_port: &str, tag: &str| MemoryInterface {
+            endpoint: tapa_ir::AxiEndpoint {
+                instance: instance.to_string(),
+                port: "data".to_string(),
+                top_port: top_port.to_string(),
+            },
+            bank: tag.parse().expect("memory tag"),
+            channel_widths: tapa_ir::AxiChannelWidths {
+                read_address: 80,
+                read_data: 38,
+                write_address: 80,
+                write_data: 39,
+                write_response: 5,
+            },
+            bridge_instance: None,
+        };
+        let mut state = WorkState::new(graph);
+        state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
+        state.flow.platform = Some("xilinx_vck190_base_202410_1".to_string());
+
+        let result = match plan_with_inputs(
+            &state,
+            &PlanOptions::default(),
+            &PlanInputs {
+                memory: vec![interface("A_0", "a", "DDR"), interface("B_0", "b", "LPDDR")],
+                control: None,
+                projection: None,
+            },
+        ) {
+            Ok(result) => result,
+            Err(PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))) => {
+                crate::solver::missing_cbc()
+            }
+            Err(other) => panic!("plan failed: {other}"),
+        };
+        assert!(result.routes.is_empty(), "{:?}", result.routes);
+        assert_eq!(
+            result.regions.keys().collect::<Vec<_>>(),
+            ["A_0", "B_0"],
+            "no memory terminal is published"
+        );
+        assert_ne!(
+            result.regions["A_0"], result.regions["B_0"],
+            "the readers do not fit one slot"
+        );
     }
 
     #[test]

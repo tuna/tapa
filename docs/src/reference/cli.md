@@ -204,7 +204,7 @@ Floorplanning needs a device table describing the slot grid and where each memor
 | Alveo U280 | `xcu280-fsvh2892-2L-e` | `HBM[0]`–`HBM[31]`, `DDR[0]`, `DDR[1]` | `xilinx_u280_gen3x16_xdma_1_202211_1` |
 | Alveo V80 (SLASH service shell) | `xcv80-lsva4737-2MHP-e-S` | `HBM[0]`–`HBM[63]`, `DDR[0]`–`DDR[3]` | `slash_v80_service` |
 | Alveo V80 (SLASH compute shell) | `xcv80-lsva4737-2MHP-e-S` | `HBM[0]`–`HBM[63]`, `DDR[0]`–`DDR[11]` | `slash_v80_compute` |
-| VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR[0]`–`DDR[3]`, by NoC memory controller | `xilinx_vck190_base_202410_1` |
+| VCK190 | `xcvc1902-vsva2197-2MP-e-S` | `DDR`, `LPDDR`, through the NoC | `xilinx_vck190_base_202410_1` |
 
 Floorplanning also accepts other part strings in these same device families;
 an unknown family is rejected with `no floorplan device table matches ...`.
@@ -214,6 +214,8 @@ HLS; only floorplanning has this restricted device table.
 Following TAPA's coarse-grained floorplan model (TRETS 2023, Section 4.1), each V80 table uses one slot per physical SLR in a 1-column by 3-row grid. Its `area` values represent the capacity exposed to the SLASH reconfigurable module after applying `pblock_slash`; the service shell exposes 96 URAM sites in SLR1 and 496 in SLR2. All five resource classes constrain placement; for example, a 512-URAM design cannot assign every URAM hierarchy to SLR2. SLR0 has no TAPA RM placement region in the service shell. HBM ports are anchored to SLR2. DDR and control ports are anchored to the SLR of their RM-side NoC site: in the service shell, `DDR[1]` is in SLR1 while `DDR[0]`, `DDR[2]`, `DDR[3]` and the control port are in SLR2; in the compute shell, `DDR[3]`–`DDR[11]` are in SLR1 while `DDR[0]`–`DDR[2]` and the control port are in SLR2. The V80 XDC assigns task and pipeline hierarchy roots with `USER_SLR_ASSIGNMENT`, letting their descendants inherit placement without duplicate RAM accounting. It retains the SLR/NOC and logic/DSP ranges, omits explicit BRAM/URAM site ranges, and clips generated slot ranges to `pblock_slash`. The service shell's two SLR boundaries each have an 18,870-SLL capacity in the routed shell report.
 
 The 64 `HBM[n]` tags name SLASH AXI endpoints (`HBM_AXI_00`–`HBM_AXI_63`); they are not a claim that V80 has 64 HBM pseudo-channels. AVED describes 32 pseudo-channels, while the exact endpoint-to-pseudo-channel pairing is a property of the installed SLASH service shell. AVED places the HBM_NMUs across the top of SLR2. The RM-side HBM terminal is therefore anchored in SLR2. The DDR and control terminals follow the RM-side NoC units of the routed shell, not the external DDR controllers or the nearest usable SLR, which keeps them out of static SLR0. This table models the RM-side slot anchor and SLR crossing budget; it does not model HNoC/VNoC/NPS routes, NoC bandwidth, or per-bank NoC locality. Vivado/SLASH implements and times those hard-NoC paths.
+
+On the VCK190 base platform, `DDR` and `LPDDR` are reached through the NoC: every slot holds NoC master units, and Vitis picks one for each kernel port at link time. A port bound to either tag therefore pins no placement and gets no fabric pipeline.
 
 ### Synthesizing with `--platform`, not `--part-num`
 
@@ -249,7 +251,8 @@ sp=VecAdd.c:HBM[2]
 
 The left-hand side is `<top-task>.<parameter>`, using the names from your
 C++ signature. Use the bare top-task name, such as `VecAdd`, without a numeric
-suffix. Bank targets are `HBM[n]` or `DDR[n]`.
+suffix. Bank targets are the platform's own sp tags: `HBM[n]` or `DDR[n]` on
+the Alveo platforms, `DDR` or `LPDDR` on the VCK190 base platform.
 
 For a `tapa::mmaps<T, N>` parameter, use bracket indices for the channels:
 

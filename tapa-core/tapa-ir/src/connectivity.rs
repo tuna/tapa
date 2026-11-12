@@ -27,16 +27,20 @@ impl fmt::Display for MemoryEndpoint {
 pub enum MemoryKind {
     Hbm,
     Ddr,
+    Lpddr,
 }
 
-/// One indexed external memory bank.
+/// One external memory target, spelled as the platform's `sp` tag: an
+/// indexed bank (`HBM[0]`, `DDR[1]`) or a memory the platform names without
+/// an index, as Versal base platforms name `DDR` and `LPDDR`.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct MemoryBank {
     pub kind: MemoryKind,
-    pub index: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub index: Option<u32>,
 }
 
 impl fmt::Display for MemoryBank {
@@ -44,20 +48,31 @@ impl fmt::Display for MemoryBank {
         let kind = match self.kind {
             MemoryKind::Hbm => "HBM",
             MemoryKind::Ddr => "DDR",
+            MemoryKind::Lpddr => "LPDDR",
         };
-        write!(f, "{kind}[{}]", self.index)
+        match self.index {
+            Some(index) => write!(f, "{kind}[{index}]"),
+            None => f.write_str(kind),
+        }
     }
 }
 
-/// A tag that is not a memory bank of the form `HBM[i]` or `DDR[i]`.
+/// A tag that is not a memory target of the form `HBM[i]`, `DDR[i]`, `DDR`
+/// or `LPDDR`.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-#[error("`{0}` is not a memory bank tag of the form `HBM[i]` or `DDR[i]`")]
+#[error("`{0}` is not a memory tag of the form `HBM[i]`, `DDR[i]`, `DDR` or `LPDDR`")]
 pub struct MemoryBankParseError(pub String);
 
 impl std::str::FromStr for MemoryBank {
     type Err = MemoryBankParseError;
 
     fn from_str(tag: &str) -> Result<Self, Self::Err> {
+        let unindexed = |kind| Ok(Self { kind, index: None });
+        match tag {
+            "DDR" => return unindexed(MemoryKind::Ddr),
+            "LPDDR" => return unindexed(MemoryKind::Lpddr),
+            _ => {}
+        }
         let (kind, rest) = tag
             .strip_prefix("HBM[")
             .map(|rest| (MemoryKind::Hbm, rest))
@@ -71,7 +86,10 @@ impl std::str::FromStr for MemoryBank {
         let index = digits
             .parse()
             .map_err(|_| MemoryBankParseError(tag.to_string()))?;
-        Ok(Self { kind, index })
+        Ok(Self {
+            kind,
+            index: Some(index),
+        })
     }
 }
 
@@ -185,7 +203,7 @@ mod tests {
                 },
                 bank: MemoryBank {
                     kind: MemoryKind::Hbm,
-                    index: 3,
+                    index: Some(3),
                 },
             },
             MemoryBinding {
@@ -195,7 +213,7 @@ mod tests {
                 },
                 bank: MemoryBank {
                     kind: MemoryKind::Ddr,
-                    index: 1,
+                    index: Some(1),
                 },
             },
         ])
@@ -257,7 +275,7 @@ mod tests {
             },
             bank: MemoryBank {
                 kind: MemoryKind::Hbm,
-                index: 0,
+                index: Some(0),
             },
         };
         let error = MemoryBindings::try_from_bindings(vec![binding.clone(), binding.clone()])
@@ -267,7 +285,7 @@ mod tests {
         let conflicting = MemoryBinding {
             bank: MemoryBank {
                 kind: MemoryKind::Ddr,
-                index: 1,
+                index: Some(1),
             },
             ..binding.clone()
         };
@@ -282,20 +300,38 @@ mod tests {
     #[test]
     fn memory_bank_display_round_trips_through_fromstr() {
         for (tag, kind, index) in [
-            ("HBM[0]", MemoryKind::Hbm, 0),
-            ("HBM[31]", MemoryKind::Hbm, 31),
-            ("DDR[3]", MemoryKind::Ddr, 3),
+            ("HBM[0]", MemoryKind::Hbm, Some(0)),
+            ("HBM[31]", MemoryKind::Hbm, Some(31)),
+            ("DDR[3]", MemoryKind::Ddr, Some(3)),
+            // `platforminfo` sp tags of the Versal base platforms.
+            ("DDR", MemoryKind::Ddr, None),
+            ("LPDDR", MemoryKind::Lpddr, None),
         ] {
             let bank: MemoryBank = tag.parse().expect("parse");
             assert_eq!((bank.kind, bank.index), (kind, index));
             assert_eq!(bank.to_string(), tag);
         }
         for bad in [
-            "HBM", "DDR", "HBM[]", "HBM[x]", "HBM[+1]", "PLRAM[0]", "hbm[1]",
+            "HBM", "HBM[]", "HBM[x]", "HBM[+1]", "PLRAM[0]", "hbm[1]", "ddr", "LPDDR[0]",
         ] {
             assert!(bad.parse::<MemoryBank>().is_err(), "{bad} must not parse");
         }
         // Connectivity files tolerate whitespace around the index.
-        assert_eq!("HBM[ 3 ]".parse::<MemoryBank>().unwrap().index, 3);
+        assert_eq!("HBM[ 3 ]".parse::<MemoryBank>().unwrap().index, Some(3));
+    }
+
+    /// Persisted plans and goldens keep their indexed spelling; only an
+    /// unindexed tag drops the field.
+    #[test]
+    fn memory_bank_serializes_its_index_only_when_present() {
+        for (tag, json) in [
+            ("HBM[3]", r#"{"kind":"hbm","index":3}"#),
+            ("LPDDR", r#"{"kind":"lpddr"}"#),
+        ] {
+            let bank: MemoryBank = tag.parse().expect("parse");
+            assert_eq!(serde_json::to_string(&bank).expect("serialize"), json);
+            let restored: MemoryBank = serde_json::from_str(json).expect("deserialize");
+            assert_eq!(restored, bank);
+        }
     }
 }

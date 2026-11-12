@@ -411,6 +411,7 @@ fn one_slot_device_with_area(area: Area) -> Device {
         placement: PlacementStyle::default(),
         planned_resources: PlannedResources::default(),
         usage_ceiling: None,
+        noc_memory: Vec::new(),
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![Slot {
@@ -452,6 +453,7 @@ fn two_slot_golden_device() -> Device {
         placement: PlacementStyle::default(),
         planned_resources: PlannedResources::default(),
         usage_ceiling: None,
+        noc_memory: Vec::new(),
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![slot(0, 0), slot(1, 150)],
@@ -520,7 +522,7 @@ fn mmap_floor_graph() -> FloorGraph {
             },
             bank: tapa_ir::MemoryBank {
                 kind: tapa_ir::MemoryKind::Hbm,
-                index: 7,
+                index: Some(7),
             },
             channel_widths: tapa_ir::AxiChannelWidths {
                 read_address: 80,
@@ -905,6 +907,7 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
         placement: PlacementStyle::default(),
         planned_resources: PlannedResources::default(),
         usage_ceiling: None,
+        noc_memory: Vec::new(),
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![
@@ -1266,6 +1269,7 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         placement: PlacementStyle::default(),
         planned_resources: PlannedResources::default(),
         usage_ceiling: None,
+        noc_memory: Vec::new(),
         user_pblock_name: None,
         anchors: Vec::new(),
         slots: vec![mk_slot(0, 0), mk_slot(1, 1), mk_slot(2, 4)],

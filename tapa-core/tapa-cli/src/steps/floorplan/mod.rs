@@ -671,7 +671,7 @@ mod tests {
                 endpoint: interfaces[0].endpoint.clone(),
                 bank: MemoryBank {
                     kind: MemoryKind::Hbm,
-                    index: 7,
+                    index: Some(7),
                 },
                 channel_widths: interfaces[0].channel_widths,
                 bridge_instance: None,

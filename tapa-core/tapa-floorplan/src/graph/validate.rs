@@ -553,6 +553,7 @@ mod tests {
             let error = FloorGraph::build_with_projection(
                 &projection,
                 &[],
+                &std::collections::BTreeSet::new(),
                 Some(ControlInterface::default()),
                 None,
             )

@@ -5,10 +5,10 @@
 //! block here so the rustdoc/public-api view of the type is unchanged by the
 //! split.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use tapa_ir::transforms::FlatProjection;
-use tapa_ir::TaskGraph;
+use tapa_ir::{MemoryBank, TaskGraph};
 
 use super::build::FloorGraphBuilder;
 use super::validate::{occupied_rtl_names, validate_sanitized_instance_names};
@@ -134,20 +134,24 @@ impl FloorGraph {
         control: Option<ControlInterface>,
         global_anchor: Option<&str>,
     ) -> Result<Self, GraphError> {
-        Self::build_with_scopes(flat, memory, control, global_anchor, None)
+        Self::build_with_scopes(flat, memory, &BTreeSet::new(), control, global_anchor, None)
     }
 
     /// Build from the shared physical projection, retaining original upper
     /// controllers as aliases of the existing global placement vertex.
+    /// Interfaces bound to a bank in `noc` reach it through the hard NoC
+    /// and get no terminal.
     pub(crate) fn build_with_projection(
         projection: &FlatProjection,
         memory: &[MemoryInterface],
+        noc: &BTreeSet<MemoryBank>,
         control: Option<ControlInterface>,
         global_anchor: Option<&str>,
     ) -> Result<Self, GraphError> {
         Self::build_with_scopes(
             &projection.flat,
             memory,
+            noc,
             control,
             global_anchor,
             Some(projection),
@@ -160,6 +164,7 @@ impl FloorGraph {
     fn build_with_scopes(
         flat: &TaskGraph,
         memory: &[MemoryInterface],
+        noc: &BTreeSet<MemoryBank>,
         control: Option<ControlInterface>,
         global_anchor: Option<&str>,
         projection: Option<&FlatProjection>,
@@ -178,7 +183,7 @@ impl FloorGraph {
 
         let streams = builder.cluster_internal_fifos(flat, top)?;
 
-        let axi_nets = builder.add_memory_interfaces(flat, top, memory)?;
+        let axi_nets = builder.add_memory_interfaces(flat, top, memory, noc)?;
 
         let has_children = projection.map_or(!top.tasks.is_empty(), |projection| {
             projection.occurrences.len() > 1
@@ -288,7 +293,7 @@ pub mod tests {
             },
             bank: MemoryBank {
                 kind: tapa_ir::MemoryKind::Hbm,
-                index: 0,
+                index: Some(0),
             },
             channel_widths: AxiChannelWidths {
                 read_address: 80,
@@ -319,7 +324,7 @@ pub mod tests {
             },
             bank: MemoryBank {
                 kind: tapa_ir::MemoryKind::Hbm,
-                index: 0,
+                index: Some(0),
             },
             channel_widths: AxiChannelWidths {
                 read_address: if read { 80 } else { 0 },
@@ -382,7 +387,7 @@ pub mod tests {
             },
             bank: MemoryBank {
                 kind: tapa_ir::MemoryKind::Hbm,
-                index: 0,
+                index: Some(0),
             },
             channel_widths: AxiChannelWidths {
                 read_address: 80,

@@ -151,7 +151,7 @@ fn prepare_link(job: &SlashLinkJob) -> Result<PreparedLink> {
     let mut hbm_indices = bindings
         .iter()
         .filter(|binding| binding.bank.kind == tapa_ir::MemoryKind::Hbm)
-        .map(|binding| binding.bank.index)
+        .filter_map(|binding| binding.bank.index)
         .collect::<Vec<_>>();
     hbm_indices.sort_unstable();
     hbm_indices.dedup();
