@@ -158,6 +158,21 @@ TEST(Ports, ScalarsArePassedByValue) {
   }
 }
 
+// A task may see a memory element type only declared, as an upper task in
+// one translation unit of a multi-file design can; its width used to be
+// asked of Clang anyway, which aborts on an incomplete type.
+TEST(Ports, MemoryElementTypeIsComplete) {
+  for (const char* signature : {
+           "struct Opaque; void probe(tapa::mmap<Opaque> m);",
+           "struct Opaque; void probe(tapa::mmaps<Opaque, 2> m);",
+       }) {
+    auto b = ParseProbe(signature);
+    CountingDiags diags;
+    BuildPortsExpectingError(b, diags);
+    EXPECT_EQ(diags.errors, 1u) << signature;
+  }
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",

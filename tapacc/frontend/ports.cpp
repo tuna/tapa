@@ -159,9 +159,27 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
           << task->getNameAsString();
     }
     const std::string elem = ElementTypeName(param);
-    const uint32_t elem_width = IsStreamInterface(kind)
+    // A memory port's width is its element's, which only a complete type
+    // has; a task taking `tapa::mmap<T>` may see `T` only declared.
+    const clang::TemplateArgument* elem_arg =
+        GetTemplateArg(param->getType(), 0);
+    const bool incomplete =
+        IsMmapInterface(kind) && elem_arg != nullptr &&
+        elem_arg->getKind() == clang::TemplateArgument::Type &&
+        elem_arg->getAsType()->isIncompleteType();
+    if (incomplete) {
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
+                       param->getLocation(),
+                       "element type '%0' of memory parameter '%1' is "
+                       "incomplete where task '%2' is defined; the port's "
+                       "width is the element's, so define the type there")
+          << elem << name << task->getNameAsString();
+    }
+    const uint32_t elem_width = incomplete ? 0
+                                : IsStreamInterface(kind)
                                     ? StreamElementWidth(param)
-                                    : ElementWidth(param);
+                                : IsMmapInterface(kind) ? ElementWidth(param)
+                                                        : 0;
 
     switch (kind) {
       case TapaKind::kMmap:
