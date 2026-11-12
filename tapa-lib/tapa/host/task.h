@@ -39,6 +39,10 @@ template <typename Param, typename Arg>
 struct accessor {
   static Param access(Arg&& arg) { return arg; }
   static void access(frt::Instance& instance, int& idx, Arg&& arg) {
+    static_assert(!is_memory_param<std::decay_t<Param>>::value,
+                  "a kernel's memory parameter takes a tapa::read_only_mmap, "
+                  "write_only_mmap, read_write_mmap or placeholder_mmap of its "
+                  "element type (or mmaps of its count)");
     Param val = static_cast<Param>(arg);
     instance.SetScalarArg(idx++, &val, sizeof(val));
   }

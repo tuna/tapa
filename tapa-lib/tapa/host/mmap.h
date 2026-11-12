@@ -91,6 +91,12 @@ class mmap {
   explicit mmap(Container& container)
       : ptr_{container.data()}, size_{container.size()} {}
 
+  /// The same memory, read-only, as a `U*` converts to a `const U*`.
+  template <typename U, typename std::enable_if<std::is_same<T, const U>::value,
+                                                int>::type = 0>
+  mmap(const mmap<U>& other)  // NOLINT
+      : ptr_{other.data()}, size_{other.size()} {}
+
   /// Implicitly casts to a raw pointer.
   operator T*() { return ptr_; }
 
@@ -483,6 +489,18 @@ namespace internal {
 // chooses who serves each async_mmap.
 bool recording_invokes();
 
+// A memory parameter, which binds only through a buffer accessor below.
+template <typename T>
+struct is_memory_param : std::false_type {};
+template <typename T>
+struct is_memory_param<mmap<T>> : std::true_type {};
+template <typename T, uint64_t S>
+struct is_memory_param<mmaps<T, S>> : std::true_type {};
+template <typename T, int chan_count, int64_t chan_size>
+struct is_memory_param<hmap<T, chan_count, chan_size>> : std::true_type {};
+template <typename T>
+struct is_memory_param<async_mmap<T>> : std::true_type {};
+
 template <typename T>
 struct accessor<async_mmap<T>&, mmap<T>&> {
   static async_mmap<T> access(mmap<T>& arg) {
@@ -494,6 +512,11 @@ struct accessor<async_mmap<T>&, mmap<T>&> {
 template <typename T, uint64_t S>
 struct accessor<mmap<T>, mmaps<T, S>&> {
   static mmap<T> access(mmaps<T, S>& arg) { return arg.access(); }
+};
+
+template <typename T, uint64_t S>
+struct accessor<mmap<const T>, mmaps<T, S>&> {
+  static mmap<const T> access(mmaps<T, S>& arg) { return arg.access(); }
 };
 
 template <typename T, uint64_t S>
@@ -511,11 +534,19 @@ struct accessor<async_mmap<T>&, mmaps<T, S>&> {
   template <typename T>                                                       \
   struct accessor<mmap<T>, tag##mmap<T> tag_ref> {                            \
     static mmap<T> access(tag##mmap<T> tag_ref arg) { return arg; }           \
-    static void access(frt::Instance& instance, int& idx,                     \
+    template <typename Instance>                                              \
+    static void access(Instance& instance, int& idx,                          \
                        tag##mmap<T> tag_ref arg) {                            \
       instance.SetBufferArg(idx++, arg.get(), arg.size() * sizeof(T),         \
                             buffer_tag);                                      \
     }                                                                         \
+  };                                                                          \
+  /* A read-only parameter takes the same buffer, as `T*` converts. */        \
+  template <typename T>                                                       \
+  struct accessor<mmap<const T>, tag##mmap<T> tag_ref>                        \
+      : accessor<mmap<T>, tag##mmap<T> tag_ref> {                             \
+    using accessor<mmap<T>, tag##mmap<T> tag_ref>::access;                    \
+    static mmap<const T> access(tag##mmap<T> tag_ref arg) { return arg; }     \
   };                                                                          \
   template <typename T, uint64_t S>                                           \
   struct accessor<mmaps<T, S>, tag##mmaps<T, S> tag_ref> {                    \
@@ -567,6 +598,9 @@ TAPA_DEFINE_ACCESSOR(, &, BufferAccess::ReadWrite);
   template <typename T>                                                    \
   struct accessor<mmap<T>, tag##_mmap<T> qualifier>                        \
       : accessor<mmap<T>, tag##_mmap<T>> {};                               \
+  template <typename T>                                                    \
+  struct accessor<mmap<const T>, tag##_mmap<T> qualifier>                  \
+      : accessor<mmap<const T>, tag##_mmap<T>> {};                         \
   template <typename T, uint64_t S>                                        \
   struct accessor<mmaps<T, S>, tag##_mmaps<T, S> qualifier>                \
       : accessor<mmaps<T, S>, tag##_mmaps<T, S>> {};                       \

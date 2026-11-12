@@ -141,6 +141,35 @@ TEST(HmapAccessorTest, NamedMmapBindsEachChannelReadWrite) {
   }
 }
 
+// A read-only parameter binds the kernel the same buffer, with the same
+// access, as a parameter of the writable type would; never as a scalar.
+TEST(MmapAccessorTest, ReadOnlyParameterBindsTheWritableBuffer) {
+  std::vector<int> buffer(3);
+  read_only_mmap<int> named(buffer);
+  mmap<int> untagged(buffer);
+  BufferRecorder instance;
+  int idx = 0;
+  internal::accessor<mmap<const int>, read_only_mmap<int>>::access(
+      instance, idx, read_only_mmap<int>(buffer));
+  internal::accessor<mmap<const int>, read_only_mmap<int>&>::access(instance,
+                                                                    idx, named);
+  internal::accessor<mmap<const int>, mmap<int>&>::access(instance, idx,
+                                                          untagged);
+  EXPECT_EQ(idx, 3);
+  ASSERT_EQ(instance.buffers.size(), 3u);
+  const BufferAccess expected[] = {
+      BufferAccess::ReadOnly, BufferAccess::ReadOnly, BufferAccess::ReadWrite};
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(instance.buffers[i].index, i);
+    EXPECT_EQ(instance.buffers[i].ptr, buffer.data());
+    EXPECT_EQ(instance.buffers[i].bytes, 3 * sizeof(int));
+    EXPECT_EQ(instance.buffers[i].access, expected[i]);
+  }
+  EXPECT_EQ((internal::accessor<mmap<const int>, mmap<int>&>::access(untagged)
+                 .data()),
+            buffer.data());
+}
+
 // An async_mmap moves data only through its channels: a pointer step would
 // move a copy of the pointer that the channels never see, so it must not
 // compile, while the plain mmap it extends keeps its steps.

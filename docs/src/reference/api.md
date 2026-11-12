@@ -246,7 +246,9 @@ class mmap {
 
 This is the host's class. In HLS a task's `tapa::mmap<T>` parameter is a
 plain `T*`, so task code uses only subscripts (`mem[i]`) and pointer
-arithmetic on it.
+arithmetic on it. A `tapa::mmap<const T>` parameter takes a `tapa::mmap<T>`,
+an `mmaps<T, N>` region or a host's writable wrapper, as `T*` converts to
+`const T*`.
 
 ### `tapa::async_mmap<T>`
 

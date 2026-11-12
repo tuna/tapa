@@ -156,6 +156,37 @@ TEST(TapaSimTest, UpperTaskHandsItsMmapsToAnother) {
   EXPECT_EQ(second, (std::vector<int>{3, 21}));
 }
 
+void Double(tapa::mmap<const int> in, tapa::mmap<int> out) {
+  out[0] = in[0] * 2;
+}
+
+// A task that only reads a memory may take it as `mmap<const T>` whatever
+// its invoker holds, as `T*` converts to `const T*` in hardware.
+void ConstMmapUpper(tapa::mmap<int> in, tapa::mmaps<int, 2> ins,
+                    tapa::mmaps<int, 3> outs) {
+  tapa::task()
+      .invoke(Double, in, outs)
+      .invoke<tapa::join, 2>(Double, ins, outs);
+}
+
+TEST(TapaSimTest, ReadOnlyMmapParametersTakeWritableMemory) {
+  std::vector<int> in = {1};
+  std::vector<int> ins = {2, 3};
+  std::vector<int> outs(3);
+  const std::array<int*, 2> in_ptrs = {&ins[0], &ins[1]};
+  const std::array<int*, 3> out_ptrs = {&outs[0], &outs[1], &outs[2]};
+  const std::array<uint64_t, 3> sizes = {1, 1, 1};
+  tapa::invoke(ConstMmapUpper, /*bitstream=*/"", tapa::read_only_mmap<int>(in),
+               tapa::read_only_mmaps<int, 2>(in_ptrs, sizes),
+               tapa::write_only_mmaps<int, 3>(out_ptrs, sizes));
+  EXPECT_EQ(outs, (std::vector<int>{2, 4, 6}));
+  // The top itself may take one from the host's writable buffer.
+  std::vector<int> out(1);
+  tapa::invoke(Double, /*bitstream=*/"", tapa::read_only_mmap<int>(in),
+               tapa::write_only_mmap<int>(out));
+  EXPECT_EQ(out[0], 2);
+}
+
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
   using Vector = std::vector<int, tapa::aligned_allocator<int>>;
   Vector data = {1, 2, 3};
