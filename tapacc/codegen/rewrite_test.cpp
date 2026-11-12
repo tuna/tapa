@@ -126,6 +126,34 @@ TEST(Rewrite, VitisStreamsUseByteAlignedPayloadForSignatureAndWrites) {
   EXPECT_TRUE(Contains(code, "narrow.write(qdma_axis<24, 0, 0, 0>());"));
 }
 
+// Included inside a namespace, the vendor headers' own `hls` namespace
+// nests in the user's, and Vitis HLS rejects every `hls::stream` after
+// it: the includes go at file scope, ahead of the outermost block.
+TEST(Rewrite, VitisStreamHeadersGoAtFileScope) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/scoped.cpp", R"cpp(
+                   namespace outer {
+                   namespace inner {
+                   void Copy(tapa::istream<int>& in, tapa::ostream<int>& out) {
+                     out.write(in.read());
+                   }
+                   void Top(tapa::istream<int>& in, tapa::ostream<int>& out) {
+                     tapa::task().invoke(Copy, in, out);
+                   }
+                   }  // namespace inner
+                   }  // namespace outer
+                 )cpp"}},
+      "Top", TempRoot("rewrite", "scoped"), {"-std=c++17"}, {},
+      {{"Top", SynthTarget::kXilinxVitis}});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const std::string& code = run.files.at("scoped.cpp");
+  EXPECT_TRUE(Contains(code, "hls::stream<qdma_axis<32, 0, 0, 0> >& in"));
+  EXPECT_LT(code.find("#include \"ap_axi_sdata.h\""),
+            code.find("namespace outer"));
+  EXPECT_LT(code.find("#include \"hls_stream.h\""),
+            code.find("namespace outer"));
+}
+
 // A Vitis top's stream argument that reaches a frame port, here through an
 // upper task, moves through a ring in device memory: the argument becomes
 // the ring's base address, and the ring's registers follow the top's last

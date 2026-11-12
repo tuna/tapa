@@ -319,11 +319,21 @@ void RewriteDeclSignature(const TaskModel& task, Lvl lvl,
   }
   // A declaration can live in a header included before the definition.
   // Make qdma_axis available at each rewritten declaration, not just in
-  // the translation unit containing the function body.
+  // the translation unit containing the function body. The headers go at
+  // file scope, ahead of any namespace or linkage block the declaration
+  // sits in: included inside one, their own `hls` namespace would nest in
+  // it and no longer name the vendor's.
   if (rewrote_axis_stream) {
-    edits.InsertTextAfter(decl->getBeginLoc(),
-                          "#include \"ap_axi_sdata.h\"\n"
-                          "#include \"hls_stream.h\"\n\n");
+    const clang::Decl* outer = decl;
+    for (const clang::DeclContext* dc = decl->getLexicalDeclContext();
+         dc != nullptr && !dc->isTranslationUnit();
+         dc = dc->getLexicalParent()) {
+      outer = llvm::cast<clang::Decl>(dc);
+    }
+    edits.InsertTextAfter(
+        edits.getSourceMgr().getExpansionLoc(outer->getBeginLoc()),
+        "#include \"ap_axi_sdata.h\"\n"
+        "#include \"hls_stream.h\"\n\n");
   }
   if (!counters.empty()) {
     edits.InsertTextBefore(decl->getFunctionTypeLoc().getRParenLoc(), counters);
