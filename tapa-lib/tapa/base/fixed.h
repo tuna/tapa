@@ -309,9 +309,16 @@ class fixed_base {
   float to_float() const { return static_cast<float>(to_double()); }
   /// Truncated toward zero, like a C++ cast of the exact value -- and like
   /// the vendor's, which does the same whatever the type's own Q mode says.
+  /// Except where the vendor's own result overflows, as hardware's does: a
+  /// signed type with no integer bits (I <= 0) builds the part in one signed
+  /// bit, so a negative value gives -1.
   int64_t to_int64() const {
-    return static_cast<int64_t>(internal::quantize<internal::imax(W, 64) + 2>(
-        V, W - I, 0, q_mode::trn_zero));
+    if constexpr (I <= 0) {
+      return S && V.get_bit(W - 1) ? -1 : 0;
+    } else {
+      return static_cast<int64_t>(internal::quantize<internal::imax(W, 64) + 2>(
+          V, W - I, 0, q_mode::trn_zero));
+    }
   }
   /// An `int`, as the vendor's: the integer part's low 32 bits.
   int to_int() const { return static_cast<int>(to_int64()); }

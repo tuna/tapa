@@ -461,7 +461,7 @@ class ufixed;  // unsigned
 | `sat_zero` | `AP_SAT_ZERO` | replace with zero |
 | `sat_sym` | `AP_SAT_SYM` | clamp to a range symmetric about zero |
 
-Arithmetic never quantizes: `+`, `-` and `*` widen so the result is exact, and the result type carries the *default* modes rather than the operands'. A plain integer divided by a fixed-point value gets the type the vendor declares for it, that of the reverse division, and the quotient truncates into it, as in hardware: `1 / tapa::fixed<12, 6>(0.25)` is a `tapa::fixed<13, 7>`. The raw pattern is the public member `V`, and `x(hi, lo)` / `x[i]` slice it, as on the vendor type.
+Arithmetic never quantizes: `+`, `-` and `*` widen so the result is exact, and the result type carries the *default* modes rather than the operands'. A plain integer divided by a fixed-point value gets the type the vendor declares for it, that of the reverse division, and the quotient truncates into it, as in hardware: `1 / tapa::fixed<12, 6>(0.25)` is a `tapa::fixed<13, 7>`. The raw pattern is the public member `V`, and `x(hi, lo)` / `x[i]` slice it, as on the vendor type. `to_int()` (an `int`), `to_int64()` and `to_uint64()` truncate toward zero whatever `Q` says, except that a negative value of a signed type with no integer bits (`I <= 0`) gives -1, as the vendor's and hardware's do.
 
 Notable behavior: `o_mode::wrap_sm` on an unsigned type is a compile error.
 Comparisons follow TAPA's fixed-point conversion rules and can differ from a

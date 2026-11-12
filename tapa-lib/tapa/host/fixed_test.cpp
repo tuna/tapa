@@ -187,6 +187,12 @@ TEST(FixedTest, RoundTripsThroughNative) {
   EXPECT_EQ((fixed<16, 8>(-2.5)).to_int64(), -2);
   EXPECT_EQ((fixed<16, 8>(2.5)).to_int64(), 2);
   EXPECT_EQ((fixed<16, 8, q_mode::rnd>(-2.75)).to_int64(), -2);
+  // ... except for a negative value of a signed type with no integer bits,
+  // where the vendor's (and hardware's) integer part overflows to -1.
+  EXPECT_EQ((fixed<8, 0>(-0.5)).to_int64(), -1);
+  EXPECT_EQ((fixed<8, -2>(-0.0625)).to_int(), -1);
+  EXPECT_EQ((fixed<8, 0>(0.25)).to_int64(), 0);
+  EXPECT_EQ((ufixed<8, 0>(0.5)).to_int64(), 0);
   // `to_int` is an `int`, so an integer part past 32 bits keeps its low 32.
   static_assert(std::is_same<decltype(fixed<48, 40>().to_int()), int>::value,
                 "to_int returns an int");

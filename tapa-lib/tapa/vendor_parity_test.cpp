@@ -972,7 +972,8 @@ TEST(VendorParity, FixedIncrement) {
 
 // Casting a fixed-point value to an integer truncates toward zero, and does
 // so whatever the type's own quantization mode says -- the mode governs
-// conversions between fixed-point types, not this.
+// conversions between fixed-point types, not this. The exception is a
+// signed type with no integer bits, whose negative values give -1.
 TEST(VendorParity, FixedToInteger) {
   const double values[] = {0.0,  2.75, -2.75, 2.25, -2.25, 2.5,
                            -2.5, 7.0,  -7.0,  0.5,  -0.5};
@@ -989,6 +990,25 @@ TEST(VendorParity, FixedToInteger) {
     const double big = d * 1e10;
     EXPECT_EQ((fixed<48, 40>(big)).to_int(), (ap_fixed<48, 40>(big)).to_int())
         << "to_int " << big;
+  }
+  // No integer bits, and fewer than none.
+  uint64_t state = 0x70;
+  for (int r = 0; r < 32; ++r) {
+    using zero = fx<8, 0, true, q_mode::trn, o_mode::wrap, 0>;
+    using below = fx<8, -2, true, q_mode::trn, o_mode::wrap, 0>;
+    using above = fx<8, 1, true, q_mode::trn, o_mode::wrap, 0>;
+    zero::mine z;
+    zero::theirs vz;
+    below::mine b;
+    below::theirs vb;
+    above::mine a;
+    above::theirs va;
+    SetPair(z, vz, RandomBits(8, state));
+    SetPair(b, vb, RandomBits(8, state));
+    SetPair(a, va, RandomBits(8, state));
+    EXPECT_EQ(z.to_int64(), vz.to_int64()) << "I=0 " << TapaBits(z.V);
+    EXPECT_EQ(b.to_int(), vb.to_int()) << "I=-2 " << TapaBits(b.V);
+    EXPECT_EQ(a.to_int64(), va.to_int64()) << "I=1 " << TapaBits(a.V);
   }
 }
 
