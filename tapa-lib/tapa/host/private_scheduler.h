@@ -102,7 +102,10 @@ class worker {
 
   void send(int signal) { this->signal = signal; }
 
-  ~worker() {
+  // Ends the thread once the coroutine running now yields; its round
+  // finishes first, and so does a round for tasks it schedules here.
+  void stop() {
+    if (!this->thread.joinable()) return;
     {
       unique_lock lock(this->mtx);
       this->done = true;
@@ -110,6 +113,8 @@ class worker {
     this->task_cv.notify_all();
     this->thread.join();
   }
+
+  ~worker() { this->stop(); }
 };
 
 // --- thread_pool -----------------------------------------------------------
@@ -182,6 +187,12 @@ class thread_pool {
 
   void send(int signal) {
     for (auto& worker : this->workers) worker.send(signal);
+  }
+
+  // Stops every worker. A detached task may be running, and may construct a
+  // `task` or schedule more, so the caller holds no lock they take.
+  void stop() {
+    for (auto& worker : this->workers) worker.stop();
   }
 
   ~thread_pool() {

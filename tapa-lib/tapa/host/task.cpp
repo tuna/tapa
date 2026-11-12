@@ -786,6 +786,7 @@ task::task() {
 task::~task() {
   if (this == internal::top_task) {
     internal::pool->wait();
+    internal::pool->stop();
     unique_lock lock(internal::mtx);
     delete internal::pool;
     internal::pool = nullptr;

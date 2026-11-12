@@ -2,6 +2,8 @@
 
 #include "tapa/host/tapa.h"
 
+#include <chrono>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -41,6 +43,23 @@ TEST(TapaSimTest, InvokeWithEmptyBitstream) {
                    tapa::read_write_mmap<int>(data.data(), data.size()), 1);
   EXPECT_EQ(data[0], 100);
   EXPECT_GT(ns, 0);
+}
+
+void Nop() {}
+
+// A detached upper task still starting when every joined task has finished:
+// it constructs its `task` while the invoke shuts the scheduler down.
+void LateDetachedUpper() {
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  tapa::task().invoke<tapa::detach>(Nop);
+}
+
+void LateDetachedUpperTop() {
+  tapa::task().invoke<tapa::detach>(LateDetachedUpper).invoke(Nop);
+}
+
+TEST(TapaSimTest, InvokeEndsWhileADetachedUpperTaskStarts) {
+  tapa::invoke(LateDetachedUpperTop, /*bitstream=*/"");
 }
 
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
