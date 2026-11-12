@@ -216,6 +216,29 @@ endmodule
         parse_module("logic stray;\nmodule M;\nendmodule\n").unwrap_err();
     }
 
+    /// Verilog-2001 declares a body port as a variable with `output reg`;
+    /// hand-written custom RTL commonly does, and the ANSI header path
+    /// already accepts the same form.
+    #[test]
+    fn parse_non_ansi_output_reg_ports() {
+        let src = "\
+module RegPorts (
+  a,
+  q,
+  r
+);
+input a;
+output reg signed [3:0] q;
+output reg r;
+endmodule
+";
+        let m = parse_module(src).expect("parse");
+        assert_eq!(port(&m, "q").direction, Direction::Output);
+        assert_eq!(port(&m, "q").bit_width(), Some(4));
+        assert_eq!(port(&m, "r").direction, Direction::Output);
+        assert_eq!(port(&m, "r").bit_width(), Some(1));
+    }
+
     #[test]
     fn parse_ansi_ports() {
         let src = "\

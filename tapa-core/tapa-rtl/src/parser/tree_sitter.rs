@@ -108,11 +108,19 @@ fn extract_ports_from_node(node: Node, src: &[u8]) -> Vec<Port> {
                 "output_declaration" => Direction::Output,
                 _ => Direction::Inout,
             };
+            // `output reg [3:0] q;` is a variable port: its type and
+            // names come in the variable forms of the two nodes.
             for c in children_of(child) {
-                if c.kind() == "net_port_type" || c.kind() == "data_type_or_implicit" {
+                if matches!(
+                    c.kind(),
+                    "net_port_type" | "variable_port_type" | "data_type_or_implicit"
+                ) {
                     width = extract_width(c, src);
                 }
-                if c.kind() == "list_of_port_identifiers" {
+                if matches!(
+                    c.kind(),
+                    "list_of_port_identifiers" | "list_of_variable_port_identifiers"
+                ) {
                     names.extend(extract_identifiers(c, src));
                 }
             }
