@@ -888,6 +888,24 @@ bool ProgramBuilder::MergeAndDiscover() {
                callee.is_spec ? std::optional<std::string>(key) : std::nullopt);
     }
   }
+  // A mapping must name a task of this graph: one naming a helper or a
+  // task the top never reaches would otherwise be ignored, typo or not.
+  for (const auto& mapping : task_targets_) {
+    const std::string& name = mapping.first;
+    const bool reached =
+        std::any_of(tasks_.begin(), tasks_.end(), [&](const auto& entry) {
+          const DefSighting& sighting = FirstSighting(entry.first);
+          return sighting.plain_name == name || sighting.name == name ||
+                 sighting.readable_name == name;
+        });
+    if (!reached) {
+      Fail("--target maps '" + name +
+           "', but no task of that name runs "
+           "under the top-level task '" +
+           top_ + "'");
+      return false;
+    }
+  }
   if (!PropagateAie(top_key, aie_top)) return false;
   if (!ComputeRings(top_key)) return false;
 

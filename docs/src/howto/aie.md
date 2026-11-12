@@ -33,17 +33,17 @@ over the attribute:
 tapa analyze ... --target xilinx-vitis --target Add:aie
 ```
 
-`TASK:TARGET` takes `aie`, `hls` or `ignore`; an unknown task name is an
-error. An upper task's target is only a default: a task below it with a
-target of its own, from the attribute or the command line, keeps that target
-and hands it down instead. An AI Engine upper task may therefore invoke
-`[[tapa::target("hls")]]` tasks, and a PL upper task may invoke AI Engine
-tasks. A task that would inherit the AI Engine through one invoker but is
-also invoked by a PL task is an error; give it a target. Marking the top task
-makes the AI Engine the default for the tasks it invokes, while the top
-itself stays the PL kernel, which owns the control interface, unless it needs
-none (see [A top with no PL kernel](#a-top-with-no-pl-kernel)); a leaf top
-cannot be marked.
+`TASK:TARGET` takes `aie`, `hls` or `ignore`; a name that is no task under the
+top, such as a typo or a helper function, is an error. An upper task's target
+is only a default: a task below it with a target of its own, from the
+attribute or the command line, keeps that target and hands it down instead. An
+AI Engine upper task may therefore invoke `[[tapa::target("hls")]]` tasks, and
+a PL upper task may invoke AI Engine tasks. A task that would inherit the AI
+Engine through one invoker but is also invoked by a PL task is an error; give
+it a target. Marking the top task makes the AI Engine the default for the
+tasks it invokes, while the top itself stays the PL kernel, which owns the
+control interface, unless it needs none (see [A top with no PL
+kernel](#a-top-with-no-pl-kernel)); a leaf top cannot be marked.
 
 Every stream between a PL task and an AI Engine task crosses into the array
 through a PLIO channel, and `tapa analyze` lists each crossing. An upper task

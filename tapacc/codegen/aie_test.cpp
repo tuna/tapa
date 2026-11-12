@@ -348,6 +348,23 @@ TEST(AieTest, MappingWinsOverTheAttributeAndNamesARealTask) {
       Analyze("map_typo", Design(add), {{"Ad", SynthTarget::kAie}});
   EXPECT_FALSE(typo.ok);
   EXPECT_TRUE(AnyDiagContains(typo, "--target maps 'Ad'"));
+
+  // A helper, or a task the top never reaches, is no task of this graph:
+  // the mapping used to be accepted and ignored.
+  const std::string extra = add + R"cpp(
+    float Scale(float x) { return 2 * x; }
+    void Spare(tapa::istream<float>& a, tapa::ostream<float>& c) {}
+  )cpp";
+  for (const char* name : {"Scale", "Spare"}) {
+    const TreePipelineRun unreached =
+        Analyze("map_unreached", Design(extra), {{name, SynthTarget::kAie}});
+    EXPECT_FALSE(unreached.ok) << name;
+    ASSERT_EQ(unreached.builder.errors().size(), 1u) << name;
+    EXPECT_NE(unreached.builder.errors().front().find(
+                  "but no task of that name runs under the top-level task"),
+              std::string::npos)
+        << unreached.builder.errors().front();
+  }
 }
 
 TEST(AieTest, AnUpperTaskTargetIsItsSubtreesDefault) {

@@ -100,7 +100,7 @@ This stage always runs locally and does not require vendor tools. See
 |------|-------------|
 | `--cflags FLAG` / `-c FLAG` | Compiler flag passed through to the kernel frontend, such as an include path. Repeat the flag for multiple. |
 | `--target {xilinx-vitis,xilinx-slash,xilinx-hls}` | Output target (default: `xilinx-vitis`). Controls the synthesis and linking flow; `xilinx-slash` builds for the SLASH service shell, see [Alveo V80 with SLASH](../howto/v80.md). |
-| `--target TASK:TARGET` | Build task `TASK` as `aie`, `hls` or `ignore`, overriding its `[[tapa::target]]`. Repeatable; an unknown task is an error. See [AI Engine Tasks](../howto/aie.md). |
+| `--target TASK:TARGET` | Build task `TASK` as `aie`, `hls` or `ignore`, overriding its `[[tapa::target]]`. Repeatable; a `TASK` that is no task under the top, such as a typo or a helper function, is an error. See [AI Engine Tasks](../howto/aie.md). |
 | `--aie-location TASK:COL,ROW[,INSTANCE]` | Pin AI Engine leaf task `TASK`, or one `INSTANCE` of it, to a tile. Repeatable. |
 | `--aie-plio TASK.PORT:WIDTH` | Give a boundary stream port of AI Engine task `TASK` a PLIO of 32, 64 or 128 bits; the default is the element width, rounded up to one of these. Repeatable. |
 | `--flatten-hierarchy` | Emit flattened RTL while preserving task behavior. The stored task graph remains hierarchical. |
