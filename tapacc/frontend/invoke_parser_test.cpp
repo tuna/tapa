@@ -11,6 +11,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
 #include "clang/Tooling/Tooling.h"
+#include "nlohmann/json.hpp"
 
 #include "codegen/tree_pipeline.h"
 #include "codegen/tree_writer.h"
@@ -805,7 +806,7 @@ TEST(InvokeParser, AnMmapsRegionIsNotBoundByIndex) {
       << run.diags.front();
 }
 
-TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
+TEST(InvokeParser, AnUpperTaskIsNotInstantiatedFromATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>
     void Fill(tapa::ostream<int>& out) {}
@@ -823,18 +824,21 @@ TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
       {test_support::VirtualTu{"/proj/upper_template.cpp", kCode}}, "Top",
       testing::TempDir() + "/upper_template", {"-std=c++17"});
   ASSERT_FALSE(run.diags.empty());
-  EXPECT_NE(run.diags.front().find("upper task 'Pipe' is a template"),
+  EXPECT_NE(run.diags.front().find(
+                "upper task 'Pipe' is instantiated from a template"),
             std::string::npos)
       << run.diags.front();
 
-  // An explicit specialization is no instantiation: it used to pass, and
-  // the rewrite then stripped its body as an unreachable task while a
-  // leaf wrapper called it.
+  // An explicit specialization spells its own body, a task like any other:
+  // its invokes are its own, next to a primary template that has other
+  // ones.
   constexpr char kExplicit[] = R"cpp(
     void Fill(tapa::ostream<int>& out) {}
     void Drain(tapa::istream<int>& in) {}
     template <int N>
-    void Pipe(tapa::ostream<int>& out);
+    void Pipe(tapa::ostream<int>& out) {
+      tapa::task().invoke(Fill, out).invoke(Fill, out);
+    }
     template <>
     void Pipe<4>(tapa::ostream<int>& out) {
       tapa::task().invoke(Fill, out);
@@ -847,10 +851,15 @@ TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   const test_support::TreePipelineRun spec = test_support::RunTreePipeline(
       {test_support::VirtualTu{"/proj/upper_spec.cpp", kExplicit}}, "Top",
       testing::TempDir() + "/upper_spec", {"-std=c++17"});
-  ASSERT_FALSE(spec.diags.empty()) << spec.json;
-  EXPECT_NE(spec.diags.front().find("upper task 'Pipe' is a template"),
-            std::string::npos)
-      << spec.diags.front();
+  ASSERT_TRUE(spec.ok) << (spec.diags.empty() ? spec.json : spec.diags.front());
+  const nlohmann::json graph = nlohmann::json::parse(spec.json);
+  std::string pipe;
+  for (const auto& [name, task] : graph["tasks"].items()) {
+    if (task["readable_name"] == "Pipe<4>") pipe = name;
+  }
+  ASSERT_FALSE(pipe.empty()) << spec.json;
+  EXPECT_EQ(graph["tasks"][pipe]["level"], "upper");
+  EXPECT_EQ(graph["tasks"][pipe]["tasks"]["Fill"].size(), 1u) << spec.json;
 }
 
 TEST(InvokeParser, AnAsyncMmapGoesToOneTask) {

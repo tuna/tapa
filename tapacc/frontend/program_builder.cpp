@@ -802,8 +802,9 @@ bool ProgramBuilder::MergeAndDiscover() {
     return false;
   }
   const std::string top_key = top_candidates[0]->key;
-  if (top_candidates[0]->pattern) {
-    // A task is concrete: its ports need their types' widths.
+  if (top_candidates[0]->pattern || top_candidates[0]->is_spec) {
+    // A task is concrete (its ports need their types' widths), and the
+    // kernel goes by the top's own name, which a specialization lacks.
     Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +
          ") is a template; the top must be an ordinary function");
     return false;

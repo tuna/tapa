@@ -616,6 +616,49 @@ void Top(tapa::istream<int>& in, tapa::ostream<int>& out) {
   EXPECT_TRUE(Contains(code, "  Scale<2>(in, out);")) << code;
 }
 
+// An explicitly specialized upper task: the specialization keeps its
+// signature (rewritten, it would specialize nothing) and gives up its body,
+// and its mangled wrapper is the shell every upper task has, memory ports
+// as base addresses.
+TEST(Rewrite, ExplicitlySpecializedUpperIsAShellWrapper) {
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/explicit_upper.cpp", R"tapa(
+void Fill(tapa::mmap<int> m, tapa::ostream<int>& out) {}
+template <int K>
+void Load(tapa::mmap<int> m, tapa::ostream<int>& out);
+template <>
+void Load<0>(tapa::mmap<int> m, tapa::ostream<int>& out) {
+  tapa::task().invoke(Fill, m, out);
+}
+void Top(tapa::mmap<int> m, tapa::ostream<int>& out) {
+  tapa::task().invoke(Load<0>, m, out);
+}
+)tapa"}},
+      "Top", TempRoot("rewrite", "explicit_upper"), {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  std::string load;
+  const nlohmann::json graph = nlohmann::json::parse(run.json);
+  for (const auto& [name, task] : graph["tasks"].items()) {
+    if (task["readable_name"] == "Load<0>") load = name;
+  }
+  ASSERT_FALSE(load.empty()) << run.json;
+  const std::string& code = run.files.at("explicit_upper.cpp");
+  EXPECT_TRUE(Contains(code,
+                       "template <>\nvoid Load<0>(tapa::mmap<int> m, "
+                       "tapa::ostream<int>& out) ;"))
+      << code;
+  EXPECT_FALSE(Contains(code, ".invoke(Fill")) << code;
+  const size_t wrapper = code.find(
+      "void " + load + "(uint64_t m_offset, tapa::ostream<int> & out)");
+  ASSERT_NE(wrapper, std::string::npos) << code;
+  EXPECT_LT(code.find("#ifdef " + TaskGuardDefine(load)), wrapper) << code;
+  EXPECT_NE(
+      code.find("HLS interface ap_none port = m_offset register", wrapper),
+      std::string::npos)
+      << code;
+  EXPECT_EQ(code.find("Load<0>(m", wrapper), std::string::npos) << code;
+}
+
 // An attribute Clang itself drops: [[tapa::partition]] applies to variables,
 // so on a function it never reaches the AST -- and no removal pass can see
 // what is not there. Its text stays in the mirror the tree writer renders,

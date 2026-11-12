@@ -419,6 +419,22 @@ TEST(Merge, TemplateTopIsAnError) {
       << OneError(m.builder);
   EXPECT_TRUE(Contains(OneError(m.builder), "is a template"))
       << OneError(m.builder);
+
+  // The kernel goes by the top's own name, which a specialization lacks.
+  const TreePipelineRun spec = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/spec_top.cpp", R"cpp(
+                   void Leaf(tapa::istream<float>& in) {}
+                   template <typename T>
+                   void Top(tapa::istream<T>& x);
+                   template <>
+                   void Top<float>(tapa::istream<float>& x) {
+                     tapa::task().invoke(Leaf, x);
+                   }
+                 )cpp"}},
+      "Top", TempRoot("merge", "spec_top"), {"-std=c++17"});
+  EXPECT_FALSE(spec.ok);
+  EXPECT_TRUE(Contains(OneError(spec.builder), "is a template"))
+      << OneError(spec.builder);
 }
 
 TEST(Merge, HlsTaskNameDoesNotBeginWithAnUnderscore) {

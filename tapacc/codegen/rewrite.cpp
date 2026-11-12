@@ -824,7 +824,15 @@ void RewriteTreeFiles(const Program& program, SynthTarget default_target,
     }
     if (task_redecl) continue;  // the definition is guarded above
 
-    if (spec != specs.end()) {
+    if (spec != specs.end() &&
+        spec->second.front()->level == TaskLevel::kUpper) {
+      // An explicitly specialized upper task: its wrapper is the whole
+      // shell, so the specialization keeps its signature -- one rewritten
+      // would specialize nothing -- and gives up its body.
+      edits.Describe("upper task '" + spec->second.front()->name + "'");
+      RemoveFuncAttrs(func, edits);
+      shared.StripOtherTask(func, edits);
+    } else if (spec != specs.end()) {
       std::map<SynthTarget, std::vector<const TaskModel*>> by_target;
       for (const TaskModel* model : spec->second) {
         by_target[model->target].push_back(model);

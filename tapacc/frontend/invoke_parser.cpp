@@ -310,10 +310,10 @@ void DiagnoseNestedStreamDecls(UpperTaskContext& uc, const clang::Stmt* stmt) {
 // --- 0. The body's shape. ---
 // Hardware keeps only an upper task's channel declarations and invokes, so a
 // statement that computes would run in software simulation and silently
-// vanish from the RTL; a template upper task is not lowered at all. Report
-// both. Constants (constexpr, or const with a constant initializer),
-// declarations that declare no variable, and `assert`s, which hardware drops
-// as an NDEBUG build does, compute nothing and stay allowed.
+// vanish from the RTL; an upper task instantiated from a template is not
+// lowered at all. Report both. Constants (constexpr, or const with a constant
+// initializer), declarations that declare no variable, and `assert`s, which
+// hardware drops as an NDEBUG build does, compute nothing and stay allowed.
 bool IsPassiveDecl(clang::ASTContext& ctx, const clang::Decl* decl) {
   const auto* var = llvm::dyn_cast<clang::VarDecl>(decl);
   if (var == nullptr) return true;
@@ -347,13 +347,15 @@ bool IsPassiveStmt(clang::ASTContext& ctx, const clang::Stmt* stmt) {
 }
 
 void DiagnoseUpperBody(UpperTaskContext& uc, const clang::FunctionDecl* func) {
-  // An explicit specialization is no instantiation, yet just as templated.
-  if (func->isFunctionTemplateSpecialization() ||
+  // An explicit specialization spells a body of its own, which is lowered
+  // like any upper task's; an instantiated body is not.
+  if (func->isTemplateInstantiation() ||
       func->getDescribedFunctionTemplate() != nullptr) {
     ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
                      func->getLocation(),
-                     "upper task '%0' is a template; only a leaf task may be "
-                     "a template")
+                     "upper task '%0' is instantiated from a template; only a "
+                     "leaf task may be, and an upper task may be an explicit "
+                     "specialization (template <>) instead")
         .AddString(func->getNameAsString());
   }
   for (const clang::Stmt* child : func->getBody()->children()) {

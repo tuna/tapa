@@ -172,9 +172,11 @@ cc_library(
     deps = [
         ":backend",
         ":code_sink",
+        ":conventions",
         ":edit_sink",
         "//tapacc/frontend:classify",
         "//tapacc/frontend:program",
+        "//tapacc/frontend:type_args",
         CLANG_TOOLING,
     ],
 )

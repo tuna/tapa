@@ -191,6 +191,7 @@ cc_test(
         "//tapacc/codegen:tree_writer",
         "@googletest//:gtest",
         "@googletest//:gtest_main",
+        "@nlohmann_json//:json",
     ],
 )
 

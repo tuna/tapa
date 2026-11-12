@@ -48,8 +48,11 @@ be visible at the invocation site, and the corresponding definition must be in
 one of the sources passed to TAPA.
 
 Template tasks follow the usual C++ rule: place their definitions in a header
-so the required instantiations are visible. TAPA supports leaf template tasks;
-non-leaf template tasks are not supported.
+so the required instantiations are visible. TAPA supports leaf template tasks
+and explicit specializations (`template <>`) of leaf and non-leaf templates;
+a non-leaf task instantiated from a template is not supported. An explicit
+specialization is defined once, like any function, and declared where it is
+invoked.
 
 ## Build for software simulation
 
