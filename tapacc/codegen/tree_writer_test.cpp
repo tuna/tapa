@@ -247,6 +247,42 @@ TEST(TreeWriter, MirrorsTheTreeAndRewritesOnlyMovedIncludes) {
                 "moved(); }\n");
 }
 
+// An include the mirror cannot resolve as written -- its target reached
+// through a user `-I` directory -- moves to the target's tree key, keeping
+// its quotes or brackets. Before, the in-root and the angled out-of-root
+// spellings were kept, and the HLS compile, whose user `-I` paths follow
+// the tree's, picked the unrewritten original behind them.
+TEST(TreeWriter, IncludesThroughUserSearchPathsMoveToTheirTreeKeys) {
+  const std::string root = TempRoot("tree_writer", "respell");
+  TreeWriter writer(root, {"/w/src/main.cpp"});
+  const FileContentMappings files{
+      {"/w/src/sub/near.h", "inline int near() { return 1; }\n"},
+      {"/w/src/inc/leaf.h", "inline int leaf() { return 2; }\n"},
+      {"/w/src/inc/angle.h", "inline int angle() { return 3; }\n"},
+      {"/w/vendor/lib/deep.h", "inline int deep() { return 4; }\n"},
+      {"/w/vendor/flat/flat.h", "inline int flat() { return 5; }\n"},
+  };
+  constexpr char kCode[] = R"tapa(#include "sub/near.h"
+#include "leaf.h"
+#include <angle.h>
+#include <lib/deep.h>
+#include <flat.h>
+int main() { return near() + leaf() + angle() + deep() + flat(); }
+)tapa";
+  bool parsed = false;
+  ParseInto(&writer, kCode, "/w/src/main.cpp",
+            {"-std=c++17", "-I/w/src/inc", "-I/w/vendor", "-I/w/vendor/flat"},
+            files, &parsed);
+  std::string error;
+  ASSERT_TRUE(writer.Write(&error)) << error;
+  EXPECT_EQ(ReadFile(root + "/main.cpp"),
+            "#line 1 \"/w/src/main.cpp\"\n#include \"sub/near.h\"\n"
+            "#include \"inc/leaf.h\"\n#include <inc/angle.h>\n#include <" +
+                TreeLayout::ExternalKey("/w/vendor/lib/deep.h") +
+                ">\n#include <flat.h>\nint main() { return near() + leaf() + "
+                "angle() + deep() + flat(); }\n");
+}
+
 // ── (d) #line re-snap ─────────────────────────────────────────────────────
 
 // clang-format formats the contents of R"cpp(...)" literals; these

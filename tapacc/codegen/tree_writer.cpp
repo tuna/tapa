@@ -176,10 +176,38 @@ std::string TreeLayout::ExternalKey(llvm::StringRef abs_path) {
       .str();
 }
 
+std::string TreeLayout::TreeKey(llvm::StringRef abs_path) const {
+  return InRoot(abs_path) ? InRootKey(abs_path) : ExternalKey(abs_path);
+}
+
+bool TreeLayout::ResolvesAsWritten(const IncludeDirective& record) const {
+  const auto joined = [](llvm::StringRef dir, llvm::StringRef spelling) {
+    llvm::SmallString<256> path(dir);
+    llvm::sys::path::append(path, spelling);
+    llvm::sys::path::remove_dots(path, /*remove_dot_dot=*/true);
+    return path.str().str();
+  };
+  if (!InRoot(record.resolved)) {
+    // A quoted spelling always moves to the bucket's key; an angled one
+    // resolves through the bucket directory the manifest lists, which
+    // holds the file under its bare name.
+    return record.angled &&
+           record.spelling == llvm::sys::path::filename(record.resolved);
+  }
+  // In the root, both files keep their relative position, and the tree
+  // root itself is on the include path; a directory the user's own `-I`
+  // reached is neither.
+  if (!record.angled && InRoot(record.writing_file) &&
+      joined(llvm::sys::path::parent_path(record.writing_file),
+             record.spelling) == record.resolved) {
+    return true;
+  }
+  return joined(src_root_, record.spelling) == record.resolved;
+}
+
 bool TreeLayout::Register(const std::string& abs_path, std::string* key,
                           std::string* error) {
-  const std::string assigned =
-      InRoot(abs_path) ? InRootKey(abs_path) : ExternalKey(abs_path);
+  const std::string assigned = TreeKey(abs_path);
   const auto [owned, inserted] = key_to_path_.emplace(assigned, abs_path);
   if (!inserted && owned->second != abs_path) {
     *error = "two distinct files map to the same rewritten-tree path '" +
@@ -448,23 +476,26 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
 bool TreeWriter::AddTu(clang::ASTContext& ctx,
                        std::vector<IncludeDirective> log, TreeSession& session,
                        std::string* error) {
-  // Include-line rewriting: a quoted include of an out-of-root mirror
-  // moves to its `_external` spelling (the tree root is on the include
-  // path, so it resolves); in-root targets and angle directives keep
-  // what the user wrote. These edits share the same per-file buffers as
-  // the caller's decl rewrites.
+  // Include-line rewriting: an include of a mirrored file whose spelling
+  // the mirror does not resolve as written moves to the file's tree key
+  // (the tree root is on the include path, so it resolves), keeping its
+  // quotes or brackets: every quoted include of an out-of-root mirror, and
+  // any include that reached its target through a user `-I` directory. The
+  // rest keep what the user wrote. These edits share the same per-file
+  // buffers as the caller's decl rewrites.
   for (const IncludeDirective& record : log) {
-    if (record.angled || record.resolved.empty() || record.from_system_search ||
-        layout_.InRoot(record.resolved)) {
+    if (record.resolved.empty() || record.from_system_search ||
+        layout_.ResolvesAsWritten(record)) {
       continue;
     }
     TreeFileBuffer* const buffer = session.BufferForPath(record.writing_file);
     if (buffer == nullptr) continue;
+    const std::string key = layout_.TreeKey(record.resolved);
     session.edits().Describe("include directive");
     if (!session.edits().CanRewrite(record.filename_range) ||
         !buffer->ReplaceWithLineResnap(
             record.filename_range,
-            "\"" + TreeLayout::ExternalKey(record.resolved) + "\"")) {
+            record.angled ? "<" + key + ">" : "\"" + key + "\"")) {
       *error = "cannot rewrite the include of '" + record.resolved + "' in '" +
                record.writing_file + "'";
       return false;

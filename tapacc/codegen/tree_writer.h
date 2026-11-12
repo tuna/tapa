@@ -39,7 +39,7 @@ struct IncludeDirective {
   std::string spelling;
   // The resolved file (canonical absolute path); empty when unresolved.
   std::string resolved;
-  // True for <...>; angle directives are never rewritten.
+  // True for <...>, which a rewrite keeps.
   bool angled = false;
   // True when the resolution went through a system search entry (-isystem
   // or a system framework dir): such targets are not mirrored, per the
@@ -111,6 +111,14 @@ class TreeLayout {
   std::string InRootKey(llvm::StringRef abs_path) const;
   // The `_external/<digest8>/<basename>` key; call only when !InRoot().
   static std::string ExternalKey(llvm::StringRef abs_path);
+  // The tree key of a mirrored file, in or out of the root.
+  std::string TreeKey(llvm::StringRef abs_path) const;
+
+  // Whether the mirror resolves a mirrored include's spelling, as written,
+  // to the mirrored copy of the file it resolved to; a directive it does
+  // not must be respelled with the target's tree key, or the original
+  // file behind a user `-I` would win.
+  bool ResolvesAsWritten(const IncludeDirective& record) const;
 
   // Registers a mirrored path and reports its tree key. A second distinct
   // path mapping to an already-owned key (a truncated-digest collision, or
