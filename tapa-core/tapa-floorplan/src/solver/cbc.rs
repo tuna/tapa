@@ -532,6 +532,32 @@ Optimal - objective value 12.00000000
         }
     }
 
+    /// A placement with no edge prices nothing but the formulation's
+    /// constant one, and must still read back as the model's own columns.
+    #[test]
+    fn cbc_solves_a_constant_only_objective() {
+        let mut model = LpModel::new();
+        let a = model.add_binary("a");
+        let b = model.add_binary("b");
+        model.set_objective(LinExpr::new().plus_constant(1.0));
+        model.add_constraint(
+            "pick",
+            LinExpr::sum([(1.0, a), (1.0, b)]),
+            Comparison::Eq,
+            1.0,
+        );
+
+        match CbcSolver::new().solve(&model, &SolveOpts::default()) {
+            Ok(solution) => {
+                assert_eq!(solution.status, LpStatus::Optimal);
+                assert_eq!(solution.values.len(), 2);
+                assert!(approx(solution.objective, 1.0));
+            }
+            Err(SolverError::Spawn { .. }) => missing_cbc(),
+            Err(other) => panic!("cbc failed unexpectedly: {other}"),
+        }
+    }
+
     #[test]
     fn cbc_reports_infeasible_model() {
         // x binary, x >= 1 and x <= 0 — no solution.

@@ -89,7 +89,14 @@ pub fn write_cplex_lp(model: &LpModel) -> Result<String, LpWriteError> {
 }
 
 /// The objective's terms plus its constant offset.
+///
+/// With no variable terms the constant stands alone: CBC reads `0 + 1` as
+/// a term on a column of its own invention, then reports one more value
+/// than the model has.
 fn write_objective(objective: &LinExpr) -> String {
+    if objective.terms.iter().all(|(coef, _)| is_zero(*coef)) {
+        return format_num(objective.constant);
+    }
     let mut out = write_terms(&objective.terms);
     if objective.constant > 0.0 {
         write!(out, " + {}", format_num(objective.constant)).expect("String write is infallible");
