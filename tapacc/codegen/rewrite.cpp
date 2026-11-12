@@ -517,7 +517,19 @@ clang::SourceRange DefinitionRange(const clang::FunctionDecl* func,
     }
     take_earlier(attr_begin);
   }
-  return {begin, func->getEndLoc()};
+  // A macro spelling only a prefix of the definition (a specifier, an
+  // attribute: `KERNEL void Leaf(...) {...}`) leaves the rest spelled in
+  // the file, so the definition starts at that invocation. Only one
+  // invocation spelling the whole definition owns it.
+  const clang::SourceLocation end = func->getEndLoc();
+  if (begin.isMacroID()) {
+    const clang::CharSourceRange invocation = OutermostInvocation(sm, begin);
+    if (end.isFileID() ||
+        OutermostInvocation(sm, end).getBegin() != invocation.getBegin()) {
+      begin = invocation.getBegin();
+    }
+  }
+  return {begin, end};
 }
 
 // `defined(A) || defined(B) || ...` — one guard condition over a define set.

@@ -235,6 +235,36 @@ void DefTop(tapa::mmap<const float> a, tapa::mmap<float> c,
   EXPECT_TRUE(run.files.empty());
 }
 
+// A macro spelling only a prefix of the definition, such as a specifier,
+// leaves the definition spelled in the file: the guard opens before that
+// invocation and the stub keeps it as written. It used to be rejected as a
+// macro-defined task.
+TEST(MacroRewrite, LeadingSpecifierMacroIsNotAMacroDefinition) {
+  const std::string code = std::string(R"tapa(
+#define KERNEL __attribute__((noinline))
+KERNEL void Spec(tapa::istream<float>& q, tapa::mmap<float> c) {
+  c[0] = q.read();
+}
+)tapa") + kProdTask + R"tapa(
+void SpecTop(tapa::mmap<float> c, unsigned long long n) {
+  tapa::stream<float, 2> q;
+  tapa::task().invoke(Prod, q, n).invoke(Spec, q, c);
+}
+)tapa";
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/spec.cpp", code}}, "SpecTop",
+      TempRoot("macro_rewrite", "spec"), {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const std::string& out = run.files.at("spec.cpp");
+  EXPECT_LT(out.find("#ifdef TAPA_TASK_DEF_Spec"),
+            out.find("KERNEL void Spec("))
+      << out;
+  EXPECT_TRUE(Contains(out,
+                       "#else\nKERNEL void Spec(tapa::istream<float>& q, "
+                       "tapa::mmap<float> c) ;\n#endif"))
+      << out;
+}
+
 // (a) A task invocation wrapped in a user macro (the multi-file app's
 // INVOKE_CONSUME shape): the graph sees through the macro, and the top's
 // rewritten shell needs no splice.
