@@ -62,6 +62,31 @@ TEST(TapaSimTest, InvokeEndsWhileADetachedUpperTaskStarts) {
   tapa::invoke(LateDetachedUpperTop, /*bitstream=*/"");
 }
 
+void NeverFed(tapa::istream<int>& in) { in.read(); }
+
+void Unfed(tapa::ostream<int>&) {}
+
+// A detached upper task whose joined child never finishes, as a free-running
+// switch does.
+void DetachedUpper() {
+  tapa::stream<int> q("never_fed");
+  tapa::task().invoke(NeverFed, q).invoke<tapa::detach>(Unfed, q);
+}
+
+void Increment(tapa::mmap<int> data) { ++data[0]; }
+
+void DetachedUpperTop(tapa::mmap<int> data) {
+  tapa::task().invoke<tapa::detach>(DetachedUpper).invoke(Increment, data);
+}
+
+// Hardware waits on no instance under a detached one; neither may an invoke.
+TEST(TapaSimTest, DetachedUpperTaskDoesNotHoldUpCompletion) {
+  std::vector<int> data = {6};
+  tapa::invoke(DetachedUpperTop, /*bitstream=*/"",
+               tapa::read_write_mmap<int>(data.data(), data.size()));
+  EXPECT_EQ(data[0], 7);
+}
+
 TEST(TapaSimTest, AlignedAllocatorSupportsContainerReallocation) {
   using Vector = std::vector<int, tapa::aligned_allocator<int>>;
   Vector data = {1, 2, 3};

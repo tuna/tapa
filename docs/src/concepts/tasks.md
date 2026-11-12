@@ -74,7 +74,8 @@ tapa::task().invoke<tapa::detach>(LeafTask, arg1, arg2);
 
 Detached tasks are similar to `std::thread::detach` in the C++ STL. Because
 their state does not need to be tracked, they avoid fan-out termination signals
-and reduce area.
+and reduce area. The tasks a detached upper task invokes, joined or not, do not
+hold up its parent either.
 
 ```admonish note
 By default, TAPA tasks are joined: the parent waits for each child to complete.

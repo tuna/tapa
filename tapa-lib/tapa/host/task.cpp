@@ -41,6 +41,24 @@ namespace internal {
 thread_local int blocked_poll_streak = 0;
 thread_local uint64_t blocked_poll_count = 0;
 
+namespace {
+
+// Whether the running task descends from a detached invoke. Hardware waits
+// on no instance under a detached one, joined or not: the tasks a detached
+// upper task invokes are detached with it.
+thread_local bool in_detached_scope = false;
+
+// `f` as `schedule` runs it: it and every task it invokes are detached if
+// `detach`.
+std::function<void()> scoped(bool detach, const std::function<void()>& f) {
+  return [detach, f] {
+    in_detached_scope = detach;
+    f();
+  };
+}
+
+}  // namespace
+
 }  // namespace internal
 
 namespace {
@@ -673,7 +691,10 @@ void yield_to_scheduler() {
   if (current_handle == nullptr) {
     reschedule_this_thread();
   } else {
+    // The coroutines this thread runs meanwhile set their own scope.
+    const bool detached = in_detached_scope;
     (*current_handle)();
+    in_detached_scope = detached;
   }
 }
 
@@ -768,7 +789,8 @@ void signal_handler(int signal) {
 }  // namespace
 
 void schedule(bool detach, const function<void()>& f) {
-  pool->add_task(detach, f);
+  detach = detach || in_detached_scope;
+  pool->add_task(detach, scoped(detach, f));
 }
 
 void schedule_cleanup(const function<void()>& f) { pool->add_cleanup_task(f); }
@@ -826,11 +848,12 @@ std::mutex mtx;
 }  // namespace
 
 void schedule(bool detach, const std::function<void()>& f) {
+  detach = detach || in_detached_scope;
   if (detach) {
-    std::thread(f).detach();
+    std::thread(scoped(detach, f)).detach();
   } else {
     std::unique_lock<std::mutex> lock(internal::mtx);
-    threads->emplace_back(f);
+    threads->emplace_back(scoped(detach, f));
   }
 }
 
