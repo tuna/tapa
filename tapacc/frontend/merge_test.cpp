@@ -421,6 +421,21 @@ TEST(Merge, TemplateTopIsAnError) {
       << OneError(m.builder);
 }
 
+TEST(Merge, HlsTaskNameDoesNotBeginWithAnUnderscore) {
+  // Vitis HLS names the module of `_Fill` `p_Fill`, so synthesis used to
+  // fail looking for `_Fill.csynth.xml`.
+  const TreePipelineRun m = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/underscore.cpp",
+                 "void _Fill(tapa::ostream<float>& out) {}\n"
+                 "void Top(tapa::ostream<float>& y) {\n"
+                 "  tapa::task().invoke(_Fill, y);\n"
+                 "}\n"}},
+      "Top", TempRoot("merge", "underscore"), {"-std=c++17"});
+  EXPECT_FALSE(m.ok);
+  EXPECT_TRUE(Contains(OneError(m.builder), "task '_Fill' (defined at "))
+      << OneError(m.builder);
+}
+
 // ── Single-TU discovery semantics carried over unchanged ───────────────
 
 constexpr char kProgram[] = R"cpp(

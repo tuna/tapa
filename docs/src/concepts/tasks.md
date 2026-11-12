@@ -91,6 +91,8 @@ terminate on program completion.
   mmap interfaces by value (`mmap<T>`).
 - Every parameter of a task definition is a port named after the parameter,
   so `tapa analyze` rejects an unnamed one.
+- A task built with HLS must not have a name beginning with `_`: Vitis HLS
+  renames such a module, so `tapa analyze` rejects it.
 - An upper-level task body must contain only channel declarations,
   constants, `assert`s, and one `tapa::task()` statement chaining every
   `.invoke(...)` — no loops, arithmetic, or other computation. `tapa analyze`

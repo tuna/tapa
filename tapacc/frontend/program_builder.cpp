@@ -886,6 +886,22 @@ bool ProgramBuilder::MergeAndDiscover() {
   if (!PropagateAie(top_key, aie_top)) return false;
   if (!ComputeRings(top_key)) return false;
 
+  // Vitis HLS renames a top function whose name begins with '_' (`_Fill`
+  // becomes module `p_Fill`), so the task's RTL and reports never appear
+  // under its name; mangled task names carry a prefix for the same reason.
+  for (const auto& [key, task] : tasks_) {
+    const TaskModel& model = task.model;
+    if (model.name.empty() || model.name.front() != '_' ||
+        model.target == SynthTarget::kAie ||
+        model.target == SynthTarget::kIgnore) {
+      continue;
+    }
+    Fail("task '" + model.name + "' (defined at " + FirstSighting(key).loc +
+         ") begins with '_': Vitis HLS renames such a module (to 'p_...'), so "
+         "its RTL would never appear under the task's name; rename the task");
+    return false;
+  }
+
   // Rule 2, site half: the mirror writes one file per source path, so a
   // task sighted at two distinct sites would need two different rewrites of
   // the same task. A header task sighted by several TUs sits at one site
