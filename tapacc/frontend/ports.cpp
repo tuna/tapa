@@ -226,10 +226,12 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
         break;
 
       default:
-        // Scalar: the parameter's own type and width.
-        ports.push_back(Port{name, TapaKind::kNotTapa,
-                             param->getType().getAsString(),
-                             BitWidth(ctx, param->getType())});
+        // Scalar: the parameter's own type and width, spelled as C++ spells
+        // it, as the element types are (`bool`, not C's `_Bool`).
+        ports.push_back(
+            Port{name, TapaKind::kNotTapa,
+                 param->getType().getAsString(ctx.getPrintingPolicy()),
+                 BitWidth(ctx, param->getType())});
         break;
     }
   }

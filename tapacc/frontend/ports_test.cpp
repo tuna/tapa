@@ -173,6 +173,19 @@ TEST(Ports, MemoryElementTypeIsComplete) {
   }
 }
 
+// The graph spells a scalar's type as C++ does: the AI Engine graph
+// generator reads `bool` (an unsigned runtime parameter) from it, which a
+// C-spelled `_Bool` never matched.
+TEST(Ports, ScalarTypesAreSpelledAsInCpp) {
+  auto b = ParseProbe(
+      "struct Config { int v; }; "
+      "void probe(bool flag, Config config);");
+  const std::vector<Port> ports = BuildPorts(b.ast->getASTContext(), b.fn);
+  ASSERT_EQ(ports.size(), 2u);
+  EXPECT_EQ(ports[0].ctype, "bool");
+  EXPECT_EQ(ports[1].ctype, "Config");
+}
+
 TEST(Ports, StreamsAndAsyncMmapRequireReference) {
   const char* bad[] = {
       "void probe(tapa::istream<int> s);",
