@@ -215,13 +215,28 @@ pub fn flatten_with_origins(graph: &TaskGraph) -> Result<FlatProjection, Transfo
     })
 }
 
+/// The name a thing named `local` inside the instance `scope` takes once the
+/// AI Engine partition lifts it out of that instance: `<scope>_<local>`, or
+/// `local` itself in the top's scope (an empty `scope`). Such a name can
+/// become a PLIO and the PL kernel's AXIS port, and `v++` names the
+/// block-design net of a PL-to-AI Engine stream after that port, so it must
+/// not hold `__`: Vivado rejects that in block-design names.
+pub(crate) fn scoped_name(scope: &str, local: &str) -> String {
+    if scope.is_empty() {
+        local.to_owned()
+    } else {
+        format!("{scope}_{local}")
+    }
+}
+
 /// Replace every instance of each upper task in `inline` with that task's
 /// children, invoked by the instance's parent under the instance's
 /// bindings, until no task in the set is invoked. A FIFO the inlined
-/// instance declares becomes `<instance>__<fifo>` in the parent, and an
-/// inlined child is named `<instance>__<child instance>`. A detached
-/// instance's children are detached; a sequential invoke on either level
-/// is an error. Tasks no longer invoked are dropped; the top always stays.
+/// instance declares becomes `<instance>_<fifo>` in the parent, and an
+/// inlined child is named `<instance>_<child instance>` ([`scoped_name`]).
+/// A detached instance's children are detached; a sequential invoke on
+/// either level is an error. Tasks no longer invoked are dropped; the top
+/// always stays.
 pub(crate) fn inline_uppers(
     graph: &TaskGraph,
     inline: &BTreeSet<&str>,
@@ -289,7 +304,7 @@ fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), T
             .fifos
             .iter()
             .filter(|(_, fifo)| fifo.depth.is_some())
-            .map(|(name, _)| (name.clone(), format!("{scope}__{name}")))
+            .map(|(name, _)| (name.clone(), scoped_name(&scope, name)))
             .collect();
         let bindings: BTreeMap<String, ArgSource> = instance
             .args
@@ -327,7 +342,7 @@ fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), T
                     .entry(grandchild.clone())
                     .or_default()
                     .push(TaskInstance {
-                        name: Some(format!("{scope}__{name}")),
+                        name: Some(scoped_name(&scope, &name)),
                         args,
                         step: if instance.step < 0 {
                             -1

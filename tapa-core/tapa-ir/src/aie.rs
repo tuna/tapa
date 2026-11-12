@@ -21,6 +21,7 @@ use crate::interconnect::{EndpointRef, InterconnectDefinition};
 use crate::port::{sanitize_identifier_name, ArgCategory};
 use crate::synth_target::SynthTarget;
 use crate::task::{Task, TaskLevel};
+use crate::transforms::scoped_name;
 use crate::TaskGraph;
 
 /// Why a task graph has no valid AI Engine partition.
@@ -615,18 +616,6 @@ impl AiePartition {
     }
 }
 
-/// A child invoke's name in the host program's scope chain: the top's
-/// children keep their local names; each deeper one prefixes the scope it
-/// is invoked in, with `__` — the spelling that must match the names
-/// `Builder::visit` gives kernels and `InlinedInstance::name`.
-fn scoped_name(scope: &str, local: std::borrow::Cow<'_, str>) -> String {
-    if scope.is_empty() {
-        local.into_owned()
-    } else {
-        format!("{scope}__{local}")
-    }
-}
-
 /// An upper task instance whose body a host program running the design
 /// against one fabric makes invoke by invoke.
 ///
@@ -676,7 +665,7 @@ pub fn inlined_instances(graph: &TaskGraph) -> Result<Vec<InlinedInstance>, AieE
             .filter(|(child, _)| mixed.contains(child.as_str()))
         {
             for (index, instance) in instances.iter().enumerate() {
-                let name = scoped_name(&scope, instance.canonical_name(child, index));
+                let name = scoped_name(&scope, &instance.canonical_name(child, index));
                 inlined.push(InlinedInstance {
                     parent: scope.clone(),
                     position: instance.position,
@@ -744,7 +733,7 @@ pub fn memory_crossings(graph: &TaskGraph) -> Result<Vec<MemoryCrossing>, AieErr
         let def = task(graph, task_name)?;
         for (child, instances) in &def.tasks {
             for (index, instance) in instances.iter().enumerate() {
-                let name = scoped_name(&scope, instance.canonical_name(child, index));
+                let name = scoped_name(&scope, &instance.canonical_name(child, index));
                 if mixed.contains(child.as_str()) {
                     scopes.push((name, child.as_str()));
                 } else if task(graph, child)?.synth == SynthTarget::Aie {
@@ -1068,7 +1057,8 @@ impl Builder<'_> {
         let words = port.width / 32;
         let graph = self.graph;
         let mut channel = |channel: &str, input: bool, words: u32| {
-            let name = sanitize_identifier_name(&format!("{path}__{}_{channel}", port.name));
+            let name =
+                sanitize_identifier_name(&scoped_name(path, &format!("{}_{channel}", port.name)));
             let kind = AieStreamKind::Plio {
                 input,
                 width: plio_width(words * 32),
@@ -1203,7 +1193,7 @@ impl Builder<'_> {
                 .port(&port)
                 .and_then(|port| port.frame);
             let stream = self.push_stream(
-                sanitize_identifier_name(&format!("{path}__{fifo_name}")),
+                sanitize_identifier_name(&scoped_name(path, fifo_name)),
                 fifo_name,
                 words,
                 frame,
@@ -1237,7 +1227,7 @@ impl Builder<'_> {
                     child_scope.insert(port.clone(), binding);
                 }
                 let child_name = instance.canonical_name(child, child_index);
-                let child_path = sanitize_identifier_name(&format!("{path}__{child_name}"));
+                let child_path = sanitize_identifier_name(&scoped_name(path, &child_name));
                 self.visit(child, child_index, &child_path, &child_scope)?;
             }
         }

@@ -48,8 +48,8 @@ kernel](#a-top-with-no-pl-kernel)); a leaf top cannot be marked.
 Every stream between a PL task and an AI Engine task crosses into the array
 through a PLIO channel, and `tapa analyze` lists each crossing. An upper task
 whose tasks run on both is dissolved into its parent when the design is
-built: its streams become the parent's, named `<instance>__<stream>` (such as
-`Stage_0__mid`), so it must be invoked joined or detached and must invoke its
+built: its streams become the parent's, named `<instance>_<stream>` (such as
+`Stage_0_mid`), so it must be invoked joined or detached and must invoke its
 own tasks joined or detached. Hybrid cosimulation and a simulator package
 run the body of such a task on the host and split the run among the tasks
 it invokes, so a crossing may be declared at any level.

@@ -191,14 +191,14 @@ fn an_upper_task_flattens_into_kernels_and_nets() {
             .iter()
             .map(|k| k.name.as_str())
             .collect::<Vec<_>>(),
-        ["Pipe_0__Inc_0", "Pipe_0__Inc_1"]
+        ["Pipe_0_Inc_0", "Pipe_0_Inc_1"]
     );
     let net = partition
         .streams
         .iter()
         .find(|s| s.fifo == "mid")
         .expect("net");
-    assert_eq!(net.name, "Pipe_0__mid");
+    assert_eq!(net.name, "Pipe_0_mid");
     assert_eq!(
         net.kind,
         AieStreamKind::Net { depth_words: 16 },
@@ -298,7 +298,7 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
             .iter()
             .map(|k| k.name.as_str())
             .collect::<Vec<_>>(),
-        ["Mid_0__Add_0"]
+        ["Mid_0_Add_0"]
     );
     assert_eq!(
         partition
@@ -308,14 +308,14 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
             .collect::<Vec<_>>(),
         [
             (
-                "Mid_0__a_q",
+                "Mid_0_a_q",
                 AieStreamKind::Plio {
                     input: true,
                     width: 32
                 }
             ),
             (
-                "Mid_0__c_q",
+                "Mid_0_c_q",
                 AieStreamKind::Plio {
                     input: false,
                     width: 32
@@ -331,7 +331,7 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
         ["Load", "Store"]
     );
     assert_eq!(
-        top.fifos["Mid_0__a_q"].produced_by,
+        top.fifos["Mid_0_a_q"].produced_by,
         Some(crate::EndpointRef("Load".into(), 0))
     );
     assert_eq!(
@@ -339,7 +339,7 @@ fn an_upper_task_mixing_fabrics_is_inlined_into_its_parent() {
             .iter()
             .filter_map(|p| p.aie_plio.map(|_| p.name.as_str()))
             .collect::<Vec<_>>(),
-        ["Mid_0__a_q", "Mid_0__c_q"]
+        ["Mid_0_a_q", "Mid_0_c_q"]
     );
 
     let err =
@@ -413,7 +413,7 @@ fn a_pl_leaf_in_an_aie_upper_task_runs_on_the_pl() {
             .iter()
             .map(|k| k.name.as_str())
             .collect::<Vec<_>>(),
-        ["Pipe_0__Inc_0"]
+        ["Pipe_0_Inc_0"]
     );
     assert_eq!(
         partition
@@ -430,7 +430,7 @@ fn a_pl_leaf_in_an_aie_upper_task_runs_on_the_pl() {
                 }
             ),
             (
-                "Pipe_0__mid",
+                "Pipe_0_mid",
                 AieStreamKind::Plio {
                     input: false,
                     width: 64
@@ -442,7 +442,7 @@ fn a_pl_leaf_in_an_aie_upper_task_runs_on_the_pl() {
     let top = &pl.tasks["Top"];
     assert_eq!(
         top.tasks["Dbl"][0].name.as_deref(),
-        Some("Pipe_0__Dbl_0"),
+        Some("Pipe_0_Dbl_0"),
         "the PL leaf joins the PL kernel"
     );
     assert_eq!(
@@ -639,10 +639,10 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
     assert_eq!(
         names,
         [
-            ("Scale_0__mem_read_addr", false, 128),
-            ("Scale_0__mem_read_data", true, 32),
-            ("Scale_0__mem_write", false, 32),
-            ("Scale_0__mem_write_resp", true, 32),
+            ("Scale_0_mem_read_addr", false, 128),
+            ("Scale_0_mem_read_data", true, 32),
+            ("Scale_0_mem_write", false, 32),
+            ("Scale_0_mem_write_resp", true, 32),
         ]
     );
 
@@ -653,11 +653,11 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
     assert_eq!(reads.args["mem"].arg, ArgSource::Name("buf".into()));
     assert_eq!(
         reads.args["data"].arg,
-        ArgSource::Name("Scale_0__mem_read_data".into())
+        ArgSource::Name("Scale_0_mem_read_data".into())
     );
     assert_eq!(top.tasks["Writes"][0].args.len(), 3);
     // The AXIS port comes from an external FIFO the mover drives.
-    let fifo = &top.fifos["Scale_0__mem_read_data"];
+    let fifo = &top.fifos["Scale_0_mem_read_data"];
     assert_eq!(fifo.produced_by, Some(EndpointRef("Reads".into(), 0)));
     assert_eq!((fifo.depth, &fifo.consumed_by), (None, &None));
     let axis: Vec<(&str, ArgCategory, Option<u32>)> = top
@@ -669,10 +669,10 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
     assert_eq!(
         axis,
         [
-            ("Scale_0__mem_read_addr", ArgCategory::Istream, Some(128)),
-            ("Scale_0__mem_read_data", ArgCategory::Ostream, Some(32)),
-            ("Scale_0__mem_write", ArgCategory::Istream, Some(32)),
-            ("Scale_0__mem_write_resp", ArgCategory::Ostream, Some(32)),
+            ("Scale_0_mem_read_addr", ArgCategory::Istream, Some(128)),
+            ("Scale_0_mem_read_data", ArgCategory::Ostream, Some(32)),
+            ("Scale_0_mem_write", ArgCategory::Istream, Some(32)),
+            ("Scale_0_mem_write_resp", ArgCategory::Ostream, Some(32)),
         ]
     );
 
@@ -682,10 +682,10 @@ fn an_async_mmap_port_is_served_by_pl_movers_over_plio() {
             parent: String::new(),
             position: 0,
             param: 0,
-            read_requests: Some("Scale_0__mem_read_addr".into()),
-            read_data: Some("Scale_0__mem_read_data".into()),
-            write_requests: Some("Scale_0__mem_write".into()),
-            write_responses: Some("Scale_0__mem_write_resp".into()),
+            read_requests: Some("Scale_0_mem_read_addr".into()),
+            read_data: Some("Scale_0_mem_read_data".into()),
+            write_requests: Some("Scale_0_mem_write".into()),
+            write_responses: Some("Scale_0_mem_write_resp".into()),
         }]
     );
 
@@ -738,7 +738,7 @@ fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
         inlined,
         [
             (String::new(), 0, "Split_0".to_owned()),
-            ("Split_0".to_owned(), 1, "Split_0__Forward_0".to_owned()),
+            ("Split_0".to_owned(), 1, "Split_0_Forward_0".to_owned()),
         ]
     );
     let mut sites: Vec<(String, u32, u32, Option<String>)> = memory_crossings(&g)
@@ -754,13 +754,13 @@ fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
                 "Split_0".to_owned(),
                 0,
                 0,
-                Some("Split_0__Scale_0__mem_read_data".to_owned())
+                Some("Split_0_Scale_0_mem_read_data".to_owned())
             ),
             (
-                "Split_0__Forward_0".to_owned(),
+                "Split_0_Forward_0".to_owned(),
                 0,
                 0,
-                Some("Split_0__Forward_0__Scale_0__mem_read_data".to_owned())
+                Some("Split_0_Forward_0_Scale_0_mem_read_data".to_owned())
             ),
         ]
     );
@@ -774,6 +774,13 @@ fn an_ai_engine_upper_task_hands_memory_to_its_tasks() {
     assert!(reads
         .iter()
         .all(|r| r.args["mem"].arg == ArgSource::Name("buf".into())));
+    // `v++` names the block-design net of a PL-to-AI Engine stream after
+    // the PL kernel's AXIS port, and Vivado rejects `__` in such names.
+    assert!(pl.tasks["Top"]
+        .ports
+        .iter()
+        .filter(|p| p.aie_plio.is_some())
+        .all(|p| !p.name.contains("__")));
 }
 
 /// A top on the AI Engine whose stream arguments reach the frame ports of

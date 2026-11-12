@@ -1166,8 +1166,8 @@ mod tests {
                 ordered: true,
             }],
             streams: vec![
-                plio("Scale_0__mem_read_addr", false, 128),
-                plio("Scale_0__mem_read_data", true, 32),
+                plio("Scale_0_mem_read_addr", false, 128),
+                plio("Scale_0_mem_read_data", true, 32),
             ],
             run_forever: false,
             pl_less: false,
@@ -1198,11 +1198,11 @@ mod tests {
         );
         let graph = &files["graph.cpp"];
         assert!(
-            graph.contains("(k_Scale_0.out[0], p_Scale_0__mem_read_addr.in[0])"),
+            graph.contains("(k_Scale_0.out[0], p_Scale_0_mem_read_addr.in[0])"),
             "{graph}"
         );
         assert!(
-            graph.contains("(p_Scale_0__mem_read_data.out[0], k_Scale_0.in[0])"),
+            graph.contains("(p_Scale_0_mem_read_data.out[0], k_Scale_0.in[0])"),
             "{graph}"
         );
     }

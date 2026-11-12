@@ -1,6 +1,6 @@
 // A mixed hierarchy: the top makes the AI Engine the default, its memory
 // movers are PL, and the upper task Stage mixes an AI Engine Add with a PL
-// Double, so the stream between them crosses inside Stage (Stage_0__mid).
+// Double, so the stream between them crosses inside Stage (Stage_0_mid).
 #include "mixed.h"
 
 [[tapa::target("hls")]]

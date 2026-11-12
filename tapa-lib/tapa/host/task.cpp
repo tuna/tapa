@@ -327,24 +327,20 @@ std::pair<size_t, const stream_use*> find_binding(
       if (KernelArgName(use.name) == name) return {i, &use};
     }
   }
-  // A stream inside an inlined instance is named after the instance.
-  const size_t scope = name.rfind("__");
-  const std::string variable =
-      scope == std::string::npos ? name : name.substr(scope + 2);
   LOG(FATAL) << "kernel stream '" << name << "' connects to no task; the "
              << "host binds each stream by its name, so name it after its "
-             << "variable, e.g. tapa::stream<T> " << variable << "(\""
-             << variable << "\")";
+             << "variable, e.g. tapa::stream<T> a_q(\"a_q\"); a stream an "
+             << "inlined instance declares is named <instance>_<variable>";
   return {0, nullptr};
 }
 
 // The invokes of an upper task's body, flattened as the kernel was built:
 // the invoke of an instance the kernel inlined is replaced by the invokes
 // of that instance's body, and a stream declared in that body is named
-// after the instance, e.g. `Stage_0__mid`. Each inlined instance is found
-// by its position, as the host makes a body's invokes in the order tapacc
-// records. `scope` names the body: empty for the top, else an inlined
-// instance.
+// after the instance, e.g. `Stage_0_mid` (tapa-ir's `scoped_name`). Each
+// inlined instance is found by its position, as the host makes a body's
+// invokes in the order tapacc records. `scope` names the body: empty for
+// the top, else an inlined instance.
 std::vector<recorded_invoke> flatten(
     std::vector<recorded_invoke> invokes, const std::string& scope,
     const std::vector<frt::InlinedTask>& inlined) {
@@ -370,7 +366,7 @@ std::vector<recorded_invoke> flatten(
       for (stream_use& use : child.uses) {
         const auto known = outer.find(use.queue);
         use.name =
-            known != outer.end() ? known->second : task->name + "__" + use.name;
+            known != outer.end() ? known->second : task->name + "_" + use.name;
       }
     }
     for (recorded_invoke& child :
