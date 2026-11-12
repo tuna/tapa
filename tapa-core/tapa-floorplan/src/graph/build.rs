@@ -11,7 +11,7 @@ use tapa_ir::{
 };
 
 use crate::graph::floor_graph::{
-    fifo_area, AxiNet, CoLocatedInstance, ControlInterface, ControlNet, GraphError,
+    fifo_area, ram_area, AxiNet, CoLocatedInstance, ControlInterface, ControlNet, GraphError,
     MemoryInterface, PlacementEdge, Stream, Vertex, CONTROL_S_AXI_INSTANCE,
 };
 
@@ -162,7 +162,7 @@ impl FloorGraphBuilder {
                 let banks = channel
                     .banks
                     .checked_mul(channel.frame)
-                    .map(|depth| fifo_area(data_width, depth))
+                    .map(|depth| ram_area(data_width, depth))
                     .ok_or_else(|| GraphError::ResourceOverflow(fifo_name.clone()))?;
                 let ends = [
                     (channel.producer_view, src, dst),
@@ -793,8 +793,8 @@ mod tests {
             33,
             floorplanned_fifo_storage_depth(FrameChannel::COPY_DEPTH),
         );
-        let three_banks = fifo_area(33, 3 * 512);
-        let two_banks = fifo_area(33, 2 * 512);
+        let three_banks = ram_area(33, 3 * 512);
+        let two_banks = ram_area(33, 2 * 512);
         assert_eq!(area("A_0"), three_banks);
         assert_eq!(area("B_0"), three_banks.checked_add(copy).expect("area"));
         assert_eq!(area("C_0"), Area::default());

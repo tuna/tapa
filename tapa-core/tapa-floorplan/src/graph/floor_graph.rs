@@ -268,11 +268,33 @@ pub enum GraphError {
 
 /// Analytic FIFO area used by the placement resource model.
 ///
-/// Depth `< 128` infers an SRL/distributed-RAM FIFO; deeper infers a BRAM
-/// FIFO. `width` is the full data width (payload + eot bit). Every term is
-/// exact integer arithmetic equivalent to the upstream float expressions.
+/// It follows the storage `fifo.v` and `relay_station.v` select: a FIFO at
+/// least 36 bits wide and 4096 deep is pinned to URAM
+/// (`ram_style = "ultra"`), any other is [`ram_area`]. `width` is the full
+/// data width (payload + eot bit).
 #[must_use]
 pub fn fifo_area(width: u32, depth: u32) -> Area {
+    let area = ram_area(width, depth);
+    if width >= 36 && depth >= 4096 {
+        // Vivado tiles the memory into 72-bit x 4096-entry URAM288 blocks.
+        Area {
+            bram_18k: 0,
+            uram: u64::from(width.div_ceil(72)) * u64::from(depth.div_ceil(4096)),
+            ..area
+        }
+    } else {
+        area
+    }
+}
+
+/// Analytic area of `depth` x `width` storage outside URAM.
+///
+/// Depth `< 128` infers SRL/distributed RAM; deeper infers block RAM. Frame
+/// channel banks (`ram_style = "auto"`) are charged this directly: Vivado
+/// does not follow the FIFOs' URAM rule for them. Every term is exact
+/// integer arithmetic equivalent to the upstream float expressions.
+#[must_use]
+pub(crate) fn ram_area(width: u32, depth: u32) -> Area {
     let width = u64::from(width);
     let depth = u64::from(depth);
     let log2 = depth.max(1).ilog2();
@@ -335,6 +357,28 @@ mod tests {
             fifo_area(33, 65),
             "deep co-located FIFOs retain their existing implementation",
         );
+    }
+
+    /// `fifo.v`/`relay_station.v` pin a FIFO of at least 36 bits by 4096
+    /// entries to URAM. Vivado 2025.2 synthesis of those FIFOs (xcu55c)
+    /// placed them in 1, 2, 2, 4 and 4 URAM288 and no block RAM; just below
+    /// either threshold the FIFO stays in block RAM.
+    #[test]
+    fn wide_deep_fifo_area_is_uram() {
+        for ((width, depth), uram) in [
+            ((36, 4096), 1),
+            ((65, 8192), 2),
+            ((144, 4096), 2),
+            ((73, 4097), 4),
+            ((64, 16384), 4),
+        ] {
+            let area = fifo_area(width, depth);
+            assert_eq!((area.uram, area.bram_18k), (uram, 0), "{width}x{depth}");
+        }
+        for (width, depth) in [(35, 4096), (36, 4095)] {
+            assert_eq!(fifo_area(width, depth), ram_area(width, depth));
+            assert_eq!(fifo_area(width, depth).uram, 0);
+        }
     }
 
     #[test]
