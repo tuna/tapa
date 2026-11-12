@@ -247,6 +247,23 @@ TEST(FixedTest, MixesWithPlainNumbers) {
   EXPECT_FALSE(a < 5);
 }
 
+// `++` and `--` add and subtract 1 through the type's own modes.
+TEST(FixedTest, IncrementAndDecrementApplyTheTypesModes) {
+  fixed<8, 4> x = 1.5;
+  EXPECT_EQ((x++).to_double(), 1.5);
+  EXPECT_EQ(x.to_double(), 2.5);
+  EXPECT_EQ((--x).to_double(), 1.5);
+  EXPECT_EQ((x--).to_double(), 1.5);
+  EXPECT_EQ(x.to_double(), 0.5);
+  // 2.5 does not fit two integer bits: saturate, or wrap modulo 4.
+  fixed<4, 2, q_mode::trn, o_mode::sat> saturating = 1.5;
+  EXPECT_EQ((++saturating).to_double(), 1.75);
+  fixed<4, 2> wrapping = 1.5;
+  EXPECT_EQ((++wrapping).to_double(), -1.5);
+  ufixed<4, 2> zero = 0;
+  EXPECT_EQ((--zero).to_double(), 3.0);
+}
+
 TEST(FixedTest, DefaultIsZero) {
   const ufixed<16, 8> a;
   EXPECT_TRUE(a.is_zero());

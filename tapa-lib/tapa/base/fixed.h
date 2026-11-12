@@ -330,6 +330,28 @@ class fixed_base {
   TAPA_FIXED_COMPOUND(/)
 #undef TAPA_FIXED_COMPOUND
 
+  /// Adds or subtracts 1 as the vendor does: through `+=` or `-=` with a
+  /// one of `W - I + 1` unsigned bits, so the type's own quantization and
+  /// overflow modes apply.
+  fixed_base& operator++() {
+    *this += fixed_base<W - I + 1, 1, false, q_mode::trn, o_mode::wrap, 0>(1);
+    return *this;
+  }
+  fixed_base& operator--() {
+    *this -= fixed_base<W - I + 1, 1, false, q_mode::trn, o_mode::wrap, 0>(1);
+    return *this;
+  }
+  fixed_base operator++(int) {
+    const fixed_base old(*this);
+    ++*this;
+    return old;
+  }
+  fixed_base operator--(int) {
+    const fixed_base old(*this);
+    --*this;
+    return old;
+  }
+
   /// Bit and slice access on the raw pattern, as on the vendor type.
   bool get_bit(int idx) const { return V.get_bit(idx); }
   bit_ref<W, S> operator[](int idx) & { return V[idx]; }

@@ -937,6 +937,39 @@ TEST(VendorParity, FixedCompoundAssignmentAndNativeComparison) {
   }
 }
 
+// `++` and `--` add and subtract 1 through each type's own modes.
+template <int W, int I, bool S, q_mode Q, o_mode O>
+void CheckFixedIncrement(uint64_t& state, int rounds) {
+  using type = fx<W, I, S, Q, O, 0>;
+  for (int r = 0; r < rounds; ++r) {
+    typename type::mine a;
+    typename type::theirs va;
+    SetPair(a, va, RandomBits(W, state));
+    const std::string where =
+        std::to_string(W) + "," + std::to_string(I) + " a=" + TapaBits(a.V);
+    auto b = a;
+    auto vb = va;
+    EXPECT_EQ(TapaBits((b++).V), VendorBits((vb++).V)) << "post++ " << where;
+    EXPECT_EQ(TapaBits(b.V), VendorBits(vb.V)) << "post++ " << where;
+    EXPECT_EQ(TapaBits((++b).V), VendorBits((++vb).V)) << "++ " << where;
+    EXPECT_EQ(TapaBits((b--).V), VendorBits((vb--).V)) << "post-- " << where;
+    EXPECT_EQ(TapaBits(b.V), VendorBits(vb.V)) << "post-- " << where;
+    EXPECT_EQ(TapaBits((--b).V), VendorBits((--vb).V)) << "-- " << where;
+  }
+}
+
+TEST(VendorParity, FixedIncrement) {
+  uint64_t state = 0x1ce;
+  CheckFixedIncrement<8, 4, true, q_mode::trn, o_mode::wrap>(state, 40);
+  CheckFixedIncrement<4, 2, true, q_mode::trn, o_mode::sat>(state, 40);
+  CheckFixedIncrement<6, 3, false, q_mode::rnd, o_mode::sat_zero>(state, 40);
+  CheckFixedIncrement<8, -2, true, q_mode::rnd_conv, o_mode::sat_sym>(state,
+                                                                      40);
+  CheckFixedIncrement<8, 8, true, q_mode::trn, o_mode::wrap_sm>(state, 40);
+  CheckFixedIncrement<70, 40, true, q_mode::trn, o_mode::wrap>(state, 20);
+  CheckFixedIncrement<1, 1, false, q_mode::trn, o_mode::wrap>(state, 8);
+}
+
 // Casting a fixed-point value to an integer truncates toward zero, and does
 // so whatever the type's own quantization mode says -- the mode governs
 // conversions between fixed-point types, not this.
