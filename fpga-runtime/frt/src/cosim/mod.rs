@@ -395,6 +395,12 @@ fn validate_resume_stream_bindings(
 /// diagnose the hang that caused the timeout.
 const TERMINATE_GRACE: Duration = Duration::from_secs(5);
 
+/// XRT allocates device memory in whole pages, so a kernel's last beat may
+/// run past a buffer's end: HLS gives an mmap of elements that are not a
+/// power of two bytes a wider bus. Cosimulation buffers are rounded up the
+/// same way; the host still sees only its own bytes.
+const BUFFER_GRANULE: usize = 4096;
+
 fn terminate_running_simulation(run: &mut RunningSimulation) -> Result<()> {
     if let Err(err) = signal_child_group(&run.child, libc::SIGINT) {
         tracing::warn!("failed to send SIGINT to simulator process group: {err}");
@@ -672,7 +678,8 @@ impl Device for CosimDevice {
                 "arg '{name}' is not an mmap buffer"
             )));
         }
-        self.ctx.resize_buffer(&name, bytes)?;
+        self.ctx
+            .resize_buffer(&name, bytes.next_multiple_of(BUFFER_GRANULE))?;
         self.pending_buffers
             .insert(index, BufferBinding { ptr, bytes, access });
         Ok(())
@@ -1237,10 +1244,13 @@ mod tests {
         host[bytes - 1] = 0x22;
         dev.set_buffer_arg(0, host.as_mut_ptr(), host.len(), BufferAccess::ReadWrite)
             .expect("set buffer");
-        assert_eq!(dev.ctx.buffers["buf0"].as_slice().len(), bytes);
+        // Whole pages, as XRT allocates: the last beat of an mmap whose
+        // elements are not a power of two bytes runs past the host's end.
+        let padded = bytes.next_multiple_of(BUFFER_GRANULE);
+        assert_eq!(dev.ctx.buffers["buf0"].as_slice().len(), padded);
         dev.write_to_device().expect("write to device");
         let buf = dev.ctx.buffers.get("buf0").expect("buffer");
-        assert_eq!(buf.as_slice().len(), bytes);
+        assert_eq!(buf.as_slice().len(), padded);
         assert_eq!(buf.as_slice()[0], 0x11);
         assert_eq!(buf.as_slice()[bytes - 1], 0x22);
     }
