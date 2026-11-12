@@ -625,6 +625,27 @@ TEST(InvokeParser, AChannelArrayIndexIsAConstantInsideTheArray) {
   EXPECT_EQ(top->instances.at("Src").at(1).args.at("out").arg, "q[1]");
 }
 
+TEST(InvokeParser, AnInvokeNamesItsTaskFunction) {
+  // Through a function pointer the callee used to be skipped, so the task
+  // silently dropped out of the graph.
+  constexpr char kCode[] = R"cpp(
+    void Leaf(tapa::mmap<int> m) {}
+    constexpr auto kLeaf = &Leaf;
+    void Top(tapa::mmap<int> a, tapa::mmap<int> b, tapa::mmap<int> c) {
+      tapa::task().invoke(kLeaf, a).invoke(&Leaf, b).invoke(Leaf, c);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/callee.cpp", kCode}}, "Top",
+      testing::TempDir() + "/callee", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 2u) << run.diags.front();
+  for (const std::string& diag : run.diags) {
+    EXPECT_NE(diag.find("must name its task function directly"),
+              std::string::npos)
+        << diag;
+  }
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>

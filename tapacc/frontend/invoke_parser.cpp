@@ -401,6 +401,18 @@ void ParseInvocations(
   uint32_t position = 0;
 
   for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
+    // The graph instantiates a task by its function; a callable reached
+    // any other way would silently drop out of it.
+    if (invoke->getNumArgs() == 0 || InvokeCallee(invoke) == nullptr) {
+      const clang::Expr* what =
+          invoke->getNumArgs() == 0 ? invoke : invoke->getArg(0);
+      ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                       what->getBeginLoc(),
+                       "an invoke must name its task function directly; a "
+                       "function pointer, a lambda or any other callable "
+                       "names no task to instantiate");
+      continue;
+    }
     const InvokeMode mode = GetInvokeMode(invoke);
     bool has_executable = false;
     std::string task_name;
