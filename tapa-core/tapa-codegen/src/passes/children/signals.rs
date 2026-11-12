@@ -290,7 +290,6 @@ fn add_fsm_control_logic(
             let _ = fsm_mm.add_signal(signal);
         }
         if is_autorun {
-            fsm_mm.ensure_signal_kind(&sig.start_name(), tapa_rtl::signal::SignalKind::Reg);
             fsm_mm.add_always(generate_autorun_start(sig));
         } else {
             // State register and FSM logic owned by FSM module

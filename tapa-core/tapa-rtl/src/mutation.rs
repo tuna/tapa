@@ -183,20 +183,6 @@ impl MutableModule {
         }
     }
 
-    /// Ensure a 1-bit signal exists with the requested kind.
-    pub fn ensure_signal_kind(&mut self, name: &str, kind: SignalKind) {
-        if let Some(signal) = self.inner.signals.iter_mut().find(|s| s.name == name) {
-            signal.kind = kind;
-            return;
-        }
-        self.inner.signals.push(Signal {
-            name: name.to_owned(),
-            kind,
-            width: None,
-            attribute: None,
-        });
-    }
-
     /// Clean up HLS-generated artifacts from the body text:
     /// - Remove `_regslice_both` instances
     /// - Remove `ap_ST_fsm_stateN_blk` signals
@@ -751,24 +737,6 @@ endmodule
         assert!(emitted.contains("wire ap_done;"), "got:\n{emitted}");
         assert!(emitted.contains("wire ap_idle;"), "got:\n{emitted}");
         assert!(emitted.contains("reg keep_reg;"), "got:\n{emitted}");
-    }
-
-    #[test]
-    fn ensure_signal_kind_promotes_existing_signal() {
-        let src = "module Generated(output wire child_ap_start);\nwire child_ap_start;\nendmodule";
-        let mut mm = MutableModule::from_parsed(VerilogModule::parse(src).unwrap());
-
-        mm.ensure_signal_kind("child_ap_start", SignalKind::Reg);
-
-        let emitted = mm.emit();
-        assert!(
-            emitted.contains("output reg child_ap_start"),
-            "got:\n{emitted}"
-        );
-        assert!(
-            !emitted.contains("\nreg child_ap_start;"),
-            "port reg should not be redeclared:\n{emitted}"
-        );
     }
 
     #[test]
