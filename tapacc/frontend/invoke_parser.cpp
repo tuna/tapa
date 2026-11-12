@@ -209,6 +209,7 @@ struct UpperTaskContext {
   // reporting a double-consume at `loc`.
   void MarkConsumer(const std::string& a, const std::string& task_name,
                     uint32_t inst_index, clang::SourceLocation loc) {
+    if (MarkPassedPort(a, loc)) return;
     auto it = FindOrExternalStream(task, a, is_top);
     if (it == task.streams.end()) return;
     if (it->second.consumed_by.has_value()) {
@@ -223,6 +224,7 @@ struct UpperTaskContext {
   // reporting a double-produce at `loc`.
   void MarkProducer(const std::string& a, const std::string& task_name,
                     uint32_t inst_index, clang::SourceLocation loc) {
+    if (MarkPassedPort(a, loc)) return;
     auto it = FindOrExternalStream(task, a, is_top);
     if (it == task.streams.end()) return;
     if (it->second.produced_by.has_value()) {
@@ -247,7 +249,23 @@ struct UpperTaskContext {
   }
 
  private:
+  // A non-top task's own stream port `a` is wired through to its task by
+  // name rather than as a FIFO, yet it is still one stream with one reader
+  // and one writer; report a second task taking it at `loc`. False when
+  // `a` is no such port.
+  bool MarkPassedPort(const std::string& a, clang::SourceLocation loc) {
+    if (is_top || !IsStreamPortArg(task, a)) return false;
+    if (!passed_ports.insert(a).second) {
+      ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, loc,
+                       "stream port '%0' is passed to more than one task; a "
+                       "stream has exactly one reader and one writer")
+          .AddString(a);
+    }
+    return true;
+  }
+
   std::set<std::string> handed_on;
+  std::set<std::string> passed_ports;
 };
 
 // Recursively reject stream declarations below the top level of the task

@@ -646,6 +646,35 @@ TEST(InvokeParser, AnInvokeNamesItsTaskFunction) {
   }
 }
 
+TEST(InvokeParser, AStreamPortGoesToOneTask) {
+  // A non-top task's stream port is wired through by name, not as a FIFO,
+  // so only the top's were checked: a middle task could pass one stream to
+  // two readers.
+  constexpr char kCode[] = R"cpp(
+    void Src(tapa::ostream<int>& out) {}
+    void Snk(tapa::istream<int>& in) {}
+    void Mid(tapa::istream<int>& in, tapa::ostream<int>& out) {
+      tapa::task().invoke(Snk, in).invoke(Snk, in).invoke(Src, out).invoke(Src,
+                                                                           out);
+    }
+    void Top() {
+      tapa::stream<int> a;
+      tapa::stream<int> b;
+      tapa::task().invoke(Src, a).invoke(Mid, a, b).invoke(Snk, b);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/passed_port.cpp", kCode}}, "Top",
+      testing::TempDir() + "/passed_port", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 2u) << run.diags.front();
+  EXPECT_NE(run.diags[0].find("stream port 'in' is passed to more than one"),
+            std::string::npos)
+      << run.diags[0];
+  EXPECT_NE(run.diags[1].find("stream port 'out' is passed to more than one"),
+            std::string::npos)
+      << run.diags[1];
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>
