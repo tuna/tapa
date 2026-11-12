@@ -286,15 +286,9 @@ TAPA_AIE_INLINE
 
 template <int N, typename T>
 TAPA_AIE_INLINE vec_t<T, N> make_vec(T value) {
-  if constexpr (requires {
-                  typename ::aie::detail::native_vector_type_t<T, N>;
-                }) {
-    return ::aie::broadcast<T, N>(value);
-  } else {
-    vec_t<T, N> result;
-    result.set(value);
-    return result;
-  }
+  vec_t<T, N> result;
+  result.set(value);
+  return result;
 }
 
 // The lane shuffles of base/vec.h: one `aie::interleave_zip` /
