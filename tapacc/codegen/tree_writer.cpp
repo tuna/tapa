@@ -382,12 +382,13 @@ std::string TreeFileBuffer::Render() {
 TreeSession::TreeSession(clang::ASTContext& ctx,
                          const std::vector<IncludeDirective>& log,
                          const std::vector<std::string>& main_files,
-                         const clang::syntax::TokenBuffer* tokens)
+                         const clang::syntax::TokenBuffer* tokens,
+                         std::vector<ExpansionPragma> pragmas)
     : rewriter_(ctx.getSourceManager(), ctx.getLangOpts()),
       edits_(ctx, rewriter_) {
   clang::SourceManager& sm = ctx.getSourceManager();
   if (tokens != nullptr) {
-    splices_.emplace(*tokens, sm);
+    splices_.emplace(*tokens, sm, std::move(pragmas));
     edits_.RouteMacroEdits(&*splices_);
   }
   // Insertions routed through EditSink compose with the same synthetic

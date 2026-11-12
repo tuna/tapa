@@ -291,6 +291,45 @@ void MidTop(tapa::mmap<int> m, int n) {
   EXPECT_FALSE(Contains(out, "MMAP(int) m_offset")) << out;
 }
 
+// A vendor `_Pragma` in a macro leaves no token in the recorded stream, so a
+// spliced expansion used to drop it: the user's HLS directive vanished from
+// the source HLS compiles. The splice puts each one back where it stood,
+// including one built by stringizing a macro argument.
+TEST(MacroRewrite, SplicedExpansionKeepsItsPragmas) {
+  const std::string code = std::string(R"tapa(
+#define DO_PRAGMA(x) _Pragma(#x)
+#define FILL(out, n)                                  \
+  _Pragma("HLS loop_merge force")                     \
+  [[tapa::pipeline(1)]] for (int i = 0; i < (n); ++i) \
+    DO_PRAGMA(HLS dependence variable=out inter false) out.write(i)
+void Fill(tapa::ostream<int>& out, int n) {
+  FILL(out, n);
+}
+void Drain(tapa::istream<int>& in, int n) {
+  for (int i = 0; i < n; ++i) in.read();
+}
+void PragmaTop(int n) {
+  tapa::stream<int, 2> q;
+  tapa::task().invoke(Fill, q, n).invoke(Drain, q, n);
+}
+)tapa");
+  const TreePipelineRun run = test_support::RunTreePipeline(
+      {VirtualTu{"/proj/src/pragma.cpp", code}}, "PragmaTop",
+      TempRoot("macro_rewrite", "pragma"), {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  const std::string& out = run.files.at("pragma.cpp");
+  // Each pragma stays where the expansion carried it: one ahead of the
+  // loop, one inside its body, ahead of the statement.
+  EXPECT_TRUE(
+      Contains(out, "_Pragma(\"HLS loop_merge force\") for ( int i = 0 ;"))
+      << out;
+  const size_t dependence =
+      out.find("_Pragma(\"HLS dependence variable=out inter false\")");
+  ASSERT_NE(dependence, std::string::npos) << out;
+  EXPECT_LT(out.find("++ i ) "), dependence) << out;
+  EXPECT_LT(dependence, out.find("out . write ( i )")) << out;
+}
+
 // (a) A task invocation wrapped in a user macro (the multi-file app's
 // INVOKE_CONSUME shape): the graph sees through the macro, and the top's
 // rewritten shell needs no splice.

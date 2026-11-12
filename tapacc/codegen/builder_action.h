@@ -67,7 +67,8 @@ class BuilderAction : public clang::ASTFrontendAction {
           owner_.builder_.IndexTu(ctx, owner_.include_log_);
         } else {
           owner_.builder_.RewriteTreeTu(ctx, std::move(owner_.include_log_),
-                                        tokens, owner_.skipped_);
+                                        tokens, owner_.skipped_,
+                                        owner_.recorder_->pragmas());
         }
       }
 

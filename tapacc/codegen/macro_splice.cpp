@@ -4,14 +4,66 @@
 #include <utility>
 
 #include "clang/Basic/SourceManager.h"
+#include "clang/Lex/PPCallbacks.h"
+#include "clang/Lex/Pragma.h"
 #include "clang/Lex/Preprocessor.h"
 
 namespace tapa::cc {
 
 // ── Recording ─────────────────────────────────────────────────────────────
 
+namespace {
+
+// Notes every `_Pragma` a macro expansion carries, before any handler runs.
+class PragmaSites : public clang::PPCallbacks {
+ public:
+  explicit PragmaSites(std::shared_ptr<std::vector<ExpansionPragma>> out)
+      : out_(std::move(out)) {}
+
+  void PragmaDirective(clang::SourceLocation loc,
+                       clang::PragmaIntroducerKind kind) override {
+    if (kind == clang::PIK__Pragma && loc.isMacroID()) {
+      out_->push_back(ExpansionPragma{loc, std::nullopt});
+    }
+  }
+
+ private:
+  std::shared_ptr<std::vector<ExpansionPragma>> out_;
+};
+
+// The handler of every pragma no other handler claims, the vendor's
+// (`HLS ...`) among them: reads its text for the site PragmaSites noted.
+class PragmaTexts : public clang::PragmaHandler {
+ public:
+  explicit PragmaTexts(std::shared_ptr<std::vector<ExpansionPragma>> out)
+      : PragmaHandler(""), out_(std::move(out)) {}
+
+  void HandlePragma(clang::Preprocessor& pp, clang::PragmaIntroducer introducer,
+                    clang::Token& first) override {
+    std::string text;
+    for (clang::Token token = first;
+         !token.isOneOf(clang::tok::eod, clang::tok::eof);
+         pp.LexUnexpandedToken(token)) {
+      if (!text.empty() && token.hasLeadingSpace()) text += ' ';
+      text += pp.getSpelling(token);
+    }
+    if (!out_->empty() && out_->back().loc == introducer.Loc) {
+      out_->back().text = std::move(text);
+    }
+  }
+
+ private:
+  std::shared_ptr<std::vector<ExpansionPragma>> out_;
+};
+
+}  // namespace
+
 TokenRecorder::TokenRecorder(clang::Preprocessor& pp)
-    : collector_(std::make_unique<clang::syntax::TokenCollector>(pp)) {}
+    : collector_(std::make_unique<clang::syntax::TokenCollector>(pp)),
+      pragmas_(std::make_shared<std::vector<ExpansionPragma>>()) {
+  pp.addPPCallbacks(std::make_unique<PragmaSites>(pragmas_));
+  pp.AddPragmaHandler(new PragmaTexts(pragmas_));
+}
 
 const clang::syntax::TokenBuffer& TokenRecorder::Consume() {
   if (buffer_ == nullptr) {
@@ -57,6 +109,7 @@ ExpansionSplice::ExpansionSplice(const clang::SourceManager& sm,
     : sm_(sm),
       invocation_(invocation),
       tokens_(tokens),
+      kept_(tokens.size() + 1),
       slots_(tokens.size() + 1) {}
 
 // First expanded token at or after `loc`, in translation-unit order. An
@@ -157,6 +210,21 @@ void ExpansionSplice::Append(size_t slot, llvm::StringRef text) {
   edited_ = true;
 }
 
+void ExpansionSplice::KeepPragma(clang::SourceLocation loc,
+                                 llvm::StringRef text) {
+  std::string literal;
+  for (const char c : text) {
+    if (c == '"' || c == '\\') literal += '\\';
+    literal += c;
+  }
+  // A pragma ahead of every recorded token belongs before the first.
+  const size_t slot = tokens_.empty() || sm_.isBeforeInTranslationUnit(
+                                             loc, tokens_.front().location())
+                          ? 0
+                          : IndexAtOrAfter(loc).value_or(tokens_.size());
+  kept_[slot] += "_Pragma(\"" + literal + "\") ";
+}
+
 std::string ExpansionSplice::Render() const {
   std::string out;
   const auto append_piece = [&out](const std::string& piece) {
@@ -165,11 +233,13 @@ std::string ExpansionSplice::Render() const {
     if (piece.back() != ' ' && piece.back() != '\n') out += ' ';
   };
   for (size_t i = 0; i < tokens_.size(); ++i) {
+    append_piece(kept_[i]);
     append_piece(slots_[i]);
     if (dropped_.count(i) != 0) continue;
     out += tokens_[i].text(sm_).str();
     out += ' ';
   }
+  append_piece(kept_[tokens_.size()]);
   append_piece(slots_[tokens_.size()]);
   while (!out.empty() && out.back() == ' ') out.pop_back();
   return out;
@@ -178,8 +248,9 @@ std::string ExpansionSplice::Render() const {
 // ── The TU's splices ──────────────────────────────────────────────────────
 
 MacroSplices::MacroSplices(const clang::syntax::TokenBuffer& tokens,
-                           const clang::SourceManager& sm)
-    : tokens_(tokens), sm_(sm) {}
+                           const clang::SourceManager& sm,
+                           std::vector<ExpansionPragma> pragmas)
+    : tokens_(tokens), sm_(sm), pragmas_(std::move(pragmas)) {}
 
 ExpansionSplice* MacroSplices::SpliceFor(clang::SourceLocation loc,
                                          std::string* why) {
@@ -192,6 +263,16 @@ ExpansionSplice* MacroSplices::SpliceFor(clang::SourceLocation loc,
   if (splice->size() == 0) {
     *why = "the token stream records no expansion for its invocation";
     return nullptr;
+  }
+  for (const ExpansionPragma& pragma : pragmas_) {
+    if (OutermostInvocation(sm_, pragma.loc).getBegin() != key) continue;
+    if (!pragma.text) {
+      *why =
+          "its expansion carries a _Pragma that a rendered expansion "
+          "cannot reproduce";
+      return nullptr;
+    }
+    splice->KeepPragma(pragma.loc, *pragma.text);
   }
   ExpansionSplice* const raw = splice.get();
   splices_.emplace(key, std::move(splice));

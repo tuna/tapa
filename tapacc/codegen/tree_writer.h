@@ -205,7 +205,8 @@ class TreeSession {
  public:
   TreeSession(clang::ASTContext& ctx, const std::vector<IncludeDirective>& log,
               const std::vector<std::string>& main_files,
-              const clang::syntax::TokenBuffer* tokens);
+              const clang::syntax::TokenBuffer* tokens,
+              std::vector<ExpansionPragma> pragmas = {});
 
   EditSink& edits() { return edits_; }
   TreeFileBuffer* BufferForPath(llvm::StringRef path);

@@ -32,15 +32,31 @@ namespace tapa::cc {
 // top-level loop -- hence the eof token consume() requires -- before handing
 // control to the consumer, so the stream is complete by then. Only the
 // rewrite pass records; the index pass never edits.
+// A `_Pragma` operator in a macro expansion. The token stream holds only
+// the tokens the parser sees, and a pragma leaves none behind, so rendering
+// an expansion from it would drop the user's vendor pragma; a splice puts
+// the operator back where it stood instead. `text` is the destringized
+// pragma, or nullopt for one a handler of its own consumed, which no splice
+// can reproduce.
+struct ExpansionPragma {
+  clang::SourceLocation loc;
+  std::optional<std::string> text;
+};
+
 class TokenRecorder {
  public:
   explicit TokenRecorder(clang::Preprocessor& pp);
 
   const clang::syntax::TokenBuffer& Consume();
+  // The `_Pragma` operators in macro expansions, in preprocessing order.
+  const std::vector<ExpansionPragma>& pragmas() const { return *pragmas_; }
 
  private:
   std::unique_ptr<clang::syntax::TokenCollector> collector_;
   std::unique_ptr<clang::syntax::TokenBuffer> buffer_;
+  // Shared with the preprocessor hooks filling it, which the preprocessor
+  // owns and may outlive this recorder.
+  std::shared_ptr<std::vector<ExpansionPragma>> pragmas_;
 };
 
 // The outermost spelled invocation owning `loc` (a macro location): each
@@ -93,12 +109,18 @@ class ExpansionSplice {
 
   std::string Render() const;
 
+  // Puts `_Pragma("<text>")` back before the first token at or after
+  // `loc`, where the expansion carried it; part of the expansion, not an
+  // edit.
+  void KeepPragma(clang::SourceLocation loc, llvm::StringRef text);
+
  private:
   void Append(size_t slot, llvm::StringRef text);
 
   const clang::SourceManager& sm_;
   clang::CharSourceRange invocation_;
   llvm::ArrayRef<clang::syntax::Token> tokens_;
+  std::vector<std::string> kept_;
   std::vector<std::string> slots_;
   std::set<size_t> dropped_;
   bool edited_ = false;
@@ -110,7 +132,8 @@ class ExpansionSplice {
 class MacroSplices {
  public:
   MacroSplices(const clang::syntax::TokenBuffer& tokens,
-               const clang::SourceManager& sm);
+               const clang::SourceManager& sm,
+               std::vector<ExpansionPragma> pragmas = {});
 
   // The splice owning `loc` (a macro location), creating it on first sight.
   // Nullptr and a precise `why` when the invocation has no recorded
@@ -123,6 +146,7 @@ class MacroSplices {
  private:
   const clang::syntax::TokenBuffer& tokens_;
   const clang::SourceManager& sm_;
+  std::vector<ExpansionPragma> pragmas_;
   std::map<clang::SourceLocation, std::unique_ptr<ExpansionSplice>> splices_;
 };
 

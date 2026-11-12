@@ -18,6 +18,7 @@
 
 namespace tapa::cc {
 
+struct ExpansionPragma;
 struct IncludeDirective;
 class TreeWriter;
 
@@ -95,10 +96,13 @@ class ProgramBuilder {
   // TU's recorded expanded-token stream (null when this run recorded none);
   // rewrite edits anchored inside macro expansions compose into its
   // invocation splices.
-  // `skipped` lists the ranges the preprocessor skipped in this TU.
+  // `skipped` lists the ranges the preprocessor skipped in this TU, and
+  // `pragmas` the `_Pragma` operators its macro expansions carry, which a
+  // splice must keep.
   void RewriteTreeTu(clang::ASTContext& ctx, std::vector<IncludeDirective> log,
                      const clang::syntax::TokenBuffer* tokens,
-                     const std::vector<clang::SourceRange>& skipped);
+                     const std::vector<clang::SourceRange>& skipped,
+                     const std::vector<ExpansionPragma>& pragmas);
 
   // The per-TU Program view of the merged task set: `file_funcs` /
   // `local_funcs` of the TU's mirrored files, plus one TaskModel per merged

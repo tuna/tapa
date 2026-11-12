@@ -1107,7 +1107,8 @@ void ProgramBuilder::AddMovers(int tu, TaskModel& model, Program& view,
 void ProgramBuilder::RewriteTreeTu(
     clang::ASTContext& ctx, std::vector<IncludeDirective> log,
     const clang::syntax::TokenBuffer* tokens,
-    const std::vector<clang::SourceRange>& skipped) {
+    const std::vector<clang::SourceRange>& skipped,
+    const std::vector<ExpansionPragma>& pragmas) {
   const int tu = TuOf(MainFilePath(ctx));
   Program view = TuView(ctx, log);
   FillOwnedTasks(tu, view, ctx);
@@ -1116,7 +1117,7 @@ void ProgramBuilder::RewriteTreeTu(
   const XilinxBackend vitis(/*is_vitis=*/true);
   const IgnoreBackend ignore;
   const AieBackend aie;
-  TreeSession session(ctx, log, tree_config_.main_files, tokens);
+  TreeSession session(ctx, log, tree_config_.main_files, tokens, pragmas);
   RewriteTreeFiles(view, default_target_, Backends{hls, vitis, ignore, aie},
                    ctx, session);
   StripSkippedAttrs(skipped, TreeFiles(ctx, log), ctx, session.edits());
