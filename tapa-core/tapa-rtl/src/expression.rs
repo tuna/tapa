@@ -19,7 +19,8 @@ pub fn expression_as_u32(expr: &Expression) -> Option<u32> {
 
 /// Parse a width expression string like `"31:0"` or `"WIDTH-1:0"` into tokens.
 ///
-/// Splits on operators and punctuation.
+/// Splits on operators and punctuation. A string literal is one token, so
+/// its spaces and operator characters survive [`expression_source`].
 pub fn tokenize_expression(input: &str) -> Expression {
     let input = input.trim();
     if input.is_empty() {
@@ -28,7 +29,27 @@ pub fn tokenize_expression(input: &str) -> Expression {
     let mut tokens = Vec::new();
     let mut current = String::new();
 
-    for ch in input.chars() {
+    let mut chars = input.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+            let mut literal = String::from(ch);
+            let mut escaped = false;
+            for next in chars.by_ref() {
+                literal.push(next);
+                if escaped {
+                    escaped = false;
+                } else if next == '\\' {
+                    escaped = true;
+                } else if next == '"' {
+                    break;
+                }
+            }
+            tokens.push(literal);
+            continue;
+        }
         if matches!(
             ch,
             ':' | '+' | '-' | '*' | '/' | '(' | ')' | '[' | ']' | ' ' | '\t'
@@ -63,6 +84,17 @@ mod tests {
     fn identifier_in_range() {
         let tokens = tokenize_expression("WIDTH-1:0");
         assert_eq!(tokens, ["WIDTH", "-", "1", ":", "0"]);
+    }
+
+    #[test]
+    fn string_literals_keep_their_text() {
+        let source = r#"MODE == "a  b:c-d \" e""#;
+        let tokens = tokenize_expression(source);
+        assert_eq!(tokens, ["MODE", "==", r#""a  b:c-d \" e""#]);
+        assert_eq!(
+            expression_source(&tokenize_expression(r#""a b""#)),
+            r#""a b""#
+        );
     }
 
     #[test]
