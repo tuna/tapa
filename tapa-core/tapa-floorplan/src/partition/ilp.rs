@@ -724,6 +724,13 @@ fn candidate_domains(
             let total = areas
                 .get(&region)
                 .ok_or_else(|| IlpError::InvalidRegion(region.region_name()))?;
+            // A region without fabric (V80 SLR0 outside `pblock_slash`, a
+            // shell-only slot) is no placement region at all, even for a
+            // weightless vertex: its cells would be constrained outside the
+            // user region.
+            if *total == Area::default() {
+                continue;
+            }
             let available = scaled_area_with_overrides(*total, usage_limit, constraints, &region);
             // A zero-area vertex fits even on a slot whose derated area
             // scaled to zero (0 <= 0); only the fitting check decides.

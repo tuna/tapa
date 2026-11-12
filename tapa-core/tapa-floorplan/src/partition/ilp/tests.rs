@@ -1643,6 +1643,30 @@ fn zero_area_vertex_fits_a_zero_derated_slot() {
     assert_eq!(assignment.regions.len(), 1);
 }
 
+/// The V80 service shell's SLR0 has no fabric for the RM. A weightless
+/// vertex (a custom-RTL task has no HLS area) fits it by the numbers, and
+/// its first-ranked candidate would win the tie-break, yielding a
+/// `USER_SLR_ASSIGNMENT SLR0` outside `pblock_slash`.
+#[test]
+fn zero_area_vertex_never_lands_in_a_slot_without_fabric() {
+    let graph = single_task_floor_graph(0);
+    let device = select_device("v80").expect("v80 service");
+    assert_eq!(device.slot(0, 0).expect("SLR0").area, Area::default());
+    for strategy in [PartitionStrategy::Flat, PartitionStrategy::MultiLevel] {
+        let assignment = floorplan_with_strategy(
+            &graph,
+            &device,
+            DEFAULT_USAGE_LIMIT,
+            MAX_USAGE_LIMIT,
+            strategy,
+            &ChooseSolver::first(),
+            &SolveOpts::default(),
+        )
+        .expect("the weightless task places");
+        assert_eq!(assignment.regions, [(0, 1)], "{strategy:?}");
+    }
+}
+
 #[test]
 fn refinement_solve_pins_the_primary_objective_and_ranks_candidates() {
     let graph = single_task_floor_graph(1);
