@@ -137,12 +137,14 @@ TEST(TapaSimDeathTest, InvokeRestoresTheProgramsInterruptHandler) {
 void AddAt(int idx, tapa::mmap<int> mem) { mem[idx] += 1; }
 
 void MmapsUpper(tapa::mmaps<int, 2> mems) {
-  tapa::task().invoke<tapa::join, 2>(AddAt, 1, mems);
+  tapa::task().invoke(AddAt, 1, mems);
 }
 
-// An upper task hands its whole mmaps on to another upper task.
+// An upper task hands its whole mmaps on to another upper task, which hands
+// its regions out afresh from the first, as the hardware binds them: here
+// the first region again, although the top already handed it out.
 void MmapsTop(tapa::mmaps<int, 2> mems) {
-  tapa::task().invoke<tapa::join, 2>(AddAt, 0, mems).invoke(MmapsUpper, mems);
+  tapa::task().invoke(AddAt, 0, mems).invoke(MmapsUpper, mems);
 }
 
 TEST(TapaSimTest, UpperTaskHandsItsMmapsToAnother) {
@@ -153,7 +155,7 @@ TEST(TapaSimTest, UpperTaskHandsItsMmapsToAnother) {
   tapa::invoke(MmapsTop, /*bitstream=*/"",
                tapa::read_write_mmaps<int, 2>(buffers, sizes));
   EXPECT_EQ(first, (std::vector<int>{2, 11}));
-  EXPECT_EQ(second, (std::vector<int>{3, 21}));
+  EXPECT_EQ(second, (std::vector<int>{2, 20}));
 }
 
 void Double(tapa::mmap<const int> in, tapa::mmap<int> out) {
