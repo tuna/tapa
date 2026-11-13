@@ -77,9 +77,11 @@ int main(int argc, char* argv[]) {
               auto actual = c.read();
               OUTPUT_TYPE expected = 0;
               // if a was not skipped, add a.value + a.offset
-              if (i % 6 != 1 && i % 7 != 1) expected += i + (i % 32);
+              if (i % 6 != 1 && i % 7 != 1)
+                expected += OUTPUT_TYPE(static_cast<float>(i) + (i % 32));
               // if b was not skipped, add b.value + b.offset
-              if (i % 10 != 1 && i % 9 != 1) expected += i * 2 + (i % 31);
+              if (i % 10 != 1 && i % 9 != 1)
+                expected += OUTPUT_TYPE(static_cast<float>(i) * 2 + (i % 31));
               if (actual != expected) {
                 std::cerr << "expected: " << expected << ", actual: " << actual
                           << std::endl;

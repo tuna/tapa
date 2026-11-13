@@ -3,6 +3,7 @@
 // RapidStream Contributor License Agreement.
 
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include <gflags/gflags.h>
@@ -22,6 +23,7 @@ int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 
   const uint64_t n = argc > 1 ? atoll(argv[1]) : 1024 * 1024;
+  clog.precision(std::numeric_limits<float>::max_digits10);
   uint64_t num_errors = 0;
   const uint64_t threshold = 10;  // only report up to these errors
   // Two invocations of the loaded kernel, each on its own data: the detached
@@ -42,8 +44,8 @@ int main(int argc, char* argv[]) {
     clog << "kernel time: " << kernel_time_ns * 1e-9 << " s" << endl;
 
     for (uint64_t i = 0; i < n; ++i) {
-      auto expected = i * run * 3;
-      auto actual = static_cast<uint64_t>(c[i]);
+      auto expected = a[i] + b[i];
+      auto actual = c[i];
       if (actual != expected) {
         if (num_errors < threshold) {
           clog << "run " << run << ": expected: " << expected

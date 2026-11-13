@@ -3,6 +3,7 @@
 // RapidStream Contributor License Agreement.
 
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include <gflags/gflags.h>
@@ -41,12 +42,13 @@ int main(int argc, char* argv[]) {
       tapa::invoke(VecAdd, FLAGS_bitstream, a_memory, b_memory, c_memory, n);
   clog << "kernel time: " << kernel_time_ns * 1e-9 << " s" << endl;
 
+  clog.precision(std::numeric_limits<float>::max_digits10);
   uint64_t num_errors = 0;
   const uint64_t threshold = 10;  // only report up to these errors
   for (uint16_t i = 0; i < 4; ++i) {
     for (uint64_t j = 0; j < n; ++j) {
-      auto expected = i * j * 3;
-      auto actual = static_cast<uint64_t>(c[i][j]);
+      auto expected = a[i][j] + b[i][j];
+      auto actual = c[i][j];
       if (actual != expected) {
         if (num_errors < threshold) {
           clog << "expected: " << expected << ", actual: " << actual << endl;

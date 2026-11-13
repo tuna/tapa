@@ -29,9 +29,9 @@ int main(int argc, char* argv[]) {
   int errors = 0;
   for (int i = 0; i < n; ++i) {
     if (pair_c[i].x != uint64_t(4 * i) || pair_c[i].y != uint64_t(6 * i) ||
-        vec_c[i].get(0) != float(3 * i) ||
-        vec_c[i].get(1) != float(3 * (i + 1)) ||
-        vec_c[i].get(2) != float(3 * (i + 2))) {
+        vec_c[i].get(0) != vec_a[i].get(0) + vec_b[i].get(0) ||
+        vec_c[i].get(1) != vec_a[i].get(1) + vec_b[i].get(1) ||
+        vec_c[i].get(2) != vec_a[i].get(2) + vec_b[i].get(2)) {
       ++errors;
     }
   }

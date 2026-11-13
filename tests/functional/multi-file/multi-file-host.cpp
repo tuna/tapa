@@ -1,4 +1,5 @@
 #include <iostream>
+#include <limits>
 #include <vector>
 
 #include <gflags/gflags.h>
@@ -28,11 +29,12 @@ int main(int argc, char* argv[]) {
       tapa::read_only_mmap<const float>(b), tapa::write_only_mmap<float>(c), n);
   clog << "kernel time: " << kernel_time_ns * 1e-9 << " s" << endl;
 
+  clog.precision(std::numeric_limits<float>::max_digits10);
   uint64_t num_errors = 0;
   const uint64_t threshold = 10;  // only report up to these errors
   for (uint64_t i = 0; i < n; ++i) {
-    auto expected = i * 6;
-    auto actual = static_cast<uint64_t>(c[i]);
+    auto expected = (a[i] + b[i]) * 2;
+    auto actual = c[i];
     if (actual != expected) {
       if (num_errors < threshold) {
         clog << "expected: " << expected << ", actual: " << actual << endl;
