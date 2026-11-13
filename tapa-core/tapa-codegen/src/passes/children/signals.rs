@@ -477,6 +477,7 @@ fn build_mmap_bindings(
                 parent.to_owned(),
                 inst.child_name.to_owned(),
                 idx,
+                child_port.clone(),
                 channel,
             )) {
                 // This index was built from the same connection's slave list.
@@ -489,7 +490,7 @@ fn build_mmap_bindings(
             } else {
                 ChildMmapBinding::Direct
             };
-            mmap_bindings.insert(parent.to_owned(), channel, binding);
+            mmap_bindings.insert(child_port.clone(), channel, parent.to_owned(), binding);
         }
     }
     mmap_bindings
@@ -540,7 +541,7 @@ fn add_async_mmap_bridges(
             continue;
         }
         let enabled = async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
-        let binding = mmap_bindings.get(parent, None);
+        let binding = mmap_bindings.get(child_port, None);
         let m_axi_wire_prefix = binding.wire_prefix(parent);
         let upstream_m_axi_prefix = binding.upstream_wire_prefix(parent);
         let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);

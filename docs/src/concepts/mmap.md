@@ -99,8 +99,9 @@ This allows XRT to use the allocation without an alignment-related copy.
 
 ## Shared mmap
 
-The same `mmap` argument can be passed to multiple child tasks. Give each
-task a disjoint region or add synchronization when sharing. Here one buffer
+The same `mmap` argument can be passed to multiple child tasks, or to several
+ports of one task, which share it as separate tasks do. Give each task or
+port a disjoint region or add synchronization when sharing. Here one buffer
 is split into regions by an `offset` argument, and two instances of the same
 leaf task read different regions of it:
 

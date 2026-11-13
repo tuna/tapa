@@ -1,0 +1,13 @@
+"""One task taking one mmap through two ports, for TAPA."""
+
+load("//bazel:test_rules.bzl", "tapa_functional_test")
+
+tapa_functional_test(
+    name = "mmap-two-ports",
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    kernel_hdrs = ["vadd.h"],
+    top_name = "Top",
+)

@@ -17,12 +17,12 @@ use crate::instance_signals::InstanceSignals;
 use crate::passes::frames::frame_wire;
 use crate::passes::{async_mmap, child_memory_interface, child_offset_wire};
 
-/// Per-instance routing for child mmap arguments, by parent argument and
-/// channel of an upper child's hmap port (`rtl_state::child_memory_channels`);
-/// absent entries are direct.
+/// Per-instance routing for child mmap arguments, by child port and channel
+/// of an upper child's hmap port (`rtl_state::child_memory_channels`), each
+/// with the parent argument it binds; absent entries are direct.
 #[derive(Debug, Default)]
 pub struct ChildMmapBindings {
-    bindings: BTreeMap<(String, Option<u32>), ChildMmapBinding>,
+    bindings: BTreeMap<(String, Option<u32>), (String, ChildMmapBinding)>,
 }
 
 /// How one child mmap argument reaches the parent AXI wires.
@@ -41,23 +41,29 @@ pub enum ChildMmapBinding {
 }
 
 impl ChildMmapBindings {
-    pub fn insert(&mut self, arg_name: String, channel: Option<u32>, binding: ChildMmapBinding) {
-        self.bindings.insert((arg_name, channel), binding);
+    pub fn insert(
+        &mut self,
+        port: String,
+        channel: Option<u32>,
+        arg_name: String,
+        binding: ChildMmapBinding,
+    ) {
+        self.bindings.insert((port, channel), (arg_name, binding));
     }
 
-    pub fn get(&self, arg_name: &str, channel: Option<u32>) -> &ChildMmapBinding {
+    pub fn get(&self, port: &str, channel: Option<u32>) -> &ChildMmapBinding {
         self.bindings
-            .get(&(arg_name.to_owned(), channel))
-            .unwrap_or(&ChildMmapBinding::Direct)
+            .get(&(port.to_owned(), channel))
+            .map_or(&ChildMmapBinding::Direct, |(_, binding)| binding)
     }
 
-    /// The channels the child takes `arg_name` through: `None` alone for a
-    /// port that is one M-AXI interface.
-    pub fn channels(&self, arg_name: &str) -> Vec<Option<u32>> {
+    /// The channels the child port `port` reaches memory through: `None`
+    /// alone for a port that is one M-AXI interface.
+    pub fn channels(&self, port: &str) -> Vec<Option<u32>> {
         let channels: Vec<Option<u32>> = self
             .bindings
             .keys()
-            .filter(|(arg, _)| arg == arg_name)
+            .filter(|(bound, _)| bound == port)
             .map(|&(_, channel)| channel)
             .collect();
         if channels.is_empty() {
@@ -70,8 +76,8 @@ impl ChildMmapBindings {
     /// Every binding, with the parent argument it routes.
     pub fn iter(&self) -> impl Iterator<Item = (&str, &ChildMmapBinding)> {
         self.bindings
-            .iter()
-            .map(|((arg, _), binding)| (arg.as_str(), binding))
+            .values()
+            .map(|(arg, binding)| (arg.as_str(), binding))
     }
 }
 
@@ -236,8 +242,8 @@ pub(super) fn build_child_instance_with_reset(
                 // connects to its per-instance pipeline offset, and to the
                 // crossbar's downstream wires when it has a slave index,
                 // else straight to the parent's M-AXI signals.
-                for channel in mmap_bindings.channels(parent) {
-                    let binding = mmap_bindings.get(parent, channel);
+                for channel in mmap_bindings.channels(child_port) {
+                    let binding = mmap_bindings.get(child_port, channel);
                     add_direct_mmap_portargs(
                         &mut port_args,
                         &child_memory_interface(child_port, channel),
@@ -255,7 +261,7 @@ pub(super) fn build_child_instance_with_reset(
                 // Bind M-AXI channel ports:
                 // If crossbar exists (slave index present), bind to downstream wires
                 // Otherwise bind directly to upstream parent m_axi signals
-                let binding = mmap_bindings.get(parent, None);
+                let binding = mmap_bindings.get(child_port, None);
                 let m_axi_wire_prefix = binding.wire_prefix(parent);
                 match child_rtl {
                     Some(module) if async_mmap::has_direct_m_axi_ports(module, child_port) => {

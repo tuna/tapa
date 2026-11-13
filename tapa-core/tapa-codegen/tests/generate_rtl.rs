@@ -1814,6 +1814,46 @@ fn test_generate_rtl_upper_child_takes_whole_hmap() {
     );
 }
 
+/// One task taking a memory through two ports reaches it through a crossbar
+/// slave a port, as two tasks sharing it would; so does a task taking an
+/// hmap through two ports.
+#[test]
+fn test_generate_rtl_two_ports_of_one_task_share_a_memory() {
+    for chan_count in [None, Some(2)] {
+        let mut mem =
+            serde_json::json!({"cat": "mmap", "name": "mem", "type": "int*", "width": 32});
+        if let Some(count) = chan_count {
+            mem["chan_count"] = count.into();
+            mem["chan_size"] = 1024.into();
+        }
+        let bind = serde_json::json!({"arg": "mem", "cat": "mmap"});
+        let top = task("top", "upper", |t| {
+            t["ports"] = serde_json::json!([mem]);
+            t["tasks"] = serde_json::json!({"copy": [{"args": {"src": bind, "dst": bind}}]});
+        });
+        let copy = task("copy", "lower", |t| {
+            let port = |name: &str| serde_json::json!({"cat": "mmap", "name": name, "type": "int*", "width": 32});
+            t["ports"] = serde_json::json!([port("src"), port("dst")]);
+        });
+        let prog = design("top", "xilinx-hls", &[("top", top), ("copy", copy)]);
+
+        let manifest = run_manifest(prog, &["top", "copy"], &[]);
+
+        let crossbar = format!("axi_crossbar_2x{}", chan_count.unwrap_or(1));
+        check(
+            rtl_file(&manifest, "top.v"),
+            &[
+                &crossbar,
+                ".m_axi_dst_ARADDR(m_axi_mem_s0_ARADDR)",
+                ".m_axi_src_ARADDR(m_axi_mem_s1_ARADDR)",
+                ".m_axi_dst_RREADY(m_axi_mem_s0_RREADY)",
+                ".m_axi_src_RREADY(m_axi_mem_s1_RREADY)",
+            ],
+            &[],
+        );
+    }
+}
+
 #[test]
 fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
     let mid = task("mid", "upper", |t| {

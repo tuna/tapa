@@ -120,9 +120,11 @@ impl<'a> TaskPassCtx<'a> {
     }
 }
 
-/// A crossbar slave: `(parent_arg, child_task, inst_idx, channel)`, the
-/// channel of an upper child's hmap port (`MMapSlave::channel`).
-type SlaveKey = (String, String, usize, Option<u32>);
+/// A crossbar slave: `(parent_arg, child_task, inst_idx, child_port,
+/// channel)`, the channel of an upper child's hmap port
+/// (`MMapSlave::channel`). Each port of a task taking one memory through
+/// several is a slave of its own.
+type SlaveKey = (String, String, usize, String, Option<u32>);
 
 /// Precomputed per-task inputs the pass group consumes.
 ///
@@ -209,6 +211,7 @@ impl TaskStageInputs {
                             conn.arg_name.clone(),
                             slave.task.clone(),
                             idx_usize,
+                            slave.port.clone(),
                             slave.channel,
                         ),
                         slave_idx,
