@@ -728,7 +728,7 @@ fn candidate_domains(
             // shell-only slot) is no placement region at all, even for a
             // weightless vertex: its cells would be constrained outside the
             // user region.
-            if *total == Area::default() {
+            if !device.region_has_fabric(&region) {
                 continue;
             }
             let available = scaled_area_with_overrides(*total, usage_limit, constraints, &region);

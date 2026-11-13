@@ -97,6 +97,16 @@ impl Slot {
     pub fn coor(&self) -> Coor {
         Coor::slot(self.x, self.y)
     }
+
+    /// Whether the platform leaves this slot any fabric.
+    ///
+    /// A slot without fabric (U250's shell-only `X1Y1`, V80's SLR0 outside
+    /// `pblock_slash`) holds nothing the planner generates: no task, no
+    /// route end and no pipeline register on a route passing through.
+    #[must_use]
+    pub fn has_fabric(&self) -> bool {
+        self.area != Area::default()
+    }
 }
 
 /// Physical terminal location in the planner's quarter-unit metric.
@@ -421,7 +431,7 @@ impl Device {
         // and the ILP reports that as a generic infeasibility far from the
         // cause.
         for slot in &self.slots {
-            if slot.area != tapa_ir::Area::default() {
+            if slot.has_fabric() {
                 continue;
             }
             if let Some(tag) = slot.tags.first() {
@@ -583,6 +593,15 @@ impl Device {
             slot.centroid_x * 4 + anchor.x_offset_quarters,
             slot.centroid_y * 4 + anchor.y_offset_quarters,
         ))
+    }
+
+    /// Whether any slot `region` covers [has fabric](Slot::has_fabric).
+    #[must_use]
+    pub fn region_has_fabric(&self, region: &Coor) -> bool {
+        region
+            .all_slot_coors()
+            .into_iter()
+            .any(|(x, y)| self.slot(x, y).is_some_and(Slot::has_fabric))
     }
 
     /// The summed resources of every slot in a region. `None` if any covered

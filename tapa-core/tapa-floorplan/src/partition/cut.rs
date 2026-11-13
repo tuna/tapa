@@ -5,8 +5,6 @@
 //! placement ILP be reused for the row-level and column-level passes of
 //! multilevel placement.
 
-use tapa_ir::Area;
-
 use crate::device::model::{bounded_border_capacity, Coor, Device, Slot};
 
 /// A clean bipartition of the current candidate regions.
@@ -101,11 +99,12 @@ fn push_if_clean_and_binding(
 /// (partially overlapping borders) contribute nothing to this pair's border,
 /// so the cut never credits capacity the crossing wires cannot physically use.
 ///
-/// A cell pair with a slot that has no fabric contributes nothing: a route
-/// across it would end in that slot or, passing through, leave a Body
-/// register there, and the router admits neither (its register budget for
-/// such a slot is zero). Counting the pair would let placement plan
-/// crossings no route can carry, e.g. through U250's shell-only `X1Y1`.
+/// A cell pair with a slot that has no fabric ([`Slot::has_fabric`])
+/// contributes nothing: a route across it would end in that slot or, passing
+/// through, leave a Body register there, and the router admits neither (its
+/// register budget for such a slot is zero). Counting the pair would let
+/// placement plan crossings no route can carry, e.g. through U250's
+/// shell-only `X1Y1`.
 ///
 /// `None` when any cell pair on the shared border is unconstrained, or when
 /// the bounded pairs sum past `u64` — either way the pair cannot bind.
@@ -139,7 +138,7 @@ fn border_capacity(device: &Device, lhs: &Coor, rhs: &Coor) -> Option<u64> {
     facing
         .into_iter()
         .try_fold(0_u64, |total, (near, far, near_cap, far_cap)| {
-            let capacity = if near.area == Area::default() || far.area == Area::default() {
+            let capacity = if !near.has_fabric() || !far.has_fabric() {
                 0
             } else {
                 bounded_border_capacity(near_cap, far_cap)?

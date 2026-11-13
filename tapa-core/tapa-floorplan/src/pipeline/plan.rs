@@ -285,6 +285,8 @@ pub fn plan_routes(
 /// routes that realize fine; one that is merely loose still steers the router
 /// away from slots that are full, and [`realize_slot_usage`] remains the exact
 /// check.
+///
+/// A slot without fabric gets none: no route may leave a Body register there.
 fn register_budgets(
     baseline: &BTreeMap<Cell, Area>,
     device: &Device,
@@ -294,7 +296,11 @@ fn register_budgets(
         .slots
         .iter()
         .map(|slot| {
-            let capacity = scaled_area(slot.area, logic_capacity_limit).ff;
+            let capacity = if slot.has_fabric() {
+                scaled_area(slot.area, logic_capacity_limit).ff
+            } else {
+                0
+            };
             let placed = baseline.get(&(slot.x, slot.y)).map_or(0, |area| area.ff);
             ((slot.x, slot.y), capacity.saturating_sub(placed))
         })
