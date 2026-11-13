@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ParseError;
-use crate::port::ArgCategory;
+use crate::port::{ArgCategory, Port};
 use crate::target::Target;
 use crate::task::Task;
 
@@ -524,7 +524,9 @@ impl TaskGraph {
     /// Every argument an invoke binds by name binds a port the child
     /// declares, of a category that takes it: the same category, or one
     /// channel of a stream array. Codegen would otherwise connect a port the
-    /// child's RTL lacks and leave the declared one unbound.
+    /// child's RTL lacks and leave the declared one unbound. An upper task's
+    /// hmap port takes the parent's hmap of the same shape, whose channels
+    /// it shares.
     fn validate_named_args(&self) -> Result<(), ParseError> {
         let binds = |arg: ArgCategory, port: ArgCategory| {
             arg == port
@@ -550,6 +552,21 @@ impl TaskGraph {
                             port.cat.as_str(),
                             port.name
                         ),
+                        Some(Some(port))
+                            if port.cat == ArgCategory::Mmap
+                                && port.chan_count.is_some()
+                                && task.port(bound).is_none_or(|memory| {
+                                    let shape =
+                                        |port: &Port| (port.width, port.chan_count, port.chan_size);
+                                    shape(memory) != shape(port)
+                                }) =>
+                        {
+                            format!(
+                                "the hmap port `{child_name}.{}` takes an hmap of its own \
+                                 shape, which `{task_name}.{bound}` is not",
+                                port.name
+                            )
+                        }
                         Some(Some(_)) => continue,
                     };
                     return Err(ParseError::Schema {
@@ -946,6 +963,51 @@ mod tests {
             assert!(
                 message.contains(&format!("tasks.T.tasks.Child.args.{port}"))
                     && message.contains(problem),
+                "{message}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_upper_task_takes_a_whole_mmaps_or_hmap_of_its_shape() {
+        // `T` hands its mmaps `a` (2 regions) and its hmap `h` (2 channels of
+        // 1024 elements) to the upper task `Mid`, whose hmap port `g` has
+        // `chan_size` elements a channel.
+        let graph = |h_bound: &str, chan_size: u32| {
+            format!(
+                r#"{{"schema_version": {SCHEMA_VERSION}, "top": "T", "target": "xilinx-hls",
+                    "cflags": [], "tasks": {{
+                    "T": {{"level": "upper", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [
+                            {{"cat": "mmap", "name": "a[0]", "type": "int*", "width": 32}},
+                            {{"cat": "mmap", "name": "a[1]", "type": "int*", "width": 32}},
+                            {{"cat": "mmap", "name": "h", "type": "int*", "width": 32,
+                              "chan_count": 2, "chan_size": 1024}}],
+                        "tasks": {{"Mid": [{{"args": {{
+                            "m[0]": {{"arg": "a[0]", "cat": "mmap"}},
+                            "m[1]": {{"arg": "a[1]", "cat": "mmap"}},
+                            "g": {{"arg": "{h_bound}", "cat": "mmap"}}}}}}]}},
+                        "fifos": {{}}}},
+                    "Mid": {{"level": "upper", "srcs": [], "include_dirs": [], "defines": [],
+                        "synth": "hls", "readable_name": "", "ports": [
+                            {{"cat": "mmap", "name": "m[0]", "type": "int*", "width": 32}},
+                            {{"cat": "mmap", "name": "m[1]", "type": "int*", "width": 32}},
+                            {{"cat": "mmap", "name": "g", "type": "int*", "width": 32,
+                              "chan_count": 2, "chan_size": {chan_size}}}],
+                        "tasks": {{}}, "fifos": {{}}}}}}}}"#
+            )
+        };
+        TaskGraph::from_json(&graph("h", 1024)).expect("an mmaps and an hmap of its shape");
+        for (bound, chan_size) in [("h", 2048), ("a[0]", 1024)] {
+            let message = TaskGraph::from_json(&graph(bound, chan_size))
+                .expect_err(bound)
+                .to_string();
+            assert!(
+                message.contains("tasks.T.tasks.Mid.args.g")
+                    && message.contains(&format!(
+                        "the hmap port `Mid.g` takes an hmap of its own shape, which `T.{bound}` \
+                         is not"
+                    )),
                 "{message}"
             );
         }
