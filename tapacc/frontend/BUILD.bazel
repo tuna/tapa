@@ -153,6 +153,7 @@ cc_library(
     deps = [
         ":classify",
         ":program",
+        "@tapa-llvm-project//clang:analysis",
         CLANG_TOOLING,
     ],
 )

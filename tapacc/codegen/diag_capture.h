@@ -9,19 +9,22 @@
 
 namespace tapa::cc {
 
-// Collects every error-level diagnostic as plain text, for tests that run a
-// rewrite pipeline and assert on its refusals. The consumer must outlive the
-// CompilerInstance whose diagnostics point at it.
+// Collects every error-level and warning-level diagnostic as plain text, for
+// tests that run a rewrite pipeline and assert on its refusals and warnings.
+// The consumer must outlive the CompilerInstance whose diagnostics point at
+// it.
 class CollectingDiagConsumer : public clang::DiagnosticConsumer {
  public:
   std::vector<std::string> errors;
+  std::vector<std::string> warnings;
 
   void HandleDiagnostic(clang::DiagnosticsEngine::Level level,
                         const clang::Diagnostic& info) override {
-    if (level < clang::DiagnosticsEngine::Error) return;
+    if (level < clang::DiagnosticsEngine::Warning) return;
     llvm::SmallVector<char, 128> msg;
     info.FormatDiagnostic(msg);
-    errors.emplace_back(msg.data(), msg.size());
+    (level < clang::DiagnosticsEngine::Error ? warnings : errors)
+        .emplace_back(msg.data(), msg.size());
   }
 };
 

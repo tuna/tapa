@@ -165,6 +165,7 @@ class ProgramBuilder {
     bool pattern = false;          // a template pattern, typed by its
                                    // parameters rather than concrete types
     bool task_shaped = false;      // the body builds a tapa::task
+    bool returns = false;          // not task-shaped, and CanReturn
     bool ignored = false;          // [[tapa::target("ignore")]]
     bool explicit_target = false;  // a target attribute or mapping
     bool takes_memory = false;     // a memory parameter (mmap, async_mmap, ...)

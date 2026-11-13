@@ -53,6 +53,7 @@ TreePipelineRun RunTreePipeline(
 
   TreePipelineRun run{std::move(builder)};
   run.diags = diags.errors;
+  run.warnings = diags.warnings;
   run.json = run.builder.EmitJson().dump();
   run.ok = ok;
   if (ok) run.files = ReadTree(out_root);

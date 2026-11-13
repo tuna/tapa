@@ -33,6 +33,8 @@ struct TreePipelineRun {
   // Every error diagnostic of both passes, formatted text in emission
   // order.
   std::vector<std::string> diags;
+  // Every warning diagnostic of both passes, likewise.
+  std::vector<std::string> warnings;
   // The single graph JSON, as tapa-ir consumes it.
   std::string json;
   // The builder after the run; graph queries (FindTask, errors) stay valid.

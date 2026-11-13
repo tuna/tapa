@@ -1,8 +1,14 @@
 #include "discover.h"
 
+#include <map>
+#include <memory>
+#include <optional>
+#include <set>
+
 #include "clang/AST/Attr.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
+#include "clang/Analysis/CFG.h"
 
 #include "classify.h"
 
@@ -30,7 +36,61 @@ void GetInvokesInto(const clang::Stmt* stmt,
   }
 }
 
+// Whether the body of `def` can return (see CanReturn), or nullopt when it
+// has no CFG. `memo` holds every function decided so far; one still being
+// decided, a recursive call, counts as returning.
+std::optional<bool> ReachesExit(
+    const clang::FunctionDecl* def,
+    std::map<const clang::FunctionDecl*, std::optional<bool>>& memo) {
+  if (const auto it = memo.find(def); it != memo.end()) {
+    return it->second.value_or(true);
+  }
+  memo[def] = true;
+  const std::unique_ptr<clang::CFG> cfg = clang::CFG::buildCFG(
+      def, def->getBody(), &def->getASTContext(), clang::CFG::BuildOptions());
+  if (cfg == nullptr) return memo[def] = std::nullopt;
+  // A call that never returns ends its block's path. The CFG ends a block at
+  // a call to a `[[noreturn]]` function, but links that block to the exit.
+  const auto ends_path = [&](const clang::CFGBlock& block) {
+    if (block.hasNoReturnElement()) return true;
+    for (const clang::CFGElement& element : block) {
+      const std::optional<clang::CFGStmt> stmt =
+          element.getAs<clang::CFGStmt>();
+      const auto* call =
+          stmt ? llvm::dyn_cast<clang::CallExpr>(stmt->getStmt()) : nullptr;
+      const clang::FunctionDecl* callee =
+          call == nullptr ? nullptr : call->getDirectCallee();
+      const clang::FunctionDecl* callee_def = nullptr;
+      if (callee != nullptr && callee->hasBody(callee_def) &&
+          ReachesExit(callee_def, memo) == false) {
+        return true;
+      }
+    }
+    return false;
+  };
+  std::vector<const clang::CFGBlock*> work = {&cfg->getEntry()};
+  std::set<const clang::CFGBlock*> seen;
+  bool reaches = false;
+  while (!work.empty() && !reaches) {
+    const clang::CFGBlock* block = work.back();
+    work.pop_back();
+    if (!seen.insert(block).second || ends_path(*block)) continue;
+    reaches = block == &cfg->getExit();
+    for (const clang::CFGBlock* next : block->succs()) {
+      if (next != nullptr) work.push_back(next);
+    }
+  }
+  return memo[def] = reaches;
+}
+
 }  // namespace
+
+bool CanReturn(const clang::FunctionDecl* func) {
+  const clang::FunctionDecl* def = nullptr;
+  if (func == nullptr || !func->hasBody(def)) return false;
+  std::map<const clang::FunctionDecl*, std::optional<bool>> memo;
+  return ReachesExit(def, memo).value_or(false);
+}
 
 const clang::Expr* GetTapaTaskObject(const clang::Stmt* body) {
   if (body == nullptr) return nullptr;

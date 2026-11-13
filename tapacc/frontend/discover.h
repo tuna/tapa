@@ -62,6 +62,14 @@ const A* ParamAttr(const clang::FunctionDecl* func, unsigned index) {
   return nullptr;
 }
 
+// Whether a function's body can return: some path through it reaches its end,
+// a `return`, or a `throw` without first calling a function that never
+// returns, one declared `[[noreturn]]` or whose own body cannot return by
+// this rule. A loop without a condition, or with a constant true one, ends
+// only through a `break`, `return`, or `goto` that leaves it. False when the
+// body is not visible or cannot be analyzed.
+bool CanReturn(const clang::FunctionDecl* func);
+
 // Whether a function is marked `[[tapa::target("ignore")]]`.
 bool IsIgnored(const clang::FunctionDecl* func);
 

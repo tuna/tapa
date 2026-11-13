@@ -323,6 +323,8 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.name = TaskName(mangler, def);
   sighting.readable_name = ReadableTaskName(ctx, def);
   sighting.task_shaped = GetTapaTaskObject(def->getBody()) != nullptr;
+  sighting.returns =
+      !sighting.task_shaped && !sighting.pattern && CanReturn(def);
   sighting.ignored = IsIgnored(def);
   sighting.explicit_target = TargetAttr(def) != nullptr;
   for (const clang::FunctionDecl* decl : def->redecls()) {
@@ -1044,6 +1046,17 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
                                   unsigned index) {
     return FirstSighting(KeyOf(*mangler, callee)).parameter_names.at(index);
   };
+  // A PL leaf whose body can return, which hardware runs once per invocation
+  // of its parent when detached.
+  const auto returning_pl_leaf = [&](const clang::FunctionDecl* callee) {
+    const std::string key = KeyOf(*mangler, callee);
+    const auto task = tasks_.find(key);
+    return task != tasks_.end() &&
+           task->second.model.level == TaskLevel::kLower &&
+           task->second.model.target != SynthTarget::kAie &&
+           task->second.model.target != SynthTarget::kIgnore &&
+           FirstSighting(key).returns;
+  };
   std::vector<MergedTask> movers;
   for (auto& [key, task] : tasks_) {
     if (task.owner_tu != tu) continue;
@@ -1070,7 +1083,8 @@ void ProgramBuilder::FillOwnedTasks(int tu, Program& view,
       DiagnoseStrayInvokes(ctx, model.def);
     }
     if (model.level == TaskLevel::kUpper) {
-      ParseUpperTask(ctx, model, /*is_top=*/model.name == top_, parameter_name);
+      ParseUpperTask(ctx, model, /*is_top=*/model.name == top_, parameter_name,
+                     returning_pl_leaf);
     }
     task.model = model;
   }

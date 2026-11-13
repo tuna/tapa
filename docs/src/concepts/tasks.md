@@ -88,6 +88,13 @@ when its parent is invoked again, that start waits until it has finished and
 then reads the arguments the parent holds at that time. One start waits at
 most: invocations that begin while one is already waiting share it.
 
+`tapa analyze` warns at the invoke of a detached PL leaf task that can
+return. It follows the body's control flow: a loop with no condition, or a
+constant true one, that no `break`, `return`, or `goto` leaves never returns,
+and neither does a call to a function that is `[[noreturn]]` or whose own body
+never returns. A task meant to run once per invocation may keep the warning;
+one meant to run continuously must never return.
+
 ```admonish note
 By default, TAPA tasks are joined: the parent waits for each child to complete.
 Use `tapa::detach` only when the child task genuinely does not need to

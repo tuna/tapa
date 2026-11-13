@@ -121,10 +121,12 @@ TEST(InvokeParser, NonTopStreamPortsDoNotBecomeFifos) {
   ASSERT_TRUE(builder.MergeAndDiscover());
   TaskModel model = builder.TuView(ast->getASTContext(), log).tasks.at("Top");
   model.ports = BuildPorts(ast->getASTContext(), model.def);
-  ParseUpperTask(ast->getASTContext(), model, /*is_top=*/false,
-                 [](const clang::FunctionDecl* callee, unsigned index) {
-                   return callee->getParamDecl(index)->getNameAsString();
-                 });
+  ParseUpperTask(
+      ast->getASTContext(), model, /*is_top=*/false,
+      [](const clang::FunctionDecl* callee, unsigned index) {
+        return callee->getParamDecl(index)->getNameAsString();
+      },
+      [](const clang::FunctionDecl*) { return false; });
   EXPECT_TRUE(model.streams.empty());
 }
 
@@ -205,6 +207,81 @@ TEST(InvokeParser, ModeWithNameKeepsBoth) {
   const auto& instances = p.Task("Top").instances.at("Worker");
   ASSERT_EQ(instances.size(), 1u);
   EXPECT_EQ(instances[0].name, "worker");
+}
+
+// Hardware runs a detached PL leaf whose body can return once per invocation
+// of its parent, so analyze warns at its invoke. A body that loops forever,
+// itself or through a call that never returns, does not warn; a break or a
+// return out of the loop does. The leaf may be defined in another
+// translation unit than its invoke.
+TEST(InvokeParser, DetachedLeafThatCanReturnWarns) {
+  constexpr char kTop[] = R"cpp(
+    void Finite(int n);
+    void Forever(int n) {
+      for (;;) {
+      }
+    }
+    void Spin(int n) {
+      while (true) {
+      }
+    }
+    template <typename T>
+    void Loop(T n) {
+      for (;;) {
+      }
+    }
+    void Delegate(int n) { Loop(n); }
+    [[noreturn]] void Stop();
+    void Fail(int n) { Stop(); }
+    void Leave(int n) {
+      for (;;) {
+        if (n == 0) break;
+      }
+    }
+    void Quit(int n) {
+      for (;;) {
+        if (n == 0) return;
+      }
+    }
+    void Group(int n) { tapa::task().invoke(Finite, n); }
+    void Top(int n) {
+      tapa::task()
+          .invoke<-1>(Finite, n)
+          .invoke(Finite, n)
+          .invoke<-1>(Forever, n)
+          .invoke<-1>(Spin, n)
+          .invoke<-1>(Delegate, n)
+          .invoke<-1>(Fail, n)
+          .invoke<-1>(Leave, n)
+          .invoke<-1>(Quit, n)
+          .invoke<-1>(Group, n);
+    }
+  )cpp";
+  constexpr char kFinite[] = R"cpp(
+    void Finite(int n) {
+      for (int i = 0; i < n; ++i) {
+      }
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/top.cpp", kTop},
+       test_support::VirtualTu{"/proj/finite.cpp", kFinite}},
+      "Top", testing::TempDir() + "/detach", {"-std=c++17"});
+  ASSERT_TRUE(run.ok) << (run.diags.empty() ? run.json : run.diags.front());
+  std::string warnings;
+  for (const std::string& warning : run.warnings) warnings += warning + "\n";
+  ASSERT_EQ(run.warnings.size(), 3u) << warnings;
+  EXPECT_NE(run.warnings[0].find("detached task 'Finite' can return: in "
+                                 "hardware it runs once per invocation of "
+                                 "'Top'"),
+            std::string::npos)
+      << warnings;
+  EXPECT_NE(run.warnings[1].find("detached task 'Leave' can return"),
+            std::string::npos)
+      << warnings;
+  EXPECT_NE(run.warnings[2].find("detached task 'Quit' can return"),
+            std::string::npos)
+      << warnings;
 }
 
 TEST(InvokeParser, ConstantUsesChildPortWidth) {

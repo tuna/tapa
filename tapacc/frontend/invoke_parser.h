@@ -22,11 +22,14 @@ namespace tapa::cc {
 // prunes unused streams via `ctx` diagnostics. A no-op for a leaf task.
 // `parameter_name` resolves a callee's original definition formal by position;
 // caller-visible declarations may rename or omit it. The callback stays
-// TU-local.
+// TU-local. A detached invoke of a callee `returning_pl_leaf` accepts (a PL
+// leaf whose body can return) gets a warning: hardware runs it once per
+// invocation of the task, not continuously.
 void ParseUpperTask(
     clang::ASTContext& ctx, TaskModel& task, bool is_top,
     llvm::function_ref<std::string(const clang::FunctionDecl*, unsigned)>
-        parameter_name);
+        parameter_name,
+    llvm::function_ref<bool(const clang::FunctionDecl*)> returning_pl_leaf);
 
 // Report every `tapa::task::invoke` in a task's body that the task graph
 // would not hold: one outside the first `tapa::task()` statement written

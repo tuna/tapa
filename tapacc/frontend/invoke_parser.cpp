@@ -430,7 +430,8 @@ void CollectStreamDecls(UpperTaskContext& uc, const clang::FunctionDecl* func) {
 void ParseInvocations(
     UpperTaskContext& uc, const clang::Expr* task_obj,
     llvm::function_ref<std::string(const clang::FunctionDecl*, unsigned)>
-        parameter_name) {
+        parameter_name,
+    llvm::function_ref<bool(const clang::FunctionDecl*)> returning_pl_leaf) {
   // The child-name mangler and the access positions, which distribute an
   // array argument (streams/mmaps) across the scalar ports it feeds, in
   // order of appearance.
@@ -468,6 +469,18 @@ void ParseInvocations(
       continue;
     }
     const InvokeMode mode = GetInvokeMode(invoke);
+    // Hardware starts a detached task once per invocation of its parent, so
+    // one that returns does not keep running.
+    if (mode.step < 0 && returning_pl_leaf(InvokeCallee(invoke))) {
+      ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Warning,
+                       invoke->getArg(0)->getBeginLoc(),
+                       "detached task '%0' can return: in hardware it runs "
+                       "once per invocation of '%1', which does not wait for "
+                       "it to finish; a task meant to run continuously must "
+                       "never return")
+          << InvokeCallee(invoke)->getNameAsString()
+          << uc.task.def->getNameAsString();
+    }
     bool has_executable = false;
     std::string task_name;
     const clang::FunctionDecl* callee = nullptr;
@@ -799,7 +812,8 @@ void DiagnoseStrayInvokes(clang::ASTContext& ctx,
 void ParseUpperTask(
     clang::ASTContext& ctx, TaskModel& task, bool is_top,
     llvm::function_ref<std::string(const clang::FunctionDecl*, unsigned)>
-        parameter_name) {
+        parameter_name,
+    llvm::function_ref<bool(const clang::FunctionDecl*)> returning_pl_leaf) {
   const clang::FunctionDecl* func = task.def;
   if (func == nullptr || !func->hasBody()) return;
   const clang::Expr* task_obj = GetTapaTaskObject(func->getBody());
@@ -808,7 +822,7 @@ void ParseUpperTask(
   UpperTaskContext uc(ctx, task, is_top);
   DiagnoseUpperBody(uc, func);
   CollectStreamDecls(uc, func);
-  ParseInvocations(uc, task_obj, parameter_name);
+  ParseInvocations(uc, task_obj, parameter_name, returning_pl_leaf);
   ValidateStreams(uc);
 }
 
