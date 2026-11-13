@@ -28,10 +28,17 @@ int main(int argc, char* argv[]) {
     }
   }
 
-  tapa::invoke(Bandwidth, FLAGS_bitstream,
-               tapa::read_write_mmaps<float, kBankCount>(chan)
-                   .vectorized<Elem::length>(),
-               n, flags);
+  const int64_t kernel_time_ns =
+      tapa::invoke(Bandwidth, FLAGS_bitstream,
+                   tapa::read_write_mmaps<float, kBankCount>(chan)
+                       .vectorized<Elem::length>(),
+                   n, flags);
+  // Each bank's Copy reads and/or writes n elements.
+  const double bytes = double(kBankCount) * n * sizeof(Elem) *
+                       (bool(flags & kRead) + bool(flags & kWrite));
+  std::clog << "kernel time: " << kernel_time_ns * 1e-9 << " s, "
+            << bytes / kernel_time_ns << " GB/s (" << kBankCount
+            << " channels, flags " << flags << ")" << std::endl;
 
   if (!((flags & kRead) && (flags & kWrite))) return 0;
 
