@@ -154,6 +154,11 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
     }
 
     let mut lines: Vec<String> = Vec::new();
+    let nests_in_platform =
+        device.placement == PlacementStyle::Pblock && device.user_pblock_name.is_some();
+    if nests_in_platform {
+        lines.extend(record_platform_pblock_parents());
+    }
     for (region, matches) in &by_region {
         match device.placement {
             PlacementStyle::SlrAssignment => {
@@ -161,6 +166,9 @@ pub fn emit_xdc(result: &FloorplanResult, device: &Device) -> Result<String, Xdc
             }
             PlacementStyle::Pblock => add_region_pblock(&mut lines, region, matches, device),
         }
+    }
+    if nests_in_platform {
+        lines.extend(restore_platform_pblock_parents());
     }
 
     // Reset-distribution timing cuts. The active-high reset net fans out from
@@ -265,6 +273,32 @@ fn validate_region_rectangle(device: &Device, region: &str) -> Result<(), XdcErr
         }
     }
     Ok(())
+}
+
+/// Vivado nests an existing pblock under any pblock whose ranges grow to
+/// cover it. A slot spans whole clock regions before it is clipped to the
+/// platform's dynamic region, so on the U250 shell it adopted the shell's own
+/// `pblock_dynamic_SLR1` and `pblock_ii_level1_pipe_SLR1`, which the clip then
+/// left outside their new parent (DRC HDPR-23). Record every platform pblock's
+/// parent before the slots exist, and put it back after.
+fn record_platform_pblock_parents() -> [String; 4] {
+    [
+        "set tapa_platform_pblocks [dict create]".to_string(),
+        "foreach pblock [get_pblocks -quiet] {".to_string(),
+        "  dict set tapa_platform_pblocks $pblock [get_property PARENT $pblock]".to_string(),
+        "}".to_string(),
+    ]
+}
+
+/// Put back every parent [`record_platform_pblock_parents`] recorded.
+fn restore_platform_pblock_parents() -> [String; 5] {
+    [
+        "dict for {pblock parent} $tapa_platform_pblocks {".to_string(),
+        "  if {[get_property PARENT [get_pblocks $pblock]] ne $parent} {".to_string(),
+        "    set_property PARENT $parent [get_pblocks $pblock]".to_string(),
+        "  }".to_string(),
+        "}".to_string(),
+    ]
 }
 
 /// XDC lines that relax reset-distribution out of setup timing.
@@ -815,6 +849,10 @@ set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*periph
         };
 
         let expected = "\
+set tapa_platform_pblocks [dict create]
+foreach pblock [get_pblocks -quiet] {
+  dict set tapa_platform_pblocks $pblock [get_property PARENT $pblock]
+}
 create_pblock SLOT_X1Y1_TO_SLOT_X1Y1
 set_property EXCLUDE_PLACEMENT 0 [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
 set_property CONTAIN_ROUTING 0 [get_pblocks SLOT_X1Y1_TO_SLOT_X1Y1]
@@ -845,6 +883,11 @@ if {$derived_ranges ne \"\"} {
   resize_pblock SLOT_X1Y1_TO_SLOT_X1Y1 -remove $derived_ranges
 }
 delete_pblock -quiet TAPA_PARENT_CLIP_SLOT_X1Y1_TO_SLOT_X1Y1
+dict for {pblock parent} $tapa_platform_pblocks {
+  if {[get_property PARENT [get_pblocks $pblock]] ne $parent} {
+    set_property PARENT $parent [get_pblocks $pblock]
+  }
+}
 set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*__tapa_control_fabric_reset_n*\"}]
 set_false_path -quiet -through [get_nets -quiet -hier -filter {NAME =~ \"*peripheral_aresetn*\"}]
 ";
