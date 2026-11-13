@@ -385,6 +385,13 @@ fn scalar_driver(source: &tapa_ir::ArgSource) -> Expr {
     }
 }
 
+/// The wire carrying the base address of the child port `port` of
+/// `instance`: an `mmaps` region's port is an array element (`m[0]`), which
+/// Verilog spells `m_0`.
+fn child_offset_wire(instance: &str, port: &str) -> String {
+    format!("{instance}__{}_offset", sanitize_array_name(port))
+}
+
 /// The offset source for a direct-mmap argument bound to `parent`: the
 /// parent's `<arg>_offset` wire, or `64'd0` for hmap connections.
 fn mmap_offset_source(parent: &str, mmap_connections: &BTreeMap<String, MMapConnection>) -> Expr {

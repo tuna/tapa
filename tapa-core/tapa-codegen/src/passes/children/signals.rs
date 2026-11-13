@@ -17,7 +17,9 @@ use super::fsm::{
 use super::instance::{build_child_instance_with_reset, ChildMmapBinding, ChildMmapBindings};
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
-use crate::passes::{distributed_control, mmap_offset_source, scalar_driver, TaskPassCtx};
+use crate::passes::{
+    child_offset_wire, distributed_control, mmap_offset_source, scalar_driver, TaskPassCtx,
+};
 use crate::state::views::{DesignView, FsmTable, ModuleTable};
 use crate::{m_axi, program};
 
@@ -316,10 +318,9 @@ fn add_fsm_control_logic(
 /// Return the pipeline and FSM-input wire names for a pipelined argument.
 fn pipeline_wire_names(inst_name: &str, port_name: &str, is_mmap: bool) -> (String, String) {
     if is_mmap {
-        (
-            format!("{inst_name}__{port_name}_offset"),
-            format!("{inst_name}__{port_name}_offset_in"),
-        )
+        let offset = child_offset_wire(inst_name, port_name);
+        let fsm_in = format!("{offset}_in");
+        (offset, fsm_in)
     } else {
         (
             format!("{inst_name}__{port_name}"),

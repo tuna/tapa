@@ -14,8 +14,8 @@ use tapa_rtl::module::sanitize_array_name;
 use tapa_rtl::VerilogModule;
 
 use crate::instance_signals::InstanceSignals;
-use crate::passes::async_mmap;
 use crate::passes::frames::frame_wire;
+use crate::passes::{async_mmap, child_offset_wire};
 
 /// Per-instance routing for child mmap arguments; absent entries are direct.
 #[derive(Debug, Default)]
@@ -208,7 +208,9 @@ pub(super) fn build_child_instance_with_reset(
             }
             ArgCategory::Mmap | ArgCategory::AsyncMmap => {
                 // Connect to per-instance pipeline offset
-                let offset_sig = format!("{instance_name}__{child_port}_offset");
+                let offset_sig = child_offset_wire(instance_name, child_port);
+                // An `mmaps` region's port is an array element (`m[0]`).
+                let child_port = &sanitize_array_name(child_port);
                 // Bind M-AXI channel ports:
                 // If crossbar exists (slave index present), bind to downstream wires
                 // Otherwise bind directly to upstream parent m_axi signals

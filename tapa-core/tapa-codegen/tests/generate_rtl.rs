@@ -1691,6 +1691,68 @@ fn test_generate_rtl_nested_shared_mmap_threads() {
     check(top_v, &["S00_THREADS(1)", "S01_THREADS(2)"], &[]);
 }
 
+/// An upper task hands its `mmaps` whole to another, whose regions (`m[0]`)
+/// bind the top's (`a[0]`) port by port, under Verilog's spelling `m_0`.
+#[test]
+fn test_generate_rtl_upper_child_takes_whole_mmaps() {
+    let mem = |name: &str| serde_json::json!({"cat": "mmap", "name": name, "type": "float*", "width": 32});
+    let region = |arg: &str| serde_json::json!({"arg": arg, "cat": "mmap"});
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([mem("a[0]"), mem("a[1]")]);
+        t["tasks"] = serde_json::json!({
+            "mid": [{"args": {"m[0]": region("a[0]"), "m[1]": region("a[1]")}}]
+        });
+    });
+    let mid = task("mid", "upper", |t| {
+        t["ports"] = serde_json::json!([mem("m[0]"), mem("m[1]")]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [{"args": {"d": region("m[0]")}}, {"args": {"d": region("m[1]")}}]
+        });
+    });
+    let leaf = task("leaf", "lower", |t| {
+        t["ports"] = serde_json::json!([mem("d")]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("mid", mid), ("leaf", leaf)],
+    );
+
+    let manifest = run_manifest(prog, &["top", "mid", "leaf"], &[]);
+
+    for (file, contains) in [
+        (
+            "top.v",
+            &[
+                ".m_axi_m_0_ARADDR(m_axi_a_0_ARADDR)",
+                ".m_axi_m_1_ARADDR(m_axi_a_1_ARADDR)",
+                ".m_0_offset(mid_0__m_0_offset)",
+                ".m_1_offset(mid_0__m_1_offset)",
+            ],
+        ),
+        (
+            "mid.v",
+            &[
+                ".m_axi_d_ARADDR(m_axi_m_0_ARADDR)",
+                ".m_axi_d_ARADDR(m_axi_m_1_ARADDR)",
+                ".d_offset(leaf_0__d_offset)",
+                ".d_offset(leaf_1__d_offset)",
+            ],
+        ),
+    ] {
+        check(
+            rtl_file(&manifest, file),
+            contains,
+            &["m[0]", "m[1]", "a[0]"],
+        );
+    }
+    check(
+        rtl_file(&manifest, "top_fsm.v"),
+        &["mid_0__m_0_offset_in", "mid_0__m_1_offset"],
+        &["m[0]"],
+    );
+}
+
 #[test]
 fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
     let mid = task("mid", "upper", |t| {

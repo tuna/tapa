@@ -20,7 +20,8 @@ use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wire};
 
 use super::{
-    invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver, width_wire,
+    child_offset_wire, invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver,
+    width_wire,
 };
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
@@ -988,7 +989,7 @@ fn build_payload_fields(
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
             (
-                format!("{rtl_instance}__{port_name}_offset"),
+                child_offset_wire(&rtl_instance, port_name),
                 mmap_offset_source(parent, mmap_connections),
                 64,
             )
