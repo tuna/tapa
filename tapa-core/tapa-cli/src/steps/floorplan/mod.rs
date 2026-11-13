@@ -998,7 +998,7 @@ mod tests {
         .expect("parse Reader");
         let mut module = tapa_rtl::mutation::MutableModule::from_parsed(parsed);
         tapa_codegen::m_axi::add_m_axi_ports_with_id_width(&mut module, "data", 32, 64, 1);
-        write_hls_module(work_dir, "Reader", &module.emit());
+        write_hls_module(work_dir, "Reader", &module.emit().unwrap());
     }
 
     fn assert_pipelined_floorplan_outputs(work_dir: &std::path::Path) {

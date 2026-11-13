@@ -768,7 +768,7 @@ mod tests {
         let module = tapa_rtl::VerilogModule::parse("module top(); endmodule").unwrap();
         let mut module = MutableModule::from_parsed(module);
         add_m_axi_ports(&mut module, "chan[0]", 512, 64);
-        let text = module.emit();
+        let text = module.emit().unwrap();
         assert!(text.contains("m_axi_chan_0_ARADDR"), "got:\n{text}");
         assert!(!text.contains("m_axi_chan[0]"), "got:\n{text}");
     }
@@ -778,7 +778,7 @@ mod tests {
         let module = tapa_rtl::VerilogModule::parse("module top(); endmodule").unwrap();
         let mut module = MutableModule::from_parsed(module);
         add_m_axi_ports_with_id_width(&mut module, "mem", 512, 64, 2);
-        let text = module.emit();
+        let text = module.emit().unwrap();
         assert!(text.contains("m_axi_mem_ARID"), "got:\n{text}");
         assert!(text.contains("[1:0] m_axi_mem_ARID"), "got:\n{text}");
     }
@@ -788,7 +788,7 @@ mod tests {
         let module = tapa_rtl::VerilogModule::parse("module top(); endmodule").unwrap();
         let mut module = MutableModule::from_parsed(module);
         add_m_axi_ports(&mut module, "mem", 32, 64);
-        let text = module.emit();
+        let text = module.emit().unwrap();
 
         let ar = text.find("m_axi_mem_ARADDR").unwrap();
         let aw = text.find("m_axi_mem_AWADDR").unwrap();

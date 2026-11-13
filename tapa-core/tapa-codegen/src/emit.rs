@@ -4,13 +4,14 @@
 use tapa_ir::task::TaskLevel;
 use tapa_ir::SynthTarget;
 
+use crate::error::CodegenError;
 use crate::passes::DesignPassCtx;
 
 /// Design pass: collect the emitted files.
 ///
 /// Runs last: every mutation pass must have run before the Verilog is
 /// emitted into `generated_files` / `template_files`.
-pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
+pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> {
     let design = ctx.design.design();
 
     // `Ignore` tasks emit the authoritative template file from the shell
@@ -20,7 +21,7 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
     for (name, task) in &design.tasks {
         let rtl = if task.synth == SynthTarget::Ignore {
             // The pass registers every `Ignore` task; a missing one is a bug.
-            let rtl = ctx.modules[name].emit();
+            let rtl = ctx.modules[name].emit()?;
             ctx.outputs
                 .insert_template(format!("{name}.v"), rtl.clone());
             rtl
@@ -28,7 +29,7 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
             let Some(mm) = ctx.modules.get(name) else {
                 continue;
             };
-            mm.emit()
+            mm.emit()?
         } else {
             continue;
         };
@@ -36,6 +37,7 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) {
     }
     for (name, mm) in ctx.fsms.iter() {
         ctx.outputs
-            .insert_generated(format!("{name}_fsm.v"), mm.emit());
+            .insert_generated(format!("{name}_fsm.v"), mm.emit()?);
     }
+    Ok(())
 }

@@ -69,7 +69,7 @@ pub fn generate_rtl(state: &mut TopologyWithRtl) -> Result<ArtifactManifest, Cod
         }
     }
 
-    emit::collect_outputs(&mut DesignPassCtx::new(&mut *state));
+    emit::collect_outputs(&mut DesignPassCtx::new(&mut *state))?;
 
     Ok(ArtifactManifest::collect(state))
 }

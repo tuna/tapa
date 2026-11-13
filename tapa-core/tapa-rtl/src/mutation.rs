@@ -217,7 +217,17 @@ impl MutableModule {
     }
 
     /// Emit the complete module as Verilog text.
-    pub fn emit(&self) -> String {
+    ///
+    /// Rejects a preserved body that declares a module-scope wire/reg also
+    /// in `inner.signals` (one after the first statement or inside
+    /// `` `ifdef ``), which the output would declare twice.
+    pub fn emit(&self) -> Result<String, BuilderError> {
+        if let Some(signal) = self.signal_declared_in_body() {
+            return Err(BuilderError::SignalDeclaredInBody {
+                module: self.inner.name.clone(),
+                signal,
+            });
+        }
         let mut out = String::new();
 
         // Module declaration — emit parameters in the `#(parameter ...)`
@@ -314,7 +324,22 @@ impl MutableModule {
         // Later modules and trailing text pass through untouched; only the
         // boundary before this suffix is normalized by the terminator above.
         let _ = write!(out, "{}", self.trailing_text);
-        out
+        Ok(out)
+    }
+
+    /// A signal of `inner.signals` that the body also declares at module
+    /// scope, found by parsing the body as a module of its own.
+    fn signal_declared_in_body(&self) -> Option<String> {
+        if self.body_text.trim().is_empty() {
+            return None;
+        }
+        let body = format!("module Body;\n{}\nendmodule\n", self.body_text);
+        VerilogModule::parse(&body)
+            .ok()?
+            .signals
+            .into_iter()
+            .map(|s| s.name)
+            .find(|name| self.inner.signals.iter().any(|s| &s.name == name))
     }
 }
 
@@ -444,7 +469,7 @@ mod tests {
     fn emit_produces_valid_module() {
         let module = parse_fixture("LowerLevelTask.v");
         let mm = MutableModule::from_parsed(module);
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(emitted.contains("module LowerLevelTask"), "got:\n{emitted}");
         assert!(emitted.contains("endmodule"), "got:\n{emitted}");
         assert!(emitted.contains("ap_clk"), "should contain port ap_clk");
@@ -476,7 +501,7 @@ endmodule
 ";
         let module = VerilogModule::parse(source).unwrap();
         let mm = MutableModule::from_parsed(module);
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(
             emitted.contains("adapter_U"),
             "body extraction must not drop instances closed by a bare `);`:\n{emitted}"
@@ -508,7 +533,7 @@ endmodule
 ";
         let module = VerilogModule::parse(source).unwrap();
         let mm = MutableModule::from_parsed(module);
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(
             emitted.contains("output reg ap_done"),
             "procedurally assigned output reg should be folded into the ANSI port:\n{emitted}"
@@ -582,7 +607,7 @@ endmodule
                 mm.body_text, expected_body,
                 "body extraction must preserve source slices:\n{source}"
             );
-            let emitted = mm.emit();
+            let emitted = mm.emit().unwrap();
             let reparsed = VerilogModule::parse(&emitted).unwrap();
             assert_eq!(
                 reparsed.ports, mm.inner.ports,
@@ -592,6 +617,44 @@ endmodule
                 reparsed.signals, mm.inner.signals,
                 "declaration prefixes must not be duplicated in the body"
             );
+        }
+    }
+
+    /// Every module-scope wire/reg is parsed into `signals`, but only the
+    /// leading declarations leave the body, so one after the first
+    /// statement or inside `ifdef` would be emitted twice. Procedural and
+    /// generate-scope declarations are not module signals and stay put.
+    #[test]
+    fn emit_rejects_module_signals_declared_in_the_body() {
+        for (source, late) in [
+            (
+                "module Late(input i, output o);\nassign o = i;\nwire late;\nendmodule\n",
+                "late",
+            ),
+            (
+                "module Guarded(input i, output o);\n`ifdef SIM\nreg guarded;\n`endif\n\
+                 assign o = i;\nendmodule\n",
+                "guarded",
+            ),
+        ] {
+            let mut mm = MutableModule::from_parsed(VerilogModule::parse(source).unwrap());
+            let err = mm.emit().unwrap_err();
+            assert!(
+                matches!(&err, BuilderError::SignalDeclaredInBody { signal, .. } if signal == late),
+                "{source}\n{err:?}"
+            );
+            mm.body_text.clear();
+            mm.emit().expect("a cleared body declares nothing twice");
+        }
+
+        let scoped = "module Scoped(input clk);\nwire own;\n\
+                      always @(posedge clk) begin : blk\n  reg local_r;\nend\n\
+                      generate\nif (1) begin : g\n  wire gen_w;\nend\nendgenerate\nendmodule\n";
+        let emitted = MutableModule::from_parsed(VerilogModule::parse(scoped).unwrap())
+            .emit()
+            .unwrap();
+        for decl in ["wire own;", "reg local_r;", "wire gen_w;"] {
+            assert_eq!(emitted.matches(decl).count(), 1, "{decl}:\n{emitted}");
         }
     }
 
@@ -618,7 +681,7 @@ endmodule
         let module = VerilogModule::parse(&source).unwrap();
         let mut mm = MutableModule::from_parsed(module);
         mm.add_assign(ContinuousAssign::new(Expr::ident("tmp"), Expr::ident("i")));
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
 
         let endmodule_line = emitted
             .lines()
@@ -657,7 +720,7 @@ endmodule
         mm.add_port(simple_port("child_ap_start", Direction::Output))
             .unwrap();
         mm.add_signal(reg("child_ap_start")).unwrap();
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(
             emitted.contains("output reg child_ap_start"),
             "added output reg should be folded into the ANSI port:\n{emitted}"
@@ -682,7 +745,7 @@ endmodule
         let mut mm = MutableModule::from_parsed(module);
         mm.demote_output_port_regs_to_wires();
 
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(
             emitted.contains("output wire out_read"),
             "demoted output should be emitted as a net:\n{emitted}"
@@ -709,7 +772,7 @@ endmodule
             Expr::ident("ap_clk"),
         ));
 
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(emitted.contains("new_port"), "should contain added port");
         assert!(
             emitted.contains("wire new_wire;"),
@@ -744,7 +807,7 @@ endmodule
         let module = parse_fixture("LowerLevelTask.v");
         let mut mm = MutableModule::from_parsed(module);
         mm.remove_port("ostreams_peek");
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         // Port should not appear in the port declaration list
         // (it may still appear in body text as raw assign references)
         let decl_section = emitted.split(");").next().unwrap_or("");
@@ -762,7 +825,7 @@ endmodule
             .unwrap();
         mm.add_signal(wire("test_wire")).unwrap();
 
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         let reparsed = VerilogModule::parse(&emitted);
         assert!(
             reparsed.is_ok(),
@@ -800,7 +863,7 @@ endmodule
             ModuleInstance::new("Child", "\\child[0]")
                 .with_ports(vec![PortArg::new("\\in[0]", Expr::ident("\\w[1]"))]),
         );
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         let reparsed = VerilogModule::parse(&emitted)
             .unwrap_or_else(|error| panic!("{error}\nemitted:\n{emitted}"));
         assert_eq!(reparsed.ports, mm.inner.ports, "emitted:\n{emitted}");
@@ -820,7 +883,7 @@ endmodule
         let mut mm = MutableModule::from_parsed(module);
         mm.add_port(simple_port("extra_out", Direction::Output))
             .unwrap();
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         let reparsed = VerilogModule::parse(&emitted);
         assert!(
             reparsed.is_ok(),
@@ -888,7 +951,7 @@ endmodule
         ))
         .unwrap();
 
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         let header_idx = emitted.find("module ").expect("module keyword present");
         let param_idx = emitted
             .find("parameter C_S_AXI_CONTROL_ADDR_WIDTH")
@@ -923,7 +986,7 @@ endmodule
         mm.add_port(simple_port("new_sig", Direction::Output))
             .unwrap();
         mm.add_signal(wire("added_wire")).unwrap();
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         let reparsed = VerilogModule::parse(&emitted);
         assert!(
             reparsed.is_ok(),

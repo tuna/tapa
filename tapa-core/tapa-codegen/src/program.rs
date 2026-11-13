@@ -179,7 +179,7 @@ mod tests {
             &mut mm,
             &["child_a__is_done".into(), "child_b__is_done".into()],
         );
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(emitted.contains("__tapa_state"), "got:\n{emitted}");
         // All three FSM state encodings appear.
         assert!(emitted.contains(GLOBAL_STATE_IDLE), "got:\n{emitted}");
@@ -213,7 +213,7 @@ mod tests {
         let module = VerilogModule::parse(source).unwrap();
         let mut mm = MutableModule::from_parsed(module);
         apply_global_fsm(&mut mm, &[]);
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(
             emitted.contains("1'b1"),
             "should have unconditional done, got:\n{emitted}"

@@ -166,7 +166,7 @@ fn test_generate_rtl_rejects_colliding_child_instance_names_before_mutation() {
             &[("top", top), ("child", plain("child", "lower"))],
         ));
         attach_basic_modules(&mut state, &["top", "child"]);
-        let original_top = state.module_map["top"].emit();
+        let original_top = state.module_map["top"].emit().unwrap();
 
         let Err(error) = generate_rtl(&mut state) else {
             panic!("colliding child instances must not share RTL identifiers");
@@ -181,7 +181,7 @@ fn test_generate_rtl_rejects_colliding_child_instance_names_before_mutation() {
             "{diagnostic}"
         );
         assert_eq!(
-            state.module_map["top"].emit(),
+            state.module_map["top"].emit().unwrap(),
             original_top,
             "reject the collision before changing the parent RTL"
         );
@@ -995,7 +995,7 @@ fn lint_distributed_top(state: &TopologyWithRtl) {
     for child in ["worker", "daemon"] {
         std::fs::write(
             root.join(format!("{child}.v")),
-            state.module_map[child].emit(),
+            state.module_map[child].emit().unwrap(),
         )
         .expect("write child RTL");
     }
@@ -1080,7 +1080,7 @@ fn test_generate_rtl_rejects_malformed_control_without_mutation() {
         state
             .attach_module("top", parse_module(&handshake_module_src("top")))
             .unwrap();
-        let before = state.module_map["top"].emit();
+        let before = state.module_map["top"].emit().unwrap();
         if has_scope {
             let error = generate_rtl(&mut state).unwrap_err();
             assert!(
@@ -1089,7 +1089,7 @@ fn test_generate_rtl_rejects_malformed_control_without_mutation() {
                     .contains("missing global controller placement"),
                 "{error}"
             );
-            assert_eq!(state.module_map["top"].emit(), before);
+            assert_eq!(state.module_map["top"].emit().unwrap(), before);
             assert!(state.generated_files.is_empty());
         } else {
             generate_rtl(&mut state)
@@ -1137,13 +1137,13 @@ fn test_generate_rtl_rejects_malformed_control_without_mutation() {
     cases.push((missing_s_axi, "missing placement 'control_s_axi_U'"));
 
     for (mut state, expected) in cases {
-        let before = state.module_map["top"].emit();
+        let before = state.module_map["top"].emit().unwrap();
         let error = generate_rtl(&mut state).unwrap_err();
         assert!(
             error.to_string().contains(expected),
             "expected '{expected}', got {error}"
         );
-        assert_eq!(state.module_map["top"].emit(), before);
+        assert_eq!(state.module_map["top"].emit().unwrap(), before);
         assert!(state.fsm_modules.is_empty());
         assert!(state.generated_files.is_empty());
     }
@@ -1162,7 +1162,7 @@ fn test_generate_rtl_rejects_control_scalar_width_mismatch_without_mutation() {
              );\nendmodule",
         )),
     );
-    let before = state.module_map["top"].emit();
+    let before = state.module_map["top"].emit().unwrap();
     let error = generate_rtl(&mut state).unwrap_err();
     assert!(
         error.to_string().contains(
@@ -1170,7 +1170,7 @@ fn test_generate_rtl_rejects_control_scalar_width_mismatch_without_mutation() {
         ),
         "got {error}"
     );
-    assert_eq!(state.module_map["top"].emit(), before);
+    assert_eq!(state.module_map["top"].emit().unwrap(), before);
     assert!(state.generated_files.is_empty());
 }
 

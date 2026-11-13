@@ -550,7 +550,7 @@ pub fn tapa_rtl::mutation::MutableModule::add_port(&mut self, tapa_rtl::port::Po
 pub fn tapa_rtl::mutation::MutableModule::add_signal(&mut self, tapa_rtl::signal::Signal) -> core::result::Result<(), tapa_rtl::BuilderError>
 pub fn tapa_rtl::mutation::MutableModule::cleanup_hls_artifacts(&mut self)
 pub fn tapa_rtl::mutation::MutableModule::demote_output_port_regs_to_wires(&mut self)
-pub fn tapa_rtl::mutation::MutableModule::emit(&self) -> alloc::string::String
+pub fn tapa_rtl::mutation::MutableModule::emit(&self) -> core::result::Result<alloc::string::String, tapa_rtl::BuilderError>
 pub fn tapa_rtl::mutation::MutableModule::from_parsed(tapa_rtl::module::VerilogModule) -> Self
 pub fn tapa_rtl::mutation::MutableModule::remove_port(&mut self, &str)
 impl core::marker::Freeze for tapa_rtl::mutation::MutableModule
@@ -882,6 +882,9 @@ pub enum tapa_rtl::BuilderError
 pub tapa_rtl::BuilderError::DuplicatePort(alloc::string::String)
 pub tapa_rtl::BuilderError::DuplicateSignal(alloc::string::String)
 pub tapa_rtl::BuilderError::EmptyName
+pub tapa_rtl::BuilderError::SignalDeclaredInBody
+pub tapa_rtl::BuilderError::SignalDeclaredInBody::module: alloc::string::String
+pub tapa_rtl::BuilderError::SignalDeclaredInBody::signal: alloc::string::String
 impl core::error::Error for tapa_rtl::BuilderError
 impl core::fmt::Debug for tapa_rtl::BuilderError
 pub fn tapa_rtl::BuilderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

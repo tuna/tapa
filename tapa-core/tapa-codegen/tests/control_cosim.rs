@@ -495,14 +495,14 @@ fn flattened_scope_rejects_missing_scalar_argument_before_mutation() {
         .clear();
     for floorplanned in [false, true] {
         let mut state = scope_state(graph.clone(), SCOPE_NEVER, floorplanned);
-        let before = state.module_map["Top"].emit();
+        let before = state.module_map["Top"].emit().unwrap();
         let error = tapa_codegen::generate_rtl(&mut state)
             .expect_err("a missing original upper scalar argument must be rejected");
         assert!(
             error.to_string().contains("captured") && error.to_string().contains("scalar"),
             "floorplanned={floorplanned}: {error}"
         );
-        assert_eq!(state.module_map["Top"].emit(), before);
+        assert_eq!(state.module_map["Top"].emit().unwrap(), before);
         assert!(state.fsm_modules.is_empty());
         assert!(state.generated_files.is_empty());
     }

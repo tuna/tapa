@@ -577,7 +577,7 @@ mod tests {
         tags.insert(READ_DATA);
         tags.insert(WRITE_DATA);
         add_bridge_signals(&mut mm, "chan", &tags, 64, AXI_ADDR_WIDTH);
-        let emitted = mm.emit();
+        let emitted = mm.emit().unwrap();
         assert!(emitted.contains("chan_read_addr__din"), "got:\n{emitted}");
         assert!(emitted.contains("chan_read_data__dout"), "got:\n{emitted}");
         assert!(
