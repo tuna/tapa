@@ -120,6 +120,10 @@ impl<'a> TaskPassCtx<'a> {
     }
 }
 
+/// A crossbar slave: `(parent_arg, child_task, inst_idx, channel)`, the
+/// channel of an upper child's hmap port (`MMapSlave::channel`).
+type SlaveKey = (String, String, usize, Option<u32>);
+
 /// Precomputed per-task inputs the pass group consumes.
 ///
 /// Everything here is a pure function of the design/floorplan state as it
@@ -131,9 +135,8 @@ pub struct TaskStageInputs {
     is_top_task: bool,
     /// Aggregated + validated mmap connections for the task.
     mmap_conns: BTreeMap<String, MMapConnection>,
-    /// `(parent_arg, child_task, inst_idx) -> slave_idx` for
-    /// crossbar-connected mmaps.
-    mmap_slave_map: BTreeMap<(String, String, usize), usize>,
+    /// Crossbar slave indices for crossbar-connected mmaps.
+    mmap_slave_map: BTreeMap<SlaveKey, usize>,
     /// Floorplan-routed direct M-AXI pipeline plan (top task only).
     axi_pipeline_plan: Option<DirectAxiPipelinePlan>,
     /// Distributed control plan (top task only).
@@ -195,15 +198,19 @@ impl TaskStageInputs {
         };
 
         // Pre-compute M-AXI slave indices for crossbar-connected mmaps
-        // This maps (parent_arg, child_task, inst_idx) -> slave_idx
-        let mut mmap_slave_map: BTreeMap<(String, String, usize), usize> = BTreeMap::new();
+        let mut mmap_slave_map: BTreeMap<SlaveKey, usize> = BTreeMap::new();
         for conn in mmap_conns.values() {
             if crate::m_axi::needs_crossbar(conn) {
                 for (slave_idx, slave) in conn.slaves.iter().enumerate() {
                     #[allow(clippy::cast_possible_truncation, reason = "index fits")]
                     let idx_usize = slave.inst_idx as usize;
                     mmap_slave_map.insert(
-                        (conn.arg_name.clone(), slave.task.clone(), idx_usize),
+                        (
+                            conn.arg_name.clone(),
+                            slave.task.clone(),
+                            idx_usize,
+                            slave.channel,
+                        ),
                         slave_idx,
                     );
                 }
@@ -385,11 +392,43 @@ fn scalar_driver(source: &tapa_ir::ArgSource) -> Expr {
     }
 }
 
-/// The wire carrying the base address of the child port `port` of
-/// `instance`: an `mmaps` region's port is an array element (`m[0]`), which
-/// Verilog spells `m_0`.
-fn child_offset_wire(instance: &str, port: &str) -> String {
-    format!("{instance}__{}_offset", sanitize_array_name(port))
+/// The child's M-AXI interface through which its port `port` reaches
+/// memory, or channel `channel` of it for an upper task's hmap port
+/// (`rtl_state::child_memory_channels`): an `mmaps` region's port is an
+/// array element (`m[0]`), which Verilog spells `m_0`, and channel `i` of
+/// the hmap port `g` is `g_i`.
+fn child_memory_interface(port: &str, channel: Option<u32>) -> String {
+    let port = sanitize_array_name(port);
+    match channel {
+        Some(channel) => format!("{port}_{channel}"),
+        None => port,
+    }
+}
+
+/// The wire carrying the base address of that interface of `instance`.
+fn child_offset_wire(instance: &str, port: &str, channel: Option<u32>) -> String {
+    format!(
+        "{instance}__{}_offset",
+        child_memory_interface(port, channel)
+    )
+}
+
+/// What drives that wire for a port bound to `parent`: the parent's own
+/// base address of it, or, for channel `i` of an upper task's hmap port,
+/// where that channel starts in the hmap the parent's tasks address from 0.
+fn child_offset_source(
+    parent: &str,
+    channel: Option<u32>,
+    mmap_connections: &BTreeMap<String, MMapConnection>,
+) -> Expr {
+    let Some(channel) = channel else {
+        return mmap_offset_source(parent, mmap_connections);
+    };
+    let width = mmap_connections
+        .get(parent)
+        .and_then(|connection| connection.geometry.channel_addr_width())
+        .expect("graph validation binds an hmap port to an hmap of its shape");
+    Expr::lit(format!("64'd{}", u64::from(channel) << width))
 }
 
 /// The offset source for a direct-mmap argument bound to `parent`: the

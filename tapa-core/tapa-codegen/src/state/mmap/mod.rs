@@ -99,7 +99,19 @@ fn merge_mmap_port_metadata(
     })
 }
 
-/// One crossbar slave: a child port bound to a shared mmap argument.
+/// The M-AXI interfaces through which the child port `port` reaches the
+/// memory bound to it: the port itself (`None`), or each channel of an
+/// upper task's hmap port, which carries that channel of the parent's hmap.
+#[must_use]
+pub fn child_memory_channels(port: Option<&IrPort>) -> Vec<Option<u32>> {
+    match port.and_then(|port| port.chan_count) {
+        Some(count) => (0..count).map(Some).collect(),
+        None => vec![None],
+    }
+}
+
+/// One crossbar slave: a child port bound to a shared mmap argument, or one
+/// channel of an upper child's hmap port.
 #[derive(Debug, Clone)]
 pub struct MMapSlave {
     /// Child task name.
@@ -108,6 +120,9 @@ pub struct MMapSlave {
     pub inst_idx: u32,
     /// Child-side port name.
     pub port: String,
+    /// The channel of the child's hmap port this slave carries: an upper
+    /// child takes its parent's hmap through one M-AXI interface a channel.
+    pub channel: Option<u32>,
     /// Aggregated AXI thread count this port presents: a leaf child
     /// contributes 1; an upper child that internally shares the mmap
     /// contributes its own aggregated total, so the crossbar's
@@ -247,13 +262,16 @@ impl TopologyWithRtl {
                         reason = "instance index fits in u32"
                     )]
                     let idx = inst_idx as u32;
-                    conn.slaves.push(MMapSlave {
-                        task: child_task_name.clone(),
-                        inst_idx: idx,
-                        port: child_port_name.clone(),
-                        threads: child_threads,
-                        id_width: child_id_width,
-                    });
+                    for channel in child_memory_channels(port) {
+                        conn.slaves.push(MMapSlave {
+                            task: child_task_name.clone(),
+                            inst_idx: idx,
+                            port: child_port_name.clone(),
+                            channel,
+                            threads: child_threads,
+                            id_width: child_id_width,
+                        });
+                    }
                 }
             }
         }

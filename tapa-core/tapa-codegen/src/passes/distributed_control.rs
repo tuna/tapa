@@ -20,12 +20,12 @@ use tapa_rtl::module::{sanitize_array_name, sanitize_identifier_name};
 use tapa_rtl::mutation::{reg, wide_reg, wire};
 
 use super::{
-    child_offset_wire, invalid_floorplan, mmap_offset_source, parse_atomic_region, scalar_driver,
+    child_offset_source, child_offset_wire, invalid_floorplan, parse_atomic_region, scalar_driver,
     width_wire,
 };
 use crate::error::CodegenError;
 use crate::instance_signals::InstanceSignals;
-use crate::rtl_state::{MMapConnection, TopologyWithRtl};
+use crate::rtl_state::{child_memory_channels, MMapConnection, TopologyWithRtl};
 use crate::state::views::ModuleTable;
 
 const GLOBAL_START: &str = "__tapa_control_start";
@@ -979,39 +979,53 @@ fn build_payload_fields(
     let mut fields = Vec::new();
     let rtl_instance = sanitize_identifier_name(instance);
     for (port_name, arg) in args {
-        let (output, source, width) = if arg.cat.is_scalar() {
-            (
+        // A scalar carries its value; an mmap the base address of each M-AXI
+        // interface its port reaches memory through.
+        let carried = if arg.cat.is_scalar() {
+            vec![(
                 format!("{rtl_instance}__{port_name}"),
                 scalar_driver(&arg.arg),
                 resolve_scalar_width(state, child_name, port_name)?,
-            )
+            )]
         } else if arg.cat.is_mmap_like() {
             // An mmap always names a parent wire, never a constant.
             let Some(parent) = arg.name() else { continue };
-            (
-                child_offset_wire(&rtl_instance, port_name),
-                mmap_offset_source(parent, mmap_connections),
-                64,
-            )
+            let port = state
+                .design
+                .tasks
+                .get(child_name)
+                .and_then(|task| task.ports.iter().find(|port| port.name == *port_name));
+            child_memory_channels(port)
+                .into_iter()
+                .map(|channel| {
+                    (
+                        child_offset_wire(&rtl_instance, port_name, channel),
+                        child_offset_source(parent, channel, mmap_connections),
+                        64,
+                    )
+                })
+                .collect()
         } else {
             continue;
         };
-        if width == 0 {
-            return Err(invalid_floorplan(format!(
-                "child `{instance}` argument `{port_name}` has zero width",
-            )));
+        for (output, source, width) in carried {
+            if width == 0 {
+                return Err(invalid_floorplan(format!(
+                    "child `{instance}` argument `{port_name}` has zero width",
+                )));
+            }
+            fields.push(PayloadField {
+                output,
+                source,
+                width,
+                lsb: next_lsb,
+            });
+            next_lsb = next_lsb.checked_add(width).ok_or_else(|| {
+                invalid_floorplan(format!(
+                    "the Launch width of child `{instance}` exceeds u32::MAX"
+                ))
+            })?;
         }
-        fields.push(PayloadField {
-            output,
-            source,
-            width,
-            lsb: next_lsb,
-        });
-        next_lsb = next_lsb.checked_add(width).ok_or_else(|| {
-            invalid_floorplan(format!(
-                "the Launch width of child `{instance}` exceeds u32::MAX"
-            ))
-        })?;
     }
     Ok((fields, next_lsb))
 }

@@ -4,7 +4,7 @@
 //! parsed from HLS output, plus FSM modules created during codegen.
 
 pub use crate::state::mmap::direct::DirectMmapInterface;
-pub(crate) use crate::state::mmap::MMapConnection;
+pub(crate) use crate::state::mmap::{child_memory_channels, MMapConnection};
 // Only crossbar unit tests consume this re-export; direct consumers use
 // `crate::state::mmap` paths.
 #[cfg(test)]

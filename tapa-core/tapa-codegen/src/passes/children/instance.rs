@@ -15,12 +15,14 @@ use tapa_rtl::VerilogModule;
 
 use crate::instance_signals::InstanceSignals;
 use crate::passes::frames::frame_wire;
-use crate::passes::{async_mmap, child_offset_wire};
+use crate::passes::{async_mmap, child_memory_interface, child_offset_wire};
 
-/// Per-instance routing for child mmap arguments; absent entries are direct.
+/// Per-instance routing for child mmap arguments, by parent argument and
+/// channel of an upper child's hmap port (`rtl_state::child_memory_channels`);
+/// absent entries are direct.
 #[derive(Debug, Default)]
 pub struct ChildMmapBindings {
-    bindings: BTreeMap<String, ChildMmapBinding>,
+    bindings: BTreeMap<(String, Option<u32>), ChildMmapBinding>,
 }
 
 /// How one child mmap argument reaches the parent AXI wires.
@@ -39,14 +41,37 @@ pub enum ChildMmapBinding {
 }
 
 impl ChildMmapBindings {
-    pub fn insert(&mut self, arg_name: String, binding: ChildMmapBinding) {
-        self.bindings.insert(arg_name, binding);
+    pub fn insert(&mut self, arg_name: String, channel: Option<u32>, binding: ChildMmapBinding) {
+        self.bindings.insert((arg_name, channel), binding);
     }
 
-    pub fn get(&self, arg_name: &str) -> &ChildMmapBinding {
+    pub fn get(&self, arg_name: &str, channel: Option<u32>) -> &ChildMmapBinding {
         self.bindings
-            .get(arg_name)
+            .get(&(arg_name.to_owned(), channel))
             .unwrap_or(&ChildMmapBinding::Direct)
+    }
+
+    /// The channels the child takes `arg_name` through: `None` alone for a
+    /// port that is one M-AXI interface.
+    pub fn channels(&self, arg_name: &str) -> Vec<Option<u32>> {
+        let channels: Vec<Option<u32>> = self
+            .bindings
+            .keys()
+            .filter(|(arg, _)| arg == arg_name)
+            .map(|&(_, channel)| channel)
+            .collect();
+        if channels.is_empty() {
+            vec![None]
+        } else {
+            channels
+        }
+    }
+
+    /// Every binding, with the parent argument it routes.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &ChildMmapBinding)> {
+        self.bindings
+            .iter()
+            .map(|((arg, _), binding)| (arg.as_str(), binding))
     }
 }
 
@@ -206,56 +231,60 @@ pub(super) fn build_child_instance_with_reset(
                     port_args.push(PortArg::new(peek_port, Expr::lit("'d0")));
                 }
             }
-            ArgCategory::Mmap | ArgCategory::AsyncMmap => {
-                // Connect to per-instance pipeline offset
-                let offset_sig = child_offset_wire(instance_name, child_port);
-                // An `mmaps` region's port is an array element (`m[0]`).
-                let child_port = &sanitize_array_name(child_port);
-                // Bind M-AXI channel ports:
-                // If crossbar exists (slave index present), bind to downstream wires
-                // Otherwise bind directly to upstream parent m_axi signals
-                let binding = mmap_bindings.get(parent);
-                let m_axi_wire_prefix = binding.wire_prefix(parent);
-                if matches!(arg.cat, ArgCategory::AsyncMmap) {
-                    match child_rtl {
-                        Some(module) if async_mmap::has_direct_m_axi_ports(module, child_port) => {
-                            // Without its own offset port, the child binds
-                            // only the ports it declares.
-                            let has_offset = module
-                                .find_port(&direct_mmap_offset_port(child_rtl, child_port))
-                                .is_some();
-                            add_direct_mmap_portargs(
-                                &mut port_args,
-                                child_port,
-                                &offset_sig,
-                                &m_axi_wire_prefix,
-                                binding.id_widths(),
-                                (!has_offset).then_some(module),
-                                child_rtl,
-                            );
-                        }
-                        Some(module) => {
-                            let bridge_base =
-                                async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
-                            port_args.extend(async_mmap::child_portargs(
-                                module,
-                                child_port,
-                                &bridge_base,
-                                &offset_sig,
-                            ));
-                        }
-                        None => {}
-                    }
-                } else {
+            ArgCategory::Mmap => {
+                // Each M-AXI interface the port reaches memory through
+                // connects to its per-instance pipeline offset, and to the
+                // crossbar's downstream wires when it has a slave index,
+                // else straight to the parent's M-AXI signals.
+                for channel in mmap_bindings.channels(parent) {
+                    let binding = mmap_bindings.get(parent, channel);
                     add_direct_mmap_portargs(
                         &mut port_args,
-                        child_port,
-                        &offset_sig,
-                        &m_axi_wire_prefix,
+                        &child_memory_interface(child_port, channel),
+                        &child_offset_wire(instance_name, child_port, channel),
+                        &binding.wire_prefix(parent),
                         binding.id_widths(),
                         None,
                         child_rtl,
                     );
+                }
+            }
+            ArgCategory::AsyncMmap => {
+                // Connect to per-instance pipeline offset
+                let offset_sig = child_offset_wire(instance_name, child_port, None);
+                // Bind M-AXI channel ports:
+                // If crossbar exists (slave index present), bind to downstream wires
+                // Otherwise bind directly to upstream parent m_axi signals
+                let binding = mmap_bindings.get(parent, None);
+                let m_axi_wire_prefix = binding.wire_prefix(parent);
+                match child_rtl {
+                    Some(module) if async_mmap::has_direct_m_axi_ports(module, child_port) => {
+                        // Without its own offset port, the child binds
+                        // only the ports it declares.
+                        let has_offset = module
+                            .find_port(&direct_mmap_offset_port(child_rtl, child_port))
+                            .is_some();
+                        add_direct_mmap_portargs(
+                            &mut port_args,
+                            child_port,
+                            &offset_sig,
+                            &m_axi_wire_prefix,
+                            binding.id_widths(),
+                            (!has_offset).then_some(module),
+                            child_rtl,
+                        );
+                    }
+                    Some(module) => {
+                        let bridge_base =
+                            async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
+                        port_args.extend(async_mmap::child_portargs(
+                            module,
+                            child_port,
+                            &bridge_base,
+                            &offset_sig,
+                        ));
+                    }
+                    None => {}
                 }
             }
         }

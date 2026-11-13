@@ -465,22 +465,15 @@ fn concat_ports(prefix: &str, count: u32, suffix: &str) -> String {
 pub(crate) fn add_crossbar_slave_id_padding(
     modules: &mut ModuleTable<'_>,
     task_name: &str,
-    args: &std::collections::BTreeMap<String, tapa_ir::Arg>,
     mmap_bindings: &children::ChildMmapBindings,
 ) {
     let mut assigns = Vec::new();
-    for arg in args.values() {
-        if !arg.cat.is_mmap_like() {
-            continue;
-        }
-        let Some(parent) = arg.name() else {
-            continue;
-        };
+    for (parent, binding) in mmap_bindings.iter() {
         let &children::ChildMmapBinding::Crossbar {
             slave_index,
             wire_id_width: target_width,
             child_id_width: child_width,
-        } = mmap_bindings.get(parent)
+        } = binding
         else {
             continue;
         };
@@ -621,6 +614,7 @@ mod tests {
             task: task.into(),
             inst_idx,
             port: port.into(),
+            channel: None,
             threads,
             id_width,
         }
@@ -631,6 +625,7 @@ mod tests {
             task: task.into(),
             inst_idx,
             port: port.into(),
+            channel: None,
             threads,
             id_width: 1,
         }

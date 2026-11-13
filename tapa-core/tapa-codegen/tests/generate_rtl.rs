@@ -1753,6 +1753,69 @@ fn test_generate_rtl_upper_child_takes_whole_mmaps() {
     );
 }
 
+/// An upper task takes its parent's hmap whole, through one M-AXI port a
+/// channel: each is a slave of the parent's crossbar, based where its
+/// channel starts in the hmap the parent's tasks address from 0, beside a
+/// task of the parent's taking the hmap whole as one memory.
+#[test]
+fn test_generate_rtl_upper_child_takes_whole_hmap() {
+    let hmap = |name: &str| {
+        serde_json::json!({"cat": "mmap", "name": name, "type": "float*", "width": 32,
+                           "chan_count": 2, "chan_size": 1024})
+    };
+    let bind = |arg: &str| serde_json::json!({"arg": arg, "cat": "mmap"});
+    let top = task("top", "upper", |t| {
+        t["ports"] = serde_json::json!([hmap("h")]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [{"args": {"d": bind("h")}}],
+            "mid": [{"args": {"g": bind("h")}}]
+        });
+    });
+    let mid = task("mid", "upper", |t| {
+        t["ports"] = serde_json::json!([hmap("g")]);
+        t["tasks"] = serde_json::json!({
+            "leaf": [{"args": {"d": bind("g")}}, {"args": {"d": bind("g")}}]
+        });
+    });
+    let leaf = task("leaf", "lower", |t| {
+        t["ports"] =
+            serde_json::json!([{"cat": "mmap", "name": "d", "type": "float*", "width": 32}]);
+    });
+    let prog = design(
+        "top",
+        "xilinx-hls",
+        &[("top", top), ("mid", mid), ("leaf", leaf)],
+    );
+
+    let manifest = run_manifest(prog, &["top", "mid", "leaf"], &[]);
+
+    check(
+        rtl_file(&manifest, "top.v"),
+        &[
+            "axi_crossbar_3x2",
+            "S00_THREADS(1)",
+            "S01_THREADS(2)",
+            "S02_THREADS(2)",
+            ".m_axi_d_ARADDR(m_axi_h_s0_ARADDR)",
+            ".m_axi_g_0_ARADDR(m_axi_h_s1_ARADDR)",
+            ".m_axi_g_1_ARADDR(m_axi_h_s2_ARADDR)",
+            ".g_0_offset(mid_0__g_0_offset)",
+            ".g_1_offset(mid_0__g_1_offset)",
+            ".mid_0__g_0_offset_in(64'd0)",
+            ".mid_0__g_1_offset_in(64'd4096)",
+        ],
+        &["m_axi_g_ARADDR"],
+    );
+    check(
+        rtl_file(&manifest, "mid.v"),
+        &[
+            "axi_crossbar_2x2",
+            "assign m_axi_g_1_ARADDR = (g_1_offset + m_axi_g_1_ARADDR_raw[11:0]);",
+        ],
+        &[],
+    );
+}
+
 #[test]
 fn test_generate_rtl_single_child_mmap_preserves_child_id_width() {
     let mid = task("mid", "upper", |t| {

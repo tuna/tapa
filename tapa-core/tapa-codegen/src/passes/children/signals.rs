@@ -18,8 +18,10 @@ use super::instance::{build_child_instance_with_reset, ChildMmapBinding, ChildMm
 use crate::instance_signals::InstanceSignals;
 use crate::passes::async_mmap;
 use crate::passes::{
-    child_offset_wire, distributed_control, mmap_offset_source, scalar_driver, TaskPassCtx,
+    child_offset_source, child_offset_wire, distributed_control, scalar_driver, SlaveKey,
+    TaskPassCtx,
 };
+use crate::rtl_state::child_memory_channels;
 use crate::state::views::{DesignView, FsmTable, ModuleTable};
 use crate::{m_axi, program};
 
@@ -40,8 +42,8 @@ struct ChildStageCtx<'ctx, 'a> {
     task_name: &'ctx str,
     /// Aggregated + validated mmap connections for the task.
     mmap_conns: &'a BTreeMap<String, crate::rtl_state::MMapConnection>,
-    /// `(parent_arg, child_task, inst_idx) -> slave_idx` for crossbar mmaps.
-    mmap_slave_map: &'a BTreeMap<(String, String, usize), usize>,
+    /// Crossbar slave indices for crossbar mmaps.
+    mmap_slave_map: &'a BTreeMap<SlaveKey, usize>,
     /// Floorplan-routed direct M-AXI pipeline plan (top task only).
     axi_pipeline_plan: Option<&'a crate::passes::axi_pipeline::DirectAxiPipelinePlan>,
     /// Distributed control plan (top task only).
@@ -315,20 +317,6 @@ fn add_fsm_control_logic(
     }
 }
 
-/// Return the pipeline and FSM-input wire names for a pipelined argument.
-fn pipeline_wire_names(inst_name: &str, port_name: &str, is_mmap: bool) -> (String, String) {
-    if is_mmap {
-        let offset = child_offset_wire(inst_name, port_name);
-        let fsm_in = format!("{offset}_in");
-        (offset, fsm_in)
-    } else {
-        (
-            format!("{inst_name}__{port_name}"),
-            format!("{inst_name}__{port_name}_in"),
-        )
-    }
-}
-
 /// Declare per-instance pipeline signals for scalar and mmap arguments and
 /// queue the matching FSM instantiation portargs.
 ///
@@ -344,31 +332,48 @@ fn pipeline_instance_signals(
     args: &BTreeMap<String, Arg>,
 ) {
     for (port_name, arg) in args {
-        // Streams contribute no pipeline stage or portargs.
-        let is_mmap = arg.cat.is_mmap_like();
-        let width = if arg.cat.is_scalar() {
-            resolve_child_scalar_width(stage, child_name, port_name)
-        } else if is_mmap {
-            Some(("63".to_string(), "0".to_string())) // 64-bit
+        // A scalar pipelines its value; an mmap the base address of each
+        // M-AXI interface its port reaches memory through. Streams
+        // contribute no pipeline stage or portargs.
+        let pipelined = if arg.cat.is_scalar() {
+            vec![(
+                format!("{inst_name}__{port_name}"),
+                scalar_driver(&arg.arg),
+                resolve_child_scalar_width(stage, child_name, port_name),
+            )]
+        } else if arg.cat.is_mmap_like() {
+            // An mmap always names a parent wire, never a constant.
+            let Some(parent) = arg.name() else { continue };
+            let port = stage
+                .design
+                .design()
+                .tasks
+                .get(child_name)
+                .and_then(|task| task.ports.iter().find(|port| port.name == *port_name));
+            child_memory_channels(port)
+                .into_iter()
+                .map(|channel| {
+                    (
+                        child_offset_wire(inst_name, port_name, channel),
+                        child_offset_source(parent, channel, stage.mmap_conns),
+                        Some(("63".to_string(), "0".to_string())), // 64-bit
+                    )
+                })
+                .collect()
         } else {
             continue;
         };
-        let (pipeline_out, fsm_in) = pipeline_wire_names(inst_name, port_name, is_mmap);
-        add_pipeline_stage(stage, &pipeline_out, &fsm_in, width.as_ref());
-        let driver = if is_mmap {
-            // An mmap always names a parent wire, never a constant.
-            let Some(parent) = arg.name() else { continue };
-            mmap_offset_source(parent, stage.mmap_conns)
-        } else {
-            scalar_driver(&arg.arg)
-        };
-        stage
-            .fsm_portargs
-            .push(tapa_rtl::builder::PortArg::new(&fsm_in, driver));
-        stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
-            &pipeline_out,
-            Expr::ident(&pipeline_out),
-        ));
+        for (pipeline_out, driver, width) in pipelined {
+            let fsm_in = format!("{pipeline_out}_in");
+            add_pipeline_stage(stage, &pipeline_out, &fsm_in, width.as_ref());
+            stage
+                .fsm_portargs
+                .push(tapa_rtl::builder::PortArg::new(&fsm_in, driver));
+            stage.fsm_portargs.push(tapa_rtl::builder::PortArg::new(
+                &pipeline_out,
+                Expr::ident(&pipeline_out),
+            ));
+        }
     }
 }
 
@@ -436,29 +441,44 @@ fn build_mmap_bindings(
     inst: &ChildInstance<'_>,
     idx: usize,
 ) -> ChildMmapBindings {
-    // One per-instance binding per mmap argument for crossbar routing.
+    // One per-instance binding per M-AXI interface of each mmap argument for
+    // crossbar routing.
     let mut mmap_bindings = ChildMmapBindings::default();
     for (child_port, arg) in inst.args {
-        if arg.cat.is_mmap_like() {
-            // An mmap always names a parent wire, never a constant.
-            let Some(parent) = arg.name() else { continue };
-            let binding = if let Some(prefix) = stage.axi_pipeline_plan.and_then(|plan| {
-                plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
-                    instance: inst.logical_inst_name.clone(),
-                    port: child_port.clone(),
-                    top_port: parent.to_owned(),
-                })
-            }) {
+        if !arg.cat.is_mmap_like() {
+            continue;
+        }
+        // An mmap always names a parent wire, never a constant.
+        let Some(parent) = arg.name() else { continue };
+        let port = stage
+            .design
+            .design()
+            .tasks
+            .get(inst.child_name)
+            .and_then(|task| task.ports.iter().find(|port| port.name == *child_port));
+        for channel in child_memory_channels(port) {
+            let pipelined = stage
+                .axi_pipeline_plan
+                .filter(|_| channel.is_none())
+                .and_then(|plan| {
+                    plan.child_wire_prefix(&tapa_ir::AxiEndpoint {
+                        instance: inst.logical_inst_name.clone(),
+                        port: child_port.clone(),
+                        top_port: parent.to_owned(),
+                    })
+                });
+            let binding = if let Some(prefix) = pipelined {
                 // The direct-interface catalog rejects shared mmaps and hmaps,
                 // so pipeline plans cannot overlap crossbar routes.
                 ChildMmapBinding::Pipelined {
                     wire_prefix: prefix,
                 }
-            } else if let Some(&slave_index) =
-                stage
-                    .mmap_slave_map
-                    .get(&(parent.to_owned(), inst.child_name.to_owned(), idx))
-            {
+            } else if let Some(&slave_index) = stage.mmap_slave_map.get(&(
+                parent.to_owned(),
+                inst.child_name.to_owned(),
+                idx,
+                channel,
+            )) {
                 // This index was built from the same connection's slave list.
                 let conn = &stage.mmap_conns[parent];
                 ChildMmapBinding::Crossbar {
@@ -469,7 +489,7 @@ fn build_mmap_bindings(
             } else {
                 ChildMmapBinding::Direct
             };
-            mmap_bindings.insert(parent.to_owned(), binding);
+            mmap_bindings.insert(parent.to_owned(), channel, binding);
         }
     }
     mmap_bindings
@@ -520,7 +540,7 @@ fn add_async_mmap_bridges(
             continue;
         }
         let enabled = async_mmap::enabled_axi_directions(child_rtl, child_port, &active_tags);
-        let binding = mmap_bindings.get(parent);
+        let binding = mmap_bindings.get(parent, None);
         let m_axi_wire_prefix = binding.wire_prefix(parent);
         let upstream_m_axi_prefix = binding.upstream_wire_prefix(parent);
         let bridge_base = async_mmap::bridge_base_from_m_axi_prefix(&m_axi_wire_prefix);
@@ -614,12 +634,7 @@ fn add_child_instance(
         mm.add_instance(child_inst);
     }
     if inst.child_rtl.is_some() {
-        crate::m_axi::add_crossbar_slave_id_padding(
-            stage.modules,
-            stage.task_name,
-            inst.args,
-            mmap_bindings,
-        );
+        crate::m_axi::add_crossbar_slave_id_padding(stage.modules, stage.task_name, mmap_bindings);
     }
 }
 
@@ -686,23 +701,6 @@ fn resolve_child_scalar_width(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn pipeline_wire_names_tag_mmap_arguments_as_offsets() {
-        // An mmap argument pipelines its *offset*, not the argument, so the
-        // two families must not collide in the parent's wire namespace.
-        assert_eq!(
-            pipeline_wire_names("worker_0", "data", true),
-            (
-                "worker_0__data_offset".to_owned(),
-                "worker_0__data_offset_in".to_owned()
-            )
-        );
-        assert_eq!(
-            pipeline_wire_names("worker_0", "data", false),
-            ("worker_0__data".to_owned(), "worker_0__data_in".to_owned())
-        );
-    }
 
     #[test]
     fn without_distributed_control_an_instance_uses_the_parent_resets() {
