@@ -136,6 +136,24 @@ pub enum IlpError {
     /// `clippy::result_large_err`.
     #[error("{0}")]
     AnchorUnplaceable(String),
+    /// A task's NoC-bound memory ports need more NMUs than any slot holds.
+    /// No utilization limit changes that, so no rung is solved.
+    #[error(
+        "`{vertex}` has {ports} memory ports entering the NoC, each through its own NoC \
+         master unit, but no slot has more than {most}; move some of them to another task"
+    )]
+    TaskExceedsSlotNmus {
+        vertex: String,
+        ports: u32,
+        most: u32,
+    },
+    /// The design's NoC-bound memory ports need more NMUs than the device
+    /// holds. No utilization limit changes that, so no rung is solved.
+    #[error(
+        "the design has {ports} memory ports entering the NoC, each through its own NoC \
+         master unit, against {supply} on the device"
+    )]
+    DesignExceedsDeviceNmus { ports: u64, supply: u64 },
     /// A partition region refers to cells absent from the device model.
     #[error("partition region `{0}` is outside the device model")]
     InvalidRegion(String),
@@ -226,6 +244,7 @@ fn floorplan_with_config(
     opts: &SolveOpts,
 ) -> Result<Assignment, IlpError> {
     validate_config(config)?;
+    check_nmu_supply(graph, device)?;
     let strategy = resolve_strategy(graph, device, config.strategy);
 
     let final_regions = match strategy {
@@ -294,6 +313,31 @@ fn floorplan_with_config(
     };
 
     complete_assignment(graph, &final_regions)
+}
+
+/// Reject NoC-bound memory ports no placement can give NMUs: a task with
+/// more than any slot holds, or more in all than the device holds. Only slots
+/// with fabric count, since no task lands anywhere else.
+fn check_nmu_supply(graph: &FloorGraph, device: &Device) -> Result<(), IlpError> {
+    let slots = || device.slots.iter().filter(|slot| slot.has_fabric());
+    let most = slots().map(|slot| slot.nmus).max().unwrap_or(0);
+    if let Some(vertex) = graph.vertices().iter().find(|vertex| vertex.nmus > most) {
+        return Err(IlpError::TaskExceedsSlotNmus {
+            vertex: vertex.name.clone(),
+            ports: vertex.nmus,
+            most,
+        });
+    }
+    let ports: u64 = graph
+        .vertices()
+        .iter()
+        .map(|vertex| u64::from(vertex.nmus))
+        .sum();
+    let supply: u64 = slots().map(|slot| u64::from(slot.nmus)).sum();
+    if ports > supply {
+        return Err(IlpError::DesignExceedsDeviceNmus { ports, supply });
+    }
+    Ok(())
 }
 
 pub(crate) fn resolve_strategy(
@@ -644,11 +688,9 @@ fn attempt_placement(
 /// which wall it hit rather than only that it hit one.
 ///
 /// The iteration's regions tile the device, so summing their derated areas is
-/// the whole budget at `usage_limit`, and summing their NMUs is the device's.
-/// More NoC-bound ports than NMUs, or a resource over budget, is a definitive
-/// explanation; if neither is, the binding constraint is the wire-capacity
-/// cuts or per-slot packing, and the message says so instead of inventing a
-/// cause.
+/// the whole budget at `usage_limit`. A resource over budget is a definitive
+/// explanation; if none is, the binding constraint is the wire-capacity cuts or
+/// per-slot packing, and the message says so instead of inventing a cause.
 fn describe_demand(
     device: &Device,
     graph: &FloorGraph,
@@ -656,22 +698,6 @@ fn describe_demand(
     usage_limit: f64,
     constraints: &RegionResourceLimits,
 ) -> String {
-    let nmu_demand: u64 = graph
-        .vertices()
-        .iter()
-        .map(|vertex| u64::from(vertex.nmus))
-        .sum();
-    let nmu_supply: u64 = areas
-        .keys()
-        .map(|region| u64::from(device.region_nmus(region)))
-        .sum();
-    if nmu_demand > nmu_supply {
-        return format!(
-            "the design has {nmu_demand} memory ports entering the NoC, each through its own \
-             NoC master unit, against {nmu_supply} NoC master units on the device",
-        );
-    }
-
     let mut worst: Option<(Resource, u64, u64)> = None;
     for resource in Resource::ALL {
         if !device.plans_resource(resource) {
