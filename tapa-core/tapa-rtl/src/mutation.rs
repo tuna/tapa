@@ -218,14 +218,15 @@ impl MutableModule {
 
     /// Emit the complete module as Verilog text.
     ///
-    /// Rejects a preserved body that declares a module-scope wire/reg also
-    /// in `inner.signals` (one after the first statement or inside
-    /// `` `ifdef ``), which the output would declare twice.
+    /// Rejects a preserved body that declares at module scope a port,
+    /// parameter, or wire/reg also in `inner` (one after the first
+    /// statement or inside `` `ifdef ``), which the output would declare
+    /// twice.
     pub fn emit(&self) -> Result<String, BuilderError> {
-        if let Some(signal) = self.signal_declared_in_body() {
-            return Err(BuilderError::SignalDeclaredInBody {
+        if let Some(name) = self.declared_in_body() {
+            return Err(BuilderError::DeclaredInBody {
                 module: self.inner.name.clone(),
-                signal,
+                name,
             });
         }
         let mut out = String::new();
@@ -327,20 +328,28 @@ impl MutableModule {
         Ok(out)
     }
 
-    /// A signal of `inner.signals` that the body also declares at module
-    /// scope, found by parsing the body as a module of its own.
-    fn signal_declared_in_body(&self) -> Option<String> {
+    /// A name `inner` declares that the body also declares at module scope,
+    /// found by parsing the body as a module of its own; its port list is
+    /// empty rather than absent, or tree-sitter does not read non-ANSI port
+    /// declarations.
+    fn declared_in_body(&self) -> Option<String> {
         if self.body_text.trim().is_empty() {
             return None;
         }
-        let body = format!("module Body;\n{}\nendmodule\n", self.body_text);
-        VerilogModule::parse(&body)
-            .ok()?
-            .signals
-            .into_iter()
-            .map(|s| s.name)
-            .find(|name| self.inner.signals.iter().any(|s| &s.name == name))
+        let body = format!("module Body();\n{}\nendmodule\n", self.body_text);
+        let body = VerilogModule::parse(&body).ok()?;
+        let declared: BTreeSet<_> = declared_names(&self.inner).collect();
+        let found = declared_names(&body).find(|name| declared.contains(name));
+        found.map(str::to_owned)
     }
+}
+
+/// The ports, parameters, and wire/reg signals a parsed module declares.
+fn declared_names(module: &VerilogModule) -> impl Iterator<Item = &str> + '_ {
+    let ports = module.ports.iter().map(|p| p.name.as_str());
+    let parameters = module.parameters.iter().map(|p| p.name.as_str());
+    let signals = module.signals.iter().map(|s| s.name.as_str());
+    ports.chain(parameters).chain(signals)
 }
 
 /// Helper to create a simple 1-bit port.
@@ -620,12 +629,13 @@ endmodule
         }
     }
 
-    /// Every module-scope wire/reg is parsed into `signals`, but only the
-    /// leading declarations leave the body, so one after the first
-    /// statement or inside `ifdef` would be emitted twice. Procedural and
-    /// generate-scope declarations are not module signals and stay put.
+    /// Every module-scope port, parameter, and wire/reg is parsed into the
+    /// interface, but only the leading declarations leave the body, so one
+    /// after the first statement or inside `ifdef` would be emitted twice.
+    /// Procedural and generate-scope wire/regs are not module signals and
+    /// stay put.
     #[test]
-    fn emit_rejects_module_signals_declared_in_the_body() {
+    fn emit_rejects_declarations_left_in_the_body() {
         for (source, late) in [
             (
                 "module Late(input i, output o);\nassign o = i;\nwire late;\nendmodule\n",
@@ -636,11 +646,30 @@ endmodule
                  assign o = i;\nendmodule\n",
                 "guarded",
             ),
+            (
+                "module LatePort(i, o);\ninput i;\nassign o = i;\noutput o;\nendmodule\n",
+                "o",
+            ),
+            (
+                "module GuardedPort(i, o);\ninput i;\n`ifdef SIM\noutput o;\n`endif\n\
+                 assign o = i;\nendmodule\n",
+                "o",
+            ),
+            (
+                "module LateParam(input i, output o);\nassign o = i;\nparameter W = 1;\n\
+                 endmodule\n",
+                "W",
+            ),
+            (
+                "module GuardedParam(input i, output o);\n`ifdef SIM\nparameter W = 1;\n\
+                 `endif\nassign o = i;\nendmodule\n",
+                "W",
+            ),
         ] {
             let mut mm = MutableModule::from_parsed(VerilogModule::parse(source).unwrap());
             let err = mm.emit().unwrap_err();
             assert!(
-                matches!(&err, BuilderError::SignalDeclaredInBody { signal, .. } if signal == late),
+                matches!(&err, BuilderError::DeclaredInBody { name, .. } if name == late),
                 "{source}\n{err:?}"
             );
             mm.body_text.clear();

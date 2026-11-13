@@ -879,12 +879,12 @@ pub unsafe fn tapa_rtl::signal::Signal::clone_to_uninit(&self, *mut u8)
 impl<T> core::convert::From<T> for tapa_rtl::signal::Signal
 pub fn tapa_rtl::signal::Signal::from(T) -> T
 pub enum tapa_rtl::BuilderError
+pub tapa_rtl::BuilderError::DeclaredInBody
+pub tapa_rtl::BuilderError::DeclaredInBody::module: alloc::string::String
+pub tapa_rtl::BuilderError::DeclaredInBody::name: alloc::string::String
 pub tapa_rtl::BuilderError::DuplicatePort(alloc::string::String)
 pub tapa_rtl::BuilderError::DuplicateSignal(alloc::string::String)
 pub tapa_rtl::BuilderError::EmptyName
-pub tapa_rtl::BuilderError::SignalDeclaredInBody
-pub tapa_rtl::BuilderError::SignalDeclaredInBody::module: alloc::string::String
-pub tapa_rtl::BuilderError::SignalDeclaredInBody::signal: alloc::string::String
 impl core::error::Error for tapa_rtl::BuilderError
 impl core::fmt::Debug for tapa_rtl::BuilderError
 pub fn tapa_rtl::BuilderError::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result

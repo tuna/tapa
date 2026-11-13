@@ -28,11 +28,11 @@ pub enum BuilderError {
     DuplicateSignal(String),
 
     /// Only the leading declarations leave the preserved body, but every
-    /// module-scope wire/reg is parsed into `signals`, so emitting one
-    /// declared later would declare it twice.
+    /// module-scope port, parameter, and wire/reg is parsed into the
+    /// interface, so emitting one declared later would declare it twice.
     #[error(
-        "module `{module}` declares `{signal}` after its first statement or inside \
-         `ifdef`; emitting it would declare `{signal}` twice"
+        "module `{module}` declares `{name}` after its first statement or inside \
+         `ifdef`; emitting it would declare `{name}` twice"
     )]
-    SignalDeclaredInBody { module: String, signal: String },
+    DeclaredInBody { module: String, name: String },
 }
