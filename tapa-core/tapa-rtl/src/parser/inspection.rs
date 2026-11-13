@@ -145,11 +145,11 @@ pub fn unconditionally_zero_driven_names(source: &str) -> BTreeSet<String> {
 /// Declarations reconstructed by the mutable interface, plus their attributes
 /// and surrounding comments. Everything after this contiguous prefix remains
 /// original source text, including nested declarations and instance closures.
+/// A `localparam` is not reconstructed, so the prefix ends at one.
 fn is_declaration_prefix(node: Node, src: &[u8]) -> bool {
     match node.kind() {
         "port_declaration"
         | "parameter_declaration"
-        | "local_parameter_declaration"
         | "attribute_instance"
         | "one_line_comment"
         | "block_comment" => true,

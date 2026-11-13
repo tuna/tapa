@@ -31,8 +31,8 @@ pub enum BuilderError {
     /// module-scope port, parameter, and wire/reg is parsed into the
     /// interface, so emitting one declared later would declare it twice.
     #[error(
-        "module `{module}` declares `{name}` after its first statement or inside \
-         `ifdef`; emitting it would declare `{name}` twice"
+        "module `{module}` declares `{name}` after a statement, a `localparam`, or \
+         inside `ifdef`; emitting it would declare `{name}` twice"
     )]
     DeclaredInBody { module: String, name: String },
 }

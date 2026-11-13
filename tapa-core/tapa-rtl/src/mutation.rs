@@ -220,8 +220,8 @@ impl MutableModule {
     ///
     /// Rejects a preserved body that declares at module scope a port,
     /// parameter, or wire/reg also in `inner` (one after the first
-    /// statement or inside `` `ifdef ``), which the output would declare
-    /// twice.
+    /// statement or `localparam`, or inside `` `ifdef ``), which the output
+    /// would declare twice.
     pub fn emit(&self) -> Result<String, BuilderError> {
         if let Some(name) = self.declared_in_body() {
             return Err(BuilderError::DeclaredInBody {
@@ -627,6 +627,21 @@ endmodule
                 "declaration prefixes must not be duplicated in the body"
             );
         }
+    }
+
+    /// A `localparam` is not an interface parameter, and a Verilog-2001
+    /// `#(...)` header cannot hold one, so the leading declarations end at
+    /// it and it stays in the body where the source wrote it.
+    #[test]
+    fn emit_keeps_a_leading_localparam_in_the_body() {
+        let source = "module LeadLocal(input a, output o);\nwire w;\nlocalparam L = 1;\n\
+                      assign o = a;\nendmodule\n";
+        let emitted = MutableModule::from_parsed(VerilogModule::parse(source).unwrap())
+            .emit()
+            .unwrap();
+        assert_eq!(emitted.matches("localparam L").count(), 1, "{emitted}");
+        assert_eq!(emitted.matches("wire w;").count(), 1, "{emitted}");
+        VerilogModule::parse(&emitted).unwrap_or_else(|e| panic!("{e}\n{emitted}"));
     }
 
     /// Every module-scope port, parameter, and wire/reg is parsed into the
