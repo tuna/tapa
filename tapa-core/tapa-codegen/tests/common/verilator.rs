@@ -27,20 +27,32 @@ fn verilator_root() -> Option<std::path::PathBuf> {
         .then(|| root.to_path_buf())
 }
 
+/// A `verilator` command, whatever the caller's environment holds.
+///
+/// `VERILATOR_BIN` is removed: Verilator's own Perl frontend consumes that
+/// variable to pick its backend binary, so leaving it pointed at a wrapper
+/// would make the wrapper re-exec itself forever. `VERILATOR_ROOT` is the
+/// one the binary's install layout implies, or unset for a system install,
+/// which roots itself: an exported one may name another install, or none.
+pub fn command() -> Command {
+    let mut command = Command::new(verilator_bin());
+    command
+        .env_remove("VERILATOR_BIN")
+        .env_remove("VERILATOR_ROOT");
+    if let Some(root) = verilator_root() {
+        command.env("VERILATOR_ROOT", root);
+    }
+    command
+}
+
 /// Is verilator runnable? Cosim tests skip cleanly without it — unless
 /// `VERILATOR_BIN` is explicitly configured, in which case a broken
 /// binary is a hard failure rather than a silent green skip (the
 /// fail-closed contract for Bazel runs, mirroring frt's probe).
-///
-/// `VERILATOR_BIN` is removed from every spawned environment: Verilator's
-/// own Perl frontend consumes that variable to pick its backend binary,
-/// so leaving it pointed at a wrapper would make the wrapper re-exec
-/// itself forever.
 pub fn available() -> bool {
     let configured = std::env::var_os("VERILATOR_BIN").is_some();
-    let ok = Command::new(verilator_bin())
+    let ok = command()
         .arg("--version")
-        .env_remove("VERILATOR_BIN")
         .output()
         .is_ok_and(|output| output.status.success());
     if !ok && configured {
@@ -116,11 +128,9 @@ pub fn run_cosim(
     args.extend(sources);
     args.push("tb.cpp".to_string());
 
-    let build = Command::new(verilator_bin())
+    let build = command()
         .current_dir(root)
         .args(&args)
-        .env_remove("VERILATOR_BIN")
-        .envs(verilator_root().map(|r| ("VERILATOR_ROOT", r)))
         .output()
         .expect("spawn verilator");
     assert!(

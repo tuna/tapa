@@ -7,7 +7,6 @@ use common::{
     attach_basic_modules, design, handshake_module_src, narrow_axi_id_module_src, parse_module,
     plain, stream_consumer_module_src, stream_producer_module_src, task, wide_axi_id_module_src,
 };
-use std::process::Command;
 use tapa_codegen::generate_rtl;
 use tapa_codegen::rtl_state::TopologyWithRtl;
 
@@ -967,12 +966,11 @@ fn distributed_control_state() -> TopologyWithRtl {
 }
 
 fn lint_distributed_top(state: &TopologyWithRtl) {
-    if !Command::new("verilator")
-        .arg("--version")
-        .output()
-        .is_ok_and(|output| output.status.success())
-    {
-        eprintln!("skipping generated distributed-top lint: `verilator` not found on PATH");
+    if !common::verilator::available() {
+        eprintln!(
+            "skipping generated distributed-top lint: verilator not found via VERILATOR_BIN \
+             or PATH"
+        );
         return;
     }
 
@@ -991,7 +989,7 @@ fn lint_distributed_top(state: &TopologyWithRtl) {
         .expect("write child RTL");
     }
 
-    let lint = Command::new("verilator")
+    let lint = common::verilator::command()
         .current_dir(root)
         .args([
             "--lint-only",
