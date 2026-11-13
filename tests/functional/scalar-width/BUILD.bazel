@@ -1,0 +1,66 @@
+"""Scalars whose declared width differs from their object's, through every flow."""
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//bazel:tapa_rules.bzl", "tapa_xo")
+
+cc_binary(
+    name = "scalar-width-host",
+    srcs = [
+        "scalar.cpp",
+        "scalar.h",
+        "scalar-host.cpp",
+    ],
+    deps = [
+        "//tapa-lib:tapa-host",
+        "@gflags",
+    ],
+)
+
+sh_test(
+    name = "scalar-width",
+    srcs = ["//bazel:sim_env.sh"],
+    args = ["$(rootpath scalar-width-host)"],
+    data = [":scalar-width-host"],
+    env = {"TAPA_CONCURRENCY": "2"},
+)
+
+[
+    tapa_xo(
+        name = "scalar-width-" + flow,
+        srcs = ["scalar.cpp"],
+        hdrs = ["scalar.h"],
+        target = target,
+        top_name = "ScalarWidth",
+    )
+    for flow, target in [
+        ("xo", "xilinx-vitis"),
+        ("zip", "xilinx-hls"),
+    ]
+]
+
+[
+    sh_test(
+        name = "scalar-width-" + flow + "sim",
+        size = "enormous",
+        timeout = "moderate",
+        srcs = ["//bazel:sim_env.sh"],
+        args = [
+            "$(rootpath scalar-width-host)",
+            "--bitstream=$(rootpath scalar-width-" + flow + ")",
+            "--cosim_simulator=verilator",
+        ],
+        data = [
+            ":scalar-width-host",
+            ":scalar-width-" + flow,
+            "//fpga-runtime:cargo_release_artifacts",
+            "@verilator//:verilator_executable",
+        ],
+        env = {"VERILATOR_BIN": "$(rootpath @verilator//:verilator_executable)"},
+        tags = ["cpu:2"],
+    )
+    for flow in [
+        "xo",
+        "zip",
+    ]
+]
