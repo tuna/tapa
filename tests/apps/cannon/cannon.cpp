@@ -146,6 +146,8 @@ outer:
   c_hi.write(c + kVecs / 2, kVecs / 2);
 }
 
+static_assert(p == 2, "Cannon wires its 2 x 2 PEs and their ring by hand");
+
 void Cannon(tapa::mmap<const beat_t> a_vec, tapa::mmap<const beat_t> b_vec,
             tapa::mmap<beat_t> c_vec, uint64_t n) {
   assert(kN % p == 0);
