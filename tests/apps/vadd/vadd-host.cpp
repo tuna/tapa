@@ -16,6 +16,12 @@ using std::vector;
 
 DEFINE_string(bitstream, "", "path to bitstream file, run csim if empty");
 
+// What the kernel writes to c[i]; a kernel that computes it otherwise, such as
+// template-tasks', defines this in its vadd.h.
+#ifndef VADD_EXPECTED
+#define VADD_EXPECTED(a, b) ((a) + (b))
+#endif
+
 int main(int argc, char* argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, /*remove_flags=*/true);
 
@@ -36,7 +42,7 @@ int main(int argc, char* argv[]) {
   uint64_t num_errors = 0;
   const uint64_t threshold = 10;  // only report up to these errors
   for (uint64_t i = 0; i < n; ++i) {
-    auto expected = a[i] + b[i];
+    auto expected = VADD_EXPECTED(a[i], b[i]);
     auto actual = c[i];
     if (actual != expected) {
       if (num_errors < threshold) {
