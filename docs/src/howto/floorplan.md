@@ -188,6 +188,7 @@ remote machine. See [Remote Execution](remote-execution.md).
 |---|---|
 | `no floorplan device table matches ...` | Use a supported device family and, for direct M-AXI, its exact platform. |
 | External memory requires a platform | Rerun `synth` with the exact supported `--platform`, then rerun `floorplan`. |
+| `platform ... does not match floorplan device platform ...` | The device table was built for another shell of that part; synthesize with the platform listed under [supported devices](../reference/cli.md#supported-devices). |
 | Connectivity is missing or incomplete | Add one `sp=` assignment per direct M-AXI port and check top-task and parameter spelling. |
 | Planning is infeasible | Review per-task area, try `--pp-scheme single`, and consider `--enable-synth-util` for better estimates. |
 | Planning times out | Increase `--max-seconds`; it applies per solve rather than to the whole step. |

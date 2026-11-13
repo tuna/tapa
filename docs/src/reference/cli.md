@@ -208,6 +208,11 @@ Floorplanning needs a device table describing the slot grid and where each memor
 
 Floorplanning also accepts other part strings in these same device families;
 an unknown family is rejected with `no floorplan device table matches ...`.
+A table's slots and pblocks describe the shell it was built from, so a design
+synthesized with another `--platform` on the same part is rejected with
+`platform ... does not match floorplan device platform ...`, whatever it binds.
+Without `--platform`, a design with no direct M-AXI port is planned by part
+alone.
 The other steps (`analyze`, `synth`, `pack`) work on parts supported by Vitis
 HLS; only floorplanning has this restricted device table.
 

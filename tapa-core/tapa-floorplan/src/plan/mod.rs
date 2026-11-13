@@ -317,7 +317,7 @@ fn prepare_plan(
     inputs: &PlanInputs,
 ) -> Result<(crate::device::model::Device, FloorGraph), PlanError> {
     let device = device_for_state(state)?;
-    validate_memory_platform(state, &device, !inputs.memory.is_empty())?;
+    validate_platform(state, &device, !inputs.memory.is_empty())?;
     // A bank the platform reaches through the NoC from every slot anchors
     // nothing; any other bank anchors to the one slot that carries it.
     let mut noc_banks = std::collections::BTreeSet::new();
@@ -380,21 +380,27 @@ fn select_control_anchor(
     }
 }
 
-fn validate_memory_platform(
+/// Check the recorded platform against the shell the device table was built
+/// from. Another shell is rejected whatever the design binds, since the
+/// table's slots and pblocks describe its own shell only. Without a recorded
+/// platform the plan stays part-only, unless the design binds memory, whose
+/// bank locations belong to the table's shell.
+fn validate_platform(
     state: &WorkState,
     device: &crate::device::model::Device,
     has_memory: bool,
 ) -> Result<(), PlanError> {
-    let Some(expected) = device.platform_name.as_deref().filter(|_| has_memory) else {
+    let Some(expected) = device.platform_name.as_deref() else {
         return Ok(());
     };
-    let platform = state
-        .flow
-        .platform
-        .as_deref()
-        .ok_or_else(|| PlanError::PlatformRequired {
-            expected: expected.to_string(),
-        })?;
+    let Some(platform) = state.flow.platform.as_deref() else {
+        if has_memory {
+            return Err(PlanError::PlatformRequired {
+                expected: expected.to_string(),
+            });
+        }
+        return Ok(());
+    };
     let basename = Path::new(platform)
         .file_name()
         .map_or(platform, |name| name.to_str().unwrap_or(platform));
@@ -792,7 +798,7 @@ mod tests {
     }
 
     #[test]
-    fn exact_memory_map_requires_its_recorded_platform() {
+    fn a_plan_requires_the_table_platform_it_records() {
         let graph = tapa_ir::TaskGraph::from_json(
             r#"{"schema_version": 4, "cflags": [], "top": "T", "target": "xilinx-vitis",
                 "tasks": {"T": {"readable_name": "T", "srcs": ["T.cpp"], "include_dirs": [], "defines": [], "level": "upper",
@@ -803,22 +809,27 @@ mod tests {
         let device = select_device("u280").expect("u280");
 
         assert!(matches!(
-            validate_memory_platform(&state, &device, true),
+            validate_platform(&state, &device, true),
             Err(PlanError::PlatformRequired { .. })
         ));
+        validate_platform(&state, &device, false).expect("without a platform, part-only");
 
-        state.flow.platform = Some("/opt/xilinx/platforms/wrong_shell".to_string());
-        assert!(matches!(
-            validate_memory_platform(&state, &device, true),
-            Err(PlanError::PlatformMismatch { .. })
-        ));
+        // The table's slots belong to its shell, so another shell is
+        // rejected even for a design that binds no memory.
+        state.flow.platform = Some("/opt/xilinx/platforms/xilinx_u280_xdma_201920_3".to_string());
+        for has_memory in [true, false] {
+            assert!(matches!(
+                validate_platform(&state, &device, has_memory),
+                Err(PlanError::PlatformMismatch { .. })
+            ));
+        }
 
         state.flow.platform = device
             .platform_name
             .as_ref()
             .map(|name| format!("/opt/xilinx/platforms/{name}"));
-        validate_memory_platform(&state, &device, true).expect("matching platform");
-        validate_memory_platform(&state, &device, false).expect("memory-free plans are part-only");
+        validate_platform(&state, &device, true).expect("matching platform");
+        validate_platform(&state, &device, false).expect("matching platform");
     }
 
     #[test]
