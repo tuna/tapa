@@ -43,6 +43,13 @@ int main(int argc, char* argv[]) {
 
   const uint64_t n =
       argc > 1 ? atoll(argv[1]) : (FLAGS_bitstream.empty() ? 65536 : 1024);
+  if (n % 2 != 0) {
+    std::cerr << "n must be even, got " << n
+              << ": StreamAdd sends results in pairs, so the last of an odd n"
+                 " is never sent"
+              << std::endl;
+    return 1;
+  }
 
   tapa::stream<input_t> a("a");
   tapa::stream<input_t> b("b");
