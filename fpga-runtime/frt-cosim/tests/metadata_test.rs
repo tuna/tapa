@@ -380,7 +380,7 @@ fn zero_channel_hmap_is_rejected() {
 /// A top-level `mmaps<T, N>` is expanded by the frontend into N ports named
 /// `chan[0]`, `chan[1]`, ... -- but the generated RTL, the `kernel.xml` args
 /// and the `_offset` registers all spell them `chan_0`. These names are what
-/// the testbench binds  by (`lookup_register_offset`, `detect_axi_port_width`,
+/// the testbench binds  by (`register_offset`, `detect_axi_port_width`,
 /// the shm buffer), so a bracketed name matches nothing. Exercised by
 /// `tests/apps/bandwidth`.
 #[test]
@@ -466,4 +466,52 @@ fn slash_zip_dispatches_to_the_xo_loader_by_content() {
     assert_eq!(spec.part_num.as_deref(), Some("xcv80-lsva4737-2MHP-e-S"));
     assert_eq!(spec.verilog_files.len(), 1);
     assert!(spec.verilog_files[0].starts_with(extracted.path()));
+}
+
+/// XRT writes an argument at its `kernel.xml` offset and the testbench where
+/// the control slave decodes it, so a package whose two disagree must not
+/// pass cosimulation. The slave is HLS's for an mmap, a `tapa::u<80>` (three
+/// data words) and an `int`; the bad `kernel.xml` gives the `tapa::u<80>`
+/// four words, as TAPA once did, which puts the `int` one word too far.
+#[test]
+fn kernel_xml_offsets_must_match_the_control_slave() {
+    use std::io::Write as _;
+
+    const SLAVE: &str = "localparam\n    ADDR_RESULT_OFFSET_DATA_0 = 6'h10,\n    \
+                         ADDR_A_DATA_0 = 6'h1c,\n    ADDR_B_DATA_0 = 6'h2c;\n";
+    let dir = tempfile::tempdir().expect("tempdir");
+    let package = |b_offset: &str| {
+        let path = dir.path().join(format!("Top-{b_offset}.xo"));
+        let mut archive = zip::ZipWriter::new(std::fs::File::create(&path).expect("create xo"));
+        let options = zip::write::SimpleFileOptions::default();
+        archive.start_file("kernel.xml", options).expect("entry");
+        write!(
+            archive,
+            r#"<?xml version="1.0"?>
+<root>
+  <kernel name="Top">
+    <args>
+      <arg name="result" addressQualifier="1" id="0" port="m_axi_result" size="0x8" offset="0x10" hostSize="0x8" type="uint64_t*"/>
+      <arg name="a" addressQualifier="0" id="1" port="s_axi_control" size="0xc" offset="0x1c" hostSize="0x10" type="tapa::u&lt;80&gt;"/>
+      <arg name="b" addressQualifier="0" id="2" port="s_axi_control" size="0x4" offset="{b_offset}" hostSize="0x4" type="int"/>
+    </args>
+  </kernel>
+</root>"#
+        )
+        .expect("write kernel.xml");
+        archive
+            .start_file("ip/hdl/verilog/Top_control_s_axi.v", options)
+            .expect("entry");
+        archive.write_all(SLAVE.as_bytes()).expect("write slave");
+        archive.finish().expect("finish xo");
+        path
+    };
+
+    metadata::load_spec(&package("0x2c")).expect("offsets agree");
+    let error = metadata::load_spec(&package("0x30"))
+        .expect_err("a kernel.xml offset the slave does not decode must be rejected");
+    let message = error.to_string();
+    for part in ["\"b\"", "0x30", "0x2c"] {
+        assert!(message.contains(part), "{part} missing from: {message}");
+    }
 }

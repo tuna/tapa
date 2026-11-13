@@ -80,6 +80,20 @@ pub struct KernelSpec {
     pub rings: Vec<tapa_ir::Ring>,
 }
 
+/// An argument's offset in a control slave's register map (see
+/// [`KernelSpec::scalar_register_map`]), matched without case sensitivity;
+/// an mmap's register is its address, spelled `<name>_offset`.
+pub(crate) fn register_offset(map: &HashMap<String, u32>, name: &str) -> Option<u32> {
+    let lookup = |key: &str| {
+        map.get(key).copied().or_else(|| {
+            map.iter().find_map(|(candidate, offset)| {
+                candidate.eq_ignore_ascii_case(key).then_some(*offset)
+            })
+        })
+    };
+    lookup(name).or_else(|| lookup(&format!("{name}_offset")))
+}
+
 /// Normalize a scalar argument's raw bytes to exactly the width declared
 /// in the kernel metadata.
 ///
@@ -146,7 +160,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
     zip: &mut zip::ZipArchive<R>,
     src: &Path,
 ) -> Result<(KernelSpec, tempfile::TempDir)> {
-    let mut kernel_xml = None;
+    let mut xml_text = None;
     let mut part_num = None;
     let mut inlined = Vec::new();
     let mut memories = Vec::new();
@@ -155,7 +169,7 @@ fn load_xo_spec<R: Read + std::io::Seek>(
 
     let (extract_dir, files) = extract_archive(zip, "xo", |name, path, files| {
         if name.ends_with("kernel.xml") {
-            kernel_xml = Some(std::fs::read_to_string(path)?);
+            xml_text = Some(std::fs::read_to_string(path)?);
             return Ok(());
         }
         if name.ends_with(tapa_ir::work_state::FILE_NAME) {
@@ -179,10 +193,12 @@ fn load_xo_spec<R: Read + std::io::Seek>(
         Ok(())
     })?;
 
-    let xml = kernel_xml.ok_or_else(|| {
+    let xml = xml_text.ok_or_else(|| {
         CosimError::Metadata(format!("no kernel.xml found in `{}`", src.display()))
     })?;
-    let mut spec = xo::parse_kernel_xml(&xml)?;
+    let parsed = kernel_xml::parse(&xml)?;
+    xo::check_register_offsets(&parsed, &scalar_register_map)?;
+    let mut spec = xo::spec(parsed);
     spec.part_num = part_num;
     spec.inlined = inlined;
     spec.memories = memories;

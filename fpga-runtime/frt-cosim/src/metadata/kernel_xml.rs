@@ -35,6 +35,9 @@ pub struct KernelXml {
     /// Each argument's C type as the XML states it (`int`, `float`,
     /// `uint64_t`, ...), by argument id: XRT reads a scalar by it.
     pub host_types: HashMap<u32, String>,
+    /// Each argument's control-register offset as the XML states it, by
+    /// argument id: XRT writes the argument there.
+    pub offsets: HashMap<u32, u32>,
 }
 
 /// Port attributes an `<arg>` defers to: mmap and stream widths live on
@@ -76,6 +79,8 @@ struct RawArg {
     host_size_bytes: Option<u32>,
     #[serde(rename = "@size", deserialize_with = "optional_size")]
     size_bytes: Option<u32>,
+    #[serde(rename = "@offset", deserialize_with = "optional_size")]
+    offset: Option<u32>,
     #[serde(rename = "@type")]
     c_type: String,
 }
@@ -216,6 +221,10 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         .iter()
         .map(|arg| (arg.id, arg.c_type.clone()))
         .collect();
+    let offsets = raw_args
+        .iter()
+        .filter_map(|arg| Some((arg.id, arg.offset?)))
+        .collect();
     // Resolve only after reading all ports: XML child order does not change the ABI.
     let args = raw_args
         .into_iter()
@@ -228,6 +237,7 @@ pub fn parse(xml: &str) -> Result<KernelXml> {
         aie_pl_control,
         args,
         host_types,
+        offsets,
     })
 }
 

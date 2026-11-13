@@ -52,6 +52,19 @@ task or protocol is blocked.
 
 ---
 
+## `kernel.xml places arg ... at register offset ...`
+
+On a card, XRT writes each argument at the offset the `.xo`'s `kernel.xml`
+gives it, while the kernel decodes it where its control slave
+(`<top>_control_s_axi.v`) puts it. Fast cosim checks that the two agree for
+every argument and refuses a package whose offsets differ, because that
+kernel would read the wrong registers on hardware. An `.xo` packed by an
+older TAPA whose top takes an arbitrary-precision scalar wider than 64 bits
+(`tapa::u<80>`, `ap_uint<80>`) can have this mismatch, as can one whose
+`kernel.xml` was edited by hand. Rebuild the `.xo` with the current `tapa`.
+
+---
+
 ## xsim issues
 
 ### ``cosim error: simulator tool `vivado` not found``

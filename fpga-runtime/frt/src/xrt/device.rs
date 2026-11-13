@@ -869,6 +869,7 @@ mod tests {
                     },
                 }],
                 host_types: std::collections::HashMap::new(),
+                offsets: std::collections::HashMap::new(),
             },
             api: &API,
             device: fake.handle(),

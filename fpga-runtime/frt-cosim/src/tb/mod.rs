@@ -5,26 +5,13 @@ pub mod xsim;
 use std::collections::HashMap;
 
 use crate::error::{CosimError, Result};
-use crate::metadata::{normalized_scalar_bytes, ArgKind, ArgSpec, KernelSpec, Mode};
+use crate::metadata::{
+    normalized_scalar_bytes, register_offset, ArgKind, ArgSpec, KernelSpec, Mode,
+};
 
 pub(crate) struct ScalarWord {
     pub reg_offset: u32,
     pub value_u32: u32,
-}
-
-/// Look up an arg name in the scalar register map without case sensitivity.
-/// Falls back to `"{name}_offset"` if the direct spelling is not found.
-pub(crate) fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u32> {
-    let lookup = |key: &str| {
-        spec.scalar_register_map.get(key).copied().or_else(|| {
-            spec.scalar_register_map
-                .iter()
-                .find_map(|(candidate, offset)| {
-                    candidate.eq_ignore_ascii_case(key).then_some(*offset)
-                })
-        })
-    };
-    lookup(name).or_else(|| lookup(&format!("{name}_offset")))
 }
 
 /// Resolve the AXI-lite register offset an arg's value is written to.
@@ -35,7 +22,7 @@ pub(crate) fn lookup_register_offset(spec: &KernelSpec, name: &str) -> Option<u3
 /// error instead. HLS-mode testbenches drive the ports directly and
 /// never touch the register file, so no offset is fine.
 fn required_register_offset(spec: &KernelSpec, name: &str) -> Result<u32> {
-    match lookup_register_offset(spec, name) {
+    match register_offset(&spec.scalar_register_map, name) {
         Some(offset) => Ok(offset),
         None if spec.mode == Mode::Hls => Ok(0),
         None => Err(CosimError::Metadata(format!(
@@ -553,7 +540,7 @@ pub(crate) fn scalar_words(base_offset: u32, bytes: &[u8]) -> Vec<ScalarWord> {
 #[cfg(test)]
 mod tests {
     use super::{classify_args, port_declaration, KernelSpec, Mode};
-    use super::{direct_offset_port_name, lookup_register_offset};
+    use super::{direct_offset_port_name, register_offset};
     use crate::metadata::{ArgKind, ArgSpec};
     use std::collections::HashMap;
 
@@ -627,7 +614,10 @@ mod tests {
             Mode::Vitis,
             HashMap::from([("L3_OUT_DIST".to_owned(), 0x1c_u32)]),
         );
-        assert_eq!(lookup_register_offset(&spec, "l3_out_dist"), Some(0x1c));
+        assert_eq!(
+            register_offset(&spec.scalar_register_map, "l3_out_dist"),
+            Some(0x1c)
+        );
     }
 
     #[test]
