@@ -89,6 +89,21 @@ pub struct Slot {
     /// Slot tags such as `HBM[0]`, `DDR[0]`, `CLK_RST`.
     #[serde(default)]
     pub tags: Vec<String>,
+    /// NoC master units (NMUs) a kernel port can enter the hard NoC through
+    /// in this slot. Every port bound to one of the table's
+    /// [`noc_memory`](Device::noc_memory) tags takes one in its task's slot;
+    /// a slot hosting more such ports than it has NMUs would borrow them from
+    /// another slot across fabric the plan never budgeted.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub nmus: u32,
+}
+
+#[allow(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if contract takes the field by reference"
+)]
+fn is_zero(count: &u32) -> bool {
+    *count == 0
 }
 
 impl Slot {
@@ -262,8 +277,9 @@ pub struct Device {
     pub anchors: Vec<DeviceAnchor>,
     /// Memory `sp` tags the platform reaches through the hard NoC from every
     /// slot, such as a Versal base platform's `DDR` and `LPDDR`. A port bound
-    /// to one enters the NoC beside its task wherever the task lands, so it
-    /// anchors nothing and crosses no slot boundary in fabric.
+    /// to one enters the NoC through an NMU beside its task wherever the task
+    /// lands, so it anchors nothing and crosses no slot boundary in fabric;
+    /// each slot's [`nmus`](Slot::nmus) caps how many such ports it hosts.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub noc_memory: Vec<String>,
 }
@@ -354,9 +370,11 @@ pub enum DeviceValidationError {
         tag: String,
     },
     /// A NoC memory entry must be a memory tag of the table's own platform
-    /// that no slot also anchors.
+    /// that no slot also anchors, and some slot must hold the NMUs its ports
+    /// enter the NoC through.
     #[error(
-        "NoC memory `{0}` must be a memory tag, appear on no slot, and come with a platform_name"
+        "NoC memory `{0}` must be a memory tag, appear on no slot, and come with a platform_name \
+         and slots that hold NoC master units"
     )]
     InvalidNocMemory(String),
     /// A physical anchor does not refer to a unique tag on this device.
@@ -418,6 +436,7 @@ impl Device {
             if tag.parse::<tapa_ir::MemoryBank>().is_err()
                 || self.platform_name.is_none()
                 || self.slots_with_tag(tag).next().is_some()
+                || self.slots.iter().all(|slot| slot.nmus == 0)
             {
                 return Err(DeviceValidationError::InvalidNocMemory(tag.clone()));
             }
@@ -604,6 +623,17 @@ impl Device {
             .any(|(x, y)| self.slot(x, y).is_some_and(Slot::has_fabric))
     }
 
+    /// The [NMUs](Slot::nmus) of every slot `region` covers.
+    #[must_use]
+    pub fn region_nmus(&self, region: &Coor) -> u32 {
+        region
+            .all_slot_coors()
+            .into_iter()
+            .filter_map(|(x, y)| self.slot(x, y))
+            .map(|slot| slot.nmus)
+            .sum()
+    }
+
     /// The summed resources of every slot in a region. `None` if any covered
     /// cell has no slot, or if the table's own areas sum past `u64`.
     #[must_use]
@@ -755,6 +785,7 @@ mod tests {
             pblock_ranges: vec!["CLOCKREGION_X0Y0:CLOCKREGION_X0Y0".to_string()],
             wire_cap: DirCaps::default(),
             tags: Vec::new(),
+            nmus: 0,
         };
         Device {
             key: "toy".to_string(),

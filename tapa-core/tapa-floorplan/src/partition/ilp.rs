@@ -644,9 +644,11 @@ fn attempt_placement(
 /// which wall it hit rather than only that it hit one.
 ///
 /// The iteration's regions tile the device, so summing their derated areas is
-/// the whole budget at `usage_limit`. A resource over budget is a definitive
-/// explanation; if none is, the binding constraint is the wire-capacity cuts or
-/// per-slot packing, and the message says so instead of inventing a cause.
+/// the whole budget at `usage_limit`, and summing their NMUs is the device's.
+/// More NoC-bound ports than NMUs, or a resource over budget, is a definitive
+/// explanation; if neither is, the binding constraint is the wire-capacity
+/// cuts or per-slot packing, and the message says so instead of inventing a
+/// cause.
 fn describe_demand(
     device: &Device,
     graph: &FloorGraph,
@@ -654,6 +656,22 @@ fn describe_demand(
     usage_limit: f64,
     constraints: &RegionResourceLimits,
 ) -> String {
+    let nmu_demand: u64 = graph
+        .vertices()
+        .iter()
+        .map(|vertex| u64::from(vertex.nmus))
+        .sum();
+    let nmu_supply: u64 = areas
+        .keys()
+        .map(|region| u64::from(device.region_nmus(region)))
+        .sum();
+    if nmu_demand > nmu_supply {
+        return format!(
+            "the design has {nmu_demand} memory ports entering the NoC, each through its own \
+             NoC master unit, against {nmu_supply} NoC master units on the device",
+        );
+    }
+
     let mut worst: Option<(Resource, u64, u64)> = None;
     for resource in Resource::ALL {
         if !device.plans_resource(resource) {
@@ -734,7 +752,9 @@ fn candidate_domains(
             let available = scaled_area_with_overrides(*total, usage_limit, constraints, &region);
             // A zero-area vertex fits even on a slot whose derated area
             // scaled to zero (0 <= 0); only the fitting check decides.
-            if !area_fits_on_device(device, vertex.area, available) {
+            if !area_fits_on_device(device, vertex.area, available)
+                || vertex.nmus > device.region_nmus(&region)
+            {
                 continue;
             }
             candidates.push(region);
@@ -1008,6 +1028,7 @@ impl FloorplanModel {
             &x,
             &y,
         )?;
+        add_nmu_constraints(&mut lp, graph, device, domains, &x);
         add_cut_constraints(&mut lp, graph, domains, cuts, &y);
         add_objective(&mut lp, graph, device, domains, &y)?;
         Ok(Self { lp, x })
@@ -1311,6 +1332,45 @@ fn add_crossing_head_terms(
         if heads > 0 {
             terms.push(heads.as_f64(), term.var(y));
         }
+    }
+}
+
+/// Cap the NoC-bound memory ports each region hosts at the NMUs its slots
+/// hold, so the NoC compiler never has to take one from another slot.
+///
+/// NMUs are discrete sites, not fabric, so the usage limit does not derate
+/// them. A region no NMU-taking vertex may land in gets no row.
+fn add_nmu_constraints(
+    lp: &mut LpModel,
+    graph: &FloorGraph,
+    device: &Device,
+    domains: &[Vec<Coor>],
+    x: &[Vec<LpVar>],
+) {
+    let active_regions: BTreeSet<Coor> = domains.iter().flatten().copied().collect();
+    for region in active_regions {
+        let mut terms = SparseRow::new();
+        for (vi, vertex) in graph.vertices().iter().enumerate() {
+            if vertex.nmus == 0 {
+                continue;
+            }
+            if let Some(ci) = domains[vi]
+                .iter()
+                .position(|candidate| *candidate == region)
+            {
+                terms.push(f64::from(vertex.nmus), x[vi][ci]);
+            }
+        }
+        let expr = terms.into_expr();
+        if expr.terms.is_empty() {
+            continue;
+        }
+        lp.add_constraint(
+            format!("node_{}_nmu_usage", region.region_name()),
+            expr,
+            Comparison::Le,
+            f64::from(device.region_nmus(&region)),
+        );
     }
 }
 

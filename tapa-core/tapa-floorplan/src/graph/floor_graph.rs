@@ -54,6 +54,10 @@ pub struct Vertex {
     /// Whether this vertex names real generated RTL and belongs in the public
     /// placement result. External terminals are transient solver vertices.
     pub materialize: bool,
+    /// [NMUs](crate::device::model::Slot::nmus) this vertex takes in its slot:
+    /// one per direct M-AXI port bound to a memory the platform reaches
+    /// through the NoC.
+    pub nmus: u32,
 }
 
 /// One undirected connection used by the placement ILP.

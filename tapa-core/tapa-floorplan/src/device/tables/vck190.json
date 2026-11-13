@@ -19,6 +19,7 @@
             },
             "centroid_x": 0,
             "centroid_y": 0,
+            "nmus": 8,
             "pblock_ranges": [
                 "CLOCKREGION_X0Y1:CLOCKREGION_X4Y2"
             ],
@@ -39,6 +40,7 @@
             },
             "centroid_x": 0,
             "centroid_y": 150,
+            "nmus": 6,
             "pblock_ranges": [
                 "CLOCKREGION_X0Y3:CLOCKREGION_X4Y4"
             ],
@@ -55,6 +57,7 @@
             },
             "centroid_x": 100,
             "centroid_y": 0,
+            "nmus": 8,
             "pblock_ranges": [
                 "CLOCKREGION_X5Y1:CLOCKREGION_X9Y2"
             ],
@@ -71,6 +74,7 @@
             },
             "centroid_x": 100,
             "centroid_y": 150,
+            "nmus": 6,
             "pblock_ranges": [
                 "CLOCKREGION_X5Y3:CLOCKREGION_X9Y4"
             ],

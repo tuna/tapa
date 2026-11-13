@@ -986,6 +986,102 @@ mod tests {
         );
     }
 
+    /// Every VCK190 port bound to `DDR` or `LPDDR` takes one NMU of its
+    /// task's slot, from one pool for both memories. Five small readers with
+    /// two such ports each fit slot (0,0)'s fabric, which the stable ranking
+    /// prefers, but not its eight NMUs: without the cap all ten ports land
+    /// there and the NoC compiler takes two NMUs from another slot.
+    #[test]
+    fn vck190_places_no_more_noc_ports_in_a_slot_than_it_has_nmus() {
+        const READERS: usize = 5;
+        let port = |name: &str| serde_json::json!({"cat": "mmap", "name": name, "type": "int*", "width": 32});
+        let top_ports: Vec<_> = (0..2 * READERS).map(|i| port(&format!("p{i}"))).collect();
+        let instances: Vec<_> = (0..READERS)
+            .map(|i| {
+                serde_json::json!({"args": {
+                    "a": {"arg": format!("p{}", 2 * i), "cat": "mmap"},
+                    "b": {"arg": format!("p{}", 2 * i + 1), "cat": "mmap"}
+                }, "step": 0})
+            })
+            .collect();
+        let graph = tapa_ir::TaskGraph::from_json(
+            &serde_json::json!({
+                "schema_version": 4, "cflags": [], "top": "Top", "target": "xilinx-vitis",
+                "tasks": {
+                    "Top": {
+                        "readable_name": "Top", "srcs": ["Top.cpp"], "include_dirs": [],
+                        "defines": [], "level": "upper", "synth": "hls",
+                        "ports": top_ports, "tasks": {"Reader": instances}, "fifos": {}
+                    },
+                    "Reader": {
+                        "readable_name": "Reader", "srcs": ["Reader.cpp"], "include_dirs": [],
+                        "defines": [], "level": "lower", "synth": "hls",
+                        "ports": [port("a"), port("b")],
+                        "self_area": {"lut": 1000, "ff": 1000}
+                    }
+                }
+            })
+            .to_string(),
+        )
+        .expect("parse");
+        let memory = (0..READERS)
+            .flat_map(|i| {
+                [("a", 2 * i, "DDR"), ("b", 2 * i + 1, "LPDDR")].map(|(child, top, tag)| {
+                    MemoryInterface {
+                        endpoint: tapa_ir::AxiEndpoint {
+                            instance: format!("Reader_{i}"),
+                            port: child.to_string(),
+                            top_port: format!("p{top}"),
+                        },
+                        bank: tag.parse().expect("memory tag"),
+                        channel_widths: tapa_ir::AxiChannelWidths {
+                            read_address: 80,
+                            read_data: 38,
+                            write_address: 80,
+                            write_data: 39,
+                            write_response: 5,
+                        },
+                        bridge_instance: None,
+                    }
+                })
+            })
+            .collect();
+        let mut state = WorkState::new(graph);
+        state.flow.part_num = Some("xcvc1902-vsva2197-2MP-e-S".to_string());
+        state.flow.platform = Some("xilinx_vck190_base_202410_1".to_string());
+
+        let result = match plan_with_inputs(
+            &state,
+            &PlanOptions::default(),
+            &PlanInputs {
+                memory,
+                control: None,
+                projection: None,
+            },
+        ) {
+            Ok(result) => result,
+            Err(PlanError::Ilp(IlpError::Solver(SolverError::Spawn { .. }))) => {
+                crate::solver::missing_cbc()
+            }
+            Err(other) => panic!("plan failed: {other}"),
+        };
+        let device = select_device("vck190").expect("vck190");
+        for slot in &device.slots {
+            let name = tapa_ir::Coor::slot(slot.x, slot.y).region_name();
+            let ports = 2 * result
+                .regions
+                .values()
+                .filter(|region| **region == name)
+                .count();
+            assert!(
+                ports <= usize::try_from(slot.nmus).expect("fits"),
+                "{name} hosts {ports} NoC ports but has {} NMUs: {:?}",
+                slot.nmus,
+                result.regions,
+            );
+        }
+    }
+
     #[test]
     fn plan_options_fail_before_solver_or_device_lookup() {
         let graph = tapa_ir::TaskGraph::from_json(

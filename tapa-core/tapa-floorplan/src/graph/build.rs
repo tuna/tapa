@@ -97,6 +97,7 @@ impl FloorGraphBuilder {
                 area,
                 required_tag: None,
                 materialize: true,
+                nmus: 0,
             });
         }
         Ok(())
@@ -230,6 +231,7 @@ impl FloorGraphBuilder {
     /// Expand exact memory interfaces into bank terminals and directed AXI
     /// nets. An interface bound to a bank in `noc` enters the hard NoC beside
     /// its task, so it gets neither: nothing to anchor, no fabric crossing.
+    /// It takes one of the NMUs of its task's slot instead.
     #[allow(
         clippy::too_many_lines,
         reason = "memory graph construction validates and expands every interface in one pass"
@@ -302,10 +304,11 @@ impl FloorGraphBuilder {
         let mut nets = Vec::with_capacity(memory.len().saturating_mul(5));
         for (endpoint, expected_endpoint) in &expected {
             let interface = provided[endpoint];
+            let task_vertex = expected_endpoint.task_vertex;
             if noc.contains(&interface.bank) {
+                self.vertices[task_vertex].nmus += 1;
                 continue;
             }
-            let task_vertex = expected_endpoint.task_vertex;
             let enabled_channels = interface
                 .channel_widths
                 .enabled_channels()
@@ -326,6 +329,7 @@ impl FloorGraphBuilder {
                     area: Area::default(),
                     required_tag: Some(interface.bank.to_string()),
                     materialize: false,
+                    nmus: 0,
                 });
                 self.index.insert(name, terminal);
                 terminals.insert(interface.bank, terminal);
@@ -407,6 +411,7 @@ impl FloorGraphBuilder {
             area: Area::default(),
             required_tag: global_anchor.map(ToString::to_string),
             materialize: true,
+            nmus: 0,
         });
         self.index.insert(global_name, global);
         if control.has_s_axi_control {

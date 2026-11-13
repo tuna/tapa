@@ -184,6 +184,7 @@ mod tests {
                 west: WIRE_CAPACITY_INF,
             },
             tags: Vec::new(),
+            nmus: 0,
         }
     }
 

@@ -667,11 +667,17 @@ mod tests {
 
     /// `platforminfo` on `xilinx_vck190_base_202410_1` lists the sp tags
     /// `DDR` and `LPDDR` only (v++ rejects `DDR[0]`). Each is served by 28
-    /// NoC slave ports, one per PL `NMU512` site, and VC1902 has 6 to 8 of
-    /// those in every slot of this grid (clock-region columns 1, 3, 5, 7,
-    /// rows 1-4); the platform's NoC solution places none of them, leaving the
-    /// NoC compiler to pick each kernel port's NMU at link. So the memories
-    /// anchor nowhere.
+    /// NoC slave ports, one per PL `NMU512` site; the platform's NoC solution
+    /// places none of them, leaving the NoC compiler to pick each kernel
+    /// port's NMU at link. So the memories anchor nowhere.
+    ///
+    /// `v++ --link` gives every kernel M-AXI port its own `S_AXI` (`CATEGORY
+    /// pl`) on `noc_ddr4` or `noc_lpddr4`, and each lands on one `NMU512`; the
+    /// PS-side `NMU128` sites in clock region X0Y1 serve the CIPS only. A
+    /// Vivado 2025.2 census (`get_sites -of_objects` each slot's pblock,
+    /// `-filter {SITE_TYPE =~ NOC_NMU*}`) finds two `NMU512` in each of
+    /// clock-region columns 1, 3, 5, 7 per row 1-3 and one in row 4: eight
+    /// per lower slot, six per upper.
     #[test]
     fn vck190_reaches_its_memories_through_the_noc() {
         let device = select_device("vck190").expect("vck190 resolves");
@@ -685,6 +691,16 @@ mod tests {
             assert_eq!(device.slots_with_tag(tag).count(), 0, "{tag}");
         }
         assert!(!device.reaches_through_noc("DDR[0]".parse().expect("bank")));
+        let nmus: Vec<_> = device
+            .slots
+            .iter()
+            .map(|slot| ((slot.x, slot.y), slot.nmus))
+            .collect();
+        assert_eq!(
+            nmus,
+            [((0, 0), 8), ((0, 1), 6), ((1, 0), 8), ((1, 1), 6)],
+            "the NMU512 census of each slot",
+        );
     }
 
     /// Kernel control, clock and reset all enter the fabric at the CIPS. In

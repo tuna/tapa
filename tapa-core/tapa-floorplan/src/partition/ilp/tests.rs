@@ -423,6 +423,7 @@ fn one_slot_device_with_area(area: Area) -> Device {
             pblock_ranges: Vec::new(),
             wire_cap: DirCaps::default(),
             tags: Vec::new(),
+            nmus: 0,
         }],
     }
 }
@@ -443,6 +444,7 @@ fn two_slot_golden_device() -> Device {
         pblock_ranges: Vec::new(),
         wire_cap: DirCaps::default(),
         tags: Vec::new(),
+        nmus: 0,
     };
     Device {
         key: "two-slot-golden".to_string(),
@@ -897,6 +899,7 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
         pblock_ranges: Vec::new(),
         wire_cap: DirCaps::default(),
         tags: Vec::new(),
+        nmus: 0,
     };
     let device = Device {
         key: "non-decomposable-row".to_string(),
@@ -1259,6 +1262,7 @@ fn rectangular_centroid_coefficients_preserve_half_units() {
         pblock_ranges: Vec::new(),
         wire_cap: DirCaps::default(),
         tags: Vec::new(),
+        nmus: 0,
     };
     let device = Device {
         key: "odd".to_string(),

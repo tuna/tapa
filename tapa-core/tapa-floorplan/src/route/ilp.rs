@@ -713,6 +713,7 @@ mod tests {
                     pblock_ranges: Vec::new(),
                     wire_cap,
                     tags: Vec::new(),
+                    nmus: 0,
                 });
             }
         }
@@ -849,6 +850,7 @@ mod tests {
                     pblock_ranges: Vec::new(),
                     wire_cap,
                     tags: Vec::new(),
+                    nmus: 0,
                 });
             }
         }

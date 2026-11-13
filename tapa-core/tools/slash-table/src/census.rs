@@ -241,6 +241,9 @@ impl Census {
                     ..DirCaps::default()
                 },
                 tags,
+                // SLASH binds each RM port to a fixed shell endpoint, whose
+                // NMU the static shell already placed: the RM picks none.
+                nmus: 0,
             });
         }
         Ok(Device {
