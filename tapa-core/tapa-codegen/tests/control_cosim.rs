@@ -756,6 +756,281 @@ int main() {
 }
 "#;
 
+/// A detached task that returns runs once per invocation of its parent, with
+/// that invocation's arguments, under every control: the per-task FSM, a
+/// flattened top's scoped controllers, and a floorplan's distributed ones. A
+/// detached leaf (`w`) and the joined leaf of a detached upper task
+/// (`g`/`inner`) each run for longer than their parent: one invocation must
+/// not restart them on stale arguments once they return, and an invocation
+/// starting while they still run must start them once more after they
+/// finish.
+#[test]
+fn a_finite_detached_task_runs_once_per_parent_invocation() {
+    use common::run_manifest::generate_manifest;
+
+    for (flattened, floorplanned) in [(false, false), (true, false), (true, true)] {
+        let mut state = tapa_codegen::rtl_state::TopologyWithRtl::new(detached_design());
+        if flattened {
+            state.flat_projection =
+                Some(tapa_ir::transforms::flatten_with_origins(&state.design).unwrap());
+        }
+        for (name, source) in [
+            ("Top", DETACHED_TOP),
+            ("Group", DETACHED_GROUP),
+            ("Worker", DETACHED_WORKER),
+            ("Finish", SCOPE_FINISH),
+        ] {
+            state
+                .attach_module(name, common::parse_module(source))
+                .unwrap();
+        }
+        if floorplanned {
+            state.floorplan = Some(detached_floorplan());
+        }
+        let manifest = generate_manifest(&mut state);
+        let inner = if flattened { "inner_g_Top" } else { "g.inner" };
+        let harness = DETACHED_HARNESS.replace("INNER", inner);
+        let mut sources: Vec<(&str, &str)> = manifest
+            .design_files()
+            .map(|(path, rtl)| (path.trim_start_matches("rtl/"), rtl.as_str()))
+            .collect();
+        sources.extend([
+            ("Worker.v", DETACHED_WORKER),
+            ("Finish.v", SCOPE_FINISH),
+            ("detached_harness.v", harness.as_str()),
+        ]);
+        run_cosim(
+            "detached_harness",
+            &[],
+            &["tapa_control.v"],
+            &sources,
+            DETACHED_TESTBENCH,
+        );
+    }
+}
+
+fn detached_design() -> tapa_ir::Design {
+    use common::{design, task};
+    use serde_json::json;
+    let value = |arg: &str| json!({"cat": "scalar", "arg": arg});
+    design(
+        "Top",
+        "xilinx-hls",
+        &[
+            (
+                "Top",
+                task("Top", "upper", |t| {
+                    t["ports"] =
+                        json!([{"cat":"scalar", "name":"value", "type":"uint32_t", "width":32}]);
+                    t["tasks"] = json!({
+                        "Worker": [{"name": "w", "step": -1, "args": {"value": value("value")}}],
+                        "Group": [{"name": "g", "step": -1, "args": {"captured": value("value")}}],
+                        "Finish": [{"name": "f", "args": {}}]
+                    });
+                }),
+            ),
+            (
+                "Group",
+                task("Group", "upper", |t| {
+                    t["ports"] =
+                        json!([{"cat":"scalar", "name":"captured", "type":"uint32_t", "width":32}]);
+                    t["tasks"] = json!({
+                        "Worker": [{"name": "inner", "args": {"value": value("captured")}}]
+                    });
+                }),
+            ),
+            (
+                "Worker",
+                task("Worker", "lower", |t| {
+                    t["ports"] =
+                        json!([{"cat":"scalar", "name":"value", "type":"uint32_t", "width":32}]);
+                }),
+            ),
+            ("Finish", task("Finish", "lower", |_| {})),
+        ],
+    )
+}
+
+/// The leaves away from the controllers, so every launch crosses a pipeline.
+fn detached_floorplan() -> tapa_ir::FloorplanResult {
+    use std::collections::BTreeMap;
+    use tapa_ir::{
+        global_controller_instance_name, local_controller_instance_name,
+        scope_controller_instance_name, ControlChannel, FloorplanResult, PipelineRoute,
+        PipelineScheme, RoutedChannel,
+    };
+    let central = "SLOT_X0Y0";
+    let remote = "SLOT_X1Y0";
+    let mut regions = BTreeMap::from([
+        (
+            global_controller_instance_name().to_owned(),
+            central.to_owned(),
+        ),
+        (scope_controller_instance_name("g_Top"), central.to_owned()),
+        (local_controller_instance_name("g_Top"), central.to_owned()),
+    ]);
+    let mut routes = Vec::new();
+    for (instance, joined) in [("w", false), ("inner_g_Top", true), ("f", true)] {
+        regions.insert(instance.to_owned(), remote.to_owned());
+        regions.insert(local_controller_instance_name(instance), remote.to_owned());
+        let mut channels = vec![ControlChannel::Launch, ControlChannel::Reset];
+        if joined {
+            channels.push(ControlChannel::Completion);
+        }
+        for channel in channels {
+            let route = if channel == ControlChannel::Completion {
+                vec![remote.to_owned(), central.to_owned()]
+            } else {
+                vec![central.to_owned(), remote.to_owned()]
+            };
+            routes.push(PipelineRoute {
+                channel: RoutedChannel::Control {
+                    instance: instance.to_owned(),
+                    channel,
+                },
+                route,
+                scheme: PipelineScheme::Double,
+                reg_regions: vec![central.to_owned()],
+            });
+        }
+    }
+    FloorplanResult {
+        device: "u280".to_owned(),
+        grid: (2, 1),
+        regions,
+        routes,
+        slot_usage: BTreeMap::new(),
+    }
+}
+
+const DETACHED_TOP: &str = "
+module Top(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+           output wire ap_done, output wire ap_ready, output wire ap_idle,
+           input wire [31:0] value);
+endmodule
+";
+const DETACHED_GROUP: &str = "
+module Group(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+             output wire ap_done, output wire ap_ready, output wire ap_idle,
+             input wire [31:0] captured);
+endmodule
+";
+/// A sequential `ap_ctrl_hs` leaf, as Vitis HLS builds one: it takes its
+/// argument when it starts, runs for 64 cycles, and is ready only when done.
+/// It counts its runs and keeps the arguments of the last two.
+const DETACHED_WORKER: &str = "
+module Worker(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+              output wire ap_done, output wire ap_ready, output wire ap_idle,
+              input wire [31:0] value);
+  reg busy = 0;
+  reg [7:0] left = 0;
+  reg [31:0] count = 0;
+  reg [31:0] previous = 0;
+  reg [31:0] last = 0;
+  assign ap_done = busy && left == 0;
+  assign ap_ready = ap_done;
+  assign ap_idle = !busy;
+  always @(posedge ap_clk) begin
+    if (!ap_rst_n) begin
+      busy <= 0;
+      left <= 0;
+      count <= 0;
+    end else if (busy) begin
+      if (left == 0) busy <= 0;
+      else left <= left - 1;
+    end else if (ap_start) begin
+      busy <= 1;
+      left <= 63;
+      count <= count + 1;
+      previous <= last;
+      last <= value;
+    end
+  end
+endmodule
+";
+const DETACHED_HARNESS: &str = "
+module detached_harness(input wire ap_clk, input wire ap_rst_n, input wire ap_start,
+                        input wire [31:0] value, output wire ap_ready,
+                        output wire [31:0] w_count, output wire [31:0] w_previous,
+                        output wire [31:0] w_last, output wire [31:0] g_count,
+                        output wire [31:0] g_previous, output wire [31:0] g_last);
+  wire ap_done, ap_idle;
+  Top dut(.ap_clk(ap_clk), .ap_rst_n(ap_rst_n), .ap_start(ap_start),
+          .ap_done(ap_done), .ap_ready(ap_ready), .ap_idle(ap_idle), .value(value));
+  assign w_count = dut.w.count;
+  assign w_previous = dut.w.previous;
+  assign w_last = dut.w.last;
+  assign g_count = dut.INNER.count;
+  assign g_previous = dut.INNER.previous;
+  assign g_last = dut.INNER.last;
+endmodule
+";
+const DETACHED_TESTBENCH: &str = r#"
+#include "Vdetached_harness.h"
+#include <cstdio>
+#include <memory>
+int main() {
+  auto dut = std::make_unique<Vdetached_harness>();
+  auto tick = [&]() { dut->ap_clk = 0; dut->eval(); dut->ap_clk = 1; dut->eval(); };
+  dut->ap_start = 0; dut->value = 0; dut->ap_rst_n = 0;
+  for (int i = 0; i < 4; ++i) tick();
+  dut->ap_rst_n = 1;
+  for (int i = 0; i < 32; ++i) tick();
+  // One invocation as the control registers make it: the arguments first,
+  // then the start, held until ready. The parent waits for `f` only.
+  auto invoke = [&](unsigned value) {
+    dut->value = value;
+    tick(); tick();
+    dut->ap_start = 1;
+    for (int i = 0; i < 256; ++i) {
+      tick();
+      if (dut->ap_ready) { dut->ap_start = 0; return true; }
+    }
+    return false;
+  };
+  auto settle = [&]() { for (int i = 0; i < 512; ++i) tick(); };
+  auto check = [&](const char* phase, unsigned count, unsigned previous, unsigned last) {
+    const struct { const char* name; unsigned count, previous, last; } runs[] = {
+      {"detached leaf", dut->w_count, dut->w_previous, dut->w_last},
+      {"detached upper's leaf", dut->g_count, dut->g_previous, dut->g_last},
+    };
+    for (const auto& run : runs) {
+      if (run.count != count || run.last != last ||
+          (count > 1 && run.previous != previous)) {
+        std::printf("FAIL: %s: %s ran %u times, last two on %x, %x (expected %u, on %x, %x)\n",
+                    phase, run.name, run.count, run.previous, run.last, count, previous, last);
+        return false;
+      }
+    }
+    return true;
+  };
+
+  // A run that ends before the next invocation is not restarted on its
+  // stale arguments.
+  if (!invoke(0xa)) { std::puts("FAIL: first invocation never finished"); return 1; }
+  settle();
+  if (!check("one invocation", 1, 0, 0xa)) return 2;
+  settle();
+  if (!check("one invocation, later", 1, 0, 0xa)) return 3;
+
+  // The next invocation starts while the run of this one is still going: it
+  // runs once more after that, on the arguments it was started with.
+  if (!invoke(0xb)) { std::puts("FAIL: second invocation never finished"); return 4; }
+  if (!invoke(0xc)) { std::puts("FAIL: third invocation never finished"); return 5; }
+  if (dut->w_count != 2 || dut->g_count != 2) {
+    std::printf("FAIL: the third invocation did not overlap a run (%u, %u)\n",
+                dut->w_count, dut->g_count);
+    return 6;
+  }
+  settle();
+  if (!check("overlapping invocations", 3, 0xb, 0xc)) return 7;
+  settle();
+  if (!check("overlapping invocations, later", 3, 0xb, 0xc)) return 8;
+  std::puts("PASS: a finite detached task runs once per parent invocation");
+  return 0;
+}
+"#;
+
 /// An output ring holds the top's done until the frames its task released
 /// are in memory, under every control: the per-task FSM, a floorplan's
 /// distributed controllers, and a flattened top's scoped ones. Its drained

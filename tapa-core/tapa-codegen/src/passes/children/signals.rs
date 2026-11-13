@@ -223,18 +223,23 @@ fn declare_parent_handshake_wires(
     is_autorun: bool,
 ) {
     // Parent task module: only declare handshake WIRES (not state regs)
-    // The parent sees start/done/idle/ready/is_done as wires connected to FSM ports
+    // The parent sees start/done/idle/ready/is_done as wires connected to FSM
+    // ports; a detached child's controller sees only its start and ready.
     if let Some(mm) = stage.modules.get_mut(stage.task_name) {
-        if stage.control_plan.is_some() {
-            let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
-            if !is_autorun {
-                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.done_name()));
-                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.idle_name()));
-                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.ready_name()));
-                let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.is_done_name()));
+        if is_autorun {
+            for name in [sig.start_name(), sig.ready_name()] {
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(name));
             }
-        } else if is_autorun {
-            let _ = mm.add_signal(tapa_rtl::mutation::wire(sig.start_name()));
+        } else if stage.control_plan.is_some() {
+            for name in [
+                sig.start_name(),
+                sig.done_name(),
+                sig.idle_name(),
+                sig.ready_name(),
+                sig.is_done_name(),
+            ] {
+                let _ = mm.add_signal(tapa_rtl::mutation::wire(name));
+            }
         } else {
             for signal in sig.all_signals() {
                 let _ = mm.add_signal(signal);
@@ -302,7 +307,7 @@ fn add_fsm_control_logic(
             let _ = fsm_mm.add_signal(signal);
         }
         if is_autorun {
-            fsm_mm.add_always(generate_autorun_start(sig));
+            fsm_mm.add_always(generate_autorun_start(sig, program::launch()));
         } else {
             // State register and FSM logic owned by FSM module
             // Use pipelined start_q/done_q from global FSM

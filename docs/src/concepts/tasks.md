@@ -77,6 +77,17 @@ their state does not need to be tracked, they avoid fan-out termination signals
 and reduce area. The tasks a detached upper task invokes, joined or not, do not
 hold up its parent either.
 
+In hardware, each invocation of the parent starts a detached task once, and
+nothing else starts it. A task that never returns, such as one whose body is a
+loop with no way out, takes only the first of these starts: it runs from the
+first invocation until the device is reset, keeping its state from one
+invocation to the next, whereas software simulation ends it with each
+invocation. A task that returns runs once per invocation of its parent, as in
+software simulation, with that invocation's arguments. If it is still running
+when its parent is invoked again, that start waits until it has finished and
+then reads the arguments the parent holds at that time. One start waits at
+most: invocations that begin while one is already waiting share it.
+
 ```admonish note
 By default, TAPA tasks are joined: the parent waits for each child to complete.
 Use `tapa::detach` only when the child task genuinely does not need to

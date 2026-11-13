@@ -484,8 +484,9 @@ impl DistributedControlPlan {
                 Expr::ident(signal)
             }
         };
+        // A detached child's start is held until it takes it with ready.
         let child_done = tie_low_if_autorun(signals.done_name());
-        let child_ready = tie_low_if_autorun(signals.ready_name());
+        let child_ready = Expr::ident(signals.ready_name());
         let child_idle = tie_low_if_autorun(signals.idle_name());
         module.add_instance(
             ModuleInstance::new(

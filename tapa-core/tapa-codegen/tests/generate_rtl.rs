@@ -63,8 +63,11 @@ fn test_generate_rtl_simple_design() {
     );
 }
 
+/// A detached child starts once per invocation of its parent: the FSM raises
+/// its start on the parent's launch and holds it until the child's ready,
+/// which the parent therefore binds.
 #[test]
-fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
+fn test_generate_rtl_detached_start_follows_launch_until_ready() {
     let top = task("top", "upper", |t| {
         t["tasks"] = serde_json::json!({"child": [{"step": -1, "args": {}}]});
     });
@@ -74,18 +77,29 @@ fn test_generate_rtl_autorun_fsm_start_is_reg_output() {
         &[("top", top), ("child", plain("child", "lower"))],
     );
 
-    let manifest = run_manifest(prog, &["top", "child"], &[]);
+    let manifest = run_manifest(prog, &["top"], &[("child", &handshake_module_src("child"))]);
 
     let parent_v = rtl_file(&manifest, "top.v");
     let fsm_v = rtl_file(&manifest, "top_fsm.v");
     check(
         parent_v,
-        &["wire child_0__ap_start;"],
-        &["reg child_0__ap_start;"],
+        &[
+            "wire child_0__ap_start;",
+            "wire child_0__ap_ready;",
+            ".ap_start(child_0__ap_start)",
+            ".ap_ready(child_0__ap_ready)",
+        ],
+        &["reg child_0__ap_start;", ".ap_done(child_0__ap_done)"],
     );
     check(
         fsm_v,
-        &["output reg child_0__ap_start"],
+        &[
+            "output reg child_0__ap_start",
+            "input wire child_0__ap_ready",
+            "reg child_0__ap_start_pending;",
+            "if ((child_0__ap_start && child_0__ap_ready)) begin",
+            "if ((__tapa_start_q && (__tapa_state == 2'b00))) begin",
+        ],
         &["\nreg child_0__ap_start;"],
     );
 }
@@ -899,13 +913,10 @@ fn distributed_control_state() -> TopologyWithRtl {
             ),
         )
         .unwrap();
+    // A detached child is an ordinary `ap_ctrl_hs` module: the controller
+    // holds its start until its ready.
     state
-        .attach_module(
-            "daemon",
-            parse_module(
-                "module daemon(input wire ap_clk, input wire ap_rst_n, input wire ap_start);\nendmodule",
-            ),
-        )
+        .attach_module("daemon", parse_module(&handshake_module_src("daemon")))
         .unwrap();
 
     let worker = "worker#0";
@@ -1035,7 +1046,7 @@ fn test_generate_rtl_distributes_floorplanned_control() {
         &[],
     );
     assert_eq!(top.matches("tapa_control_pipeline #(").count(), 3, "{top}");
-    check(top, &[".WIDTH(19)", "wire [16:0] __tapa_control_worker_0__field0;", "assign __tapa_control_worker_0__field0 = n;", "assign __tapa_control_worker_0__launch_input = {__tapa_control_worker_0__field0, __tapa_control_release, __tapa_control_start}", "assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]", ".FLUSH_CYCLES(7)", "assign ap_rst = !__tapa_control_fabric_reset_n", ".fabric_reset_n(__tapa_control_fabric_reset_n)", "(* max_fanout = 256 *) wire ap_rst;", ".ap_rst_n(__tapa_control_worker_0__reset_n)", "assign __tapa_control_daemon_0__reset_n = ap_rst_n", ".AUTORUN(1)", ".launch_start(__tapa_control_daemon_0__launch_output)",], &["__tapa_control_daemon_0_completion"]);
+    check(top, &[".WIDTH(19)", "wire [16:0] __tapa_control_worker_0__field0;", "assign __tapa_control_worker_0__field0 = n;", "assign __tapa_control_worker_0__launch_input = {__tapa_control_worker_0__field0, __tapa_control_release, __tapa_control_start}", "assign worker_0__count = __tapa_control_worker_0__launch_output[18:2]", ".FLUSH_CYCLES(7)", "assign ap_rst = !__tapa_control_fabric_reset_n", ".fabric_reset_n(__tapa_control_fabric_reset_n)", "(* max_fanout = 256 *) wire ap_rst;", ".ap_rst_n(__tapa_control_worker_0__reset_n)", "assign __tapa_control_daemon_0__reset_n = ap_rst_n", ".AUTORUN(1)", ".launch_start(__tapa_control_daemon_0__launch_output)", ".child_ready(daemon_0__ap_ready)", ".ap_ready(daemon_0__ap_ready)",], &["__tapa_control_daemon_0_completion", ".ap_done(daemon_0__ap_done)"]);
     lint_distributed_top(&state);
 }
 

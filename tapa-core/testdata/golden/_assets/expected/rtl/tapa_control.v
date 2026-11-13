@@ -168,13 +168,26 @@ module tapa_local_controller #(
 
   generate
     if (AUTORUN != 0) begin : TAPA_AUTORUN
+      // A detached child starts once per launch: the start is held until the
+      // child takes it with ready. A launch while it is held is queued, one
+      // deep, and raises the start again right after that handshake.
       reg start_latched = 1'b0;
+      reg start_pending = 1'b0;
 
       always @(posedge ap_clk) begin
         if (!reset_n) begin
           start_latched <= 1'b0;
+          start_pending <= 1'b0;
+        end else if (start_latched && child_ready) begin
+          if (launch_start) begin
+            start_latched <= 1'b1;
+          end else begin
+            start_latched <= start_pending;
+            start_pending <= 1'b0;
+          end
         end else if (launch_start) begin
           start_latched <= 1'b1;
+          start_pending <= start_latched;
         end
       end
 

@@ -1,7 +1,7 @@
 //! Per-instance child FSM blocks and their start/done assigns.
 
 use crate::instance_signals::InstanceSignals;
-use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST, HANDSHAKE_START};
+use tapa_protocol::{HANDSHAKE_CLK, HANDSHAKE_RST};
 use tapa_rtl::builder::{AlwaysBlock, CaseItem, ContinuousAssign, Expr, Statement};
 
 use crate::program::{
@@ -90,26 +90,53 @@ pub fn generate_is_done_assign(sig: &InstanceSignals) -> ContinuousAssign {
     )
 }
 
-/// Generate the start logic for an autorun child instance.
+/// Generate the start logic for an autorun (detached) child instance.
 ///
-/// Autorun instances latch their start signal when the global `ap_start`
-/// is first asserted and keep it high until reset.
-pub fn generate_autorun_start(sig: &InstanceSignals) -> AlwaysBlock {
+/// A detached child starts once per parent invocation: `launch` is high for
+/// the one cycle the parent accepts its start, which raises the child's
+/// start and holds it until the child takes it with `ap_ready`. A launch
+/// that arrives while the start is still held is queued in
+/// `{instance}__ap_start_pending` and raises the start again right after
+/// that handshake, so a finite child still running from the last
+/// invocation runs once more rather than missing this one. One launch
+/// queues at most: a further launch before the handshake merges with it. A
+/// child that never returns never takes its start, which then stays high
+/// until reset.
+pub fn generate_autorun_start(sig: &InstanceSignals, launch: Expr) -> AlwaysBlock {
+    let start = sig.start_expr();
+    let pending = Expr::ident(sig.start_pending_name());
+    let assign = |lhs: &Expr, rhs: Expr| Statement::NonblockingAssign {
+        lhs: lhs.clone(),
+        rhs,
+    };
     AlwaysBlock::posedge(
         HANDSHAKE_CLK,
         vec![Statement::If {
             cond: Expr::ident(HANDSHAKE_RST),
-            then_body: vec![Statement::NonblockingAssign {
-                lhs: sig.start_expr(),
-                rhs: Expr::lit("1'b0"),
-            }],
+            then_body: vec![
+                assign(&start, Expr::lit("1'b0")),
+                assign(&pending, Expr::lit("1'b0")),
+            ],
             else_body: vec![Statement::If {
-                cond: Expr::ident(HANDSHAKE_START),
-                then_body: vec![Statement::NonblockingAssign {
-                    lhs: sig.start_expr(),
-                    rhs: Expr::lit("1'b1"),
+                // The child takes the held start: a launch in the same cycle
+                // keeps it held, else a queued launch does.
+                cond: Expr::logical_and(start.clone(), Expr::ident(sig.ready_name())),
+                then_body: vec![Statement::If {
+                    cond: launch.clone(),
+                    then_body: vec![assign(&start, Expr::lit("1'b1"))],
+                    else_body: vec![
+                        assign(&start, pending.clone()),
+                        assign(&pending, Expr::lit("1'b0")),
+                    ],
                 }],
-                else_body: vec![],
+                else_body: vec![Statement::If {
+                    cond: launch,
+                    then_body: vec![
+                        assign(&start, Expr::lit("1'b1")),
+                        assign(&pending, start.clone()),
+                    ],
+                    else_body: vec![],
+                }],
             }],
         }],
     )
@@ -153,19 +180,24 @@ mod tests {
     }
 
     #[test]
-    fn autorun_start_latches_until_reset() {
+    fn autorun_start_is_held_until_ready_and_queues_one_launch() {
         let sig = InstanceSignals::new("auto_inst", true);
-        let block = generate_autorun_start(&sig);
+        let block = generate_autorun_start(&sig, Expr::ident("launch"));
         let text = block.to_string();
+        for needle in [
+            "auto_inst__ap_start <= 1'b0",
+            "auto_inst__ap_start_pending <= 1'b0",
+            "if ((auto_inst__ap_start && auto_inst__ap_ready))",
+            "if (launch)",
+            "auto_inst__ap_start <= 1'b1",
+            "auto_inst__ap_start <= auto_inst__ap_start_pending",
+            "auto_inst__ap_start_pending <= auto_inst__ap_start",
+        ] {
+            assert!(text.contains(needle), "missing `{needle}`:\n{text}");
+        }
         assert!(
-            text.contains("if (ap_start)")
-                && text.contains("auto_inst__ap_start <= 1'b1")
-                && text.contains("auto_inst__ap_start <= 1'b0"),
-            "got:\n{text}"
-        );
-        assert!(
-            !text.contains("auto_inst__ap_start <= ap_start"),
-            "autorun start must not deassert with the host start pulse:\n{text}"
+            !text.contains("if (ap_start)"),
+            "a detached start follows the parent's launch, not its held start:\n{text}"
         );
     }
 

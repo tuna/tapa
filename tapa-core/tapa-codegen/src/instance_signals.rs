@@ -60,6 +60,11 @@ impl InstanceSignals {
         format!("{}__ap_ready", self.instance_name)
     }
 
+    /// A detached instance's queued start: `{instance}__ap_start_pending`.
+    pub fn start_pending_name(&self) -> String {
+        format!("{}__ap_start_pending", self.instance_name)
+    }
+
     /// Expression for the state register.
     pub fn state_expr(&self) -> Expr {
         Expr::ident(self.state_name())
@@ -91,7 +96,11 @@ impl InstanceSignals {
     /// Generate all handshake signal declarations for this instance.
     pub fn all_signals(&self) -> Vec<Signal> {
         if self.is_autorun {
-            vec![reg(self.start_name())]
+            vec![
+                reg(self.start_name()),
+                reg(self.start_pending_name()),
+                wire(self.ready_name()),
+            ]
         } else {
             vec![
                 wide_reg(self.state_name(), "1", "0"),
@@ -105,22 +114,32 @@ impl InstanceSignals {
     }
 
     /// Generate public handshake port arguments for connecting to the child instance.
+    ///
+    /// A detached (autorun) instance binds only `ap_start` and `ap_ready`:
+    /// its start is held until the child takes it, and nothing waits for
+    /// its done.
     pub fn instance_portargs(&self) -> Vec<PortArg> {
         let mut args = vec![PortArg::new(HANDSHAKE_START, self.start_expr())];
         if !self.is_autorun {
             args.extend([
                 PortArg::new(HANDSHAKE_DONE, self.done_expr()),
                 PortArg::new(HANDSHAKE_IDLE, Expr::ident(self.idle_name())),
-                PortArg::new(HANDSHAKE_READY, Expr::ident(self.ready_name())),
             ]);
         }
+        args.push(PortArg::new(
+            HANDSHAKE_READY,
+            Expr::ident(self.ready_name()),
+        ));
         args
     }
 
     /// Generate public handshake ports for the FSM module interface.
     pub fn fsm_ports(&self) -> Vec<tapa_rtl::port::Port> {
         if self.is_autorun {
-            vec![simple_port(self.start_name(), Direction::Output)]
+            vec![
+                simple_port(self.start_name(), Direction::Output),
+                simple_port(self.ready_name(), Direction::Input),
+            ]
         } else {
             vec![
                 simple_port(self.start_name(), Direction::Output),
@@ -153,7 +172,11 @@ mod tests {
     fn autorun_signals() {
         let sig = InstanceSignals::new("auto_inst", true);
         let signals = sig.all_signals();
-        assert_eq!(signals.len(), 1, "autorun should only have start reg");
+        assert_eq!(
+            signals.len(),
+            3,
+            "autorun should have start and pending regs and a ready wire"
+        );
     }
 
     #[test]
@@ -185,7 +208,7 @@ mod tests {
     fn instance_portargs_autorun() {
         let sig = InstanceSignals::new("child", true);
         let args = sig.instance_portargs();
-        assert_eq!(args.len(), 1, "autorun should only have start");
+        assert_eq!(args.len(), 2, "autorun should have start and ready");
     }
 
     #[test]
@@ -205,6 +228,6 @@ mod tests {
     fn fsm_ports_autorun() {
         let sig = InstanceSignals::new("child", true);
         let ports = sig.fsm_ports();
-        assert_eq!(ports.len(), 1, "autorun should only have start port");
+        assert_eq!(ports.len(), 2, "autorun should have start and ready ports");
     }
 }

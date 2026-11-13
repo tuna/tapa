@@ -41,6 +41,18 @@ pub const CHILD_STATE_DONE: &str = "2'b10";
 pub const START_Q: &str = "__tapa_start_q";
 pub const DONE_Q: &str = "__tapa_done_q";
 
+/// The global program FSM's state register.
+const STATE: &str = "__tapa_state";
+
+/// High for the one cycle the global FSM accepts a start (`start_q` while
+/// IDLE): one invocation of the task. Each starts every detached child once.
+pub fn launch() -> Expr {
+    Expr::logical_and(
+        Expr::ident(START_Q),
+        Expr::eq(Expr::ident(STATE), Expr::lit(GLOBAL_STATE_IDLE)),
+    )
+}
+
 /// Apply global FSM signals and logic to an FSM module.
 ///
 /// The global FSM is a 3-state controller: IDLE(00) -> RUNNING(01) ->
@@ -56,7 +68,7 @@ pub const DONE_Q: &str = "__tapa_done_q";
 ///
 /// Children use `start_q` for IDLE->RUNNING and `done_q` for DONE->IDLE.
 pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[String]) {
-    let _ = fsm_module.add_signal(wide_reg("__tapa_state", "1", "0"));
+    let _ = fsm_module.add_signal(wide_reg(STATE, "1", "0"));
 
     let _ = fsm_module.add_signal(wire(HANDSHAKE_RST));
 
@@ -76,7 +88,7 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
     ));
 
     // Build the RUNNING->DONE transition condition; no children = always done.
-    let state = Expr::ident("__tapa_state");
+    let state = Expr::ident(STATE);
     let all_done_cond = Expr::all(is_done_signal_names.iter().map(Expr::ident));
 
     // FSM always block
@@ -132,13 +144,13 @@ pub fn apply_global_fsm(fsm_module: &mut MutableModule, is_done_signal_names: &[
     // ap_idle = (state == STATE_IDLE)
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(HANDSHAKE_IDLE),
-        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_IDLE)),
+        Expr::eq(Expr::ident(STATE), Expr::lit(GLOBAL_STATE_IDLE)),
     ));
 
     // done_q = (state == STATE_DONE) — combinational from FSM
     fsm_module.add_assign(ContinuousAssign::new(
         Expr::ident(DONE_Q),
-        Expr::eq(Expr::ident("__tapa_state"), Expr::lit(GLOBAL_STATE_DONE)),
+        Expr::eq(Expr::ident(STATE), Expr::lit(GLOBAL_STATE_DONE)),
     ));
 
     // ap_done driven from done_q
