@@ -243,15 +243,15 @@ struct UpperTaskContext {
     it->second.produced_by = Endpoint{task_name, inst_index};
   }
 
-  // Record that the task hands its own async_mmap parameter `a` to a task,
-  // reporting a second hand-off at `loc`: tasks sharing one async_mmap would
-  // share its channels in software simulation, but each gets its own on
-  // hardware.
+  // Record that the task hands its own async_mmap parameter `a` to a task
+  // port, reporting a second hand-off at `loc`: ports sharing one async_mmap
+  // would share its channels in software simulation, but each gets its own
+  // on hardware. The ports may belong to one task or to several.
   void MarkHandedOn(const std::string& a, clang::SourceLocation loc) {
     if (handed_on.insert(a).second) return;
     ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error, loc,
-                     "tapa::async_mmap '%0' is handed to more than one task; "
-                     "take a tapa::mmap<T> instead, which each task takes "
+                     "tapa::async_mmap '%0' is handed on more than once; "
+                     "take a tapa::mmap<T> instead, which each port takes "
                      "as its own async_mmap")
         .AddString(a);
   }
