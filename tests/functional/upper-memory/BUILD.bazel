@@ -1,0 +1,13 @@
+"""An upper task handing its whole mmaps and hmap to another, for TAPA."""
+
+load("//bazel:test_rules.bzl", "tapa_functional_test")
+
+tapa_functional_test(
+    name = "upper-memory",
+    host_srcs = glob([
+        "*.cpp",
+        "*.h",
+    ]),
+    kernel_hdrs = ["vadd.h"],
+    top_name = "Top",
+)

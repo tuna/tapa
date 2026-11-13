@@ -806,6 +806,57 @@ TEST(InvokeParser, AnMmapsRegionIsNotBoundByIndex) {
       << run.diags.front();
 }
 
+TEST(InvokeParser, AnUpperTaskHandsItsMmapsAndHmapToAnother) {
+  // Each port of the child binds the parent's port in the same place, even
+  // after the parent handed a region to a task of its own: the child hands
+  // its regions out afresh from the first.
+  constexpr char kCode[] = R"cpp(
+    void Fill(tapa::mmap<int> m) {}
+    void Mid(tapa::mmaps<int, 2> ms, tapa::hmap<int, 2, 1024> hm) {
+      tapa::task().invoke<0, 2>(Fill, ms).invoke(Fill, hm);
+    }
+    void Top(tapa::mmaps<int, 2> a, tapa::hmap<int, 2, 1024> h) {
+      tapa::task().invoke(Fill, a).invoke(Mid, a, h);
+    }
+  )cpp";
+  auto p = ParseCode(kCode, "Top");
+  const Instance& mid = p.Task("Top").instances.at("Mid").at(0);
+  ASSERT_EQ(mid.args.size(), 3u);
+  for (const auto& [port, arg] :
+       {std::pair{"ms[0]", "a[0]"}, {"ms[1]", "a[1]"}, {"hm", "h"}}) {
+    EXPECT_EQ(mid.args.at(port).arg, arg) << port;
+    EXPECT_EQ(mid.args.at(port).cat, TapaKind::kMmap) << port;
+  }
+  EXPECT_EQ(p.Task("Top").instances.at("Fill").at(0).args.at("m").arg, "a[0]");
+}
+
+TEST(InvokeParser, AnUpperTaskTakesAWholeMemoryOfItsOwnType) {
+  constexpr char kCode[] = R"cpp(
+    void Fill(tapa::mmap<int> m) {}
+    void Mid(tapa::mmaps<int, 2> ms) { tapa::task().invoke<0, 2>(Fill, ms); }
+    void Map(tapa::hmap<int, 2, 1024> hm) { tapa::task().invoke(Fill, hm); }
+    void Top(tapa::mmaps<int, 3> a, tapa::hmap<int, 2, 2048> h,
+             tapa::mmaps<int, 2> b) {
+      tapa::mmaps<int, 2> copy = b;
+      tapa::task().invoke(Mid, a).invoke(Map, h).invoke(Mid, copy).invoke(Mid, b);
+    }
+  )cpp";
+  const test_support::TreePipelineRun run = test_support::RunTreePipeline(
+      {test_support::VirtualTu{"/proj/whole_memory.cpp", kCode}}, "Top",
+      testing::TempDir() + "/whole_memory", {"-std=c++17"});
+  ASSERT_EQ(run.diags.size(), 3u) << run.json;
+  for (const auto& [diag, expected] :
+       {std::pair{run.diags[0],
+                  "'a' for task port 'ms' must name a parent "
+                  "task parameter of type 'tapa::mmaps<int, 2>'"},
+        {run.diags[1],
+         "'h' for task port 'hm' must name a parent task "
+         "parameter of type 'tapa::hmap<int, 2, 1024>'"},
+        {run.diags[2], "'copy' for task port 'ms'"}}) {
+    EXPECT_NE(diag.find(expected), std::string::npos) << diag;
+  }
+}
+
 TEST(InvokeParser, AnUpperTaskIsNotInstantiatedFromATemplate) {
   constexpr char kCode[] = R"cpp(
     template <int N>

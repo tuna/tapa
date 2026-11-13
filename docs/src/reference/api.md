@@ -263,7 +263,7 @@ See [async_mmap channels](#async_mmap-channels) below for channel details.
 
 ### `tapa::mmaps<T, N>`
 
-Array of `N` `tapa::mmap<T>` regions. Passed by value as a single argument and unpacked by the framework one region per child invocation. Only an upper task takes one: `tapa synth` rejects a leaf task's `mmaps` parameter.
+Array of `N` `tapa::mmap<T>` regions. Passed by value as a single argument and unpacked by the framework one region per child invocation. Only an upper task takes one: `tapa synth` rejects a leaf task's `mmaps` parameter. An upper task may hand its whole array to another upper task's `mmaps<T, N>` parameter of the same type, which hands its regions out afresh from the first; `tapa analyze` rejects any other array.
 
 ```cpp
 template <typename T, uint64_t N>
@@ -280,7 +280,9 @@ One buffer of `chan_count * chan_size` elements, spread over `chan_count`
 memory channels of `chan_size` elements each. Passed by value. Only an upper
 task takes one: `tapa synth` rejects a leaf task's `hmap` parameter. The upper
 task hands it to its tasks' `tapa::mmap<T>` parameters, which index the whole
-buffer from 0; element `k` lives in channel `k / chan_size`.
+buffer from 0; element `k` lives in channel `k / chan_size`. It may also hand
+it whole to another upper task's `hmap` parameter of the same type, which
+shares it with its own tasks so; `tapa analyze` rejects any other hmap.
 
 ```cpp
 template <typename T, int chan_count, int64_t chan_size>
@@ -296,7 +298,7 @@ channel. It checks the size first, in software simulation and with a
 bitstream alike (`hmap<T, 2, 1024> must have size = 2048, got ...`). The
 kernel has one M-AXI port per channel, `<name>_0` to
 `<name>_<chan_count - 1>`, behind a crossbar that every task taking the hmap
-shares. `tapa analyze` rejects a `chan_size` of 2^32 or more, and `tapa synth`
+shares, an upper task through one M-AXI port per channel of its own. `tapa analyze` rejects a `chan_size` of 2^32 or more, and `tapa synth`
 requires `chan_size * sizeof(T)` to be a power of two of at least 4096 bytes,
 the smallest channel the crossbar decodes. `tapa floorplan` rejects an hmap,
 and an AI Engine task cannot take one. `tests/apps/gemv` spreads its matrix

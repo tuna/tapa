@@ -163,7 +163,11 @@ void VecAdd(tapa::mmaps<float, M> a, tapa::mmaps<float, M> b,
 
 Only an upper-level task takes `mmaps`: each task it invokes with the array
 takes the next region as its `mmap<T>`. `tapa synth` rejects a leaf task's
-`mmaps` parameter.
+`mmaps` parameter. An upper task may also hand the whole array to another
+upper task's `mmaps<T, N>` parameter of the same type, which hands its
+regions out afresh from the first, whichever regions its parent has already
+handed out; an `hmap` passes whole to an `hmap` parameter of the same type
+alike.
 
 ---
 

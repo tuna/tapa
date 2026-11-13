@@ -604,6 +604,36 @@ void ParseInvocations(
             }
             set_arg(ArrayElement(arg_name, mmaps_pos[arg_name]++, decl_ref),
                     port, pk);
+          } else if (IsMmapArray(pk)) {
+            // An upper task hands its whole mmaps or hmap on to another
+            // upper task: each port of the child binds the parent's port in
+            // the same place, and the child hands its regions out afresh
+            // from the first, as software simulation does.
+            if (decl_ref == nullptr ||
+                !llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) ||
+                decl_ref->getDecl()->getDeclContext() != uc.task.def ||
+                !uc.ctx.hasSameUnqualifiedType(
+                    decl_ref->getType().getNonReferenceType(),
+                    param->getType().getNonReferenceType())) {
+              ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
+                               arg->getBeginLoc(),
+                               "memory argument '%0' for task port '%1' must "
+                               "name a parent task parameter of type '%2'")
+                  << arg_name << port
+                  << param->getType().getNonReferenceType().getAsString(
+                         uc.ctx.getPrintingPolicy());
+              continue;
+            }
+            if (pk == TapaKind::kHmap) {
+              set_arg(arg_name, port, TapaKind::kMmap);
+            } else {
+              const int64_t n = IntTemplateArg(param->getType(), 1).value_or(0);
+              for (int64_t j = 0; j < n; ++j) {
+                set_arg(ArrayNameAt(arg_name, static_cast<int>(j)),
+                        ArrayNameAt(port, static_cast<int>(j)),
+                        TapaKind::kMmap);
+              }
+            }
           } else if (pk == TapaKind::kIStream || pk == TapaKind::kIFrames) {
             const std::string a =
                 ArrayElement(arg_name, istreams_pos[arg_name]++, decl_ref);
