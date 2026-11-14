@@ -78,20 +78,28 @@ http_file = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_
 
 llvm = use_extension("@toolchains_llvm//toolchain/extensions:llvm.bzl", "llvm", dev_dependency = True)
 
+LLVM_VERSION_MAJOR = 23
+
+LLVM_VERSION_MINOR = 1
+
+LLVM_VERSION_PATCH = 2
+
+LLVM_VERSION = "{}.{}.{}".format(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH)
+
 # Static tools avoid optional host-library dependencies such as libxml2.
 # The matching official distribution supplies headers and compiler-rt.
 http_archive(
     name = "llvm_static_tools",
     build_file_content = 'exports_files(["BUILD.bazel"])',
     sha256 = "2808ea0503af3656373fc141ddc7d082b53c7f858efd5245aed0241734257348",
-    urls = ["https://github.com/hermeticbuild/hermetic-llvm/releases/download/llvm-23.1.2-2/llvm-toolchain-minimal-23.1.2-linux-amd64-musl.tar.zst"],
+    urls = ["https://github.com/hermeticbuild/hermetic-llvm/releases/download/llvm-{0}-2/llvm-toolchain-minimal-{0}-linux-amd64-musl.tar.zst".format(LLVM_VERSION)],
 )
 
 llvm_distribution = use_repo_rule("@toolchains_llvm//toolchain:rules.bzl", "llvm")
 
 llvm_distribution(
     name = "llvm_distribution",
-    llvm_versions = {"": "23.1.2"},
+    llvm_versions = {"": LLVM_VERSION},
 )
 
 llvm_toolchain = use_repo_rule("//bazel:llvm_toolchain.bzl", "llvm_toolchain")
@@ -121,7 +129,7 @@ vck190_sysroot(name = "vck190_sysroot")
 # under, not one release's own.
 llvm.toolchain(
     cxx_include_layout = {"linux-aarch64": "yocto"},
-    llvm_version = "23.1.2",
+    llvm_version = LLVM_VERSION,
     multiarch = {"linux-aarch64": "aarch64-amd-linux"},
     stdlib = {
         "linux-x86_64": "stdc++",
@@ -195,14 +203,6 @@ load_dependencies = use_extension(
 use_repo(load_dependencies, "ssh_key", "vitis_hls", "xsim_xv")
 
 bazel_dep(name = "libuuid", version = "2.41.2.bcr.0")
-
-LLVM_VERSION_MAJOR = 23
-
-LLVM_VERSION_MINOR = 1
-
-LLVM_VERSION_PATCH = 2
-
-LLVM_VERSION = "{}.{}.{}".format(LLVM_VERSION_MAJOR, LLVM_VERSION_MINOR, LLVM_VERSION_PATCH)
 
 LLVM_SHA256 = "c98bbef08a2b4c2613cd50e9aa9ae7b69b1fe6c16b2c40373bc0ab6116fdf78a"
 

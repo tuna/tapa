@@ -10,7 +10,7 @@ attributes.
 load("@rules_cc//cc:defs.bzl", "cc_binary")
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("@vars//:vars.bzl", "HAS_XRT", "XILINX_HW_EMU_PLATFORM")
-load("//bazel:tapa_rules.bzl", "tapa_slash_link", "tapa_xo")
+load("//bazel:tapa_rules.bzl", "DEFAULT_CLOCK_PERIOD", "tapa_slash_link", "tapa_xo")
 load("//bazel:v++_rules.bzl", "vpp_xclbin")
 
 _CARGO_RELEASE_ARTIFACTS = "//fpga-runtime:cargo_release_artifacts"
@@ -419,7 +419,7 @@ def tapa_v80_recipes(
         include = kernel_includes,
         target = "xilinx-slash",
         platform_name = "slash_v80_service",
-        clock_period = "3.33",
+        clock_period = DEFAULT_CLOCK_PERIOD,
         jobs = jobs,
         other_hls_configs = other_hls_configs,
         tags = ["manual"],

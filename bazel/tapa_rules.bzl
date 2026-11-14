@@ -64,6 +64,12 @@ _HLS_JOB_MB = 2048
 # for that outlier would serialize the whole build.
 _PACK_MB = 6144
 
+# Default HLS clock period in ns, applied when a target overrides neither
+# platform, clock period, nor part number. Exported (no underscore) so that
+# test_rules.bzl can pass the same default explicitly where a rule call
+# requires the attribute.
+DEFAULT_CLOCK_PERIOD = "3.33"
+
 def _vendor_exec_requirements(jobs, remote_host):
     """Local resource reservation for an action that forks `--jobs` Vitis HLS processes.
 
@@ -257,7 +263,7 @@ def _tapa_xo_impl(ctx):
     if ctx.attr.part_num:
         synth_cmd.extend(["--part-num", ctx.attr.part_num])
     if not ctx.attr.platform_name and not ctx.attr.clock_period and not ctx.attr.part_num:
-        synth_cmd.extend(["--part-num", XILINX_PART_NUM, "--clock-period", "3.33"])
+        synth_cmd.extend(["--part-num", XILINX_PART_NUM, "--clock-period", DEFAULT_CLOCK_PERIOD])
     if ctx.attr.other_hls_configs:
         synth_cmd.extend(["--other-hls-configs", ctx.attr.other_hls_configs])
     if ctx.attr.enable_synth_util:
@@ -407,7 +413,7 @@ _tapa_reuse_work_dir_xo = rule(
         "include": attr.label_list(allow_files = True),
         "top_name": attr.string(mandatory = True),
         "part_num": attr.string(default = XILINX_PART_NUM),
-        "clock_period": attr.string(default = "3.33"),
+        "clock_period": attr.string(default = DEFAULT_CLOCK_PERIOD),
     }),
 )
 
