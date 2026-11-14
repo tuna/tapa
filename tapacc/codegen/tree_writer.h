@@ -25,7 +25,7 @@ class SourceManager;
 
 namespace tapa::cc {
 
-// The rewritten-tree layer of the frontend: mirrors
+// The source-tree mirroring layer of the codegen: mirrors
 // the user's sources under a work directory so HLS compiles real files at
 // real relative locations, rewriting include lines only where the mirror
 // moved a file and emitting `#line` markers so diagnostics keep pointing

@@ -26,12 +26,6 @@ namespace tapa::cc {
 // range is replaced once by the rendered expansion, so invocations holding
 // no rewrite stay spelled and neighbors on the same line are untouched.
 
-// Records one TU's expanded token stream during a normal parse. Install in
-// BeginSourceFileAction (before preprocessing starts) and Consume() exactly
-// once at the top of HandleTranslationUnit: ParseAST finishes the whole
-// top-level loop -- hence the eof token consume() requires -- before handing
-// control to the consumer, so the stream is complete by then. Only the
-// rewrite pass records; the index pass never edits.
 // A `_Pragma` operator in a macro expansion. The token stream holds only
 // the tokens the parser sees, and a pragma leaves none behind, so rendering
 // an expansion from it would drop the user's vendor pragma; a splice puts
@@ -43,6 +37,12 @@ struct ExpansionPragma {
   std::optional<std::string> text;
 };
 
+// Records one TU's expanded token stream during a normal parse. Install in
+// BeginSourceFileAction (before preprocessing starts) and Consume() exactly
+// once at the top of HandleTranslationUnit: ParseAST finishes the whole
+// top-level loop -- hence the eof token consume() requires -- before handing
+// control to the consumer, so the stream is complete by then. Only the
+// rewrite pass records; the index pass never edits.
 class TokenRecorder {
  public:
   explicit TokenRecorder(clang::Preprocessor& pp);
