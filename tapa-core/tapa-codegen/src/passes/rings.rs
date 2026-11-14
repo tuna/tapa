@@ -170,7 +170,7 @@ pub(super) fn instantiate_rings(
                 .with_params(ring_params(&ring, width, plain))
                 .with_ports(ports),
         );
-        if let (Some(_), false) = (&plio, ring.input) {
+        if plio.is_some() && !ring.input {
             add_ring_count(mm, &ring, &drained);
         }
     }
