@@ -174,8 +174,8 @@ int main(int argc, const char** argv) {
                                        parser->getSourcePathList());
   BuilderActionFactory index_factory(builder, /*index_pass=*/true);
   int rc = index_tool.run(&index_factory);
-  if (rc == 0 && !builder.MergeAndDiscover()) return fail_with_errors();
   if (rc != 0) return rc;
+  if (!builder.MergeAndDiscover()) return fail_with_errors();
 
   clang::tooling::ClangTool rewrite_tool(parser->getCompilations(),
                                          parser->getSourcePathList());

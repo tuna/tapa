@@ -12,7 +12,6 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Stmt.h"
-#include "clang/AST/StmtCXX.h"
 #include "clang/Basic/SourceManager.h"
 #include "edit_sink.h"
 #include "llvm/ADT/StringRef.h"

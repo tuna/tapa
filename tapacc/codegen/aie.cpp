@@ -7,7 +7,6 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/Stmt.h"
-#include "clang/AST/StmtCXX.h"
 #include "clang/AST/TypeLoc.h"
 
 #include "frontend/diag.h"
