@@ -8,12 +8,13 @@ use crate::device::model::{Coor, Device, Resource};
 use crate::device::select::select_device;
 use crate::partition::ilp::IlpError;
 use crate::pipeline::plan::PipelineError;
+use crate::plan::{
+    plan_with_inputs_at_usage_limit_and_caps, EXACT_DSE_CAP_SCALE,
+    MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
+};
 use crate::route::ilp::RouteError;
 use crate::ExactInt;
-use crate::{
-    plan_with_inputs_at_usage_limit_and_caps, ExactDseResourceCaps, PlanError, PlanInputs,
-    PlanOptions, EXACT_DSE_CAP_SCALE, MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
-};
+use crate::{ExactDseResourceCaps, PlanError, PlanInputs, PlanOptions};
 
 const ADAPTIVE_MARGIN: u32 = EXACT_DSE_CAP_SCALE / 100;
 

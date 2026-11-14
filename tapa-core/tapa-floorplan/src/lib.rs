@@ -45,11 +45,6 @@ pub use crate::plan::{
 #[doc(hidden)]
 pub use crate::plan::fingerprint::fingerprint_plan_models_json;
 
-pub(crate) use crate::plan::{
-    plan_with_inputs_at_usage_limit_and_caps, EXACT_DSE_CAP_SCALE,
-    MULTILEVEL_BLOCK_RESOURCE_MARGIN_UNITS,
-};
-
 /// Widening conversion of the small exact integers the formulations scale
 /// into `f64` solver coefficients.
 ///
