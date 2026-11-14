@@ -33,10 +33,10 @@ const FIFO_INFIXES: &[&str] = &["_V", "_r", "_s", ""];
 pub use tapa_ir::port::{sanitize_array_name, sanitize_identifier_name};
 
 impl VerilogModule {
-    /// Parse a Verilog module header from source text.
+    /// Parse a Verilog module from source text, extracting ports,
+    /// parameters, and body signal declarations.
     pub fn parse(source: &str) -> Result<Self, ParseError> {
-        let trimmed = source.trim();
-        if trimmed.is_empty() {
+        if source.trim().is_empty() {
             return Err(ParseError::EmptyInput);
         }
         parser::parse_module(source)

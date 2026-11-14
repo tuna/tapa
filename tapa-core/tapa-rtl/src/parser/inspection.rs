@@ -123,7 +123,8 @@ pub fn unconditionally_zero_driven_names(source: &str) -> BTreeSet<String> {
     let mut cursor = QueryCursor::new();
     let mut matches = cursor.matches(&Q_DRIVER_USES, module, src);
     while let Some(found) = matches.next() {
-        let lhs = found.captures()[0].node;
+        let capture = found.captures()[0];
+        let lhs = capture.node;
         if matches!(
             lhs.kind(),
             "net_decl_assignment" | "variable_decl_assignment"
@@ -131,9 +132,8 @@ pub fn unconditionally_zero_driven_names(source: &str) -> BTreeSet<String> {
         {
             continue;
         }
-        let proven_name = (found.captures()[0].index == 0
-            && is_module_zero_assignment(lhs, module, src))
-        .then(|| text_of(lhs, src));
+        let proven_name = (capture.index == 0 && is_module_zero_assignment(lhs, module, src))
+            .then(|| text_of(lhs, src));
         record_identifiers(lhs, src, proven_name, &mut names);
     }
     names
@@ -154,13 +154,9 @@ fn is_declaration_prefix(node: Node, src: &[u8]) -> bool {
         | "one_line_comment"
         | "block_comment" => true,
         "net_declaration" | "data_declaration" => signal_kind_of(node, src).is_some(),
-        "module_item" => {
-            let mut cursor = node.walk();
-            let is_prefix = node
-                .named_children(&mut cursor)
-                .all(|child| is_declaration_prefix(child, src));
-            is_prefix
-        }
+        "module_item" => node
+            .named_children(&mut node.walk())
+            .all(|child| is_declaration_prefix(child, src)),
         _ => false,
     }
 }

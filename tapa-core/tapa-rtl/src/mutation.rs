@@ -98,8 +98,10 @@ impl MutableModule {
     /// the trailing source after the first module, using parser-derived
     /// boundaries, independently of line formatting.
     pub fn from_parsed(module: VerilogModule) -> Self {
-        let (body_text, trailing_text) = crate::parser::original_module_text(&module.source);
-        let (body_text, trailing_text) = (body_text.to_owned(), trailing_text.to_owned());
+        let (body_text, trailing_text) = {
+            let (body, trailing) = crate::parser::original_module_text(&module.source);
+            (body.to_owned(), trailing.to_owned())
+        };
         Self {
             inner: module,
             body_text,

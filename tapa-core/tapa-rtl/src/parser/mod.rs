@@ -16,10 +16,6 @@ pub use inspection::{original_module_text, unconditionally_zero_driven_names};
 /// Parse a TAPA-generated Verilog module, extracting all interface elements.
 pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
     let or_unknown = |name: Option<String>| name.unwrap_or_else(|| "<unknown>".to_owned());
-    let header_failed = |name| ParseError::ParseFailed {
-        module: or_unknown(name),
-        message: "module header: tree-sitter failed to extract header".to_string(),
-    };
 
     let info = match tree_sitter::parse_module_info(source)? {
         tree_sitter::ModuleParse::Ok(info) => *info,
@@ -37,7 +33,12 @@ pub fn parse_module(source: &str) -> Result<VerilogModule, ParseError> {
             });
         }
         tree_sitter::ModuleParse::NoModule => return Err(ParseError::NoModuleFound),
-        tree_sitter::ModuleParse::HeaderFailed { name } => return Err(header_failed(name)),
+        tree_sitter::ModuleParse::HeaderFailed { name } => {
+            return Err(ParseError::ParseFailed {
+                module: or_unknown(name),
+                message: "module header: tree-sitter failed to extract header".to_string(),
+            });
+        }
     };
 
     // Verify all header-listed ports have declarations.
