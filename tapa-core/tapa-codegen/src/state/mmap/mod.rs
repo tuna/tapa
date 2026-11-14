@@ -29,24 +29,21 @@ fn validate_mmap_channel_geometry(
     child_port_name: &str,
     child: &IrPort,
 ) -> Result<(), CodegenError> {
-    match (parent.chan_count, child.chan_count) {
-        (Some(parent_count), Some(child_count)) if parent_count != child_count => {
-            return Err(CodegenError::InvalidMmapConnection(format!(
-                "mmap channel-count mismatch: `{parent_task_name}.{parent_port_name}` declares \
-                 {parent_count}, but `{child_task_name}.{child_port_name}` declares {child_count}",
-            )));
+    let check = |field: &str, parent_value: Option<u32>, child_value: Option<u32>| match (
+        parent_value,
+        child_value,
+    ) {
+        (Some(parent_value), Some(child_value)) if parent_value != child_value => {
+            Err(CodegenError::InvalidMmapConnection(format!(
+                "mmap channel-{field} mismatch: \
+                     `{parent_task_name}.{parent_port_name}` declares {parent_value}, but \
+                     `{child_task_name}.{child_port_name}` declares {child_value}",
+            )))
         }
-        _ => {}
-    }
-    match (parent.chan_size, child.chan_size) {
-        (Some(parent_size), Some(child_size)) if parent_size != child_size => {
-            return Err(CodegenError::InvalidMmapConnection(format!(
-                "mmap channel-size mismatch: `{parent_task_name}.{parent_port_name}` declares \
-                 {parent_size}, but `{child_task_name}.{child_port_name}` declares {child_size}",
-            )));
-        }
-        _ => {}
-    }
+        _ => Ok(()),
+    };
+    check("count", parent.chan_count, child.chan_count)?;
+    check("size", parent.chan_size, child.chan_size)?;
     Ok(())
 }
 
