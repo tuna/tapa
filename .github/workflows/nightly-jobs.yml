@@ -41,9 +41,12 @@ jobs:
         uses: lycheeverse/lychee-action@v2
         with:
           # The local mdBook server URL in the build guide is not live here.
+          # 403 = bot-blocked (ACM, doi.org), 429 = rate-limited (Wikimedia);
+          # both mean the link was followed to a live host.
           args: >-
             --no-progress
             --exclude localhost
+            --accept 403,429
             --max-retries 3
             'README.md'
             './docs/src/**/*.md'
