@@ -18,7 +18,7 @@ class ScopedSetEnv {
   explicit ScopedSetEnv(std::string_view name, const char* value)
       : name_(name) {
     if (const char* old_value = getenv(name_.c_str()); old_value != nullptr) {
-      old_value_ = strdup(old_value);
+      old_value_ = old_value;
     }
     SetValue(value);
   }
