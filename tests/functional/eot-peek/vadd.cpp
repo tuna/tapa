@@ -12,17 +12,18 @@ void Add(tapa::istream<float>& a, tapa::istream<float>& b,
   bool eot_b;
   bool valid_a, valid_b;
   while (1) {
-    if (a.empty() || b.empty() || c.full()) {
-      continue;
-    }
+    // peek() already reports empty queues as invalid, so no explicit
+    // empty() guard; keep the loop body a single conditional like eot's,
+    // whose post-loop open() the 2024.2 Xilinx flow schedules correctly.
     a.peek(valid_a, eot_a);
     b.peek(valid_b, eot_b);
-    if (eot_a && eot_b) {
-      break;
+    if (valid_a && valid_b && !c.full()) {
+      if (eot_a && eot_b) {
+        break;
+      }
+      assert(!eot_a && !eot_b);
+      c << (a.read() + b.read());
     }
-    assert(!eot_a && !eot_b);
-    assert(valid_a && valid_b);
-    c << (a.read() + b.read());
   }
   a.open();
   b.open();
