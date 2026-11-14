@@ -20,7 +20,7 @@ pub unsafe extern "C" fn tapa_axi_memory(port: *const ::libc::c_char, size: *mut
     let port = unsafe { frt_dpi::c_port_str(port) };
     // SAFETY: the caller passes a writable `u64`.
     let size = unsafe { &mut *size };
-    frt_dpi::ctrl::axi_memory_impl(frt_dpi::get_or_init(), port, size)
+    frt_dpi::axi::axi_memory_impl(frt_dpi::get_or_init(), port, size)
 }
 
 // Floating-point DPI support for Xilinx IP behavioral models.

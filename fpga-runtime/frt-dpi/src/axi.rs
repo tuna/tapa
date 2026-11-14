@@ -1,6 +1,17 @@
 use crate::context::DpiContext;
 use frt_shm::MmapSegment;
 
+/// The memory of the mmap argument `port`, mapped from the host's segment,
+/// and its size in `size`; null when there is none.
+pub fn axi_memory_impl(ctx: &DpiContext, port: &str, size: &mut u64) -> *mut u8 {
+    let Some((segment, _)) = ctx.buffers.get(port) else {
+        *size = 0;
+        return std::ptr::null_mut();
+    };
+    *size = segment.as_slice().len() as u64;
+    segment.shared_ptr()
+}
+
 /// Resolve `(segment, byte offset)` for `addr` on `port`, reporting `op`'s
 /// failure mode and returning None.
 fn resolve_span<'c>(
