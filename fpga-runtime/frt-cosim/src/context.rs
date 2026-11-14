@@ -196,7 +196,6 @@ impl CosimContext {
 mod tests {
     use super::*;
     use crate::metadata::{ArgSpec, Mode, StreamDir};
-    use std::collections::HashMap;
 
     fn make_spec() -> KernelSpec {
         KernelSpec {
