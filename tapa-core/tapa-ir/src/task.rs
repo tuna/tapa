@@ -100,8 +100,8 @@ pub struct Task {
     )]
     pub self_area: Option<Area>,
     /// This task's area including every instantiated descendant. Post-
-    /// synthesis; `None` until out-of-context synthesis measures it, in
-    /// which case consumers derive it from `self_area` instead.
+    /// synthesis; `None` until out-of-context synthesis measures it, and
+    /// while `None` consumers derive it from `self_area` instead.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
