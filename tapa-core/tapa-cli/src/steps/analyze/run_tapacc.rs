@@ -7,7 +7,7 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use crate::error::{CliError, Result};
 use crate::tapacc::{TAPACC_HLS_SHIM, TAPACC_HLS_SHIM_FILE};
@@ -52,8 +52,6 @@ pub(super) fn run_tapacc(
     cmd.arg("-include");
     cmd.arg(&shim);
     cmd.args(["-DTAPA_TARGET_DEVICE_", "-DTAPA_TARGET_STUB_"]);
-    cmd.stdout(Stdio::piped());
-    cmd.stderr(Stdio::piped());
     let output = cmd.output().map_err(|e| CliError::TapaccNotExecutable {
         path: tapacc.to_path_buf(),
         reason: e.to_string(),

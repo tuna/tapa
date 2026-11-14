@@ -18,7 +18,7 @@ use crate::steps::{analyze, pack, synth};
 //
 // No flag conflicts among analyze / synth / pack so we flatten directly.
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "compile",
     about = "Compile a TAPA program to a hardware design (analyze + synth + pack)."

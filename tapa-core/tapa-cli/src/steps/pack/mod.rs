@@ -32,7 +32,7 @@ use cosim_metadata::stamp_cosim_port_metadata;
 use custom_rtl::{apply_custom_rtl, load_templates_info, warn_unimplemented_templates};
 use vitis_packaging::{pack_slash, pack_vitis};
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "pack",
     about = "Pack the generated RTL into an `.xo` or `.zip` package."

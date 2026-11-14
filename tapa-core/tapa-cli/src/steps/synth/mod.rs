@@ -55,7 +55,7 @@ fn resolve_worker_count(jobs: Option<u32>, work_count: usize) -> usize {
     desired.min(work_count.max(1))
 }
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
 #[command(name = "synth", about = "Synthesize the TAPA program into RTL code.")]
 #[allow(
     clippy::struct_excessive_bools,

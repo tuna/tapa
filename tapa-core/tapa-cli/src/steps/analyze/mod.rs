@@ -140,7 +140,7 @@ impl From<AnalyzeTarget> for tapa_ir::Target {
     }
 }
 
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
 #[command(
     name = "analyze",
     about = "Analyze TAPA program and store the program description."

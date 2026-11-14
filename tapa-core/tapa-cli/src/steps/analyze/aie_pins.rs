@@ -4,7 +4,7 @@
 //! them.
 
 use tapa_ir::task::AieLocation;
-use tapa_ir::{ArgCategory, Graph, SynthTarget, Task, TaskLevel};
+use tapa_ir::{Graph, SynthTarget, Task, TaskLevel};
 
 use crate::error::{CliError, Result};
 
@@ -82,16 +82,7 @@ pub fn apply(graph: &mut Graph, locations: &[AieLocationArg], plios: &[AiePlioAr
         let port = task
             .ports
             .iter_mut()
-            .find(|port| {
-                port.name == plio.port
-                    && matches!(
-                        port.cat,
-                        ArgCategory::Istream
-                            | ArgCategory::Ostream
-                            | ArgCategory::Iframes
-                            | ArgCategory::Oframes
-                    )
-            })
+            .find(|port| port.name == plio.port && port.cat.is_stream())
             .ok_or_else(|| {
                 CliError::InvalidArg(format!(
                     "`{flag}` names no single stream port of `{}`",
@@ -120,7 +111,7 @@ fn aie_task<'g>(graph: &'g mut Graph, name: &str, flag: &str) -> Result<&'g mut 
 mod tests {
     use std::collections::BTreeMap;
 
-    use tapa_ir::Target;
+    use tapa_ir::{ArgCategory, Target};
 
     use super::*;
     use crate::testutil::{port, task};

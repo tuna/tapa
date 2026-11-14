@@ -24,7 +24,7 @@ pub struct Cli {
 }
 
 /// Global flags accepted before any subcommand.
-#[derive(Debug, Clone, Parser)]
+#[derive(Debug, Parser)]
 pub struct GlobalArgs {
     /// Increase logging verbosity.
     #[arg(short = 'v', long = "verbose", action = clap::ArgAction::Count)]

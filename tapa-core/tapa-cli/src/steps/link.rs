@@ -185,13 +185,7 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
             }
             require_extension(&args.package, "xo", "Vitis package")?;
             require_extension(&args.output, "xclbin", "Vitis link output")?;
-            let platform = state.flow.platform.clone().ok_or_else(|| {
-                CliError::InvalidArg(
-                    "Vitis link requires a platform in the packaged flow state; rerun `tapa synth \
-                     --platform`"
-                        .into(),
-                )
-            })?;
+            let platform = vitis_platform(state)?;
             let artifacts = link_work.join("artifacts");
             // A platform installed elsewhere, as for a remote runner, is
             // left to v++ to judge.
@@ -250,6 +244,17 @@ fn plan_link(args: &LinkArgs, work_dir: &Path, state: &WorkState) -> Result<Link
     }
 }
 
+/// The platform persisted by `tapa synth`, which every Vitis link needs.
+fn vitis_platform(state: &WorkState) -> Result<String> {
+    state.flow.platform.clone().ok_or_else(|| {
+        CliError::InvalidArg(
+            "Vitis link requires a platform in the packaged flow state; rerun `tapa synth \
+             --platform`"
+                .into(),
+        )
+    })
+}
+
 /// The link of a top on the AI Engine, whose package is a `.zip`.
 fn plan_aie_link(
     args: &LinkArgs,
@@ -266,13 +271,7 @@ fn plan_aie_link(
         )));
     }
     require_extension(&args.output, "xclbin", "Vitis link output")?;
-    let platform = state.flow.platform.clone().ok_or_else(|| {
-        CliError::InvalidArg(
-            "Vitis link requires a platform in the packaged flow state; rerun `tapa synth \
-             --platform`"
-                .into(),
-        )
-    })?;
+    let platform = vitis_platform(state)?;
     Ok(LinkPlan::Aie(
         AieLinkJob::builder()
             .platform(platform)

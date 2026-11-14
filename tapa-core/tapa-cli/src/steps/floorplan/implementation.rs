@@ -368,7 +368,7 @@ fn try_implement_one(
             candidate.index,
             target.platform,
         );
-        let _config = connectivity.ok_or_else(|| {
+        connectivity.ok_or_else(|| {
             CliError::InvalidArg(
                 "V80 SLASH implementation requires floorplan connectivity".to_string(),
             )
