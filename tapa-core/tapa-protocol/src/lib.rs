@@ -3,6 +3,8 @@
 //! Single source of truth for handshake, stream, FIFO, and M-AXI naming
 //! conventions shared across the TAPA toolchain.
 
+use std::collections::BTreeMap;
+
 // ── Handshake port names ────────────────────────────────────────────
 
 pub const HANDSHAKE_CLK: &str = "ap_clk";
@@ -166,8 +168,8 @@ pub const S_AXI_LITE_CTRL_PORTS: &[&str] = &[
 /// hand-written slaves) `localparam ADDR_<NAME>_0 = 8'h10;`. A slave with
 /// neither falls back to the `// 0x10 : Data signal of <name>` comments.
 #[must_use]
-pub fn control_register_offsets(verilog: &str) -> std::collections::BTreeMap<String, u32> {
-    let mut map = std::collections::BTreeMap::new();
+pub fn control_register_offsets(verilog: &str) -> BTreeMap<String, u32> {
+    let mut map = BTreeMap::new();
     for line in verilog.lines() {
         let line = line.trim_start();
         let rest = line.strip_prefix("localparam").unwrap_or(line);
@@ -258,7 +260,8 @@ pub fn axi_subport_from_suffix(suffix: &str) -> &str {
         .unwrap_or(s)
 }
 
-/// Direction: `"output"` means the master drives the signal.
+/// Port direction as seen by the emitting module: `"output"` means the
+/// emitting module drives the signal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PortDir {
     Input,
