@@ -17,8 +17,8 @@
 //!      and is strictly newer than it was before, and records its
 //!      settings.
 //!   3. Parses the hierarchical utilization `.rpt` via
-//!      [`parse_utilization_rpt`] and updates the task's `total_area`
-//!      dict with the formula:
+//!      [`parse_utilization_rpt`] and updates the task's typed
+//!      `total_area` (`Option<tapa_ir::Area>`) with the formula:
 //!      `BRAM_18K = RAMB36*2 + RAMB18`, `DSP = "DSP Blocks"`,
 //!      `FF = FFs`, `LUT = "Total LUTs"`, `URAM = URAM`.
 //!
@@ -59,7 +59,7 @@ fn render_report_util_tcl(part_num: &str, synth_args: &str, report_util_args: &s
 
 /// Drive per-task out-of-context Vivado synthesis against
 /// `<work_dir>/rtl` and fold each hierarchical utilization result into
-/// the corresponding task's `total_area` map.
+/// the corresponding task's `total_area`.
 pub(super) fn emit_post_synth_util(
     work_dir: &Path,
     design: &mut Design,
@@ -286,8 +286,8 @@ fn build_report_util_tcl(module_name: &str, part_num: &str) -> String {
 /// - `LUT      = "Total LUTs"`
 /// - `URAM     = URAM`
 ///
-/// Missing or non-integer cells become `0`, keeping the area map
-/// well-formed. An instance absent from `design.tasks` is ignored; the
+/// Missing or non-integer cells become `0`, so the typed `Area` is fully
+/// populated. An instance absent from `design.tasks` is ignored; the
 /// report's top row normally names the `-top` module passed to Vivado.
 fn apply_total_area(design: &mut Design, util: &UtilizationReport) {
     let Some(task) = design.tasks.get_mut(&util.instance) else {

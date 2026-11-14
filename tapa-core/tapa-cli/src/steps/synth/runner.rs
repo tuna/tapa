@@ -293,10 +293,6 @@ fn build_aie(
 
 /// Say whether HLS met the requested clock period, and if not, which task
 /// was worst.
-///
-/// Frequency is the headline property of a TAPA design, but until now the
-/// only place the achieved estimate appeared was `report.json` — a design
-/// could miss its target by 2× and `tapa synth` would print nothing at all.
 fn report_timing_summary(target: ClockPeriod, graph: &tapa_ir::TaskGraph) {
     let Some((worst_task, worst)) = graph
         .tasks

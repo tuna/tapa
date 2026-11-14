@@ -1,9 +1,11 @@
-//! Vitis (`xilinx-vitis`) packaging path for `tapa pack`.
+//! Packer implementations for `tapa pack`, shared by every target.
 //!
-//! Holds [`pack_vitis`] which projects the top task's external ports
-//! into a [`PackageXoInputs`] block and drives `tapa_xilinx::pack_xo`
-//! against `<work_dir>/rtl` to produce the `.xo`. The runner picks
-//! between local and remote dispatch based on `ctx.remote_config`.
+//! [`pack_vitis`] projects the top task's external ports into a
+//! [`PackageXoInputs`] block and drives `tapa_xilinx::pack_xo` against
+//! `<work_dir>/rtl` to produce the `.xo`; a top on the AI Engine packs no
+//! PL kernel and gets a `.zip` of the compiled graph ([`pack_aie_zip`]),
+//! and the SLASH target packs its own `.zip` ([`pack_slash`]). The runner
+//! picks between local and remote dispatch based on `ctx.remote_config`.
 //!
 //! The `--custom-rtl` overlay applied before Vivado scans `rtl_dir` is
 //! [`super::apply_pack_overlays`], shared with the other pack flows.

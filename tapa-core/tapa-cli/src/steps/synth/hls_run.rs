@@ -66,8 +66,7 @@ pub struct HlsRunOptions {
 /// Run HLS for every task that targets HLS — **all** tasks
 /// (not just leaves) — the upper-task shell is needed by codegen so
 /// the parent module's port surface is parseable. Tasks whose
-/// `target == "ignore"` are skipped (promotes them to
-/// `gen_templates`).
+/// `synth` field is `SynthTarget::Ignore` are skipped.
 pub fn run_hls_for_tasks(
     runner: &dyn ToolRunner,
     work_dir: &Path,
