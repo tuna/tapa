@@ -15,7 +15,7 @@
 
 mod common;
 
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 
 use camino::Utf8PathBuf;
@@ -69,27 +69,12 @@ fn control_master_lifecycle() {
     //    still on disk. This emulates the production failure mode
     //    (master killed, socket evicted).
     let ctrl_dir = session.control_dir();
-    let exit_status = {
-        // Use the same ssh argv the session would.
-        let mut args = Vec::new();
-        args.push("-o".into());
-        args.push("BatchMode=yes".into());
-        args.push("-o".into());
-        args.push(format!("ControlPath={}/cm-%C", ctrl_dir.as_str()));
-        args.push("-O".into());
-        args.push("exit".into());
-        args.push(format!(
-            "{}@{}",
-            session.config().user,
-            session.config().host
-        ));
-        Command::new("ssh")
-            .args(&args)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-    };
-    let _ = exit_status; // may or may not succeed depending on race
+    // Use the same ssh argv the session would.
+    let _ = session
+        .control_cmd("exit")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status(); // may or may not succeed depending on race
     for s in existing_control_sockets(&ctrl_dir) {
         std::fs::remove_file(&s).expect("unlink control socket must succeed");
         assert!(!s.exists(), "socket still present: {}", s.as_str());
@@ -134,21 +119,11 @@ fn schedule_mux_teardown(session: Arc<SshSession>, delay_ms: u64) -> std::thread
     std::thread::spawn(move || {
         std::thread::sleep(std::time::Duration::from_millis(delay_ms));
         let ctrl_dir = session.control_dir();
-        let mut args = vec![
-            "-o".into(),
-            "BatchMode=yes".into(),
-            "-o".into(),
-            format!("ControlPath={}/cm-%C", ctrl_dir.as_str()),
-            "-O".into(),
-            "exit".into(),
-            format!("{}@{}", session.config().user, session.config().host),
-        ];
-        let _ = std::process::Command::new("ssh")
-            .args(&args)
+        let _ = session
+            .control_cmd("exit")
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
-        args.clear();
         for s in existing_control_sockets(&ctrl_dir) {
             let _ = std::fs::remove_file(s);
         }
@@ -164,7 +139,7 @@ fn control_master_retry_branch_mid_transfer() {
     // the transfer pipeline time to begin uploading before the mux
     // breaks. The deterministic proof of the retry logic lives in
     // the `mux_retry_*` unit tests in
-    // `tapa-xilinx/src/runtime/remote.rs`; this integration serves
+    // `tapa-xilinx/src/runtime/remote/mod.rs`; this integration serves
     // as the live-host counterpart.
     let Some(cfg) = common::has_remote_config() else {
         eprintln!("integration_remote: no REMOTE_HOST; skipping mid-transfer retry test");
@@ -258,20 +233,8 @@ fn control_master_restart_during_transfer() {
     // in-runner retry must survive this during upload + exec +
     // download.
     let ctrl_dir = session.control_dir();
-    let mut args = Vec::new();
-    args.push("-o".into());
-    args.push("BatchMode=yes".into());
-    args.push("-o".into());
-    args.push(format!("ControlPath={}/cm-%C", ctrl_dir.as_str()));
-    args.push("-O".into());
-    args.push("exit".into());
-    args.push(format!(
-        "{}@{}",
-        session.config().user,
-        session.config().host
-    ));
-    let _ = std::process::Command::new("ssh")
-        .args(&args)
+    let _ = session
+        .control_cmd("exit")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status();
