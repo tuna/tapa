@@ -200,8 +200,7 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kHmap:
         ports.push_back(Port{name, kind, elem + "*", elem_width,
                              IntArg(ctx, param, 1, "chan_count"),
-                             IntArg(ctx, param, 2, "chan_size"), std::nullopt,
-                             std::nullopt, std::nullopt, std::nullopt});
+                             IntArg(ctx, param, 2, "chan_size")});
         break;
 
       case TapaKind::kIStream:
@@ -212,17 +211,15 @@ std::vector<Port> BuildPorts(const clang::ASTContext& ctx,
       case TapaKind::kIStreams:
       case TapaKind::kOStreams:
         ports.push_back(Port{name, kind, elem, elem_width,
-                             IntArg(ctx, param, 1, "channel count"),
-                             std::nullopt, std::nullopt, std::nullopt,
-                             std::nullopt, std::nullopt});
+                             IntArg(ctx, param, 1, "channel count")});
         break;
 
       // The frame size is the type's; ReadFrameAttrs checks the rest.
       case TapaKind::kIFrames:
       case TapaKind::kOFrames:
         ports.push_back(Port{name, kind, elem, elem_width, std::nullopt,
-                             std::nullopt, IntArg(ctx, param, 1, "frame size"),
-                             std::nullopt, std::nullopt, std::nullopt});
+                             std::nullopt,
+                             IntArg(ctx, param, 1, "frame size")});
         break;
 
       default:

@@ -9,7 +9,6 @@
 #include <utility>
 #include <vector>
 
-#include "clang/AST/Attr.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"

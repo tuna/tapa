@@ -177,10 +177,7 @@ std::map<std::string, StreamDecl>::iterator FindOrExternalStream(
     TaskModel& task, const std::string& arg, bool is_top) {
   auto it = task.streams.find(arg);
   if (it == task.streams.end() && is_top && IsStreamPortArg(task, arg)) {
-    it = task.streams
-             .emplace(arg, StreamDecl{std::nullopt, nullptr, std::nullopt,
-                                      std::nullopt})
-             .first;
+    it = task.streams.emplace(arg, StreamDecl{}).first;
   }
   return it;
 }
@@ -403,15 +400,13 @@ void CollectStreamDecls(UpperTaskContext& uc, const clang::FunctionDecl* func) {
       };
       switch (ClassifyTapaType(var->getType())) {
         case TapaKind::kStream:
-          uc.task.streams[name] =
-              StreamDecl{depth_of(1), var, std::nullopt, std::nullopt};
+          uc.task.streams[name] = StreamDecl{depth_of(1), var};
           break;
         case TapaKind::kStreams: {
           const uint64_t depth = depth_of(2);
           const int64_t n = IntTemplateArg(var->getType(), 1).value_or(0);
           for (int64_t i = 0; i < n; ++i) {
-            uc.task.streams[ArrayNameAt(name, i)] =
-                StreamDecl{depth, var, std::nullopt, std::nullopt};
+            uc.task.streams[ArrayNameAt(name, i)] = StreamDecl{depth, var};
           }
           break;
         }
@@ -443,9 +438,10 @@ void ParseInvocations(
   uint32_t position = 0;
 
   for (const clang::CXXMemberCallExpr* invoke : GetInvokes(task_obj)) {
+    const clang::FunctionDecl* task_fn = InvokeCallee(invoke);
     // The graph instantiates a task by its function; a callable reached
     // any other way would silently drop out of it.
-    if (invoke->getNumArgs() == 0 || InvokeCallee(invoke) == nullptr) {
+    if (invoke->getNumArgs() == 0 || task_fn == nullptr) {
       const clang::Expr* what =
           invoke->getNumArgs() == 0 ? invoke : invoke->getArg(0);
       ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
@@ -457,29 +453,28 @@ void ParseInvocations(
     }
     // `invoke` forwards its arguments to the task through a function
     // reference, which applies no default argument: one per parameter.
-    if (const unsigned params = InvokeCallee(invoke)->getNumParams(),
+    if (const unsigned params = task_fn->getNumParams(),
         bound = static_cast<unsigned>(InvokePortArgs(invoke).size());
         bound != params) {
       ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Error,
                        invoke->getArg(0)->getBeginLoc(),
                        "invoke binds %0 port arguments to task '%1', which "
                        "has %2 parameters; bind every parameter once")
-          << std::to_string(bound) << InvokeCallee(invoke)->getNameAsString()
+          << std::to_string(bound) << task_fn->getNameAsString()
           << std::to_string(params);
       continue;
     }
     const InvokeMode mode = GetInvokeMode(invoke);
     // Hardware starts a detached task once per invocation of its parent, so
     // one that returns does not keep running.
-    if (mode.step < 0 && returning_pl_leaf(InvokeCallee(invoke))) {
+    if (mode.step < 0 && returning_pl_leaf(task_fn)) {
       ReportCustomDiag(uc.ctx, clang::DiagnosticsEngine::Warning,
                        invoke->getArg(0)->getBeginLoc(),
                        "detached task '%0' can return: in hardware it runs "
                        "once per invocation of '%1', which does not wait for "
                        "it to finish; a task meant to run continuously must "
                        "never return")
-          << InvokeCallee(invoke)->getNameAsString()
-          << uc.task.def->getNameAsString();
+          << task_fn->getNameAsString() << uc.task.def->getNameAsString();
     }
     bool has_executable = false;
     std::string task_name;
@@ -610,9 +605,7 @@ void ParseInvocations(
                   << arg_name << port;
               continue;
             }
-            if (decl_ref != nullptr &&
-                llvm::isa<clang::ParmVarDecl>(decl_ref->getDecl()) &&
-                ClassifyTapaType(decl_ref->getType()) == TapaKind::kAsyncMmap) {
+            if (ClassifyTapaType(decl_ref->getType()) == TapaKind::kAsyncMmap) {
               uc.MarkHandedOn(arg_name, arg->getBeginLoc());
             }
             set_arg(ArrayElement(arg_name, mmaps_pos[arg_name]++, decl_ref),

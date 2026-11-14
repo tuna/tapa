@@ -3,7 +3,7 @@
 #include "clang/AST/DeclTemplate.h"
 #include "llvm/ADT/StringSwitch.h"
 
-#include "frontend/type_args.h"
+#include "type_args.h"
 
 namespace tapa::cc {
 

@@ -93,8 +93,8 @@ struct Endpoint {
 struct StreamDecl {
   std::optional<uint64_t> depth;
   const clang::VarDecl* decl = nullptr;
-  std::optional<Endpoint> produced_by;
-  std::optional<Endpoint> consumed_by;
+  std::optional<Endpoint> produced_by = std::nullopt;
+  std::optional<Endpoint> consumed_by = std::nullopt;
 };
 
 // The typed model of one TAPA task. Built by the frontend with no source
@@ -151,9 +151,6 @@ inline std::string ArrayBaseName(std::string_view name) {
   return std::string(name.substr(0, name.find('[')));
 }
 
-// The whole program: the top-level task name, the ordered list of global
-// functions defined in the main file (drives codegen's per-task file assembly),
-// and every TAPA task reachable from the top, keyed by name.
 // A PL task tapacc adds to serve one direction of an AI Engine task's
 // async_mmap port: a variant calling `tapa::internal::serve_reads` or
 // `serve_writes` (tapa/base/mover.h), spliced right after the AI Engine
@@ -166,6 +163,9 @@ struct Mover {
   const clang::FunctionDecl* after = nullptr;
 };
 
+// The whole program: the top-level task name, the ordered list of global
+// functions defined in the main file (drives codegen's per-task file assembly),
+// and every TAPA task reachable from the top, keyed by name.
 struct Program {
   std::string top;
   std::vector<const clang::FunctionDecl*> file_funcs;

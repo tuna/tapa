@@ -6,7 +6,6 @@
 // otherwise the TUs are independent virtual files. The pipeline harness is
 // codegen/tree_pipeline.h.
 
-#include <algorithm>
 #include <cstdint>
 #include <optional>
 #include <string>
