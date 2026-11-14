@@ -183,14 +183,7 @@ pub fn flatten_with_origins(graph: &TaskGraph) -> Result<FlatProjection, Transfo
 
     // Endpoints resolve only once every instantiation's argument
     // bindings are final.
-    for (fifo_name, fifo) in &mut collected.fifos {
-        if fifo.consumed_by.is_some() {
-            fifo.consumed_by = find_endpoint(&collected.leaves, fifo_name, EndpointRole::Consumer);
-        }
-        if fifo.produced_by.is_some() {
-            fifo.produced_by = find_endpoint(&collected.leaves, fifo_name, EndpointRole::Producer);
-        }
-    }
+    backfill_endpoints(&collected.leaves, &mut collected.fifos);
 
     let mut new_tasks = BTreeMap::new();
     for child_name in collected.leaves.keys() {
@@ -256,7 +249,7 @@ pub(crate) fn inline_uppers(
     }) {
         inline_into(&mut out, &parent, &child)?;
     }
-    let mut invoked = std::collections::BTreeSet::from([out.top.clone()]);
+    let mut invoked = BTreeSet::from([out.top.clone()]);
     let mut work = vec![out.top.clone()];
     while let Some(name) = work.pop() {
         for child in out
@@ -361,14 +354,7 @@ fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), T
         }
     }
     let instances = owner.tasks.clone();
-    for (name, fifo) in &mut owner.fifos {
-        if fifo.produced_by.is_some() {
-            fifo.produced_by = find_endpoint(&instances, name, EndpointRole::Producer);
-        }
-        if fifo.consumed_by.is_some() {
-            fifo.consumed_by = find_endpoint(&instances, name, EndpointRole::Consumer);
-        }
-    }
+    backfill_endpoints(&instances, &mut owner.fifos);
     Ok(())
 }
 
@@ -582,6 +568,24 @@ impl EndpointRole {
         match self {
             Self::Consumer => cat.is_input_stream(),
             Self::Producer => cat.is_output_stream(),
+        }
+    }
+}
+
+/// Re-resolves the endpoints of every FIFO in `fifos` against
+/// `instances`, keeping each side's `Some`/`None` presence: the actual
+/// endpoint is known only once the instantiations' argument bindings
+/// are final.
+fn backfill_endpoints(
+    instances: &BTreeMap<String, Vec<TaskInstance>>,
+    fifos: &mut BTreeMap<String, InterconnectDefinition>,
+) {
+    for (name, fifo) in fifos {
+        if fifo.produced_by.is_some() {
+            fifo.produced_by = find_endpoint(instances, name, EndpointRole::Producer);
+        }
+        if fifo.consumed_by.is_some() {
+            fifo.consumed_by = find_endpoint(instances, name, EndpointRole::Consumer);
         }
     }
 }

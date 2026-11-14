@@ -16,13 +16,13 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::instance::{ArgSource, WireValue};
+use crate::instance::{Arg, ArgSource, TaskInstance, WireValue};
 use crate::interconnect::{EndpointRef, InterconnectDefinition};
-use crate::port::{sanitize_identifier_name, ArgCategory};
+use crate::port::{sanitize_identifier_name, ArgCategory, Port};
 use crate::synth_target::SynthTarget;
 use crate::task::{Task, TaskLevel};
-use crate::transforms::scoped_name;
-use crate::TaskGraph;
+use crate::transforms::{inline_uppers, scoped_name};
+use crate::{ring_count_plio, ring_plio, TaskGraph};
 
 /// Why a task graph has no valid AI Engine partition.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -452,7 +452,7 @@ impl AiePartition {
             let mut args = BTreeMap::new();
             args.insert(
                 MOVER_MEMORY.to_string(),
-                crate::Arg::named(memory.memory.clone(), ArgCategory::AsyncMmap),
+                Arg::named(memory.memory.clone(), ArgCategory::AsyncMmap),
             );
             for (mover_port, stream) in ports {
                 let stream = &self.streams[stream];
@@ -464,27 +464,16 @@ impl AiePartition {
                         "the mover `{mover_name}` has no port `{mover_port}`"
                     ))
                 })?;
-                top.ports.push(crate::Port {
-                    cat: if input {
-                        ArgCategory::Ostream
-                    } else {
-                        ArgCategory::Istream
-                    },
-                    name: stream.name.clone(),
-                    ctype: pl_port.ctype.clone(),
-                    width: pl_port.width,
-                    chan_count: None,
-                    chan_size: None,
-                    frame: None,
-                    aie_plio: Some(width),
-                    stream_depth: None,
-                    mmap_addr_width: None,
-                    aie_movers: None,
-                    ring: None,
-                });
+                top.ports.push(plio_port(
+                    stream.name.clone(),
+                    input,
+                    pl_port.ctype.clone(),
+                    pl_port.width,
+                    width,
+                ));
                 args.insert(
                     mover_port.to_string(),
-                    crate::Arg::named(stream.name.clone(), pl_port.cat),
+                    Arg::named(stream.name.clone(), pl_port.cat),
                 );
                 // Codegen gives the port its AXIS interface through an
                 // external FIFO, as for any PLIO of the projection.
@@ -500,7 +489,7 @@ impl AiePartition {
             top.tasks
                 .entry(mover_name.clone())
                 .or_default()
-                .push(crate::TaskInstance {
+                .push(TaskInstance {
                     name: Some(sanitize_identifier_name(&format!(
                         "{kernel}__{port}_{direction}"
                     ))),
@@ -843,7 +832,7 @@ fn by_fabric(graph: &TaskGraph) -> Result<Cow<'_, TaskGraph>, AieError> {
     if mixed.is_empty() {
         return Ok(Cow::Borrowed(graph));
     }
-    crate::transforms::inline_uppers(graph, &mixed)
+    inline_uppers(graph, &mixed)
         .map(Cow::Owned)
         .map_err(|error| {
             AieError(format!(
@@ -941,12 +930,7 @@ struct Builder<'g> {
 
 impl Builder<'_> {
     /// What one argument of a top-level AI Engine invoke is bound to.
-    fn top_binding(
-        &mut self,
-        child: &str,
-        port: &str,
-        arg: &crate::instance::Arg,
-    ) -> Result<Binding, AieError> {
+    fn top_binding(&mut self, child: &str, port: &str, arg: &Arg) -> Result<Binding, AieError> {
         let graph = self.graph;
         let top = task(graph, &graph.top)?;
         match &arg.arg {
@@ -1036,7 +1020,7 @@ impl Builder<'_> {
         &mut self,
         task_name: &str,
         path: &str,
-        port: &crate::Port,
+        port: &Port,
         memory: String,
     ) -> Result<AieMemoryPort, AieError> {
         let movers = port.aie_movers.as_ref().ok_or_else(|| {
@@ -1132,7 +1116,7 @@ impl Builder<'_> {
             index
         };
         let frames = push(
-            crate::ring_plio(name),
+            ring_plio(name),
             words,
             frame,
             AieStreamKind::Plio {
@@ -1143,7 +1127,7 @@ impl Builder<'_> {
         );
         if !input {
             push(
-                crate::ring_count_plio(name),
+                ring_count_plio(name),
                 1,
                 None,
                 AieStreamKind::Plio {
@@ -1397,8 +1381,8 @@ fn project_ring_plio(
 
 /// The PL top's AXIS port of a PLIO `width` bits wide, named `name`: an
 /// output when the PL produces the stream (`input` to the AI Engine).
-fn plio_port(name: String, input: bool, ctype: String, width: u32, plio: u32) -> crate::Port {
-    crate::Port {
+fn plio_port(name: String, input: bool, ctype: String, width: u32, plio: u32) -> Port {
+    Port {
         cat: if input {
             ArgCategory::Ostream
         } else {
