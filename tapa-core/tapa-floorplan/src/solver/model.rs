@@ -93,17 +93,11 @@ pub(crate) struct ConstraintDef {
 /// Variables are added with [`LpModel::add_binary`] / [`LpModel::add_continuous`],
 /// which return an [`LpVar`] handle. The objective is a [`LinExpr`]; constraints
 /// are `expr op rhs`.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LpModel {
     pub(crate) objective: LinExpr,
     pub(crate) vars: Vec<VarDef>,
     pub(crate) constraints: Vec<ConstraintDef>,
-}
-
-impl Default for LpModel {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 impl LpModel {

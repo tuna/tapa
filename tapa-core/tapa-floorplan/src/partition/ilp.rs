@@ -207,7 +207,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
     } else {
         RegionResourceLimits::default()
     };
-    let assignment = floorplan_with_config(
+    floorplan_with_config(
         graph,
         device,
         &PlacementConfig {
@@ -218,8 +218,7 @@ pub(crate) fn floorplan_with_exact_resource_caps(
         },
         solver,
         opts,
-    )?;
-    Ok(assignment)
+    )
 }
 
 fn exact_resource_cap_limits(device: &Device, block_limit: f64) -> RegionResourceLimits {

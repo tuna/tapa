@@ -36,16 +36,14 @@ pub struct CbcSolver {
 
 impl CbcSolver {
     /// A solver invoking `cbc` from `PATH`, or the `TAPA_CBC` override.
+    #[allow(
+        clippy::new_without_default,
+        reason = "a Default impl delegating to `new` had no call sites; the default program is discovered from the environment, not a type-level constant"
+    )]
     #[must_use]
     pub fn new() -> Self {
         let program = std::env::var("TAPA_CBC").unwrap_or_else(|_| "cbc".to_string());
         Self { program }
-    }
-}
-
-impl Default for CbcSolver {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
