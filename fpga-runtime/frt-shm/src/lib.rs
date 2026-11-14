@@ -12,10 +12,7 @@ pub use queue::SharedMemoryQueue;
 /// Returns `true` for `"1"`, `"true"`, `"TRUE"`, `"yes"`, `"YES"`;
 /// `false` for everything else (including unset).
 pub fn env_bool(name: &str) -> bool {
-    match std::env::var(name) {
-        Ok(v) => matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"),
-        Err(_) => false,
-    }
+    std::env::var(name).is_ok_and(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
 }
 
 /// Read an environment variable, returning `None` if unset, empty, or
