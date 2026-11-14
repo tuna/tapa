@@ -2,7 +2,9 @@ use super::api::{
     api, Api, Handle, RUN_ABORT, RUN_COMPLETED, RUN_ERROR, RUN_NORESPONSE, RUN_SKCRASHED,
     RUN_SKERROR, RUN_TIMEOUT, SYNC_FROM_DEVICE, SYNC_TO_DEVICE,
 };
-use super::metadata::{extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, AieGraph};
+use super::metadata::{
+    extract_embedded_xml, extract_platform_vbnv, parse_aie_graph, AieGraph, AieRtp,
+};
 use super::pl_control::{self, PlControl};
 use super::rings::{self, XrtRing};
 use crate::device::{BufferAccess, Device, ExecutionState};
@@ -90,6 +92,27 @@ pub(super) fn non_null(handle: Handle, action: &str) -> Result<Handle> {
     }
 }
 
+/// Sets each runtime parameter of the graph to the low bytes of the scalar
+/// argument it carries (`values`, by argument index).
+pub(super) fn update_rtps(
+    api: &Api,
+    graph: Handle,
+    rtps: &[AieRtp],
+    values: &HashMap<u32, Vec<u8>>,
+) -> Result<()> {
+    for rtp in rtps {
+        let value = rtp.scalar_value(values)?;
+        let alias = CString::new(rtp.alias.clone())
+            .map_err(|e| FrtError::Xrt(format!("runtime parameter name: {e}")))?;
+        // SAFETY: live graph handle; `value` holds `value.len()` bytes.
+        let rc = unsafe {
+            (api.graph_update_rtp)(graph, alias.as_ptr(), value.as_ptr().cast(), value.len())
+        };
+        check(rc, &format!("update runtime parameter `{}`", rtp.alias))?;
+    }
+    Ok(())
+}
+
 /// Opens the device that accepts the xclbin and loads it, returning the
 /// device and the xclbin's UUID: the one `FRT_XOCL_BDF` names, or else the
 /// first by index. XRT has no C device-name enumeration API, so xclbin
@@ -167,9 +190,8 @@ fn is_run_error(state: c_int) -> bool {
 }
 
 impl XrtDevice {
-    pub fn open(xclbin_path: &Path) -> Result<Self> {
-        let bytes = std::fs::read(xclbin_path)?;
-        let xml = extract_embedded_xml(&bytes)?;
+    pub fn open(xclbin_path: &Path, bytes: &[u8]) -> Result<Self> {
+        let xml = extract_embedded_xml(bytes)?;
         let mut meta =
             kernel_xml::parse(&xml).map_err(|e| FrtError::MetadataParse(e.to_string()))?;
         // The XML <platform name="..."> attribute may be truncated in some
@@ -177,7 +199,7 @@ impl XrtDevice {
         // field at offset 352 that always contains the full identifier.
         // Only override if the header VBNV is longer (more complete) than
         // what we got from XML.
-        if let Some(vbnv) = extract_platform_vbnv(&bytes) {
+        if let Some(vbnv) = extract_platform_vbnv(bytes) {
             if vbnv.len() > meta.platform.len() {
                 meta.platform = vbnv;
             }
@@ -220,7 +242,7 @@ impl XrtDevice {
             let ring = XrtRing::open(api, this.device, this.kernel, this.run, arg, registers)?;
             this.rings.push(ring);
         }
-        if let Some(meta) = parse_aie_graph(&bytes)? {
+        if let Some(meta) = parse_aie_graph(bytes)? {
             let (handle, control) = if this.meta.aie_pl_control {
                 (
                     std::ptr::null_mut(),
@@ -265,21 +287,7 @@ impl XrtDevice {
             let rc = unsafe { (self.api.graph_reset)(graph.handle) };
             check(rc, "reset the AI Engine graph")?;
         }
-        for rtp in &graph.meta.rtps {
-            let value = rtp.scalar_value(values)?;
-            let alias = CString::new(rtp.alias.clone())
-                .map_err(|e| FrtError::Xrt(format!("runtime parameter name: {e}")))?;
-            // SAFETY: live graph handle; `value` holds `value.len()` bytes.
-            let rc = unsafe {
-                (self.api.graph_update_rtp)(
-                    graph.handle,
-                    alias.as_ptr(),
-                    value.as_ptr().cast(),
-                    value.len(),
-                )
-            };
-            check(rc, &format!("update runtime parameter `{}`", rtp.alias))?;
-        }
+        update_rtps(self.api, graph.handle, &graph.meta.rtps, values)?;
         let iterations = if graph.meta.run_forever { -1 } else { 1 };
         // SAFETY: live graph handle.
         let rc = unsafe { (self.api.graph_run)(graph.handle, iterations) };

@@ -22,6 +22,6 @@ pub fn open(xclbin_path: &Path) -> Result<Box<dyn Device>> {
             &bytes,
             arguments,
         )?)),
-        None => Ok(Box::new(device::XrtDevice::open(xclbin_path)?)),
+        None => Ok(Box::new(device::XrtDevice::open(xclbin_path, &bytes)?)),
     }
 }

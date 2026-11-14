@@ -37,13 +37,14 @@ use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use frt_shm::SharedMemoryQueue;
 use serde::Deserialize;
 
 use crate::device::{AieSimulation, BufferAccess, Device, HostStream};
 use crate::error::{FrtError, Result};
+use crate::host_frames::POLL;
 
 /// The file that makes a directory a package.
 pub const MANIFEST: &str = "manifest.json";
@@ -599,8 +600,6 @@ fn block_sigpipe() {
     // SAFETY: changes only the calling thread's signal mask.
     unsafe { libc::pthread_sigmask(libc::SIG_BLOCK, &raw const set, std::ptr::null_mut()) };
 }
-
-const POLL: Duration = Duration::from_micros(100);
 
 /// A host queue slot holds one `elem_t<T>`: the element's data, then its
 /// end-of-transmission flag byte, then any padding to the slot width. Both

@@ -26,7 +26,7 @@ use super::api::{
     api, gmio_api, Api, GmioApi, Handle, SYNC_AIE_TO_GMIO, SYNC_FROM_DEVICE, SYNC_GMIO_TO_AIE,
     SYNC_TO_DEVICE,
 };
-use super::device::{bootstrap_emulation_env_once, check, load_xclbin, non_null};
+use super::device::{bootstrap_emulation_env_once, check, load_xclbin, non_null, update_rtps};
 use super::metadata::{
     extract_platform_vbnv, parse_aie_graph, xclbin_target, AieGraph, AieTopArguments, GmioArgument,
 };
@@ -221,21 +221,7 @@ impl Device for XrtAieTopDevice {
             })
             .collect::<Result<Vec<_>>>()?;
         set_drains(self.api, Shared(self.graph), &drains, false)?;
-        for rtp in &self.meta.rtps {
-            let value = rtp.scalar_value(&self.scalars)?;
-            let alias = CString::new(rtp.alias.clone())
-                .map_err(|e| FrtError::Xrt(format!("runtime parameter name: {e}")))?;
-            // SAFETY: live graph handle; `value` holds `value.len()` bytes.
-            let rc = unsafe {
-                (self.api.graph_update_rtp)(
-                    self.graph,
-                    alias.as_ptr(),
-                    value.as_ptr().cast(),
-                    value.len(),
-                )
-            };
-            check(rc, &format!("update runtime parameter `{}`", rtp.alias))?;
-        }
+        update_rtps(self.api, self.graph, &self.meta.rtps, &self.scalars)?;
         // What each output had delivered before this run.
         let outputs: Vec<(Arc<Pump>, u64, CString)> = self
             .pumps
