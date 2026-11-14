@@ -173,8 +173,6 @@ fn rtp_type(ctype: &str, width: u32) -> Result<&'static str> {
 /// spills; the task's local variables come on top of it.
 const DEFAULT_STACK_BYTES: u32 = 1024;
 
-/// The stack a kernel whose task has `locals` bytes of local variables
-/// needs, kept 16-byte aligned.
 /// The ADF ports of an `async_mmap` port, in parameter order: the
 /// parameter's name suffix, its stream, and whether the kernel reads it.
 fn memory_channels(memory: &AieMemoryPort) -> Vec<(&'static str, usize, bool)> {
@@ -208,6 +206,8 @@ fn memory_arg(channels: &BTreeMap<&str, String>) -> String {
     )
 }
 
+/// The stack a kernel whose task has `locals` bytes of local variables
+/// needs, kept 16-byte aligned.
 const fn stack_size(locals: u32) -> u32 {
     DEFAULT_STACK_BYTES
         .saturating_add(locals)

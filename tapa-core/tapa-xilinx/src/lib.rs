@@ -35,9 +35,10 @@
 //! Layout: `runtime/` provides infrastructure (tool discovery, CFLAGS,
 //! remote config, subprocess abstraction, SSH control-master session,
 //! remote tool runner); `platform/` owns pure parsers and emitters
-//! (`.xpfm`, `kernel.xml`); `tools/` composes runtime + platform into
-//! tool orchestrators (HLS, Vivado, `.xo` packaging). Dependency
-//! direction is strictly `runtime/` ← `platform/` ← `tools/`.
+//! (`.xpfm`, `kernel.xml`), referencing only `error` and `util`;
+//! `connectivity` parses and rewrites Vitis/SLASH `.ini` connectivity
+//! configs; `tools/` composes the rest into tool orchestrators (HLS,
+//! Vivado, `.xo` packaging).
 
 pub mod connectivity;
 pub mod error;
