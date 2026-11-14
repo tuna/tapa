@@ -120,3 +120,6 @@ void serve_writes(tapa::async_mmap<T>& mem, tapa::istream<T>& requests) {
 
 }  // namespace internal
 }  // namespace tapa
+
+// Expansion already happened above; nothing downstream should see these.
+#undef TAPA_MOVER_PIPELINE

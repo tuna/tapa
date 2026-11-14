@@ -663,8 +663,7 @@ bool hybrid_run(frt::Instance& instance, int bound_args,
     }
   }
 
-  size_t count = 0;
-  for (bool in_software : software) count += in_software ? 1 : 0;
+  const size_t count = std::count(software.begin(), software.end(), true);
   if (aie_device) {
     LOG(INFO) << "AI Engine simulation: " << count << " PL task(s) run in "
               << "software against the simulator's " << ports.size()

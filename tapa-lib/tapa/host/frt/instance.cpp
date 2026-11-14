@@ -75,12 +75,12 @@ std::vector<HostStream> Instance::HostStreams() const {
                                                sizeof(name), &kernel_reads);
     LOG_IF(FATAL, index < 0) << "host_stream failed: " << LastErr();
     HostStream stream{index, name, kernel_reads != 0};
-    int count = 0;
+    int ring_count = 0;
     const int ring = frt_instance_host_stream_ring(
-        impl_->handle, i, &stream.ring, &count, &stream.frame);
+        impl_->handle, i, &stream.ring, &ring_count, &stream.frame);
     LOG_IF(FATAL, ring < 0) << "host_stream_ring failed: " << LastErr();
     if (ring == 0) stream.ring = -1;
-    stream.ring_count = count != 0;
+    stream.ring_count = ring_count != 0;
     streams.push_back(stream);
   }
   return streams;

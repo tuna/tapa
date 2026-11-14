@@ -146,3 +146,8 @@ void bulk_write(Stream& s, const U* src, int n) {
 void fence();
 
 }  // namespace tapa
+
+// Expansion already happened above; nothing downstream should see these.
+#undef TAPA_STREAM_INLINE
+#undef TAPA_STREAM_PIPELINE
+#undef TAPA_STREAM_UNROLL
