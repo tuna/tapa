@@ -5,7 +5,6 @@ use tapa_protocol::{
     S_AXI_LITE_CTRL_PORTS, S_AXI_NAME,
 };
 use tapa_rtl::builder::{Expr, ParamArg, PortArg};
-use tapa_rtl::mutation::wide_wire;
 
 use crate::state::views::{DesignView, ModuleTable};
 
@@ -59,18 +58,16 @@ pub fn instantiate_top_control_s_axi(
             let _ = mm.add_signal(super::width_wire(&sanitized, width));
             vec![sanitized]
         } else if port.cat.is_mmap_like() {
+            let mut offset = |name: String| {
+                let _ = mm.add_signal(super::width_wire(&name, tapa_protocol::AXI_ADDR_WIDTH));
+                name
+            };
             if let Some(chan_count) = port.chan_count {
                 (0..chan_count)
-                    .map(|idx| {
-                        let name = format!("{sanitized}_{idx}_offset");
-                        let _ = mm.add_signal(wide_wire(&name, "63", "0"));
-                        name
-                    })
+                    .map(|idx| offset(format!("{sanitized}_{idx}_offset")))
                     .collect()
             } else {
-                let name = format!("{sanitized}_offset");
-                let _ = mm.add_signal(wide_wire(&name, "63", "0"));
-                vec![name]
+                vec![offset(format!("{sanitized}_offset"))]
             }
         } else if port.ring.is_some() {
             // A ring's registers (`rings` declares their wires); the kernel's

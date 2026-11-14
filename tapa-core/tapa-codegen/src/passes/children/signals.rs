@@ -361,7 +361,10 @@ fn pipeline_instance_signals(
                     (
                         child_offset_wire(inst_name, port_name, channel),
                         child_offset_source(parent, channel, stage.mmap_conns),
-                        Some(("63".to_string(), "0".to_string())), // 64-bit
+                        Some((
+                            (tapa_protocol::AXI_ADDR_WIDTH - 1).to_string(),
+                            "0".to_string(),
+                        )),
                     )
                 })
                 .collect()

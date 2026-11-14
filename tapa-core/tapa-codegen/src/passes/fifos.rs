@@ -3,9 +3,8 @@
 use crate::error::CodegenError;
 use crate::rtl_state::routing_id_bits;
 use crate::state::views::{DesignView, ModuleTable};
-use tapa_ir::{floorplanned_fifo_storage_depth, Target};
+use tapa_ir::{floorplanned_fifo_storage_depth, FloorplanResult, RoutedChannel, Target};
 
-use super::floorplans::stream_crossing_body_level;
 use super::frames::{
     build_frame_channel_instance, declare_frame_channel_wires, frame_channel, join_streams,
 };
@@ -19,6 +18,25 @@ use tapa_rtl::module::sanitize_array_name;
 /// The `ADDR_WIDTH` a FIFO of `depth` entries needs: `ceil(log2(depth))`, min 1.
 fn fifo_addr_width(depth: u32) -> u64 {
     u64::from(routing_id_bits(depth).max(1))
+}
+
+/// The Body-cell count if `fifo_name` has a floorplanned cross-slot route.
+///
+/// `reg_regions` is the authoritative per-cell handoff to XDC emission. Using
+/// its length here guarantees the generated Body hierarchy and its placement
+/// constraints cannot silently disagree.
+fn stream_crossing_body_level(floorplan: Option<&FloorplanResult>, fifo_name: &str) -> Option<u32> {
+    floorplan?
+        .routes
+        .iter()
+        .find_map(|route| match &route.channel {
+            RoutedChannel::Stream { fifo } if fifo == fifo_name => {
+                Some(u32::try_from(route.reg_regions.len()).unwrap_or(u32::MAX))
+            }
+            RoutedChannel::Stream { .. }
+            | RoutedChannel::Axi { .. }
+            | RoutedChannel::Control { .. } => None,
+        })
 }
 
 /// The 10 `clk`/`reset`/`if_*` port connections a FIFO-compatible storage
@@ -406,8 +424,6 @@ pub fn connect_fifos(
     modules: &mut ModuleTable<'_>,
     task_name: &str,
 ) -> Result<(), CodegenError> {
-    use tapa_rtl::signal::{Signal, SignalKind};
-
     let design_data = design.design();
     let task = &design_data.tasks[task_name];
 
@@ -446,11 +462,14 @@ pub fn connect_fifos(
                 // suffixes (`_dout`/`_din`) carry the FIFO width.
                 for suffix in ISTREAM_SUFFIXES.iter().chain(OSTREAM_SUFFIXES) {
                     let wire_name = format!("{sanitized_fifo_name}{suffix}");
-                    let sig = if STREAM_DATA_SUFFIXES.contains(suffix) {
-                        tapa_rtl::mutation::wide_wire(&wire_name, &(width - 1).to_string(), "0")
-                    } else {
-                        tapa_rtl::mutation::wire(&wire_name)
-                    };
+                    let sig = super::width_wire(
+                        &wire_name,
+                        if STREAM_DATA_SUFFIXES.contains(suffix) {
+                            width
+                        } else {
+                            1
+                        },
+                    );
                     let _ = mm.add_signal(sig);
                 }
             }
@@ -480,21 +499,10 @@ pub fn connect_fifos(
                 };
                 for suffix in suffixes {
                     let canonical = format!("{sanitized_fifo_name}{suffix}");
-                    let signal_width = if STREAM_DATA_SUFFIXES.contains(suffix) {
-                        Some(tapa_rtl::port::Width {
-                            msb: tapa_rtl::expression::tokenize_expression(
-                                &stream_width.to_string(),
-                            ),
-                            lsb: tapa_rtl::expression::tokenize_expression("0"),
-                        })
+                    let _ = mm.add_signal(if STREAM_DATA_SUFFIXES.contains(suffix) {
+                        super::width_wire(&canonical, stream_width + 1)
                     } else {
-                        None
-                    };
-                    let _ = mm.add_signal(Signal {
-                        name: canonical.clone(),
-                        kind: SignalKind::Wire,
-                        width: signal_width,
-                        attribute: None,
+                        tapa_rtl::mutation::wire(&canonical)
                     });
                     let Some(parent_port) = mm.inner.get_port_of(fifo_name, suffix).cloned() else {
                         continue;
@@ -819,6 +827,31 @@ mod tests {
             fifo_width(&mut state.module_map, &wide, "wide_fifo").unwrap(),
             33,
             "symbolic RTL width must fall back to the bound topology port"
+        );
+    }
+
+    #[test]
+    fn crossing_body_count_comes_from_xdc_region_list() {
+        use std::collections::BTreeMap;
+        use tapa_ir::{PipelineRoute, PipelineScheme};
+
+        let floorplan = FloorplanResult {
+            device: "u280".to_string(),
+            grid: (2, 3),
+            regions: BTreeMap::new(),
+            routes: vec![PipelineRoute {
+                channel: RoutedChannel::Stream {
+                    fifo: "data_q".to_string(),
+                },
+                route: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+                scheme: PipelineScheme::Double,
+                reg_regions: vec!["SLOT_X0Y0".to_string(), "SLOT_X0Y1".to_string()],
+            }],
+            slot_usage: BTreeMap::new(),
+        };
+        assert_eq!(
+            stream_crossing_body_level(Some(&floorplan), "data_q"),
+            Some(2)
         );
     }
 

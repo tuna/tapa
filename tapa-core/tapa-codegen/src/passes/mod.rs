@@ -14,7 +14,6 @@ mod children;
 mod cleanup;
 mod distributed_control;
 mod fifos;
-mod floorplans;
 mod frames;
 pub mod m_axi;
 mod rings;

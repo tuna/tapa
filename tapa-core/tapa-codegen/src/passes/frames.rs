@@ -20,7 +20,7 @@ use tapa_protocol::{
 };
 use tapa_rtl::builder::{ContinuousAssign, Expr, ModuleInstance, ParamArg, PortArg};
 use tapa_rtl::module::sanitize_array_name;
-use tapa_rtl::mutation::{wide_wire, wire, MutableModule};
+use tapa_rtl::mutation::{wire, MutableModule};
 
 use crate::error::CodegenError;
 use crate::state::views::ModuleTable;
@@ -231,12 +231,11 @@ pub(super) fn declare_frame_channel_wires(
     split: bool,
 ) {
     let base = sanitize_array_name(name);
-    let msb = |width: u32| (width - 1).to_string();
     let elements = |mm: &mut MutableModule, wires: &str, suffixes: &[&str]| {
         for suffix in suffixes {
             let wire_name = format!("{wires}{suffix}");
             let _ = mm.add_signal(if matches!(*suffix, "_din" | "_dout") {
-                wide_wire(&wire_name, &channel.data_width.to_string(), "0")
+                super::width_wire(&wire_name, channel.data_width + 1)
             } else {
                 wire(&wire_name)
             });
@@ -267,11 +266,7 @@ pub(super) fn declare_frame_channel_wires(
                 frame_signal_width(signal, channel.data_width, channel.shape.frame)
             };
             let wire_name = frame_wire(name, cat, suffix);
-            let _ = mm.add_signal(if width > 1 {
-                wide_wire(&wire_name, &msb(width), "0")
-            } else {
-                wire(&wire_name)
-            });
+            let _ = mm.add_signal(super::width_wire(&wire_name, width));
         }
     }
     if !split {
