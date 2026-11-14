@@ -177,7 +177,7 @@ impl Solver for ChooseSolver {
         };
         if let Err(error) = solution.validate_for(model) {
             panic!(
-                "ChooseSolver produced an incumbent that violates its model: {error};                      give the test feasible preferences"
+                "ChooseSolver produced an incumbent that violates its model: {error}; give the test feasible preferences"
             );
         }
         Ok(solution)
@@ -937,7 +937,7 @@ fn multilevel_recovers_when_an_aggregate_parent_has_no_feasible_child() {
     assert_eq!(
         solver.models.lock().expect("lock").len(),
         4,
-        "the parent-filtered refinement has no domain; the row pass and the              atomic fallback each take a primary solve and its refinement"
+        "the parent-filtered refinement has no domain; the row pass and the atomic fallback each take a primary solve and its refinement"
     );
 }
 
@@ -964,7 +964,7 @@ fn multilevel_infeasible_refinement_reuses_the_flat_atomic_formulation() {
     assert_eq!(
         models.len(),
         5,
-        "row primary and refinement, rejected parent-atomic primary,              atomic-fallback primary and refinement"
+        "row primary and refinement, rejected parent-atomic primary, atomic-fallback primary and refinement"
     );
     let constraints = exact_resource_cap_limits(&device, block_limit);
     let regions = atomic_regions(&device);
