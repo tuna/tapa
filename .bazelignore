@@ -2,7 +2,6 @@
 # All rights reserved. The contributor(s) of this file has/have agreed to the
 # RapidStream Contributor License Agreement.
 
-node_modules
 tapa-core/target
 fpga-runtime/target
 tools/test-tools/target
