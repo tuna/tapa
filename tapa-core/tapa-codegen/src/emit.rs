@@ -21,7 +21,11 @@ pub fn collect_outputs(ctx: &mut DesignPassCtx<'_>) -> Result<(), CodegenError> 
     for (name, task) in &design.tasks {
         let rtl = if task.synth == SynthTarget::Ignore {
             // The pass registers every `Ignore` task; a missing one is a bug.
-            let rtl = ctx.modules[name].emit()?;
+            let rtl = ctx
+                .modules
+                .get(name)
+                .expect("the ignore-task-shells pass registers every Ignore task")
+                .emit()?;
             ctx.outputs
                 .insert_template(format!("{name}.v"), rtl.clone());
             rtl

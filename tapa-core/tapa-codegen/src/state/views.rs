@@ -13,7 +13,6 @@
 //! module creation) move onto their table view; genuine cross-table
 //! operations stay on `TopologyWithRtl` for the driver/staging boundary.
 
-use std::borrow::Borrow;
 use std::collections::BTreeMap;
 
 use tapa_ir::{Design, FloorplanResult};
@@ -88,18 +87,6 @@ impl<'a> ModuleTable<'a> {
     /// Attach (or replace) the module attached to `task_name`.
     pub fn insert(&mut self, task_name: String, module: MutableModule) {
         self.map.insert(task_name, module);
-    }
-}
-
-impl<Q> std::ops::Index<&'_ Q> for ModuleTable<'_>
-where
-    String: Borrow<Q>,
-    Q: Ord + ?Sized,
-{
-    type Output = MutableModule;
-
-    fn index(&self, task_name: &Q) -> &Self::Output {
-        &self.map[task_name]
     }
 }
 
