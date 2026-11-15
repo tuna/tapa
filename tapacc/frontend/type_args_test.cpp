@@ -29,9 +29,7 @@ Built BuildParam(const std::string& signature) {
 
 TEST(TypeArgs, ElementTypeName) {
   auto b = BuildParam("void probe(tapa::mmap<const float> a);");
-  const auto* arg = GetTemplateArg(b.param->getType(), 0);
-  ASSERT_NE(arg, nullptr);
-  EXPECT_EQ(TemplateArgName(*arg), "const float");
+  EXPECT_EQ(ElementTypeName(b.param), "const float");
 }
 
 TEST(TypeArgs, IntegralArgs) {

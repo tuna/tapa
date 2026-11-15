@@ -119,7 +119,7 @@ uint32_t StreamElementWidth(const clang::ParmVarDecl* param) {
           ArbitraryIntWidth(arg->getAsType())) {
     return *width;
   }
-  return ElementWidth(param);
+  return BitWidth(param->getASTContext(), arg->getAsType());
 }
 
 uint32_t ScalarWidth(const clang::ASTContext& ctx, clang::QualType type) {
