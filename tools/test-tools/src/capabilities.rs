@@ -387,10 +387,10 @@ fn per_task_hls_texts(work_dir: &Path) -> Result<Vec<(String, String)>> {
 }
 
 fn read_graph(work_dir: &Path) -> Result<JsonValue> {
-    let state = read_json(&work_dir.join("tapa.json"))?;
+    let mut state = read_json(&work_dir.join("tapa.json"))?;
     state
-        .get("graph")
-        .cloned()
+        .get_mut("graph")
+        .map(JsonValue::take)
         .ok_or_else(|| "tapa.json missing 'graph'".to_string())
 }
 
