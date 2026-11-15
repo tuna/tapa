@@ -89,14 +89,9 @@ impl VerilogModule {
 /// Match `name[idx]` and return `(name, idx)`.
 #[must_use]
 fn match_array_name(name: &str) -> Option<(&str, u32)> {
-    let lb = name.find('[')?;
-    let rb = name.rfind(']')?;
-    if rb <= lb + 1 || !name.ends_with(']') {
-        return None;
-    }
-    let base = &name[..lb];
-    let idx_str = &name[lb + 1..rb];
-    if base.is_empty() {
+    let name = name.strip_suffix(']')?;
+    let (base, idx_str) = name.split_once('[')?;
+    if base.is_empty() || idx_str.is_empty() {
         return None;
     }
     if !base.chars().all(|c| c.is_alphanumeric() || c == '_') {
