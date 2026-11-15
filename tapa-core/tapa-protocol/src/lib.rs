@@ -187,8 +187,8 @@ pub fn control_register_offsets(verilog: &str) -> BTreeMap<String, u32> {
             continue;
         };
         let hex = value.split_once(['h', 'H']).map_or("", |(_, hex)| hex);
-        let hex: String = hex.chars().take_while(char::is_ascii_hexdigit).collect();
-        if let Ok(offset) = u32::from_str_radix(&hex, 16) {
+        let hex = &hex[..hex.bytes().take_while(u8::is_ascii_hexdigit).count()];
+        if let Ok(offset) = u32::from_str_radix(hex, 16) {
             map.entry(name.to_owned()).or_insert(offset);
         }
     }
