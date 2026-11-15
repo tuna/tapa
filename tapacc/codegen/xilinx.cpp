@@ -1,7 +1,6 @@
 #include "xilinx.h"
 
 #include <string>
-#include <vector>
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
@@ -40,18 +39,16 @@ void EmitLowerStream(const std::string& name, TapaKind kind, int64_t channels,
                      CodeSink& out) {
   out.Pragma({"HLS disaggregate variable =", name});
 
-  std::vector<std::string> names;
-  if (kind == TapaKind::kIStreams || kind == TapaKind::kOStreams) {
+  const bool is_array =
+      kind == TapaKind::kIStreams || kind == TapaKind::kOStreams;
+  if (is_array) {
     out.Pragma({"HLS array_partition variable =", name, "complete"});
-    for (int64_t i = 0; i < channels; ++i) {
-      names.push_back(ArrayNameAt(name, static_cast<int>(i)));
-    }
-  } else {
-    names.push_back(name);
   }
 
   const bool is_input = IsInputStream(kind);
-  for (const std::string& n : names) {
+  for (int64_t i = 0; i < channels; ++i) {
+    const std::string n =
+        is_array ? ArrayNameAt(name, static_cast<int>(i)) : name;
     const std::string fifo = FifoVar(n);
     out.Pragma({"HLS interface ap_fifo port =", fifo});
     out.Pragma({"HLS aggregate variable =", fifo, "bit"});
