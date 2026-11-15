@@ -48,8 +48,7 @@ pub fn infer_peek_name(stream_name: &str) -> String {
     if let Some(base) = stream_name.strip_suffix("_s") {
         return format!("{base}_peek");
     }
-    let mut iter = stream_name.rsplitn(2, '_');
-    if let (Some(suffix), Some(base)) = (iter.next(), iter.next()) {
+    if let Some((base, suffix)) = stream_name.rsplit_once('_') {
         if suffix.chars().all(|c| c.is_ascii_digit()) {
             return format!("{base}_peek_{suffix}");
         }
