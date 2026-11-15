@@ -91,9 +91,7 @@ impl MmapSegment {
 
 impl Drop for MmapSegment {
     fn drop(&mut self) {
-        if self.owner {
-            let _ = std::fs::remove_file(&self.path);
-        }
+        self.unlink();
     }
 }
 
