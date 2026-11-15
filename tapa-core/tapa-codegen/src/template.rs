@@ -198,7 +198,6 @@ pub fn render_task_template(name: &str, task: &Task) -> String {
         }
     }
 
-    let ports: Vec<String> = ports.iter().map(ToString::to_string).collect();
     let body = ports
         .iter()
         .map(|p| format!("  {p}"))
