@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <glog/logging.h>
@@ -81,7 +82,7 @@ std::vector<HostStream> Instance::HostStreams() const {
     LOG_IF(FATAL, ring < 0) << "host_stream_ring failed: " << LastErr();
     if (ring == 0) stream.ring = -1;
     stream.ring_count = ring_count != 0;
-    streams.push_back(stream);
+    streams.push_back(std::move(stream));
   }
   return streams;
 }
