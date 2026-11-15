@@ -525,8 +525,8 @@ bool TreeWriter::AddTu(clang::ASTContext& ctx,
   const std::string tu = CanonicalPath(
       sm.getFilename(sm.getLocForStartOfFile(sm.getMainFileID())));
   for (const auto& [path, buffer] : session.buffers()) {
-    const std::string bytes = buffer->Render();
-    const auto [it, inserted] = rendered_.try_emplace(path, bytes);
+    std::string bytes = buffer->Render();
+    const auto [it, inserted] = rendered_.try_emplace(path, std::move(bytes));
     if (inserted) {
       owners_[path] = tu;
       continue;
