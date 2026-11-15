@@ -42,8 +42,7 @@ fp_op!(fp64_mul, u64, f64, *);
 
 #[no_mangle]
 pub extern "C" fn fp32_unfused_madd(a: u32, b: u32, c: u32) -> u32 {
-    let product = (f32::from_bits(a) * f32::from_bits(b)).to_bits();
-    (f32::from_bits(product) + f32::from_bits(c)).to_bits()
+    fp32_add(fp32_mul(a, b), c)
 }
 
 #[cfg(test)]
