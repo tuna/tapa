@@ -353,8 +353,7 @@ fn inline_into(graph: &mut TaskGraph, parent: &str, child: &str) -> Result<(), T
             owner.fifos.insert(global, def.fifos[&local].clone());
         }
     }
-    let instances = owner.tasks.clone();
-    backfill_endpoints(&instances, &mut owner.fifos);
+    backfill_endpoints(&owner.tasks, &mut owner.fifos);
     Ok(())
 }
 
