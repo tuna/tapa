@@ -264,14 +264,7 @@ cc_library(
         vivado_paths = vivado_paths,
     )
 
-    xsim_paths = [
-        d + "/data/xsim"
-        for d in xilinx_tool_dir_candidates(
-            XILINX_TOOL_PATH,
-            "Vivado",
-            XILINX_TOOL_VERSION,
-        )
-    ]
+    xsim_paths = [d + "/data/xsim" for d in vivado_paths]
     _optional_local_repository(
         name = "xsim_xv",
         build_file_content = """
