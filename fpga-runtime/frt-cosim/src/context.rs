@@ -109,9 +109,7 @@ impl CosimContext {
             };
             let mut seg = create(name, size.max(1))?;
             let len = old.as_slice().len().min(seg.as_slice().len());
-            if len > 0 {
-                seg.as_mut_slice()[..len].copy_from_slice(&old.as_slice()[..len]);
-            }
+            seg.as_mut_slice()[..len].copy_from_slice(&old.as_slice()[..len]);
             seg
         };
         self.buffers.insert(name.to_owned(), seg);
