@@ -94,7 +94,7 @@ fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Mapping>
             path: path.to_path_buf(),
             message: e.to_string(),
         })?;
-    let map = match value {
+    let mut map = match value {
         serde_yaml::Value::Mapping(m) => m,
         // An empty file parses as a null document: no config.
         serde_yaml::Value::Null => return Ok(None),
@@ -109,7 +109,7 @@ fn load_taparc_remote_section(path: &Path) -> Result<Option<serde_yaml::Mapping>
             });
         }
     };
-    match map.get("remote").cloned() {
+    match map.remove("remote") {
         None | Some(serde_yaml::Value::Null) => Ok(None),
         Some(serde_yaml::Value::Mapping(section)) => Ok(Some(section)),
         Some(other) => Err(CliError::RemoteConfigParse {
@@ -210,14 +210,13 @@ fn sync_and_export_env(cfg: &RemoteConfig) {
     let session = SshSession::new(cfg.clone());
     match sync_remote_vendor_includes(&session) {
         Ok(cache_dir) => {
-            let s = cache_dir.as_str().to_string();
             // `setdefault` semantics: never clobber an explicit
             // `XILINX_HLS=...` already exported by the user.
             if std::env::var_os("XILINX_HLS").is_none() {
-                std::env::set_var("XILINX_HLS", &s);
+                std::env::set_var("XILINX_HLS", cache_dir.as_str());
             }
             if std::env::var_os("XILINX_VITIS").is_none() {
-                std::env::set_var("XILINX_VITIS", &s);
+                std::env::set_var("XILINX_VITIS", cache_dir.as_str());
             }
         }
         Err(e) => {
