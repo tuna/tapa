@@ -107,7 +107,7 @@ struct vec_t : protected std::array<T, N> {
   using base_type::operator=;
 
   explicit vec_t(const base_type& other) : base_type(other) {}
-  explicit vec_t(base_type&& other) : base_type(other) {}
+  explicit vec_t(base_type&& other) : base_type(std::move(other)) {}
 
   template <typename U>
   explicit operator vec_t<U, N>() const {
