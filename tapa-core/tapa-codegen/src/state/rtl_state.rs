@@ -119,20 +119,8 @@ impl TopologyWithRtl {
     }
 }
 
-// `u32::bit_width` is still unstable on the pinned stable toolchain.
-#[allow(
-    unknown_lints,
-    reason = "manual_bit_width only exists on the runner's newer clippy"
-)]
-#[allow(
-    clippy::manual_bit_width,
-    reason = "u32::bit_width is unstable on the pinned stable toolchain"
-)]
 pub(crate) fn routing_id_bits(n: u32) -> u32 {
-    if n <= 1 {
-        return 0;
-    }
-    u32::BITS - (n - 1).leading_zeros()
+    n.saturating_sub(1).bit_width()
 }
 
 #[cfg(test)]
