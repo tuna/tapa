@@ -315,14 +315,14 @@ fn run_vivado_packaging(
         std::fs::create_dir_all(parent)?;
     }
     let tmp_path = crate::util::utf8(tmp.path());
-    let tclargs = [
+
+    let mut job = VivadoJob::new(tcl);
+    job.tclargs = vec![
         ToolValue::path(&tmp_path),
         ToolValue::path(&inputs.hdl_dir),
         ToolValue::path(&kernel_out_path),
         ToolValue::path(&kernel_xml_path),
     ];
-
-    let mut job = VivadoJob::new(tcl);
     job.work_dir = Some(tmp_path.clone());
     job.uploads = vec![inputs.hdl_dir.clone(), tmp_path.clone(), kernel_xml_path];
     job.downloads = if slash_ip_only {
@@ -332,7 +332,6 @@ fn run_vivado_packaging(
     } else {
         Vec::new()
     };
-    job.tclargs = tclargs.to_vec();
 
     let _out = run_vivado(runner, &job)?;
     Ok(PreparedVivadoPackage {
