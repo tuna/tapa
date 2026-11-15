@@ -664,10 +664,10 @@ impl Device for XrtDevice {
     }
 
     fn exec(&mut self) -> Result<()> {
-        let mut args = self.meta.args.clone();
+        let mut args: Vec<_> = self.meta.args.iter().collect();
         args.sort_by_key(|a| a.id);
         let mut values = HashMap::new();
-        for arg in &args {
+        for arg in args {
             if rings::is_ring_register(&self.meta.args, arg) {
                 continue; // set by `rings::start_run`
             }
