@@ -181,8 +181,8 @@ impl CosimDevice {
 
     /// Run `transfer` for each pending buffer whose access `flows` in that
     /// direction, yielding the validated `(host pointer, host bytes,
-    /// segment)`: null pointers are rejected and the declared argument name
-    /// is resolved against the context's segments.
+    /// segment)`: a null pointer for a nonzero buffer is rejected and the
+    /// declared argument name is resolved against the context's segments.
     fn for_each_transfer(
         &mut self,
         flows: fn(BufferAccess) -> bool,
