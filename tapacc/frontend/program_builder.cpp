@@ -334,16 +334,16 @@ ProgramBuilder::DefSighting ProgramBuilder::MakeFacts(
   sighting.returns =
       !sighting.task_shaped && !sighting.pattern && CanReturn(def);
   sighting.ignored = IsIgnored(def);
-  sighting.explicit_target = TargetAttr(def) != nullptr;
+  const auto* target = TargetAttr(def);
+  sighting.explicit_target = target != nullptr;
   for (const clang::FunctionDecl* decl : def->redecls()) {
     const auto* attr = decl->getAttr<clang::TapaTargetAttr>();
-    if (attr != nullptr && attr->getTarget() != TargetAttr(def)->getTarget()) {
+    if (attr != nullptr && attr->getTarget() != target->getTarget()) {
       ReportCustomDiag(ctx, clang::DiagnosticsEngine::Error,
                        attr->getLocation(),
                        "[[tapa::target]] of '%0' differs from the one at %1; "
                        "give every declaration of a task the same target")
-          << sighting.fqn
-          << PresumedLocString(ctx, TargetAttr(def)->getLocation());
+          << sighting.fqn << PresumedLocString(ctx, target->getLocation());
     }
   }
   // isGlobal() holds for a static member function, which is no task either.
