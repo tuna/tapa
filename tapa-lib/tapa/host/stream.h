@@ -433,6 +433,26 @@ void check_kernel_can_still_serve(const base_queue<T>& queue,
   }
 }
 
+/// Runs the non-blocking @p try_op, which fails while the channel is empty,
+/// until it succeeds, aborting via @c check_kernel_can_still_serve once no
+/// kernel instance can fill the channel again.
+template <typename T, typename TryOp>
+void wait_nonempty(const base_queue<T>& queue, TryOp try_op) {
+  while (!try_op()) {
+    check_kernel_can_still_serve(queue, "empty", &type_erased_queue::empty);
+  }
+}
+
+/// Runs the non-blocking @p try_op, which fails while the channel is full,
+/// until it succeeds, aborting via @c check_kernel_can_still_serve once no
+/// kernel instance can drain the channel again.
+template <typename T, typename TryOp>
+void wait_nonfull(base_queue<T>& queue, TryOp try_op) {
+  while (!try_op()) {
+    check_kernel_can_still_serve(queue, "full", &type_erased_queue::full);
+  }
+}
+
 }  // namespace internal
 
 /// Consumer-side view of a @c tapa::stream. Use only as a task parameter.
@@ -521,10 +541,7 @@ class istream : virtual public internal::basic_stream<T> {
   /// Blocking read; returns the next non-EoT token value.
   T read() {
     T val;
-    while (!try_read(val)) {
-      internal::check_kernel_can_still_serve(
-          this->get_queue(), "empty", &internal::type_erased_queue::empty);
-    }
+    internal::wait_nonempty(this->get_queue(), [&] { return try_read(val); });
     return val;
   }
 
@@ -570,10 +587,7 @@ class istream : virtual public internal::basic_stream<T> {
 
   /// Blocking consume of an EoT token.
   void open() {
-    while (!try_open()) {
-      internal::check_kernel_can_still_serve(
-          this->get_queue(), "empty", &internal::type_erased_queue::empty);
-    }
+    internal::wait_nonempty(this->get_queue(), [this] { return try_open(); });
   }
 
  protected:
@@ -632,10 +646,8 @@ class ostream : virtual public internal::basic_stream<T> {
 
   /// Blocking write of @p value.
   void write(const T& value) {
-    while (!try_write(value)) {
-      internal::check_kernel_can_still_serve(
-          this->get_queue(), "full", &internal::type_erased_queue::full);
-    }
+    internal::wait_nonfull(this->get_queue(),
+                           [this, &value] { return try_write(value); });
   }
 
   /// Blocking write of @p value; returns @c *this.
@@ -662,10 +674,7 @@ class ostream : virtual public internal::basic_stream<T> {
 
   /// Blocking write of an EoT token.
   void close() {
-    while (!try_close()) {
-      internal::check_kernel_can_still_serve(
-          this->get_queue(), "full", &internal::type_erased_queue::full);
-    }
+    internal::wait_nonfull(this->get_queue(), [this] { return try_close(); });
   }
 
  protected:
@@ -733,10 +742,8 @@ class iframes : virtual public internal::basic_stream<T> {
     istream<T> in(*this);
     for (uint64_t i = 0; i < N; ++i) {
       bool is_eot = false;
-      while (!in.try_eot(is_eot)) {
-        internal::check_kernel_can_still_serve(
-            this->get_queue(), "empty", &internal::type_erased_queue::empty);
-      }
+      internal::wait_nonempty(this->get_queue(),
+                              [&] { return in.try_eot(is_eot); });
       CHECK(!is_eot) << "frame port '" << this->get_name()
                      << "' received an end-of-transmission token; a frame "
                         "port's stream carries none";
