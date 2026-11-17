@@ -727,6 +727,11 @@ bool ProgramBuilder::MergeAndDiscover() {
     }
     return list;
   };
+  // "file:line:col (main file)" -- the form every merge diagnostic prints
+  // a definition sighting in.
+  const auto sighting_loc = [&](const DefSighting& sighting) {
+    return sighting.loc + " (" + tu_files_[sighting.tu] + ")";
+  };
   for (const auto& [key, sightings] : defs_) {
     for (size_t i = 1; i < sightings.size(); ++i) {
       const DefSighting& first = sightings.front();
@@ -737,9 +742,8 @@ bool ProgramBuilder::MergeAndDiscover() {
         Fail("task '" + first.name +
              "' is defined differently in two "
              "translation units: " +
-             other.loc + " (" + tu_files_[other.tu] + ") and " + first.loc +
-             " (" + tu_files_[first.tu] +
-             "); a task sighted in several translation "
+             sighting_loc(other) + " and " + sighting_loc(first) +
+             "; a task sighted in several translation "
              "units must be identical in each");
         return false;
       }
@@ -756,9 +760,9 @@ bool ProgramBuilder::MergeAndDiscover() {
         Fail("task '" + first.name +
              "' builds a different task graph in two "
              "translation units: " +
-             other.loc + " (" + tu_files_[other.tu] + ") invokes " +
-             invoke_list(other_invokes) + " but " + first.loc + " (" +
-             tu_files_[first.tu] + ") invokes " + invoke_list(first_invokes) +
+             sighting_loc(other) + " invokes " + invoke_list(other_invokes) +
+             " but " + sighting_loc(first) + " invokes " +
+             invoke_list(first_invokes) +
              "; a task sighted in several translation "
              "units must build the same task graph in each");
         return false;
@@ -798,9 +802,8 @@ bool ProgramBuilder::MergeAndDiscover() {
   }
   if (top_candidates.size() > 1) {
     Fail("top-level task '" + top_ +
-         "' has multiple definitions: " + top_candidates[0]->loc + " (" +
-         tu_files_[top_candidates[0]->tu] + ") and " + top_candidates[1]->loc +
-         " (" + tu_files_[top_candidates[1]->tu] + ")");
+         "' has multiple definitions: " + sighting_loc(*top_candidates[0]) +
+         " and " + sighting_loc(*top_candidates[1]));
     return false;
   }
   const std::string top_key = top_candidates[0]->key;
@@ -870,8 +873,7 @@ bool ProgramBuilder::MergeAndDiscover() {
             message +=
                 "; a function with the same name but a different "
                 "signature is defined at " +
-                sightings.front().loc + " (" + tu_files_[sightings.front().tu] +
-                ")";
+                sighting_loc(sightings.front());
             break;
           }
         }
@@ -940,9 +942,8 @@ bool ProgramBuilder::MergeAndDiscover() {
       if (other.implicit_spec || other.internal) continue;
       if (other.site == first.site) continue;
       Fail("task '" + first.name + "' is defined at two locations: " +
-           first.loc + " (" + tu_files_[first.tu] + ") and " + other.loc +
-           " (" + tu_files_[other.tu] +
-           "); a task must be defined in exactly one place (a task defined "
+           sighting_loc(first) + " and " + sighting_loc(other) +
+           "; a task must be defined in exactly one place (a task defined "
            "in a header shared by several translation units is one "
            "definition and merges silently)");
       return false;
@@ -967,9 +968,9 @@ bool ProgramBuilder::MergeAndDiscover() {
     if (it->second.size() > 1) {
       const DefSighting* a = it->second[0];
       const DefSighting* b = it->second[1];
-      Fail("task '" + plain_name + "' re-defined: " + b->loc + " (" +
-           tu_files_[b->tu] + ") and " + a->loc + " (" + tu_files_[a->tu] +
-           "); task names must be unique across the "
+      Fail("task '" + plain_name + "' re-defined: " + sighting_loc(*b) +
+           " and " + sighting_loc(*a) +
+           "; task names must be unique across the "
            "program");
       return false;
     }
