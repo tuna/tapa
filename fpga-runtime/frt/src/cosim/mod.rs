@@ -219,14 +219,6 @@ impl CosimDevice {
         Ok(())
     }
 
-    fn arg_name(&self, index: u32) -> Result<&str> {
-        declared_arg_name(&self.arg_names, index, "argument")
-    }
-
-    fn stream_arg_name(&self, index: u32) -> Result<&str> {
-        declared_arg_name(&self.stream_arg_names, index, "stream argument")
-    }
-
     /// Sorted `'name' (arg index N)` listing of the stream args the kernel
     /// spec declares, for strict resume-mode error messages.
     fn declared_stream_args_listing(&self) -> String {
@@ -672,14 +664,15 @@ impl Device for CosimDevice {
         bytes: usize,
         access: BufferAccess,
     ) -> Result<()> {
-        let name = self.arg_name(index)?.to_owned();
-        if !self.ctx.buffers.contains_key(&name) {
+        // Borrows only `self.arg_names`, so `self.ctx` stays usable below.
+        let name = declared_arg_name(&self.arg_names, index, "argument")?;
+        if !self.ctx.buffers.contains_key(name) {
             return Err(FrtError::MetadataParse(format!(
                 "arg '{name}' is not an mmap buffer"
             )));
         }
         self.ctx
-            .resize_buffer(&name, bytes.next_multiple_of(BUFFER_GRANULE))?;
+            .resize_buffer(name, bytes.next_multiple_of(BUFFER_GRANULE))?;
         self.pending_buffers
             .insert(index, BufferBinding { ptr, bytes, access });
         Ok(())
@@ -743,7 +736,7 @@ impl Device for CosimDevice {
             // bound index must be a declared stream arg. Alignment with the
             // resumed dpi_config.json itself was validated wholesale by
             // `CosimDevice::open`, the only production constructor.
-            if self.stream_arg_name(index).is_err() {
+            if declared_arg_name(&self.stream_arg_names, index, "stream argument").is_err() {
                 return Err(FrtError::ResumeStreamBinding(format!(
                     "arg index {index} is not a stream arg declared by the kernel \
                      spec (declared stream args: {}); the host binary and the kernel \
@@ -758,9 +751,9 @@ impl Device for CosimDevice {
             ring.bind(shm_path);
             return Ok(());
         }
-        let name = self.stream_arg_name(index)?.to_owned();
-        if self.ctx.streams.contains_key(&name) {
-            self.ctx.bind_stream_path(&name, shm_path)?;
+        let name = declared_arg_name(&self.stream_arg_names, index, "stream argument")?;
+        if self.ctx.streams.contains_key(name) {
+            self.ctx.bind_stream_path(name, shm_path)?;
         }
         Ok(())
     }
