@@ -519,46 +519,17 @@ fn self_lib_path() -> Option<PathBuf> {
 }
 
 fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
-    let mut search_dirs = Vec::new();
-    if let Some(dir) = exe.parent() {
-        search_dirs.push(dir.to_path_buf());
-        // Installed layout: bin/ is sibling of lib/
-        if let Some(parent) = dir.parent() {
-            search_dirs.push(parent.join("lib"));
-        }
-        for ancestor in dir.ancestors() {
-            search_dirs.push(ancestor.to_path_buf());
-            search_dirs.push(ancestor.join("fpga-runtime/cargo"));
-            search_dirs.push(ancestor.join("cargo"));
-        }
-    }
-    // Installed layout with statically linked FRT: the libraries live under
-    // the TAPA package root advertised via TAPA_HOME (this is the layout the
-    // staging tests exercise after `install.sh`).
-    if let Ok(home) = std::env::var("TAPA_HOME") {
-        let home = PathBuf::from(home);
-        search_dirs.push(home.join("usr/lib"));
-        search_dirs.push(home.join("lib"));
-    }
-    // Also search LD_LIBRARY_PATH (covers staging tests that copy binaries)
-    if let Ok(ldpath) = std::env::var("LD_LIBRARY_PATH") {
-        for dir in ldpath.split(':') {
-            if !dir.is_empty() {
-                search_dirs.push(PathBuf::from(dir));
-            }
-        }
-    }
     let name = dpi_library_name(variant);
-    for base in &search_dirs {
-        let p = base.join(&name);
-        if p.exists() {
-            // Downstream cosim tools run from deep temp/obj subdirectories:
-            // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
-            // (derived from this path's parent) both resolve relative to
-            // their own CWD, not ours. A path resolved relative to the test
-            // CWD is unusable there, so return an absolute path.
-            return Ok(std::fs::canonicalize(&p).unwrap_or(p));
-        }
+    // Downstream cosim tools run from deep temp/obj subdirectories:
+    // Verilator's `c++` link from `obj_dir` and XSIM's `-sv_root`
+    // (derived from this path's parent) both resolve relative to
+    // their own CWD, not ours. A path resolved relative to the test
+    // CWD is unusable there, so return an absolute path.
+    if let Some(p) = dpi_search_dirs(exe)
+        .map(|dir| dir.join(&name))
+        .find(|p| p.exists())
+    {
+        return Ok(std::fs::canonicalize(&p).unwrap_or(p));
     }
     // Last resort: ask the dynamic loader. FRT links statically into the host
     // binary, so `dladdr` above lands on the executable rather than on the
@@ -570,6 +541,44 @@ fn dpi_lib_path_from_exe(exe: &Path, variant: &str) -> Result<PathBuf> {
         return Ok(p);
     }
     Err(FrtError::DpiLibraryNotFound { name })
+}
+
+/// Where `dpi_lib_path_from_exe` looks for the DPI library, most trusted
+/// source first: around the running image, then the TAPA package root, then
+/// `LD_LIBRARY_PATH`.
+fn dpi_search_dirs(exe: &Path) -> impl Iterator<Item = PathBuf> + '_ {
+    let around_exe = exe.parent().into_iter().flat_map(|dir| {
+        // Installed layout: bin/ is sibling of lib/
+        let sibling_lib = dir.parent().map(|parent| parent.join("lib"));
+        std::iter::once(dir.to_path_buf())
+            .chain(sibling_lib)
+            // Bazel and cargo place build outputs under ancestors of the
+            // running binary.
+            .chain(dir.ancestors().flat_map(|ancestor| {
+                [
+                    ancestor.to_path_buf(),
+                    ancestor.join("fpga-runtime/cargo"),
+                    ancestor.join("cargo"),
+                ]
+            }))
+    });
+    // Installed layout with statically linked FRT: the libraries live under
+    // the TAPA package root advertised via TAPA_HOME (this is the layout the
+    // staging tests exercise after `install.sh`).
+    let tapa_home = std::env::var("TAPA_HOME").into_iter().flat_map(|home| {
+        let home = PathBuf::from(home);
+        [home.join("usr/lib"), home.join("lib")]
+    });
+    // Also search LD_LIBRARY_PATH (covers staging tests that copy binaries)
+    let loader_path: Vec<PathBuf> = std::env::var("LD_LIBRARY_PATH")
+        .map(|path| {
+            path.split(':')
+                .filter(|dir| !dir.is_empty())
+                .map(PathBuf::from)
+                .collect()
+        })
+        .unwrap_or_default();
+    around_exe.chain(tapa_home).chain(loader_path)
 }
 
 /// Resolve a shared library by bare name through the dynamic loader and
