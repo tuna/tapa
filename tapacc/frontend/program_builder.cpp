@@ -1167,8 +1167,10 @@ bool ProgramBuilder::CheckAieEot() {
     by_name.emplace(task.model.name, &task.model);
   }
   std::map<const TaskModel*, std::set<std::string>> close_cache;
-  std::function<std::set<std::string>(const TaskModel&)> closed_ports =
-      [&](const TaskModel& task) -> std::set<std::string> {
+  // Map entries outlive the recursion, so every memoized answer is handed
+  // out as a reference instead of a copy.
+  std::function<const std::set<std::string>&(const TaskModel&)> closed_ports =
+      [&](const TaskModel& task) -> const std::set<std::string>& {
     if (const auto it = close_cache.find(&task); it != close_cache.end()) {
       return it->second;
     }
@@ -1177,7 +1179,7 @@ bool ProgramBuilder::CheckAieEot() {
       const auto child = by_name.find(child_name);
       if (child == by_name.end()) continue;
       for (const auto& instance : instances) {
-        const auto child_closed = closed_ports(*child->second);
+        const auto& child_closed = closed_ports(*child->second);
         for (const auto& [port, arg] : instance.args) {
           const std::string child_port = ArrayBaseName(port);
           if (child_closed.count(child_port) == 0 || arg.arg.empty()) continue;
@@ -1186,13 +1188,14 @@ bool ProgramBuilder::CheckAieEot() {
         }
       }
     }
-    return close_cache[&task] = std::move(closed);
+    return close_cache.emplace(&task, std::move(closed)).first->second;
   };
   // The AI Engine task a stream bound to `port` of `task` reaches, the task
   // itself or one a PL upper task hands the port to, or empty.
   std::map<std::pair<const TaskModel*, std::string>, std::string> aie_cache;
-  std::function<std::string(const TaskModel&, const std::string&)> aie_reader =
-      [&](const TaskModel& task, const std::string& port) -> std::string {
+  std::function<const std::string&(const TaskModel&, const std::string&)>
+      aie_reader = [&](const TaskModel& task,
+                       const std::string& port) -> const std::string& {
     if (task.target == SynthTarget::kAie) return task.name;
     const auto key = std::make_pair(&task, port);
     if (const auto it = aie_cache.find(key); it != aie_cache.end()) {
@@ -1211,7 +1214,7 @@ bool ProgramBuilder::CheckAieEot() {
         }
       }
     }
-    return aie_cache[key] = reader;
+    return aie_cache.emplace(key, std::move(reader)).first->second;
   };
   for (const auto& [key, task] : tasks_) {
     const TaskModel& upper = task.model;
