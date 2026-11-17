@@ -107,6 +107,14 @@ class MainFileFuncs : public clang::RecursiveASTVisitor<MainFileFuncs> {
   std::vector<const clang::FunctionDecl*> funcs_;
 };
 
+std::vector<const clang::FunctionDecl*> CollectMainFileFuncs(
+    const clang::ASTContext& ctx, const std::set<clang::FileID>& files) {
+  MainFileFuncs collector(ctx, files);
+  // TraverseDecl mutates nothing but is non-const in the API.
+  collector.TraverseDecl(ctx.getTranslationUnitDecl());
+  return collector.TakeFuncs();
+}
+
 const char* LevelStr(TaskLevel level) {
   return level == TaskLevel::kUpper ? "upper" : "lower";
 }
@@ -357,14 +365,11 @@ std::map<std::string, const clang::FunctionDecl*> ProgramBuilder::VisibleDecls(
     clang::ASTContext& ctx, const std::set<clang::FileID>& files) const {
   std::map<std::string, const clang::FunctionDecl*> visible;
   const auto mangler = CreateMangleContext(ctx);
-  MainFileFuncs collector(ctx, files);
-  // TraverseDecl mutates nothing but is non-const in the API.
-  collector.TraverseDecl(ctx.getTranslationUnitDecl());
   auto record = [&](const clang::FunctionDecl* func) {
     RecordVisibleDecl(visible, KeyOf(*mangler, func), func);
   };
   std::vector<const clang::FunctionDecl*> uppers;
-  for (const clang::FunctionDecl* func : collector.TakeFuncs()) {
+  for (const clang::FunctionDecl* func : CollectMainFileFuncs(ctx, files)) {
     record(func);
     if (func->isThisDeclarationADefinition() &&
         LevelOf(func) == TaskLevel::kUpper) {
@@ -387,9 +392,8 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
     clang::ASTContext& ctx, const std::set<clang::FileID>& files) const {
   TuIndex index;
   const auto mangler = CreateMangleContext(ctx);
-  MainFileFuncs collector(ctx, files);
-  // TraverseDecl mutates nothing but is non-const in the API.
-  collector.TraverseDecl(ctx.getTranslationUnitDecl());
+  const std::vector<const clang::FunctionDecl*> funcs =
+      CollectMainFileFuncs(ctx, files);
   const int tu = static_cast<int>(tu_files_.size());  // provisional id
 
   std::set<std::string> sighted;
@@ -400,7 +404,7 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
     if (!sighted.insert(key).second) return;  // one sighting per key per TU
     index.defs.push_back(MakeFacts(*mangler, func, tu));
   };
-  for (const clang::FunctionDecl* func : collector.TakeFuncs()) {
+  for (const clang::FunctionDecl* func : funcs) {
     record_sighting(func, KeyOf(*mangler, func));
   }
 
