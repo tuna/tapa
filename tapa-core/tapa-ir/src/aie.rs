@@ -1340,7 +1340,6 @@ impl Builder<'_> {
     }
 }
 
-/// The child port of `parent`'s instance `child[index]` bound to `fifo`.
 /// A PL-less top's ring PLIO in its PL kernel `top`: an AXIS port beside
 /// the ring of the argument, which takes the frame of the kernel port the
 /// argument reaches. The argument's stream to that kernel is gone with it.
@@ -1397,6 +1396,7 @@ fn plio_port(name: String, input: bool, ctype: String, width: u32, plio: u32) ->
     }
 }
 
+/// The child port of `parent`'s instance `child[index]` bound to `fifo`.
 fn child_port_for(parent: &Task, child: &str, index: u32, fifo: &str) -> Option<String> {
     parent
         .tasks
