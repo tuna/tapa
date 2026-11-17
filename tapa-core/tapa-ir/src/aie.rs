@@ -363,12 +363,7 @@ impl AiePartition {
             })?;
             let port_name =
                 child_port_for(original, &endpoint.0, endpoint.1, &stream.fifo).unwrap_or_default();
-            let pl_port = task(graph, &endpoint.0)?.port(&port_name).ok_or_else(|| {
-                AieError(format!(
-                    "the task `{}` has no port `{port_name}`",
-                    endpoint.0
-                ))
-            })?;
+            let pl_port = stream_port(graph, &endpoint.0, &port_name)?;
             top.ports.push(plio_port(
                 stream.fifo.clone(),
                 input,
@@ -945,8 +940,9 @@ impl Builder<'_> {
                 let fifo = top.fifos.get(name).filter(|fifo| fifo.depth.is_some());
                 let top_port = top.port(name).filter(|port| port.cat.is_stream());
                 if let (None, Some(top_port), true) = (fifo, top_port, self.partition.pl_less) {
-                    let frame = task(graph, child)?.port(port).and_then(|port| port.frame);
-                    let words = stream_words(graph, child, port)?;
+                    let aie_port = stream_port(graph, child, port)?;
+                    let frame = aie_port.frame;
+                    let words = aie_port.width.div_ceil(32);
                     let input = top_port.cat.is_input_stream();
                     let index = match self.top_frames {
                         TopFrames::Gmio => self.push_stream(
@@ -970,15 +966,15 @@ impl Builder<'_> {
                 };
                 let producer_aie = endpoint_is_aie(graph, fifo.produced_by.as_ref());
                 let consumer_aie = endpoint_is_aie(graph, fifo.consumed_by.as_ref());
-                let words = stream_words(graph, child, port)?;
-                let aie_port = task(graph, child)?.port(port);
-                let frame = aie_port.and_then(|port| port.frame);
+                let aie_port = stream_port(graph, child, port)?;
+                let words = aie_port.width.div_ceil(32);
+                let frame = aie_port.frame;
                 let kind = if producer_aie && consumer_aie {
                     AieStreamKind::Net {
                         depth_words: fifo.depth.unwrap_or(0) * words,
                     }
                 } else {
-                    let width = aie_port.and_then(|p| p.aie_plio).unwrap_or(words * 32);
+                    let width = aie_port.aie_plio.unwrap_or(words * 32);
                     let bits = words * 32;
                     if bits > MAX_PLIO_BITS {
                         return Err(AieError(format!(
@@ -1172,10 +1168,9 @@ impl Builder<'_> {
                 continue;
             };
             let port = child_port_for(def, &endpoint.0, endpoint.1, fifo_name).unwrap_or_default();
-            let words = stream_words(graph, &endpoint.0, &port)?;
-            let frame = task(graph, &endpoint.0)?
-                .port(&port)
-                .and_then(|port| port.frame);
+            let aie_port = stream_port(graph, &endpoint.0, &port)?;
+            let words = aie_port.width.div_ceil(32);
+            let frame = aie_port.frame;
             let stream = self.push_stream(
                 sanitize_identifier_name(&scoped_name(path, fifo_name)),
                 fifo_name,
@@ -1413,12 +1408,15 @@ fn child_port_for(parent: &Task, child: &str, index: u32, fifo: &str) -> Option<
         .map(|(port, _)| port.clone())
 }
 
-/// 32-bit words per element of `task`'s stream port `port` (a channel name
-/// like `a[2]` resolves to its plural port `a`).
-fn stream_words(graph: &TaskGraph, task_name: &str, port: &str) -> Result<u32, AieError> {
-    let def = task(graph, task_name)?;
-    def.port(port)
-        .map(|p| p.width.div_ceil(32))
+/// The stream port `port` of `task` (a channel name like `a[2]` resolves to
+/// its plural port `a`).
+fn stream_port<'g>(
+    graph: &'g TaskGraph,
+    task_name: &str,
+    port: &str,
+) -> Result<&'g Port, AieError> {
+    task(graph, task_name)?
+        .port(port)
         .ok_or_else(|| AieError(format!("the task `{task_name}` has no port `{port}`")))
 }
 
