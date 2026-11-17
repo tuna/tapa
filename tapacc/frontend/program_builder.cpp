@@ -806,26 +806,27 @@ bool ProgramBuilder::MergeAndDiscover() {
          " and " + sighting_loc(*top_candidates[1]));
     return false;
   }
-  const std::string top_key = top_candidates[0]->key;
-  if (top_candidates[0]->pattern || top_candidates[0]->is_spec) {
+  const DefSighting& top = *top_candidates[0];
+  const std::string top_key = top.key;
+  if (top.pattern || top.is_spec) {
     // A task is concrete (its ports need their types' widths), and the
     // kernel goes by the top's own name, which a specialization lacks.
-    Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +
+    Fail("top-level task '" + top_ + "' (defined at " + top.loc +
          ") is a template; the top must be an ordinary function");
     return false;
   }
-  if (top_candidates[0]->ignored) {
+  if (top.ignored) {
     Fail("tapa top-level task function cannot be ignored (defined at " +
-         top_candidates[0]->loc + ")");
+         top.loc + ")");
     return false;
   }
   // An AI Engine top is the default for the tasks it invokes; the top
   // itself is the PL kernel unless it needs none (see PropagateAie). A leaf
   // top has nothing to hand the default to, and the PL kernel owns the
   // control interface.
-  const bool aie_top = top_candidates[0]->target == SynthTarget::kAie;
-  if (aie_top && top_candidates[0]->level != TaskLevel::kUpper) {
-    Fail("top-level task '" + top_ + "' (defined at " + top_candidates[0]->loc +
+  const bool aie_top = top.target == SynthTarget::kAie;
+  if (aie_top && top.level != TaskLevel::kUpper) {
+    Fail("top-level task '" + top_ + "' (defined at " + top.loc +
          ") is a leaf and cannot run on the AI Engine: the PL kernel owns the "
          "control interface, so invoke the AI Engine work from an upper top");
     return false;
@@ -848,7 +849,7 @@ bool ProgramBuilder::MergeAndDiscover() {
     task.model.target = sighting.target;
     work.push(sighting.key);
   };
-  discover(*top_candidates[0], std::nullopt);
+  discover(top, std::nullopt);
   if (aie_top) tasks_.at(top_key).model.target = default_target_;
   while (!work.empty()) {
     const std::string key = work.front();
