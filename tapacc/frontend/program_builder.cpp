@@ -577,9 +577,9 @@ bool ProgramBuilder::PropagateAie(const std::string& top_key, bool aie_top) {
   // down instead. An AI Engine top sets that default, and stays the PL
   // kernel, which owns the control interface, unless it needs none (below).
   auto aie_scope = [&](const std::string& key) {
-    return (key == top_key && aie_top) ||
-           (tasks_.at(key).model.target == SynthTarget::kAie &&
-            tasks_.at(key).model.level == TaskLevel::kUpper);
+    const TaskModel& task = tasks_.at(key).model;
+    return (key == top_key && aie_top) || (task.target == SynthTarget::kAie &&
+                                           task.level == TaskLevel::kUpper);
   };
   std::queue<std::string> work;
   for (const auto& [key, task] : tasks_) {
