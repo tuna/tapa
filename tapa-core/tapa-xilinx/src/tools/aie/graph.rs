@@ -139,7 +139,7 @@ pub fn render_graph(
         );
     }
     files.insert("kernels.h".to_string(), decls);
-    files.insert("graph.cpp".to_string(), graph(partition, options)?);
+    files.insert("graph.cpp".to_string(), graph(partition, options, drain)?);
     Ok(files)
 }
 
@@ -759,19 +759,13 @@ impl GraphText {
     }
 }
 
-fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
+fn graph(partition: &AiePartition, options: &GraphOptions, drain: bool) -> Result<String> {
     let mut text = GraphText::default();
     // The PL controller restarts a run-forever graph's buffers at each
     // start (`pl_control::reset_steps`).
     let pin_frames = options.pl_control && partition.run_forever;
     for kernel in &partition.kernels {
-        text.kernel(
-            kernel,
-            &partition.streams,
-            options,
-            drains(partition),
-            pin_frames,
-        )?;
+        text.kernel(kernel, &partition.streams, options, drain, pin_frames)?;
     }
     let freq = options
         .plio_mhz
@@ -803,7 +797,7 @@ fn graph(partition: &AiePartition, options: &GraphOptions) -> Result<String> {
     // `aiecompiler --target=hw` builds a simulation model of the PS side
     // too, which needs an entry point even when only `libadf.a` is wanted.
     match &options.sim {
-        Some(sim) => out.push_str(&sim_main(partition, options, sim)?),
+        Some(sim) => out.push_str(&sim_main(partition, options, sim, drain)?),
         None => {
             let _ = write!(
                 out,
@@ -890,7 +884,12 @@ void tapa_feed(adf::input_gmio& gmio, const char* path) {
 /// output GMIO in stream order (frt writes it).
 const GMIO_FRAMES_FILE: &str = "frames.txt";
 
-fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> Result<String> {
+fn sim_main(
+    partition: &AiePartition,
+    options: &GraphOptions,
+    sim: &SimMain,
+    drain: bool,
+) -> Result<String> {
     let graph = graph_instance(partition.run_forever);
     let gmios: Vec<(&AieStream, bool)> = partition
         .streams
@@ -916,7 +915,7 @@ fn sim_main(partition: &AiePartition, options: &GraphOptions, sim: &SimMain) -> 
         "\nint main() {{\n  {graph}.init();\n  std::ifstream rtp(\"rtp.txt\");\n"
     );
     // A simulation runs once, so it never drains.
-    if drains(partition) {
+    if drain {
         for kernel in &partition.kernels {
             let _ = writeln!(out, "  {graph}.update({graph}.drain_{}, 0);", kernel.name);
         }
