@@ -393,15 +393,15 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
   const int tu = static_cast<int>(tu_files_.size());  // provisional id
 
   std::set<std::string> sighted;
-  auto record_sighting = [&](const clang::FunctionDecl* func) {
-    const std::string key = KeyOf(*mangler, func);
+  auto record_sighting = [&](const clang::FunctionDecl* func,
+                             const std::string& key) {
     RecordVisibleDecl(index.visible, key, func);
     if (!func->isThisDeclarationADefinition()) return;
     if (!sighted.insert(key).second) return;  // one sighting per key per TU
     index.defs.push_back(MakeFacts(*mangler, func, tu));
   };
   for (const clang::FunctionDecl* func : collector.TakeFuncs()) {
-    record_sighting(func);
+    record_sighting(func, KeyOf(*mangler, func));
   }
 
   // Invoke edges, from every upper-shaped definition (discovery filters
@@ -421,7 +421,7 @@ ProgramBuilder::TuIndex ProgramBuilder::IndexTuImpl(
       const std::string callee_key = KeyOf(*mangler, callee);
       // A specialization is never RAV-visited, so it enters visibility and
       // the definition index through the invoke that instantiated it.
-      record_sighting(callee);
+      record_sighting(callee, callee_key);
       InvokeEdge edge;
       edge.caller_key = caller.key;
       edge.callee_key = callee_key;
