@@ -153,7 +153,8 @@ impl CosimDevice {
                         legacy: *legacy,
                         start_gui: opts.start_gui,
                     },
-                    part_num_override: opts.part_num_override.clone(),
+                    // The remaining `opts` reads are Copy, so move this one.
+                    part_num_override: opts.part_num_override,
                 })
             }
         };
