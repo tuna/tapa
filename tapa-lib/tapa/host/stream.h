@@ -14,6 +14,7 @@
 #include <iomanip>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -452,11 +453,12 @@ class istream : virtual public internal::basic_stream<T> {
   /// Sets @p is_eot and returns true if next token is available (non-blocking,
   /// non-destructive).
   bool try_eot(bool& is_eot) const {
-    if (!empty()) {
-      is_eot = this->get_queue().front().eot;
-      return true;
+    auto elem = try_front();
+    if (!elem) {
+      return false;
     }
-    return false;
+    is_eot = elem->eot;
+    return true;
   }
 
   /// Returns true if next token is EoT; sets @p is_success to availability.
@@ -469,15 +471,15 @@ class istream : virtual public internal::basic_stream<T> {
   /// Sets @p value to the next non-EoT token and returns true if available
   /// (non-blocking).
   bool try_peek(T& value) const {
-    if (!empty()) {
-      auto elem = this->get_queue().front();
-      if (elem.eot) {
-        LOG(FATAL) << "channel '" << this->get_name() << "' peeked when closed";
-      }
-      value = elem.val;
-      return true;
+    auto elem = try_front();
+    if (!elem) {
+      return false;
     }
-    return false;
+    if (elem->eot) {
+      LOG(FATAL) << "channel '" << this->get_name() << "' peeked when closed";
+    }
+    value = elem->val;
+    return true;
   }
 
   /// Returns next token value and sets @p is_success (non-blocking, non-EoT).
@@ -496,29 +498,24 @@ class istream : virtual public internal::basic_stream<T> {
 
   /// Returns next token and sets @p is_success and @p is_eot (non-blocking).
   T peek(bool& is_success, bool& is_eot) const {
-    if (!empty()) {
-      auto elem = this->get_queue().front();
-      is_success = true;
-      is_eot = elem.eot;
-      return elem.val;
-    }
-    is_success = false;
-    is_eot = false;
-    return {};
+    auto elem = try_front();
+    is_success = elem.has_value();
+    is_eot = elem && elem->eot;
+    return elem ? elem->val : T{};
   }
 
   /// Sets @p value and returns true if a non-EoT token was popped
   /// (non-blocking).
   bool try_read(T& value) {
-    if (!empty()) {
-      auto elem = this->get_queue().pop();
-      if (elem.eot) {
-        LOG(FATAL) << "channel '" << this->get_name() << "' read when closed";
-      }
-      value = elem.val;
-      return true;
+    auto elem = try_pop();
+    if (!elem) {
+      return false;
     }
-    return false;
+    if (elem->eot) {
+      LOG(FATAL) << "channel '" << this->get_name() << "' read when closed";
+    }
+    value = elem->val;
+    return true;
   }
 
   /// Blocking read; returns the next non-EoT token value.
@@ -560,15 +557,15 @@ class istream : virtual public internal::basic_stream<T> {
 
   /// Non-blocking consume of an EoT token; returns true if consumed.
   bool try_open() {
-    if (!empty()) {
-      auto elem = this->get_queue().pop();
-      if (!elem.eot) {
-        LOG(FATAL) << "channel '" << this->get_name()
-                   << "' opened when not closed";
-      }
-      return true;
+    auto elem = try_pop();
+    if (!elem) {
+      return false;
     }
-    return false;
+    if (!elem->eot) {
+      LOG(FATAL) << "channel '" << this->get_name()
+                 << "' opened when not closed";
+    }
+    return true;
   }
 
   /// Blocking consume of an EoT token.
@@ -583,6 +580,22 @@ class istream : virtual public internal::basic_stream<T> {
   istream() : internal::basic_stream<T>() {}
 
  private:
+  // The next token, without consuming it; none if the stream is empty.
+  std::optional<internal::elem_t<T>> try_front() const {
+    if (empty()) {
+      return std::nullopt;
+    }
+    return this->get_queue().front();
+  }
+
+  // The next token, consumed; none if the stream is empty.
+  std::optional<internal::elem_t<T>> try_pop() {
+    if (empty()) {
+      return std::nullopt;
+    }
+    return this->get_queue().pop();
+  }
+
   template <typename U, uint64_t S>
   friend class istreams;
   template <typename U, uint64_t S, uint64_t N, uint64_t SimulationDepth>
