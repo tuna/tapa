@@ -570,8 +570,7 @@ impl GraphText {
             }
         }
         let [inputs, outputs] = ports;
-        self.ring_counts(kernel, streams, outputs)?;
-        self.gmio_parameters(kernel, streams, drain, inputs)
+        self.frame_ports(kernel, streams, drain, inputs, outputs)
     }
 
     /// Records `stream` at kernel `k`'s next input or output, counted in
@@ -601,38 +600,16 @@ impl GraphText {
         port
     }
 
-    /// The count each ring the kernel writes leaves on, an output after
-    /// the kernel's own, from `output` on.
-    fn ring_counts(
-        &mut self,
-        kernel: &AieKernel,
-        streams: &[AieStream],
-        mut output: usize,
-    ) -> Result<()> {
-        for counted in counted_outputs(kernel, streams)? {
-            if let Some(plio) = counted.plio {
-                self.producers.insert(
-                    plio,
-                    End {
-                        port: format!("k_{}.out[{output}]", kernel.name),
-                        frame: false,
-                    },
-                );
-                output += 1;
-            }
-        }
-        Ok(())
-    }
-
-    /// The runtime parameters a graph writing a GMIO adds after a kernel's
-    /// own: its drain flag, the next input, and the frame count of each
-    /// GMIO it writes, read once the kernel has returned, so asynchronously.
-    fn gmio_parameters(
+    /// The drain flag and frame counts added after a kernel's own ports: the
+    /// next input, an output for each ring's count PLIO, and an asynchronous
+    /// inout for each GMIO's count, read once the kernel has returned.
+    fn frame_ports(
         &mut self,
         kernel: &AieKernel,
         streams: &[AieStream],
         drain: bool,
         input: usize,
+        mut output: usize,
     ) -> Result<()> {
         let k = format!("k_{}", kernel.name);
         if drain {
@@ -643,16 +620,26 @@ impl GraphText {
                 "    adf::connect<adf::parameter>({rtp}, adf::async({k}.in[{input}]));"
             );
         }
-        let gmios = counted_outputs(kernel, streams)?
-            .into_iter()
-            .filter(|counted| counted.plio.is_none());
-        for (inout, counted) in gmios.enumerate() {
-            let rtp = format!("frames_{}", streams[counted.stream].name);
-            let _ = writeln!(self.members, "  adf::port<adf::inout> {rtp};");
-            let _ = writeln!(
-                self.body,
-                "    adf::connect<adf::parameter>(adf::async({k}.inout[{inout}]), {rtp});"
-            );
+        let mut inout_index = 0;
+        for counted in counted_outputs(kernel, streams)? {
+            if let Some(plio) = counted.plio {
+                self.producers.insert(
+                    plio,
+                    End {
+                        port: format!("{k}.out[{output}]"),
+                        frame: false,
+                    },
+                );
+                output += 1;
+            } else {
+                let rtp = format!("frames_{}", streams[counted.stream].name);
+                let _ = writeln!(self.members, "  adf::port<adf::inout> {rtp};");
+                let _ = writeln!(
+                    self.body,
+                    "    adf::connect<adf::parameter>(adf::async({k}.inout[{inout_index}]), {rtp});"
+                );
+                inout_index += 1;
+            }
         }
         Ok(())
     }
