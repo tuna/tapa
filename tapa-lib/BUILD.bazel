@@ -275,10 +275,13 @@ cc_test(
     size = "small",
     srcs = ["tapa/host/stream_alloc_test.cpp"],
     # Wall-clock bounds on scheduler backoff are load-sensitive: under CPU
-    # saturation a blocked poll legitimately reaches the 1 ms rung, so let
-    # Bazel retry rather than flake the suite. The bound still bites on a
-    # quiet runner, which is where the regression would show.
+    # saturation a blocked poll legitimately reaches the 1 ms rung. Run
+    # exclusively so the assertion never races the concurrent Cargo build
+    # (Bazel runs exclusive tests after all build activity); retrying could
+    # not help because every attempt lands in the same saturated window.
+    # flaky stays for load on the runner from outside the build.
     flaky = True,
+    tags = ["exclusive"],
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
@@ -298,6 +301,7 @@ cc_test(
     # Same load sensitivity as stream-alloc-test, in the non-coroutine
     # scheduler where the backoff matters most.
     flaky = True,
+    tags = ["exclusive"],
     target_compatible_with = ["@platforms//os:linux"],
     visibility = ["//visibility:public"],
     deps = [
